@@ -847,18 +847,28 @@ export class StudentCommands {
         const contentTitle: string = content.title || content.path || 'Course content';
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
         const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
+
+        // Query can include course_content_id for filtering (read-only)
         const query: Record<string, string> = {
           course_id: courseId,
           course_content_id: content.id
         };
-        const createPayload: Partial<MessageCreate> = {
-          course_id: courseId,
-          course_content_id: content.id
-        };
+
+        // Students can only write to submission_group_id, not course_content_id
+        // course_content_id is for lecturers+ only
+        let createPayload: Partial<MessageCreate>;
 
         if (submissionGroup?.id) {
           query.submission_group_id = submissionGroup.id;
-          createPayload.submission_group_id = submissionGroup.id;
+          createPayload = {
+            submission_group_id: submissionGroup.id
+          };
+        } else {
+          // No submission group - student cannot write messages here
+          // Show warning when trying to create message
+          createPayload = {
+            course_content_id: content.id  // This will fail with ForbiddenException, but allows reading
+          };
         }
 
         target = {
@@ -878,11 +888,14 @@ export class StudentCommands {
 
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course messages';
         const subtitle = courseInfo?.path ? `Course • ${courseInfo.path}` : undefined;
+
+        // Students cannot write to course_id (lecturer+ only)
+        // This will show course messages but prevent students from creating them
         target = {
           title: courseLabel,
           subtitle,
           query: { course_id: courseId },
-          createPayload: { course_id: courseId },
+          createPayload: { course_id: courseId },  // This will fail with ForbiddenException
           sourceRole: 'student'
         } satisfies MessageTargetContext;
       }

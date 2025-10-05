@@ -116,6 +116,46 @@ body {
   align-items: center;
 }
 
+.message-scope-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.message-scope-tag.scope-submission_group {
+  background-color: var(--vscode-charts-blue);
+  color: var(--vscode-editor-background);
+}
+
+.message-scope-tag.scope-course_content {
+  background-color: var(--vscode-charts-purple);
+  color: var(--vscode-editor-background);
+}
+
+.message-scope-tag.scope-course {
+  background-color: var(--vscode-charts-green);
+  color: var(--vscode-editor-background);
+}
+
+.message-scope-tag.scope-course_group {
+  background-color: var(--vscode-charts-orange);
+  color: var(--vscode-editor-background);
+}
+
+.message-scope-tag.scope-course_member {
+  background-color: var(--vscode-charts-yellow);
+  color: var(--vscode-editor-background);
+}
+
+.message-scope-tag.scope-user {
+  background-color: var(--vscode-charts-red);
+  color: var(--vscode-editor-background);
+}
+
 .message-meta-right {
   display: flex;
   gap: 8px;

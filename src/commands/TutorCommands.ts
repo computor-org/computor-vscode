@@ -403,20 +403,30 @@ export class TutorCommands {
 
       if (content) {
         const contentTitle = content.title || content.path || 'Course content';
+
+        // Query can include course_member_id for filtering (read-only)
         const query: Record<string, string> = {
           course_id: courseId,
           course_content_id: content.id,
           course_member_id: memberId
         };
-        const createPayload: Partial<MessageCreate> = {
-          course_id: courseId,
-          course_content_id: content.id,
-          course_member_id: memberId
-        };
+
+        // For writing messages, we need to use submission_group_id or course_content_id
+        // course_member_id is not supported for writing
+        let createPayload: Partial<MessageCreate>;
 
         if (submissionGroup?.id) {
+          // Prefer submission_group_id for write access (tutors can write here)
           query.submission_group_id = submissionGroup.id;
-          createPayload.submission_group_id = submissionGroup.id;
+          createPayload = {
+            submission_group_id: submissionGroup.id
+          };
+        } else {
+          // Tutors cannot write to course_content_id (lecturer+ only)
+          // This will fail with ForbiddenException, but allows reading
+          createPayload = {
+            course_content_id: content.id  // Lecturer+ only
+          };
         }
 
         const subtitleSegments = [courseLabel, memberLabel, content.path || contentTitle].filter(Boolean) as string[];
@@ -433,13 +443,16 @@ export class TutorCommands {
       }
 
       if (!target) {
+        // For general course member messages
+        // Tutors cannot write to course_id or course_member_id
+        // course_member_id is not implemented, course_id is lecturer+ only
         const subtitleSegments = [courseLabel, memberLabel].filter(Boolean) as string[];
         const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
         target = {
           title: memberLabel ? `${memberLabel} — Course messages` : 'Course member messages',
           subtitle,
           query: { course_id: courseId, course_member_id: memberId },
-          createPayload: { course_id: courseId, course_member_id: memberId },
+          createPayload: { course_id: courseId },  // This will fail - lecturer+ only
           sourceRole: 'tutor'
         } satisfies MessageTargetContext;
       }
