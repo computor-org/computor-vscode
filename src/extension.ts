@@ -66,7 +66,7 @@ async function ensureBaseUrl(settings: ComputorSettingsManager): Promise<string 
   return url;
 }
 
-async function promptCredentials(previous?: { username?: string }): Promise<{ username: string; password: string } | undefined> {
+async function promptCredentials(previous?: { username?: string; password?: string }): Promise<{ username: string; password: string } | undefined> {
   const username = await vscode.window.showInputBox({
     title: 'Computor Login',
     prompt: 'Username',
@@ -78,6 +78,7 @@ async function promptCredentials(previous?: { username?: string }): Promise<{ us
   const password = await vscode.window.showInputBox({
     title: 'Computor Login',
     prompt: 'Password',
+    value: previous?.password,
     password: true,
     ignoreFocusOut: true
   });
@@ -527,9 +528,15 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
     const secretKey = 'computor.auth';
     const usernameKey = 'computor.username';
+    const passwordKey = 'computor.password';
 
     const storedUsername = await context.secrets.get(usernameKey);
-    const creds = await promptCredentials(storedUsername ? { username: storedUsername } : undefined);
+    const storedPassword = await context.secrets.get(passwordKey);
+    const creds = await promptCredentials(
+      storedUsername || storedPassword
+        ? { username: storedUsername, password: storedPassword }
+        : undefined
+    );
     if (!creds) { return; }
 
     backendConnectionService.setBaseUrl(baseUrl);
@@ -578,6 +585,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
       await context.secrets.store(secretKey, JSON.stringify(auth));
       await context.secrets.store(usernameKey, creds.username);
+      await context.secrets.store(passwordKey, creds.password);
 
       if (extensionUpdateService) {
         extensionUpdateService.checkForUpdates().catch(err => {

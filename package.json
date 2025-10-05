@@ -836,6 +836,11 @@
           "group": "2_discussion@1"
         },
         {
+          "command": "computor.student.showMessages",
+          "when": "view == computor.student.courses && viewItem == studentCourseUnit",
+          "group": "2_discussion@1"
+        },
+        {
           "command": "computor.student.showPreview",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
           "group": "inline@1"
