@@ -106,6 +106,7 @@ export class UserPasswordCommands {
 
         const tokenData = client.getTokenData();
         const secretKey = 'computor.auth';
+        const passwordKey = 'computor.password';
         const auth = {
           accessToken: tokenData.accessToken,
           refreshToken: tokenData.refreshToken || undefined,
@@ -114,6 +115,7 @@ export class UserPasswordCommands {
         };
 
         await this.context.secrets.store(secretKey, JSON.stringify(auth));
+        await this.context.secrets.store(passwordKey, newPassword);
       }
     } catch (error) {
       console.warn('Failed to re-authenticate after password change:', error);

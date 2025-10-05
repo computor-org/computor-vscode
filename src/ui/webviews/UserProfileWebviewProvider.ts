@@ -123,13 +123,10 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
     let canChangePassword = false;
     let username: string | undefined;
     try {
-      const storedRaw = await this.context.secrets.get('computor.auth');
-      if (storedRaw) {
-        const storedAuth: any = JSON.parse(storedRaw);
-        if (storedAuth?.type === 'basic' && storedAuth?.username) {
-          canChangePassword = true;
-          username = storedAuth.username;
-        }
+      // Check if we have stored username (indicates password-based login)
+      username = await this.context.secrets.get('computor.username');
+      if (username) {
+        canChangePassword = true;
       }
     } catch (error) {
       console.warn('[UserProfileWebview] Failed to inspect auth secrets:', error);
@@ -279,16 +276,15 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       return;
     }
 
-    let storedAuth: any;
+    let username: string | undefined;
     try {
-      const secretRaw = await this.context.secrets.get('computor.auth');
-      storedAuth = secretRaw ? JSON.parse(secretRaw) : undefined;
+      username = await this.context.secrets.get('computor.username');
     } catch {
-      storedAuth = undefined;
+      username = undefined;
     }
 
-    if (!storedAuth || storedAuth.type !== 'basic' || !storedAuth.username) {
-      this.postNotice({ type: 'error', message: 'Password changes are only available for basic authentication.' });
+    if (!username) {
+      this.postNotice({ type: 'error', message: 'Password changes are only available for password-based authentication.' });
       return;
     }
 
@@ -298,32 +294,22 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
         password: newPassword
       };
       await this.apiService.updateUserPassword(payload);
-      await this.updateStoredCredentials(storedAuth.username, newPassword, storedAuth);
+      await this.updateStoredCredentials(username, newPassword);
       await this.refreshState({ notice: { type: 'success', message: 'Password updated successfully.' } });
     } catch (error: any) {
       this.handleError('Failed to update password', error);
     }
   }
 
-  private async updateStoredCredentials(username: string, newPassword: string, storedAuth?: any): Promise<void> {
+  private async updateStoredCredentials(username: string, newPassword: string): Promise<void> {
     try {
-      if (storedAuth && storedAuth.type === 'basic') {
-        storedAuth.password = newPassword;
-        await this.context.secrets.store('computor.auth', JSON.stringify(storedAuth));
-      }
-
+      // Update stored username and password
       await this.context.secrets.store('computor.username', username);
       await this.context.secrets.store('computor.password', newPassword);
 
-      const client: any = (this.apiService as any).httpClient;
-      if (client && typeof client.setCredentials === 'function') {
-        client.setCredentials(username, newPassword);
-        try {
-          await client.authenticate();
-        } catch (authError) {
-          console.warn('Failed to re-authenticate after password change:', authError);
-        }
-      }
+      // Note: We don't need to update the bearer token auth here
+      // The user will need to re-login to get new tokens with the new password
+      // The stored password is used for the login suggestion only
     } catch (error) {
       console.warn('Failed to persist updated credentials:', error);
     }
