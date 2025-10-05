@@ -848,9 +848,9 @@ export class StudentCommands {
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
         const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
 
-        // Query can include course_content_id for filtering (read-only)
+        // Query should NOT include course_id when viewing content-specific messages
+        // Including course_id would return ALL messages in the course (due to OR filter in backend)
         const query: Record<string, string> = {
-          course_id: courseId,
           course_content_id: content.id
         };
 

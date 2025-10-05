@@ -404,9 +404,10 @@ export class TutorCommands {
       if (content) {
         const contentTitle = content.title || content.path || 'Course content';
 
-        // Query can include course_member_id for filtering (read-only)
+        // Query should NOT include course_id when viewing content-specific messages
+        // Including course_id would return ALL messages in the course (due to OR filter in backend)
+        // We can include course_member_id for additional filtering
         const query: Record<string, string> = {
-          course_id: courseId,
           course_content_id: content.id,
           course_member_id: memberId
         };
