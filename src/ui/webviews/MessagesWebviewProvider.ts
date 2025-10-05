@@ -35,12 +35,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
+    const currentUserId = this.apiService.getCurrentUserId();
     const [identity, rawMessages] = await Promise.all([
-      this.apiService.getCurrentUser().catch(() => undefined),
+      currentUserId ? this.apiService.getCurrentUser().catch(() => undefined) : Promise.resolve(undefined),
       this.apiService.listMessages(target.query)
     ]);
 
-    const currentUserId = identity?.id;
     const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
     void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
     const messages = this.enrichMessages(normalizedMessages, identity);
@@ -287,8 +287,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     try {
       this.postLoadingState(true);
+      const currentUserId = this.apiService.getCurrentUserId();
       const identity = (await this.apiService.getCurrentUser().catch(() => this.getIdentity())) || this.getIdentity();
-      const currentUserId = identity?.id;
       const rawMessages = await this.apiService.listMessages(target.query);
       const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
       void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);

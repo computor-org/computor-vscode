@@ -1278,6 +1278,24 @@ export class ComputorApiService {
     }
   }
 
+  /**
+   * Get the current user's ID directly from the authentication token.
+   * This method does NOT make an API call and returns immediately.
+   */
+  getCurrentUserId(): string | undefined {
+    try {
+      const client = this.httpClient;
+      if (client && typeof (client as any).getUserId === 'function') {
+        const userId = (client as any).getUserId();
+        return userId || undefined;
+      }
+      return undefined;
+    } catch (error) {
+      console.error('Failed to get current user ID:', error);
+      return undefined;
+    }
+  }
+
   // Student API methods
   async getCurrentUser(options?: { force?: boolean }): Promise<{ id: string; username: string; full_name?: string } | undefined> {
     const cacheKey = 'currentUser';
