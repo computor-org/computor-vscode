@@ -148,7 +148,7 @@ export class TutorCommands {
               this.treeDataProvider.refresh();
             } catch (e: any) {
               const msg = String(e?.message || e || '');
-              if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('403') || msg.includes('401'))) {
+              if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('401'))) {
                 const newToken = await (async () => {
                   // Reuse token manager's prompt behavior
                   const t = await vscode.window.showInputBox({

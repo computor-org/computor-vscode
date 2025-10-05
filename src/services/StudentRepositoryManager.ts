@@ -803,8 +803,7 @@ export class StudentRepositoryManager {
     return message.includes('Authentication failed') ||
            message.includes('Access denied') ||
            message.includes('HTTP Basic') ||
-           message.includes('401') ||
-           message.includes('403');
+           message.includes('401');
   }
 
 }

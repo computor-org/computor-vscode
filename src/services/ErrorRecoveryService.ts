@@ -69,11 +69,9 @@ export class NetworkErrorStrategy implements ErrorRecoveryStrategy {
 export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
   canRecover(error: Error): boolean {
     return error.message.includes('401') ||
-           error.message.includes('403') ||
-           error.message.includes('Unauthorized') ||
-           error.message.includes('Forbidden');
+           error.message.includes('Unauthorized');
   }
-  
+
   async recover(error: Error): Promise<void> {
     const action = await vscode.window.showErrorMessage(
       'Authentication failed. Your session may have expired.',
