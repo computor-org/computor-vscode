@@ -53,21 +53,24 @@
       ? studentProfiles.map((sp, index) => {
           const orgTitle = sp.organization?.title || sp.organization?.name || sp.organization?.path || 'Unknown Organization';
           return `
-        <form class="student-profile-card student-profile-form" data-profile-id="${escapeHtml(sp.id)}">
+        <form class="student-profile-card student-profile-form" data-profile-id="${escapeHtml(sp.id)}" style="opacity: 0.5; pointer-events: none;">
           <h3>Student Profile: ${escapeHtml(orgTitle)}</h3>
           <div class="student-profile-meta">ID: ${escapeHtml(sp.id)}${sp.created_at ? ` · Created: ${escapeHtml(sp.created_at)}` : ''}</div>
+          <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 12px;">
+            Only administrators can modify student profiles. Please contact your administrator.
+          </p>
           <div class="profile-grid">
             <div class="form-field">
               <label for="student-id-${escapeHtml(sp.id)}">Student ID</label>
-              <input id="student-id-${escapeHtml(sp.id)}" name="student_id" value="${escapeHtml(toInputValue(sp.student_id))}" placeholder="e.g. matrikel number">
+              <input id="student-id-${escapeHtml(sp.id)}" name="student_id" value="${escapeHtml(toInputValue(sp.student_id))}" placeholder="e.g. matrikel number" disabled>
             </div>
             <div class="form-field">
               <label for="student-email-${escapeHtml(sp.id)}">Student Email</label>
-              <input id="student-email-${escapeHtml(sp.id)}" name="student_email" type="email" value="${escapeHtml(toInputValue(sp.student_email))}" placeholder="example@university.edu">
+              <input id="student-email-${escapeHtml(sp.id)}" name="student_email" type="email" value="${escapeHtml(toInputValue(sp.student_email))}" placeholder="example@university.edu" disabled>
             </div>
           </div>
           <div class="profile-actions">
-            <button type="submit" class="primary">Save Changes</button>
+            <button type="submit" class="primary" disabled>Save Changes</button>
           </div>
         </form>
       `;
@@ -157,27 +160,30 @@
         <div class="student-profile-list">
           ${studentProfilesHtml}
           <div class="profile-divider"></div>
-          <form id="new-student-profile-form" class="student-profile-card">
+          <form id="new-student-profile-form" class="student-profile-card" style="opacity: 0.5; pointer-events: none;">
             <h3>Add Student Profile</h3>
+            <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 12px;">
+              Only administrators can create or modify student profiles. Please contact your administrator.
+            </p>
             <div class="profile-grid">
               <div class="form-field">
                 <label for="new-organization">Organization</label>
-                <select id="new-organization" name="organization_id" required>
+                <select id="new-organization" name="organization_id" required disabled>
                   <option value="">Select organization...</option>
                   ${organizations.map(org => `<option value="${escapeHtml(org.id)}">${escapeHtml(org.title || org.name || org.path)}</option>`).join('')}
                 </select>
               </div>
               <div class="form-field">
                 <label for="new-student-id">Student ID</label>
-                <input id="new-student-id" name="student_id" placeholder="e.g. matrikel number">
+                <input id="new-student-id" name="student_id" placeholder="e.g. matrikel number" disabled>
               </div>
               <div class="form-field">
                 <label for="new-student-email">Student Email</label>
-                <input id="new-student-email" name="student_email" type="email" placeholder="example@university.edu">
+                <input id="new-student-email" name="student_email" type="email" placeholder="example@university.edu" disabled>
               </div>
             </div>
             <div class="profile-actions">
-              <button type="submit" class="primary">Add Student Profile</button>
+              <button type="submit" class="primary" disabled>Add Student Profile</button>
             </div>
           </form>
         </div>
