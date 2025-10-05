@@ -212,12 +212,23 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
 
     const level = this.resolveMessageLevel(data.parent_id);
+
+    // Build payload with only the fields from createPayload that are target fields
+    // This prevents accidental inclusion of multiple target fields
+    const targetFields = ['user_id', 'course_member_id', 'submission_group_id', 'course_group_id', 'course_content_id', 'course_id'] as const;
+    const filteredPayload: Partial<MessageCreate> = {};
+    for (const field of targetFields) {
+      if (target.createPayload[field] !== undefined) {
+        filteredPayload[field] = target.createPayload[field];
+      }
+    }
+
     const payload: MessageCreate = {
       title: data.title,
       content: data.content,
       parent_id: data.parent_id ?? null,
       level,
-      ...target.createPayload
+      ...filteredPayload
     } as MessageCreate;
 
     try {

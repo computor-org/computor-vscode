@@ -834,7 +834,23 @@ export class StudentCommands {
 
       let target: MessageTargetContext | undefined;
 
-      const content = item?.courseContent as any;
+      // Check if item is a course tree node (CourseRootItem has courseId property)
+      if (item?.courseId && typeof item.courseId === 'string') {
+        courseId = item.courseId;
+      }
+
+      // Also check if item has a nested course object
+      const course = item?.course as any;
+      if (course && typeof course.id === 'string') {
+        courseId = course.id;
+      }
+
+      // Extract course content - could be in item.courseContent or item.node.courseContent (for units)
+      let content = item?.courseContent as any;
+      if (!content && item?.node?.courseContent) {
+        content = item.node.courseContent;
+      }
+
       if (content && typeof content.id === 'string') {
         courseId = content.course_id || courseId;
 
@@ -859,13 +875,14 @@ export class StudentCommands {
         let createPayload: Partial<MessageCreate>;
 
         if (submissionGroup?.id) {
+          // Assignment with submission group - students can write to submission_group_id
           query.submission_group_id = submissionGroup.id;
           createPayload = {
             submission_group_id: submissionGroup.id
           };
         } else {
-          // No submission group - student cannot write messages here
-          // Show warning when trying to create message
+          // Unit content without submission group - students can only read course_content messages
+          // Trying to write will fail with ForbiddenException (lecturer+ only)
           createPayload = {
             course_content_id: content.id  // This will fail with ForbiddenException, but allows reading
           };
@@ -891,10 +908,11 @@ export class StudentCommands {
 
         // Students cannot write to course_id (lecturer+ only)
         // This will show course messages but prevent students from creating them
+        // Use scope filter to show ONLY course-scoped messages, not content/submission messages
         target = {
           title: courseLabel,
           subtitle,
-          query: { course_id: courseId },
+          query: { course_id: courseId, scope: 'course' },
           createPayload: { course_id: courseId },  // This will fail with ForbiddenException
           sourceRole: 'student'
         } satisfies MessageTargetContext;

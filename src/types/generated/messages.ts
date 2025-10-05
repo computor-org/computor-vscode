@@ -92,4 +92,5 @@ export interface MessageQuery {
   course_group_id?: string | null;
   course_content_id?: string | null;
   course_id?: string | null;
+  course_id_all_messages?: boolean | null;
 }

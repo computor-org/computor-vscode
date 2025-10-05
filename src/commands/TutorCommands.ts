@@ -404,12 +404,11 @@ export class TutorCommands {
       if (content) {
         const contentTitle = content.title || content.path || 'Course content';
 
-        // Query should NOT include course_id when viewing content-specific messages
-        // Including course_id would return ALL messages in the course (due to OR filter in backend)
-        // We can include course_member_id for additional filtering
+        // Query should NOT include course_id or course_member_id
+        // - course_id would return ALL messages in the course (due to OR filter in backend)
+        // - course_member_id would filter to specific member, but tutors want to see all messages
         const query: Record<string, string> = {
-          course_content_id: content.id,
-          course_member_id: memberId
+          course_content_id: content.id
         };
 
         // For writing messages, we need to use submission_group_id or course_content_id
@@ -417,14 +416,14 @@ export class TutorCommands {
         let createPayload: Partial<MessageCreate>;
 
         if (submissionGroup?.id) {
-          // Prefer submission_group_id for write access (tutors can write here)
+          // Assignment with submission group - tutors can write to submission_group_id
           query.submission_group_id = submissionGroup.id;
           createPayload = {
             submission_group_id: submissionGroup.id
           };
         } else {
-          // Tutors cannot write to course_content_id (lecturer+ only)
-          // This will fail with ForbiddenException, but allows reading
+          // Unit content without submission group - tutors can only read (lecturer+ for writing)
+          // Trying to write will fail with ForbiddenException
           createPayload = {
             course_content_id: content.id  // Lecturer+ only
           };
@@ -447,12 +446,13 @@ export class TutorCommands {
         // For general course member messages
         // Tutors cannot write to course_id or course_member_id
         // course_member_id is not implemented, course_id is lecturer+ only
+        // Use scope filter to show ONLY course-scoped messages, not content/submission messages
         const subtitleSegments = [courseLabel, memberLabel].filter(Boolean) as string[];
         const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
         target = {
           title: memberLabel ? `${memberLabel} — Course messages` : 'Course member messages',
           subtitle,
-          query: { course_id: courseId, course_member_id: memberId },
+          query: { course_id: courseId, course_member_id: memberId, scope: 'course' },
           createPayload: { course_id: courseId },  // This will fail - lecturer+ only
           sourceRole: 'tutor'
         } satisfies MessageTargetContext;
