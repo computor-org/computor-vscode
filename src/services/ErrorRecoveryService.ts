@@ -126,6 +126,29 @@ export class ErrorRecoveryService {
   ];
   
   /**
+   * Check if error is a non-retryable HTTP client error (4xx except 401, 408, 429)
+   */
+  private isNonRetryableClientError(error: Error): boolean {
+    const message = error.message;
+
+    // Check for HTTP 4xx errors in the message
+    const httpErrorMatch = message.match(/HTTP (\d{3})/);
+    if (httpErrorMatch && httpErrorMatch[1]) {
+      const statusCode = parseInt(httpErrorMatch[1], 10);
+
+      // Don't retry client errors (400-499) except:
+      // - 401 (handled by AuthenticationErrorStrategy)
+      // - 408 (Request Timeout - can retry)
+      // - 429 (Rate Limit - handled by RateLimitErrorStrategy)
+      if (statusCode >= 400 && statusCode < 500) {
+        return statusCode !== 401 && statusCode !== 408 && statusCode !== 429;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Execute a function with automatic retry and error recovery
    */
   async executeWithRecovery<T>(
@@ -138,49 +161,54 @@ export class ErrorRecoveryService {
       exponentialBackoff = true,
       onRetry
     } = options;
-    
+
     let lastError: Error | undefined;
-    
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await fn();
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        
+
+        // Don't retry non-retryable client errors (like 403, 404, etc.)
+        if (this.isNonRetryableClientError(lastError)) {
+          throw lastError;
+        }
+
         // Try to recover using strategies
         const strategy = this.strategies.find(s => s.canRecover(lastError!));
-        
+
         if (strategy && attempt < maxRetries) {
           try {
             await strategy.recover(lastError);
-            
+
             if (onRetry) {
               onRetry(attempt + 1, lastError);
             }
-            
+
             // Calculate delay with exponential backoff
-            const delay = exponentialBackoff 
+            const delay = exponentialBackoff
               ? retryDelay * Math.pow(2, attempt)
               : retryDelay;
-            
+
             if (delay > 0) {
               await new Promise(resolve => setTimeout(resolve, delay));
             }
-            
+
             continue; // Retry
           } catch (recoveryError) {
             // Recovery failed, propagate error
             throw recoveryError;
           }
         }
-        
+
         // No recovery possible or max retries reached
         if (attempt === maxRetries) {
           throw this.enhanceError(lastError, attempt);
         }
       }
     }
-    
+
     throw lastError || new Error('Operation failed');
   }
   
