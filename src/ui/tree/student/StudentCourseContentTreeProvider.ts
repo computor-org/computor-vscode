@@ -87,14 +87,19 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
      */
     async refreshContentItem(contentId: string): Promise<void> {
         try {
+            console.log(`[TreeProvider] Refreshing content item: ${contentId}`);
             const selectedCourseId = this.courseSelection.getCurrentCourseId();
+            console.log(`[TreeProvider] Fetching single content: ${contentId}`);
             let updated = await this.apiService.getStudentCourseContent(contentId, { force: true });
+            console.log(`[TreeProvider] Single content fetched:`, updated);
 
             if (selectedCourseId) {
                 // Always refresh the cached course contents so we preserve
                 // enriched fields (type metadata, colors, etc.) that the
                 // single-content endpoint omits.
+                console.log(`[TreeProvider] Fetching all course contents for course: ${selectedCourseId}`);
                 const refreshedList = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
+                console.log(`[TreeProvider] Fetched ${refreshedList.length} course contents`);
                 this.courseContentsCache.set(selectedCourseId, refreshedList);
                 if (this.repositoryManager) {
                     this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, refreshedList);
@@ -102,17 +107,27 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
                 // Prefer the freshly cached entry so we retain content type data.
                 const refreshed = refreshedList.find(c => c.id === contentId);
+                console.log(`[TreeProvider] Found content in list:`, refreshed ? 'yes' : 'no');
                 if (refreshed) {
+                    console.log(`[TreeProvider] Using refreshed content from list, result:`, refreshed.result);
                     updated = refreshed;
                 }
             }
 
-            if (!updated) { this._onDidChangeTreeData.fire(undefined); return; }
+            if (!updated) {
+                console.log(`[TreeProvider] No updated content found, firing full tree refresh`);
+                this._onDidChangeTreeData.fire(undefined);
+                return;
+            }
 
+            console.log(`[TreeProvider] Looking for tree item in index for contentId: ${contentId}`);
             const ti = this.itemIndex.get(contentId);
+            console.log(`[TreeProvider] Found tree item:`, ti ? 'yes' : 'no');
             if (ti && ti instanceof CourseContentItem) {
+                console.log(`[TreeProvider] Applying update to CourseContentItem`);
                 ti.applyUpdate(updated);
                 this._onDidChangeTreeData.fire(ti);
+                console.log(`[TreeProvider] Tree change event fired for item`);
                 // Also refresh parent unit if possible
                 const parentPath = (updated.path || '').split('.').slice(0, -1).join('.');
                 if (parentPath && selectedCourseId) {
@@ -143,6 +158,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 }
                 return;
             }
+            console.log(`[TreeProvider] Item not found or wrong type, firing full tree refresh`);
             this._onDidChangeTreeData.fire(undefined);
         } catch (e) {
             console.error('refreshContentItem failed:', e);
