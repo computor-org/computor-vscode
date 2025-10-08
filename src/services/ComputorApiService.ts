@@ -2083,10 +2083,11 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to submit test:', error);
-      // Show user-friendly error message
+      // Extract detailed error message and re-throw for upper layer to handle
       const message = error?.response?.data?.detail || error?.message || 'Failed to submit test';
-      vscode.window.showErrorMessage(`Test submission failed: ${message}`);
-      return undefined;
+      const detailedError = new Error(message);
+      (detailedError as any).originalError = error;
+      throw detailedError;
     }
   }
 

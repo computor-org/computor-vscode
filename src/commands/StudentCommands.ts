@@ -829,16 +829,12 @@ export class StudentCommands {
           }
         } catch (error: any) {
           console.error('Failed to test assignment:', error);
+          // Only show error message for git push failures
+          // Other errors (like test submission errors) are already handled by TestResultService
           if (error?.message && error.message.includes('Failed to push changes to remote')) {
             vscode.window.showErrorMessage(`Assignment test aborted: ${error.message}`);
-          } else {
-            const message = typeof error?.message === 'string'
-              ? error.message
-              : typeof error === 'string'
-                ? error
-                : 'Unknown error';
-            vscode.window.showErrorMessage(`Failed to test assignment: ${message}`);
           }
+          // For other errors, TestResultService has already shown the error message
         }
       })
     );
