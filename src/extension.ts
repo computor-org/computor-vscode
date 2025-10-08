@@ -771,34 +771,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await vscode.commands.executeCommand('workbench.action.openSettings', 'computor');
   }));
 
-  // Token management commands
-  context.subscriptions.push(vscode.commands.registerCommand('computor.tokens.manage', async () => {
-    const { GitLabTokenManager } = await import('./services/GitLabTokenManager');
-    const mgr = GitLabTokenManager.getInstance(context);
-    const originInput = await vscode.window.showInputBox({
-      title: 'GitLab Origin',
-      prompt: 'Enter GitLab origin (e.g., http://localhost:8084)',
-      value: 'http://',
-      ignoreFocusOut: true,
-      validateInput: (v) => { try { const u = new URL(v); return u.origin ? undefined : 'Enter a valid origin URL'; } catch { return 'Enter a valid origin URL'; } }
-    });
-    if (!originInput) return;
-    const origin = new URL(originInput).origin;
-    const existing = await mgr.getToken(origin);
-    if (existing) {
-      const choice = await vscode.window.showQuickPick(['Update Token', 'Remove Token', 'Cancel'], { title: `Token for ${origin}` });
-      if (choice === 'Update Token') {
-        const tok = await vscode.window.showInputBox({ title: `Update Token for ${origin}`, password: true, ignoreFocusOut: true });
-        if (tok) await mgr.storeToken(origin, tok);
-      } else if (choice === 'Remove Token') {
-        await mgr.removeToken(origin);
-        vscode.window.showInformationMessage(`Removed token for ${origin}`);
-      }
-    } else {
-      const tok = await vscode.window.showInputBox({ title: `Set Token for ${origin}`, password: true, ignoreFocusOut: true });
-      if (tok) await mgr.storeToken(origin, tok);
-    }
-  }));
 }
 
 export async function deactivate(): Promise<void> {

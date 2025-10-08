@@ -34,12 +34,6 @@
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.tokens.manage",
-        "title": "Manage Git Tokens",
-        "icon": "$(key)",
-        "category": "Computor"
-      },
-      {
         "command": "computor.tutor.resetFilters",
         "title": "Tutor: Reset Filters",
         "icon": "$(discard)",
