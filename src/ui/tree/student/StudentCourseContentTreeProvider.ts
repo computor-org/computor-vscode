@@ -1082,7 +1082,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 
         // Additional grading details and team members
         if (this.submissionGroup?.grading !== undefined && this.submissionGroup?.status) {
-            lines.push(`Status: ${this.submissionGroup.status}`);
+            lines.push(`Status: ${this.formatStatus(this.submissionGroup.status)}`);
         }
         if (this.submissionGroup?.members && this.submissionGroup.members.length > 1) {
             lines.push('Team members:');
@@ -1093,7 +1093,17 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         
         this.tooltip = lines.join('\n');
     }
-    
+
+    private formatStatus(status: string): string {
+        // Convert snake_case to Title Case
+        // "correction_necessary" -> "Correction Necessary"
+        // "not_reviewed" -> "Not Reviewed"
+        return status
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
     private setupContextValue(): void {
         const contexts: string[] = ['studentCourseContent'];
         
