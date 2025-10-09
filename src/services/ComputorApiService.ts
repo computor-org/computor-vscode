@@ -38,6 +38,7 @@ import {
   CourseGroupUpdate,
   CourseMemberList,
   CourseMemberGet,
+  CourseMemberUpdate,
   CourseMemberProviderAccountUpdate,
   CourseMemberReadinessStatus,
   UserPassword,
@@ -1196,24 +1197,34 @@ export class ComputorApiService {
   async updateCourseGroup(groupId: string, updates: CourseGroupUpdate): Promise<CourseGroupGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseGroupGet>(`/course-groups/${groupId}`, updates);
-    
+
     // Invalidate related caches
     this.invalidateCachePattern('courseGroup-');
     this.invalidateCachePattern('courseGroups-');
-    
+
     return response.data;
+  }
+
+  async deleteCourseGroup(groupId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/course-groups/${groupId}`);
+
+    // Invalidate related caches
+    this.invalidateCachePattern('courseGroup-');
+    this.invalidateCachePattern('courseGroups-');
+    this.invalidateCachePattern('courseMembers-');
   }
 
   // Course Members API methods
   async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
     const cacheKey = groupId ? `courseMembers-${courseId}-${groupId}` : `courseMembers-${courseId}`;
-    
+
     // Check cache first
     const cached = multiTierCache.get<CourseMemberList[]>(cacheKey);
     if (cached) {
       return cached;
     }
-    
+
     // Fetch with error recovery
     const result = await errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
@@ -1222,18 +1233,28 @@ export class ComputorApiService {
       if (groupId) {
         queryParams.append('course_group_id', groupId);
       }
-      
+
       const response = await client.get<CourseMemberList[]>(`/course-members?${queryParams.toString()}`);
       return response.data;
     }, {
       maxRetries: 2,
       exponentialBackoff: true
     });
-    
+
     // Cache in warm tier (members change occasionally)
     multiTierCache.set(cacheKey, result, 'warm');
-    
+
     return result;
+  }
+
+  async updateCourseMember(memberId: string, updates: CourseMemberUpdate): Promise<CourseMemberGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<CourseMemberGet>(`/course-members/${memberId}`, updates);
+
+    // Invalidate related caches
+    this.invalidateCachePattern('courseMembers-');
+
+    return response.data;
   }
 
   async validateCourseReadiness(

@@ -306,6 +306,12 @@ export class LecturerCommands {
         await this.renameCourseGroup(item);
       })
     );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.deleteCourseGroup', async (item: CourseGroupTreeItem) => {
+        await this.deleteCourseGroup(item);
+      })
+    );
   }
 
   /**
@@ -1995,11 +2001,36 @@ export class LecturerCommands {
     try {
       await this.apiService.updateCourseGroup(item.group.id, { title: newTitle });
       vscode.window.showInformationMessage(`Group renamed to "${newTitle}"`);
-      
+
       // Refresh the tree to show the changes
       await this.treeDataProvider.refresh();
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to rename group: ${error}`);
+    }
+  }
+
+  private async deleteCourseGroup(item: CourseGroupTreeItem): Promise<void> {
+    const groupTitle = item.group.title || item.group.id;
+
+    // Confirm deletion
+    const confirmation = await vscode.window.showWarningMessage(
+      `Are you sure you want to delete the group "${groupTitle}"?\n\nMembers will be moved to "No Group".`,
+      { modal: true },
+      'Delete'
+    );
+
+    if (confirmation !== 'Delete') {
+      return;
+    }
+
+    try {
+      await this.apiService.deleteCourseGroup(item.group.id);
+      vscode.window.showInformationMessage(`Group "${groupTitle}" deleted`);
+
+      // Refresh the tree to show the changes
+      await this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to delete group: ${error?.message || error}`);
     }
   }
 }

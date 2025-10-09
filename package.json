@@ -374,6 +374,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.deleteCourseGroup",
+        "title": "Delete Group",
+        "icon": "$(trash)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.showCourseDetails",
         "title": "Show Details",
         "icon": "$(info)",
@@ -767,6 +773,11 @@
           "command": "computor.lecturer.renameCourseGroup",
           "when": "view == computor.lecturer.courses && viewItem == course.group",
           "group": "2_edit@1"
+        },
+        {
+          "command": "computor.lecturer.deleteCourseGroup",
+          "when": "view == computor.lecturer.courses && viewItem == course.group",
+          "group": "3_delete@1"
         },
         {
           "command": "computor.lecturer.openGitLabRepo",

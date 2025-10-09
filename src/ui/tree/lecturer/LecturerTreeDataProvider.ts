@@ -84,8 +84,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   // Drag and drop support
-  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample'];
-  public readonly dragMimeTypes: string[] = []; // This tree only accepts drops, doesn't provide drags
+  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample', 'application/vnd.code.tree.lecturermember'];
+  public readonly dragMimeTypes: string[] = ['application/vnd.code.tree.lecturermember']; // Support dragging members
 
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
@@ -1528,9 +1528,81 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   // Drag and drop implementation
   public async handleDrag(source: readonly TreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
-    void source;
-    void treeDataTransfer;
-    // This tree doesn't provide drag sources - examples are dragged FROM the example tree
+    // Support dragging course members
+    const members = source.filter(item => item instanceof CourseMemberTreeItem) as CourseMemberTreeItem[];
+
+    if (members.length > 0) {
+      // Serialize member data for drag
+      const memberData = members.map(m => ({
+        memberId: m.member.id,
+        courseId: m.course.id,
+        currentGroupId: m.member.course_group_id
+      }));
+
+      treeDataTransfer.set(
+        'application/vnd.code.tree.lecturermember',
+        new vscode.DataTransferItem(memberData)
+      );
+    }
+  }
+
+  private async handleMemberDrop(target: TreeItem | undefined, memberDataItem: vscode.DataTransferItem): Promise<void> {
+    if (!target) {
+      return;
+    }
+
+    // Determine target group
+    let targetGroupId: string | null = null;
+    let courseId: string;
+
+    if (target instanceof CourseGroupTreeItem) {
+      targetGroupId = target.group.id;
+      courseId = target.course.id;
+    } else if (target instanceof NoGroupTreeItem) {
+      targetGroupId = null; // Moving to "No Group"
+      courseId = target.course.id;
+    } else {
+      vscode.window.showErrorMessage('Members can only be dropped on course groups or "No Group"');
+      return;
+    }
+
+    try {
+      const memberData = await memberDataItem.value;
+      console.log('[LecturerTreeDataProvider] Dropping members:', memberData);
+
+      if (!Array.isArray(memberData)) {
+        return;
+      }
+
+      // Move all members to the target group
+      for (const member of memberData) {
+        if (member.courseId !== courseId) {
+          vscode.window.showWarningMessage(`Cannot move member to a different course`);
+          continue;
+        }
+
+        if (member.currentGroupId === targetGroupId) {
+          continue; // Already in target group
+        }
+
+        await this.apiService.updateCourseMember(member.memberId, {
+          course_group_id: targetGroupId
+        });
+      }
+
+      const groupName = target instanceof CourseGroupTreeItem
+        ? target.group.title || 'the group'
+        : 'No Group';
+
+      vscode.window.showInformationMessage(
+        `Moved ${memberData.length} member(s) to ${groupName}`
+      );
+
+      // Refresh the tree to show changes
+      await this.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to move members: ${error?.message || error}`);
+    }
   }
 
   public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
@@ -1540,12 +1612,20 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       mimeTypes.push(key);
     });
     console.log('Available mime types:', mimeTypes);
-    
+
+    // Check if we have member data being dropped
+    const memberData = dataTransfer.get('application/vnd.code.tree.lecturermember');
+
+    if (memberData) {
+      await this.handleMemberDrop(target, memberData);
+      return;
+    }
+
     // Check if we have example data being dropped
     const exampleData = dataTransfer.get('application/vnd.code.tree.computorexample');
-    
+
     console.log('Example data found:', !!exampleData);
-    
+
     if (!exampleData || !target) {
       console.log('Missing data or target - exampleData:', !!exampleData, 'target:', !!target);
       return;
