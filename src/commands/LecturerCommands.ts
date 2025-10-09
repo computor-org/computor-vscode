@@ -608,12 +608,6 @@ export class LecturerCommands {
       return;
     }
 
-    const description = await vscode.window.showInputBox({
-      prompt: 'Description (optional)',
-      value: '',
-      ignoreFocusOut: true
-    });
-
     const initialSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
     const isAssignment = this.isContentTypeSubmittable(selectedType.contentType);
 
@@ -624,43 +618,17 @@ export class LecturerCommands {
         selectedType.id,
         parentPath,
         initialSlug,
-        description || undefined
+        undefined
       );
       return;
     }
 
-    const identifierInput = await vscode.window.showInputBox({
-      prompt: 'Assignment identifier (ltree, e.g. unit01.assignment1)',
-      placeHolder: 'unit01.assignment1',
-      validateInput: (value) => {
-        if (!value || !value.trim()) {
-          return 'Identifier is required';
-        }
-        const trimmed = value.trim();
-        if (trimmed.includes('..')) {
-          return 'Identifier must not contain ".." segments';
-        }
-        if (/[^a-zA-Z0-9_.\/-]/.test(trimmed)) {
-          return 'Only letters, numbers, dash, underscore, dot, and slash are allowed';
-        }
-        return undefined;
-      }
-    });
+    // For assignments, auto-generate the identifier from title
+    const autoIdentifier = title.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
 
-    if (!identifierInput) {
-      return;
-    }
-
-    const normalizedIdentifier = identifierInput.trim().replace(/\/+/g, '/').replace(/^\/+|\/+$/g, '');
-    const ltreeIdentifier = normalizedIdentifier
-      .split(/[/.]+/)
-      .filter(Boolean)
-      .join('.');
-
-    if (!ltreeIdentifier) {
-      vscode.window.showErrorMessage('Identifier is invalid.');
-      return;
-    }
+    const ltreeIdentifier = autoIdentifier;
 
     const versionTagInput = await vscode.window.showInputBox({
       prompt: 'Version tag for this assignment',
@@ -689,7 +657,7 @@ export class LecturerCommands {
         selectedType.id,
         parentPath,
         slug,
-        description || undefined
+        undefined
       );
 
       if (!createdContent) {
@@ -701,7 +669,7 @@ export class LecturerCommands {
           createdContent.id,
           ltreeIdentifier,
           versionTag,
-          description || undefined
+          undefined
         );
       } catch (error) {
         console.warn('Failed to assign example source to new assignment:', error);
@@ -709,7 +677,7 @@ export class LecturerCommands {
 
       this.treeDataProvider.rememberAssignmentIdentifier(createdContent.id, ltreeIdentifier);
 
-      await this.prepareAssignmentDirectory(course.id, normalizedIdentifier, ltreeIdentifier, versionTag, title, description || '', course);
+      await this.prepareAssignmentDirectory(course.id, ltreeIdentifier, ltreeIdentifier, versionTag, title, '', course);
 
       await this.treeDataProvider.forceRefreshCourse(course.id);
       vscode.window.showInformationMessage(`✅ Created assignment "${title}"`);
