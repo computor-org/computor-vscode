@@ -585,13 +585,36 @@ export class LecturerCommands {
       return;
     }
 
+    // Sort content types alphabetically by title
+    const sortedContentTypes = [...contentTypes].sort((a, b) => {
+      const titleA = (a.title || a.slug || '').toLowerCase();
+      const titleB = (b.title || b.slug || '').toLowerCase();
+      return titleA.localeCompare(titleB);
+    });
+
+    // Fetch full content type info to get course_content_kind
+    const contentTypesWithKind = await Promise.all(sortedContentTypes.map(async (t) => {
+      try {
+        const fullType = await this.apiService.getCourseContentType(t.id);
+        return {
+          label: t.title || t.slug,
+          description: fullType?.course_content_kind?.title || fullType?.course_content_kind_id || '',
+          id: t.id,
+          contentType: fullType || t
+        };
+      } catch (error) {
+        console.warn(`Failed to fetch content type details for ${t.id}:`, error);
+        return {
+          label: t.title || t.slug,
+          description: t.course_content_kind_id || '',
+          id: t.id,
+          contentType: t
+        };
+      }
+    }));
+
     const selectedType = await vscode.window.showQuickPick(
-      contentTypes.map(t => ({
-        label: t.title || t.slug,
-        description: t.slug,
-        id: t.id,
-        contentType: t
-      })),
+      contentTypesWithKind,
       { placeHolder: 'Select content type' }
     );
 

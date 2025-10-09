@@ -655,9 +655,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         } else {
           // Show course content types with content kind titles
           const contentTypes = await this.getCourseContentTypes(element.course.id);
-          
+
+          // Sort content types alphabetically by title
+          const sortedContentTypes = [...contentTypes].sort((a, b) => {
+            const titleA = (a.title || a.slug || '').toLowerCase();
+            const titleB = (b.title || b.slug || '').toLowerCase();
+            return titleA.localeCompare(titleB);
+          });
+
           // Fetch content kind information for each type
-          const contentTypesWithKinds = await Promise.all(contentTypes.map(async (type) => {
+          const contentTypesWithKinds = await Promise.all(sortedContentTypes.map(async (type) => {
             try {
               const fullType = await this.apiService.getCourseContentType(type.id);
               const kindTitle = fullType?.course_content_kind?.title || undefined;
@@ -679,7 +686,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               );
             }
           }));
-          
+
           return contentTypesWithKinds;
         }
       }
