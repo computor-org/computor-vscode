@@ -1,0 +1,120 @@
+:root {
+  --vscode-font-family: "Segoe WPC", "Segoe UI", sans-serif;
+  --vscode-editor-font-family: "Consolas", "Courier New", monospace;
+  --vscode-editor-background: #1e1e1e;
+  --vscode-editorPane-background: #1e1e1e;
+  --vscode-editorWidget-background: #252526;
+  --vscode-editorWidget-border: #3c3c3c;
+  --vscode-editor-inactiveSelectionBackground: rgba(255, 255, 255, 0.08);
+  --vscode-foreground: #cccccc;
+  --vscode-titleBar-activeForeground: #cccccc;
+  --vscode-descriptionForeground: #999999;
+  --vscode-textLink-foreground: #3794ff;
+  --vscode-input-background: #3c3c3c;
+  --vscode-input-foreground: #f3f3f3;
+  --vscode-input-border: #3c3c3c;
+  --vscode-input-placeholderForeground: #a6a6a6;
+  --vscode-inputValidation-infoBorder: #3794ff;
+  --vscode-inputValidation-errorBorder: #f48771;
+  --vscode-inputValidation-errorBackground: rgba(244, 135, 113, 0.16);
+  --vscode-inputValidation-errorForeground: #f48771;
+  --vscode-sideBar-background: #252526;
+  --vscode-dropdown-background: #3c3c3c;
+  --vscode-dropdown-border: #3c3c3c;
+  --vscode-dropdown-foreground: #f0f0f0;
+  --vscode-focusBorder: #007fd4;
+  --vscode-panel-border: #3c3c3c;
+  --vscode-list-hoverBackground: rgba(255, 255, 255, 0.04);
+  --vscode-list-activeSelectionBackground: #094771;
+  --vscode-list-activeSelectionForeground: #ffffff;
+  --vscode-checkbox-background: #3c3c3c;
+  --vscode-checkbox-border: #3c3c3c;
+  --vscode-checkbox-selectBackground: #0e639c;
+  --vscode-checkbox-selectBorder: #0e639c;
+  --vscode-checkbox-foreground: #ffffff;
+  --vscode-progressBar-background: #0e639c;
+  --vscode-scrollbarSlider-background: rgba(121, 121, 121, 0.4);
+  --vscode-button-background: #0e639c;
+  --vscode-button-hoverBackground: #1177bb;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-secondaryBackground: #3a3d41;
+  --vscode-button-secondaryForeground: #ffffff;
+  --vscode-button-secondaryHoverBackground: #45494e;
+  --vscode-button-tertiaryBackground: #3a3d41;
+  --vscode-button-tertiaryForeground: #ffffff;
+  --vscode-debugIcon-continueForeground: #75beff;
+  --vscode-editorWarning-foreground: #cca700;
+  --vscode-editorError-foreground: #f48771;
+  --vscode-infoMessageBackground: rgba(56, 142, 60, 0.2);
+  --vscode-testing-passBorder: #4caf50;
+  --vscode-testing-passIcon: #4caf50;
+  --vscode-testing-queuedBorder: #cca700;
+  --vscode-testing-queuedIcon: #cca700;
+  --vscode-testing-failBorder: #f48771;
+  --vscode-testing-failIcon: #f48771;
+}
+
+body {
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  margin: 0;
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-foreground, #ddd);
+}
+
+a {
+  color: var(--vscode-textLink-foreground, #4ea6ea);
+}
+
+.dev-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #333);
+}
+
+.dev-toolbar a {
+  text-decoration: none;
+}
+
+.dev-main {
+  padding: 20px;
+}
+
+.dev-hint {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--vscode-descriptionForeground, #9f9f9f);
+}
+
+.dev-view-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+  max-width: 640px;
+}
+
+.dev-view-list li {
+  background: var(--vscode-sideBar-background, #2d2d2d);
+  border-radius: 6px;
+  padding: 12px 16px;
+  border: 1px solid var(--vscode-panel-border, #3a3a3a);
+}
+
+.dev-view-list a {
+  font-weight: 600;
+}
+
+.dev-footer {
+  margin-top: 40px;
+  font-size: 0.85rem;
+  color: var(--vscode-descriptionForeground, #808080);
+}
+
+code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}

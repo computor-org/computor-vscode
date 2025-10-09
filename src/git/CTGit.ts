@@ -28,6 +28,14 @@ export class CTGit {
     return status.conflicted;
   }
 
+  async fetch(): Promise<void> {
+    await this.simpleGit.fetch(['--all']);
+  }
+
+  async pull(): Promise<void> {
+    await this.simpleGit.pull(['--ff-only']);
+  }
+
   private buildCheckoutTargets(paths?: string[]): string[] {
     if (!paths || paths.length === 0) {
       return ['.'];
@@ -134,6 +142,7 @@ export class CTGit {
   }
 
   private async autoResolveDeletedByThemConflicts(conflicts: string[]): Promise<boolean> {
+    void conflicts; // Currently unused - we fetch fresh status
     try {
       const status = await this.simpleGit.status();
       const deletedByThem = Array.from(new Set(

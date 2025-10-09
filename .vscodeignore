@@ -81,3 +81,4 @@ webview-ui/package*.json
 webview-ui/tsconfig*.json
 webview-ui/vite*.config.*
 webview-ui/.gitignore
+webview-dev/**

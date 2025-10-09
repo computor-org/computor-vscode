@@ -306,6 +306,12 @@ export class LecturerCommands {
         await this.renameCourseGroup(item);
       })
     );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.deleteCourseGroup', async (item: CourseGroupTreeItem) => {
+        await this.deleteCourseGroup(item);
+      })
+    );
   }
 
   /**
@@ -435,7 +441,6 @@ export class LecturerCommands {
     // Show management options
     const action = await vscode.window.showQuickPick([
       { label: '$(edit) Edit Course Details', value: 'edit' },
-      { label: '$(repo) Configure GitLab Repository', value: 'gitlab' },
       { label: '$(gear) Course Settings', value: 'settings' },
       { label: '$(trash) Delete Course', value: 'delete' }
     ], {
@@ -449,9 +454,6 @@ export class LecturerCommands {
     switch (action.value) {
       case 'edit':
         await this.editCourseDetails(course);
-        break;
-      case 'gitlab':
-        await this.configureGitLabRepository(course);
         break;
       case 'settings':
         await this.showCourseSettings(course);
@@ -500,32 +502,6 @@ export class LecturerCommands {
     }
   }
 
-  private async configureGitLabRepository(course: any): Promise<void> {
-    const repoUrl = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab repository URL',
-      placeHolder: 'https://gitlab.example.com/org/repo.git',
-      value: course.properties?.gitlab?.url || ''
-    });
-
-    if (!repoUrl) {
-      return;
-    }
-
-    try {
-      await this.apiService.updateCourse(course.id, {
-        properties: {
-          ...course.properties,
-          gitlab: {
-            ...course.properties?.gitlab,
-            url: repoUrl
-          }
-        }
-      });
-      vscode.window.showInformationMessage('GitLab repository configured successfully');
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to configure repository: ${error}`);
-    }
-  }
 
   private async showCourseSettings(course: any): Promise<void> {
     // For now, just show the course details webview
@@ -2025,11 +2001,36 @@ export class LecturerCommands {
     try {
       await this.apiService.updateCourseGroup(item.group.id, { title: newTitle });
       vscode.window.showInformationMessage(`Group renamed to "${newTitle}"`);
-      
+
       // Refresh the tree to show the changes
       await this.treeDataProvider.refresh();
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to rename group: ${error}`);
+    }
+  }
+
+  private async deleteCourseGroup(item: CourseGroupTreeItem): Promise<void> {
+    const groupTitle = item.group.title || item.group.id;
+
+    // Confirm deletion
+    const confirmation = await vscode.window.showWarningMessage(
+      `Are you sure you want to delete the group "${groupTitle}"?\n\nMembers will be moved to "No Group".`,
+      { modal: true },
+      'Delete'
+    );
+
+    if (confirmation !== 'Delete') {
+      return;
+    }
+
+    try {
+      await this.apiService.deleteCourseGroup(item.group.id);
+      vscode.window.showInformationMessage(`Group "${groupTitle}" deleted`);
+
+      // Refresh the tree to show the changes
+      await this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to delete group: ${error?.message || error}`);
     }
   }
 }

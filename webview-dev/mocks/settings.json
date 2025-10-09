@@ -1,0 +1,24 @@
+{
+  "authentication": {
+    "baseUrl": "https://mock.api.computor.local",
+    "defaultProvider": "token",
+    "tokenSettings": {
+      "headerName": "X-API-Key",
+      "headerPrefix": "Bearer "
+    }
+  },
+  "workspace": {
+    "repositoryDirectory": "/Users/dev/projects/computor",
+    "gitlabTokens": {
+      "https://gitlab.example.com": "***"
+    }
+  },
+  "ui": {
+    "lecturerTree": {
+      "expandedStates": {
+        "root": true
+      }
+    }
+  },
+  "hasApiToken": true
+}

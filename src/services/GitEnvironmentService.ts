@@ -61,13 +61,99 @@ export class GitEnvironmentService {
     if (missing.length > 0) {
       const missingText = missing.join(' and ');
       const exampleCommands = commands.join('\n');
-      void vscode.window.showWarningMessage(
-        `Git ${missingText} ${missing.length === 1 ? 'is' : 'are'} not configured. Configure them so commits have correct author information.\n${exampleCommands}`
+      const action = await vscode.window.showWarningMessage(
+        `Git ${missingText} ${missing.length === 1 ? 'is' : 'are'} not configured. Configure them so commits have correct author information.\n${exampleCommands}`,
+        'Configure Now',
+        'Cancel'
       );
+
+      if (action === 'Configure Now') {
+        const configured = await this.promptAndConfigureGit();
+        return configured;
+      }
+
       return false;
     }
 
     return true;
+  }
+
+  async promptAndConfigureGit(): Promise<boolean> {
+    const gitBinary = await this.ensureGitBinary();
+    if (!gitBinary) {
+      return false;
+    }
+
+    const userName = await this.getGlobalConfigValue('user.name');
+    const userEmail = await this.getGlobalConfigValue('user.email');
+
+    let name = userName;
+    let email = userEmail;
+
+    if (!name) {
+      const inputName = await vscode.window.showInputBox({
+        title: 'Git Configuration',
+        prompt: 'Enter your full name for git commits',
+        placeHolder: 'John Doe',
+        ignoreFocusOut: true,
+        validateInput: (value) => {
+          const trimmed = value.trim();
+          if (trimmed.length === 0) {
+            return 'Name cannot be empty';
+          }
+          if (trimmed.length < 2) {
+            return 'Name must be at least 2 characters';
+          }
+          return undefined;
+        }
+      });
+
+      if (!inputName) {
+        return false;
+      }
+      name = inputName.trim();
+    }
+
+    if (!email) {
+      const inputEmail = await vscode.window.showInputBox({
+        title: 'Git Configuration',
+        prompt: 'Enter your email address for git commits',
+        placeHolder: 'you@example.com',
+        ignoreFocusOut: true,
+        validateInput: (value) => {
+          const trimmed = value.trim();
+          if (trimmed.length === 0) {
+            return 'Email cannot be empty';
+          }
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(trimmed)) {
+            return 'Please enter a valid email address';
+          }
+          return undefined;
+        }
+      });
+
+      if (!inputEmail) {
+        return false;
+      }
+      email = inputEmail.trim();
+    }
+
+    try {
+      if (!userName && name) {
+        await execFileAsync(gitBinary, ['config', '--global', 'user.name', name]);
+      }
+
+      if (!userEmail && email) {
+        await execFileAsync(gitBinary, ['config', '--global', 'user.email', email]);
+      }
+
+      void vscode.window.showInformationMessage('Git configuration updated successfully!');
+      return true;
+    } catch (error: any) {
+      void vscode.window.showErrorMessage(`Failed to configure git: ${error.message}`);
+      return false;
+    }
   }
 
   private async ensureGitBinary(): Promise<string | undefined> {

@@ -47,28 +47,6 @@ export class ComputorSettingsManager {
     await this.settingsStorage.save(settings);
   }
   
-  async getAuthProvider(): Promise<string> {
-    const settings = await this.settingsStorage.load();
-    return settings.authentication.defaultProvider;
-  }
-  
-  async setAuthProvider(provider: string): Promise<void> {
-    const settings = await this.settingsStorage.load();
-    settings.authentication.defaultProvider = provider;
-    await this.settingsStorage.save(settings);
-  }
-  
-  async getTokenSettings(): Promise<{ headerName: string; headerPrefix: string }> {
-    const settings = await this.settingsStorage.load();
-    return settings.authentication.tokenSettings;
-  }
-  
-  async setTokenSettings(tokenSettings: { headerName: string; headerPrefix: string }): Promise<void> {
-    const settings = await this.settingsStorage.load();
-    settings.authentication.tokenSettings = tokenSettings;
-    await this.settingsStorage.save(settings);
-  }
-  
   async storeSecureToken(key: string, token: string): Promise<void> {
     await this.secureStorage.store(key, token);
   }

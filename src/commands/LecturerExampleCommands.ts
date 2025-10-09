@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { ExampleTreeItem, ExampleRepositoryTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
+import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 
 /**
  * Simplified example commands for the lecturer view
@@ -18,6 +19,7 @@ export class LecturerExampleCommands {
   ) {
     this.registerCommands();
   }
+  private assignmentsRootCache: { courseId: string; path: string } | null = null;
 
   private registerCommands(): void {
     // Search examples - already registered in extension.ts but we'll override with better implementation
@@ -201,15 +203,13 @@ export class LecturerExampleCommands {
       return;
     }
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage('No workspace folder open');
+    const assignmentsRoot = await this.getAssignmentsRoot();
+    if (!assignmentsRoot) {
       return;
     }
 
     try {
-      // Use the example directory name directly in the workspace
-      const examplePath = path.join(workspaceFolder.uri.fsPath, item.example.directory);
+      const examplePath = path.join(assignmentsRoot, item.example.directory);
       
       // Check if directory already exists
       if (fs.existsSync(examplePath)) {
@@ -283,7 +283,8 @@ export class LecturerExampleCommands {
       // Mark example as downloaded and refresh tree with version information
       this.treeProvider.markExampleAsDownloaded(item.example.id, examplePath, exampleData.version_tag);
 
-      vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to workspace root: ${item.example.directory}`);
+      const relativePath = path.relative(assignmentsRoot, examplePath) || '.';
+      vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to assignments: ${relativePath}`);
     } catch (error) {
       console.error('Failed to checkout example:', error);
       vscode.window.showErrorMessage(`Failed to checkout example: ${error}`);
@@ -299,9 +300,8 @@ export class LecturerExampleCommands {
       return;
     }
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage('No workspace folder open');
+    const assignmentsRoot = await this.getAssignmentsRoot();
+    if (!assignmentsRoot) {
       return;
     }
 
@@ -356,7 +356,7 @@ export class LecturerExampleCommands {
           });
 
           try {
-            const examplePath = path.join(workspaceFolder.uri.fsPath, exampleItem.example.directory);
+            const examplePath = path.join(assignmentsRoot, exampleItem.example.directory);
             
             // Skip if directory already exists
             if (fs.existsSync(examplePath)) {
@@ -447,6 +447,55 @@ export class LecturerExampleCommands {
       console.error('Failed to checkout filtered examples:', error);
       vscode.window.showErrorMessage(`Failed to checkout examples: ${error}`);
     }
+  }
+
+  private async getAssignmentsRoot(): Promise<string | undefined> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage('No workspace folder open');
+      return undefined;
+    }
+
+    const markerPath = path.join(workspaceFolder.uri.fsPath, '.computor');
+    let courseId: string | undefined;
+
+    try {
+      const raw = await fs.promises.readFile(markerPath, 'utf8');
+      const marker = JSON.parse(raw);
+      if (marker && typeof marker.courseId === 'string') {
+        courseId = marker.courseId;
+      }
+    } catch (error) {
+      console.warn('[LecturerExampleCommands] Failed to read course marker:', error);
+    }
+
+    if (!courseId) {
+      vscode.window.showErrorMessage('Active course not found. Please run "Computor: Login" again.');
+      return undefined;
+    }
+
+    if (this.assignmentsRootCache && this.assignmentsRootCache.courseId === courseId) {
+      if (fs.existsSync(this.assignmentsRootCache.path)) {
+        return this.assignmentsRootCache.path;
+      }
+      this.assignmentsRootCache = null;
+    }
+
+    const course = await this.apiService.getCourse(courseId);
+    if (!course) {
+      vscode.window.showErrorMessage('Unable to fetch course information.');
+      return undefined;
+    }
+
+    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+    const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
+    if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
+      vscode.window.showErrorMessage('Assignments repository not found. Run "Computor: Sync Assignments" first.');
+      return undefined;
+    }
+
+    this.assignmentsRootCache = { courseId, path: assignmentsRoot };
+    return assignmentsRoot;
   }
 
   /**

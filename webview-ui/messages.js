@@ -134,6 +134,18 @@
     return el;
   }
 
+  function getScopeLabel(scope) {
+    const labels = {
+      'submission_group': 'Submission',
+      'course_content': 'Content',
+      'course': 'Course',
+      'course_group': 'Group',
+      'course_member': 'Member',
+      'user': 'Direct'
+    };
+    return labels[scope] || scope;
+  }
+
   function renderMessageNode(message, depth = 0) {
     const card = createElement('article', {
       className: `message-card level-${message.level ?? depth}`
@@ -141,9 +153,22 @@
 
     const meta = createElement('div', { className: 'message-meta' });
 
+    const metaLeftChildren = [
+      createElement('span', { textContent: getAuthorDisplay(message) })
+    ];
+
+    // Add scope tag if available
+    if (message.scope) {
+      const scopeTag = createElement('span', {
+        className: `message-scope-tag scope-${message.scope}`,
+        textContent: getScopeLabel(message.scope)
+      });
+      metaLeftChildren.push(scopeTag);
+    }
+
     const metaLeft = createElement('div', {
       className: 'message-meta-left',
-      children: [createElement('span', { textContent: getAuthorDisplay(message) })]
+      children: metaLeftChildren
     });
 
     const metaRight = createElement('div', { className: 'message-meta-right' });

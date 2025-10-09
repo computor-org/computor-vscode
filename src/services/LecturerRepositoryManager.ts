@@ -1,27 +1,26 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
 import { execAsync } from '../utils/exec';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { ComputorApiService } from './ComputorApiService';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
+import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 
 export class LecturerRepositoryManager {
-  private workspaceRoot: string;
+  private workspaceStructure: WorkspaceStructureManager;
   private gitLabTokenManager: GitLabTokenManager;
   private api: ComputorApiService;
 
   constructor(context: vscode.ExtensionContext, api: ComputorApiService) {
     this.api = api;
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
-    const ws = vscode.workspace.workspaceFolders;
-    this.workspaceRoot = ws && ws[0] ? ws[0].uri.fsPath : path.join(os.homedir(), '.computor', 'lecturer-workspace');
+    this.workspaceStructure = WorkspaceStructureManager.getInstance();
   }
 
   async syncAllAssignments(onProgress?: (message: string) => void): Promise<void> {
     const report = onProgress || (() => {});
-    await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
+    await this.workspaceStructure.ensureDirectories();
     try {
       const client = await (this.api as any).getHttpClient?.();
       const resp: any = client ? await client.get('/lecturers/courses') : { data: [] };
@@ -58,52 +57,55 @@ export class LecturerRepositoryManager {
     const info = this.getAssignmentsRepoInfo(course);
     if (!info) { report(`No GitLab info for ${course.title || course.path}`); return; }
 
-    const { repoUrl, repoDir } = info;
-    await fs.promises.mkdir(this.workspaceRoot, { recursive: true });
-    const target = path.join(this.workspaceRoot, repoDir);
+    const { repoUrl } = info;
+    await this.workspaceStructure.ensureDirectories();
+    // Use course UUID as the directory name in reference folder
+    const target = this.workspaceStructure.getReferenceRepositoryPath(courseId);
+
     const exists = await this.directoryExists(target);
 
     const token = await this.gitLabTokenManager.ensureTokenForUrl(new URL(repoUrl).origin);
     const authUrl = this.addTokenToUrl(repoUrl, token);
 
     if (!exists) {
-      report(`Cloning ${repoDir}...`);
+      report(`Cloning course ${courseId} assignments...`);
       await execAsync(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
     } else {
-      report(`Pulling ${repoDir}...`);
+      report(`Pulling course ${courseId} assignments...`);
       try {
         await execAsync('git pull --ff-only', { cwd: target, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
       } catch (error: any) {
         if (!isHistoryRewriteError(error)) {
-          console.warn(`[LecturerRepo] Failed to pull ${repoDir}:`, error);
+          console.warn(`[LecturerRepo] Failed to pull course ${courseId}:`, error);
           throw error;
         }
 
-        report(`Remote history changed for ${repoDir}. Backing up...`);
+        report(`Remote history changed for course ${courseId}. Backing up...`);
         let backupPath: string | undefined;
         try {
-          backupPath = await createRepositoryBackup(target, this.workspaceRoot, { repoName: repoDir });
+          const workspaceRoot = this.workspaceStructure.getDirectories().root;
+          backupPath = await createRepositoryBackup(target, workspaceRoot, { repoName: courseId });
           if (backupPath) {
             console.log(`[LecturerRepo] Backup created at ${backupPath}`);
           }
         } catch (backupError) {
-          console.error(`[LecturerRepo] Failed to create backup for ${repoDir}:`, backupError);
+          console.error(`[LecturerRepo] Failed to create backup for course ${courseId}:`, backupError);
         }
 
         try {
           await fs.promises.rm(target, { recursive: true, force: true });
         } catch (removeError) {
-          console.error(`[LecturerRepo] Failed to remove ${repoDir} before re-clone:`, removeError);
-          vscode.window.showErrorMessage(`Computor could not reset lecturer repository "${repoDir}". Please remove it manually and retry.`);
+          console.error(`[LecturerRepo] Failed to remove course ${courseId} before re-clone:`, removeError);
+          vscode.window.showErrorMessage(`Computor could not reset the assignments repository. Please remove it manually and retry.`);
           throw removeError;
         }
 
-        report(`Recreating ${repoDir} from origin...`);
+        report(`Recreating course ${courseId} from origin...`);
         try {
           await execAsync(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
         } catch (cloneError) {
-          console.error(`[LecturerRepo] Re-clone failed for ${repoDir}:`, cloneError);
-          vscode.window.showErrorMessage(`Computor could not recreate lecturer repository "${repoDir}". Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
+          console.error(`[LecturerRepo] Re-clone failed for course ${courseId}:`, cloneError);
+          vscode.window.showErrorMessage(`Computor could not recreate the assignments repository. Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
           throw cloneError;
         }
 
@@ -114,8 +116,8 @@ export class LecturerRepositoryManager {
         actions.push('Dismiss');
 
         const message = backupPath
-          ? `Lecturer repository "${repoDir}" was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This event is unusual—if it happens repeatedly, please inform the course coordination team.`
-          : `Lecturer repository "${repoDir}" was reset because the remote history changed. This event is unusual—if it happens repeatedly, please inform the course coordination team.`;
+          ? `The assignments repository was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This event is unusual—if it happens repeatedly, please inform the course coordination team.`
+          : `The assignments repository was reset because the remote history changed. This event is unusual—if it happens repeatedly, please inform the course coordination team.`;
 
         const choice = await vscode.window.showWarningMessage(message, ...actions);
         if (choice === 'Open Backup Folder' && backupPath) {
@@ -125,7 +127,7 @@ export class LecturerRepositoryManager {
     }
   }
 
-  private getAssignmentsRepoInfo(course: any): { repoUrl: string; repoDir: string } | null {
+  private getAssignmentsRepoInfo(course: any): { repoUrl: string } | null {
     const props = (course.properties || {}) as any;
     const gitlab = props.gitlab || {};
     let repoUrl: string | undefined = gitlab.assignments_url as string | undefined;
@@ -135,22 +137,23 @@ export class LecturerRepositoryManager {
       if (orgUrl && fullPath) repoUrl = `${orgUrl}/${fullPath}/assignments.git`;
     }
     if (!repoUrl) return null;
-    // Use last path segment of course.full_path if available to name folder uniquely
-    const lastSeg = (gitlab.full_path && String(gitlab.full_path).split('/').pop()) || (course.path) || 'course';
-    const repoDir = `${lastSeg}-assignments`;
-    return { repoUrl, repoDir };
+    return { repoUrl };
   }
 
   public getAssignmentFolderPath(course: any, deploymentPath: string): string | null {
-    const info = this.getAssignmentsRepoInfo(course);
-    if (!info) return null;
-    return path.join(this.workspaceRoot, info.repoDir, deploymentPath || '');
+    const root = this.getAssignmentsRepoRoot(course);
+    if (!root) return null;
+    return path.join(root, deploymentPath || '');
   }
 
   public getAssignmentsRepoRoot(course: any): string | null {
-    const info = this.getAssignmentsRepoInfo(course);
-    if (!info) return null;
-    return path.join(this.workspaceRoot, info.repoDir);
+    const courseId = course.id || course.course_id || course.courseId;
+    if (!courseId) return null;
+    const repoPath = this.workspaceStructure.getReferenceRepositoryPath(courseId);
+    if (fs.existsSync(repoPath)) {
+      return repoPath;
+    }
+    return repoPath;
   }
 
   private async directoryExists(dir: string): Promise<boolean> {

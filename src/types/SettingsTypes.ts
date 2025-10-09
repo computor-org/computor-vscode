@@ -7,11 +7,6 @@ export interface ComputorSettings {
 
 export interface AuthenticationSettings {
   baseUrl: string;
-  defaultProvider: string;
-  tokenSettings: {
-    headerName: string;
-    headerPrefix: string;
-  };
 }
 
 export interface WorkspaceSettings {
@@ -31,12 +26,7 @@ export interface UISettings {
 export const defaultSettings: ComputorSettings = {
   version: '1.0.0',
   authentication: {
-    baseUrl: 'http://localhost:8000',
-    defaultProvider: 'token',
-    tokenSettings: {
-      headerName: 'X-API-Key',
-      headerPrefix: ''
-    }
+    baseUrl: 'http://localhost:8000'
   },
   workspace: {
     repositoryDirectory: undefined,

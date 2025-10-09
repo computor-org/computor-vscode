@@ -8,18 +8,20 @@
 
 
 
-export interface MessageAuthor {
-  /** Author's given name */
-  given_name?: string | null;
-  /** Author's family name */
-  family_name?: string | null;
+/**
+ * Query parameters for updating organization token.
+ */
+export interface OrganizationUpdateTokenQuery {
+  /** Token type (e.g., 'gitlab', 'github') */
+  type: string;
 }
 
-export interface GradingAuthor {
-  /** Author's given name */
-  given_name?: string | null;
-  /** Author's family name */
-  family_name?: string | null;
+/**
+ * Payload for updating organization provider token.
+ */
+export interface OrganizationUpdateTokenUpdate {
+  /** Provider access token */
+  token: string;
 }
 
 export interface AuthConfig {
@@ -36,24 +38,85 @@ export interface BasicAuthConfig {
 }
 
 /**
- * SSO Bearer token credentials.
+ * Request model for local username/password login.
  */
-export interface SSOAuthCredentials {
-  token: string;
-  scheme?: string;
+export interface LocalLoginRequest {
+  /** Username or email */
+  username: string;
+  /** Password */
+  password: string;
 }
 
-export interface HeaderAuthCredentials {
-  type: any;
-  credentials: any;
+/**
+ * Response model after successful local login.
+ */
+export interface LocalLoginResponse {
+  /** Bearer access token for API requests */
+  access_token: string;
+  /** Refresh token to obtain new access token */
+  refresh_token: string;
+  /** Access token expiration time in seconds */
+  expires_in: number;
+  /** User ID */
+  user_id: string;
+  /** Token type */
+  token_type?: string;
 }
 
-export interface OrganizationUpdateTokenQuery {
+/**
+ * Request model for logout.
+ */
+export interface LogoutRequest {
+  /** Provider name for SSO logout (optional) */
+  provider?: string | null;
+}
+
+/**
+ * Response model after successful logout.
+ */
+export interface LogoutResponse {
+  /** Logout status message */
+  message: string;
+  /** Provider that was logged out from */
+  provider?: string | null;
+}
+
+/**
+ * Request model for refreshing local session token.
+ */
+export interface LocalTokenRefreshRequest {
+  /** Refresh token from initial authentication */
+  refresh_token: string;
+}
+
+/**
+ * Response model after successful token refresh.
+ */
+export interface LocalTokenRefreshResponse {
+  /** New Bearer access token */
+  access_token: string;
+  /** Token expiration time in seconds */
+  expires_in: number;
+  /** New refresh token if rotated */
+  refresh_token?: string | null;
+  /** Token type */
+  token_type?: string;
+}
+
+/**
+ * Information about an authentication provider.
+ */
+export interface ProviderInfo {
+  /** Provider name */
+  name: string;
+  /** Display name */
+  display_name: string;
+  /** Authentication type */
   type: string;
-}
-
-export interface OrganizationUpdateTokenUpdate {
-  token: string;
+  /** Whether provider is enabled */
+  enabled: boolean;
+  /** Login URL if applicable */
+  login_url?: string | null;
 }
 
 /**
@@ -67,21 +130,43 @@ export interface LoginRequest {
 }
 
 /**
- * Response after successful SSO authentication.
+ * User registration request.
  */
-export interface SSOAuthResponse {
-  /** User ID */
-  user_id: string;
-  /** Account ID */
-  account_id: string;
-  /** Access token if available */
-  access_token?: string | null;
-  /** Whether this is a new user */
-  is_new_user: boolean;
+export interface UserRegistrationRequest {
+  /** Username */
+  username: string;
+  /** Email address */
+  email: string;
+  /** Password */
+  password: string;
+  /** First name */
+  given_name: string;
+  /** Last name */
+  family_name: string;
+  /** Authentication provider to register with */
+  provider?: string;
+  /** Send email verification */
+  send_verification_email?: boolean;
 }
 
 /**
- * Token refresh request.
+ * Response after successful user registration.
+ */
+export interface UserRegistrationResponse {
+  /** User ID in Computor */
+  user_id: string;
+  /** User ID in authentication provider */
+  provider_user_id: string;
+  /** Username */
+  username: string;
+  /** Email address */
+  email: string;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Token refresh request for SSO.
  */
 export interface TokenRefreshRequest {
   /** Refresh token from initial authentication */
@@ -91,7 +176,7 @@ export interface TokenRefreshRequest {
 }
 
 /**
- * Response after successful token refresh.
+ * Response after successful SSO token refresh.
  */
 export interface TokenRefreshResponse {
   /** New access token */
@@ -100,4 +185,18 @@ export interface TokenRefreshResponse {
   expires_in?: number | null;
   /** New refresh token if rotated */
   refresh_token?: string | null;
+}
+
+export interface MessageAuthor {
+  /** Author's given name */
+  given_name?: string | null;
+  /** Author's family name */
+  family_name?: string | null;
+}
+
+export interface GradingAuthor {
+  /** Author's given name */
+  given_name?: string | null;
+  /** Author's family name */
+  family_name?: string | null;
 }

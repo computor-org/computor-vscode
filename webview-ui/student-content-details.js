@@ -298,8 +298,7 @@
 
     const teamItems = (team.members || []).map(member => {
       const name = member.name || member.full_name || member.username || 'Unknown member';
-      const username = member.username && member.username !== name ? ` (${member.username})` : '';
-      return `<div class="team-member">${escapeHtml(name)}${escapeHtml(username)}</div>`;
+      return `<div class="team-member">${escapeHtml(name)}</div>`;
     });
 
     const headerSubtitle = headerSubtitleParts.length > 0
@@ -398,7 +397,7 @@
       </section>
 
       <section class="card">
-        <h2>Team</h2>
+        <h2>Submission Group</h2>
         ${teamItems.length > 0 ? `<div class="team-list">${teamItems.join('')}</div>` : '<div class="empty-state">No additional team members.</div>'}
       </section>
 

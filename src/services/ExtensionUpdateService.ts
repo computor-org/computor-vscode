@@ -91,7 +91,12 @@ export class ExtensionUpdateService {
       url.searchParams.set('include_yanked', 'false');
       url.searchParams.set('limit', '100');
 
-      const response = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      const headers = await this.buildAuthHeaders({ Accept: 'application/json' });
+      if (!headers) {
+        return [];
+      }
+
+      const response = await fetch(url.toString(), { headers });
       if (!response.ok) {
         throw new Error(`Unexpected response ${response.status}`);
       }
@@ -161,7 +166,12 @@ export class ExtensionUpdateService {
     }, async (progress) => {
       progress.report({ message: 'Downloading…' });
 
-      const response = await fetch(downloadUrl.toString(), { redirect: 'follow' });
+      const headers = await this.buildAuthHeaders();
+      if (!headers) {
+        throw new Error('Authentication required for extension download.');
+      }
+
+      const response = await fetch(downloadUrl.toString(), { redirect: 'follow', headers });
       if (!response.ok) {
         throw new Error(`Failed to download VSIX: ${response.status}`);
       }
@@ -189,6 +199,28 @@ export class ExtensionUpdateService {
 
     if (choice === 'Reload Now') {
       void vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+  }
+
+  private async buildAuthHeaders(extraHeaders: Record<string, string> = {}): Promise<Record<string, string> | undefined> {
+    try {
+      const secretRaw = await this.context.secrets.get('computor.auth');
+      if (!secretRaw) {
+        return undefined;
+      }
+      const auth = JSON.parse(secretRaw) as { type?: string; username?: string; password?: string } | undefined;
+      if (!auth || auth.type !== 'basic' || !auth.username || !auth.password) {
+        return undefined;
+      }
+
+      const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+      return {
+        ...extraHeaders,
+        Authorization: `Basic ${credentials}`
+      };
+    } catch (error) {
+      console.warn('Failed to build auth headers for extension update check:', error);
+      return undefined;
     }
   }
 }

@@ -145,7 +145,6 @@ export interface OrganizationQuery {
   path?: string | null;
   organization_type?: OrganizationType | null;
   user_id?: string | null;
-  properties?: OrganizationProperties | null;
   number?: string | null;
   email?: string | null;
   telephone?: string | null;

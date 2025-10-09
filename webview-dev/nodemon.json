@@ -1,0 +1,9 @@
+{
+  "watch": [
+    "server.js",
+    "mocks",
+    "../webview-ui"
+  ],
+  "ext": "js,json,css",
+  "delay": "150ms"
+}

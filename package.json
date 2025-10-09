@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "0.0.12",
+  "version": "0.0.18",
   "publisher": "itpcp-tugraz",
   "engines": {
     "vscode": "^1.74.0"
@@ -28,10 +28,10 @@
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.tokens.manage",
-        "title": "Manage Git Tokens",
-        "icon": "$(key)",
-        "category": "Computor"
+        "command": "computor.tutor.updateStudentRepository",
+        "title": "Update Student Repository",
+        "icon": "$(sync)",
+        "category": "Computor Tutor"
       },
       {
         "command": "computor.tutor.resetFilters",
@@ -40,15 +40,27 @@
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.tutor.checkoutAssignment",
-        "title": "Checkout Assignment Submission",
-        "icon": "$(git-branch)",
+        "command": "computor.tutor.downloadReference",
+        "title": "Download Reference",
+        "icon": "$(cloud-download)",
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.tutor.downloadStudentExample",
-        "title": "Download Example for Comparison",
-        "icon": "$(repo)",
+        "command": "computor.tutor.downloadSubmissionArtifact",
+        "title": "Download Submission Artifact",
+        "icon": "$(cloud-download)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.compareWithReference",
+        "title": "Compare with Reference",
+        "icon": "$(diff)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.showSubmissionTestResults",
+        "title": "Show Test Results",
+        "icon": "$(beaker)",
         "category": "Computor Tutor"
       },
       {
@@ -57,9 +69,20 @@
         "category": "Computor"
       },
       {
+        "command": "computor.checkBackendConnection",
+        "title": "Computor: Check Backend Connection",
+        "category": "Computor"
+      },
+      {
         "command": "computor.settings",
         "title": "Computor: Settings",
         "category": "Computor"
+      },
+      {
+        "command": "computor.user.profile",
+        "title": "Computor: Edit Profile",
+        "category": "Computor",
+        "icon": "$(account)"
       },
       {
         "command": "computor.login",
@@ -202,6 +225,24 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.fs.rename",
+        "title": "Rename",
+        "icon": "$(edit)",
+        "category": "Computor Files"
+      },
+      {
+        "command": "computor.lecturer.fs.delete",
+        "title": "Delete",
+        "icon": "$(trash)",
+        "category": "Computor Files"
+      },
+      {
+        "command": "computor.user.changePassword",
+        "title": "Computor: Change Password",
+        "icon": "$(key)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.lecturer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -333,6 +374,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.deleteCourseGroup",
+        "title": "Delete Group",
+        "icon": "$(trash)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.showCourseDetails",
         "title": "Show Details",
         "icon": "$(info)",
@@ -410,6 +457,7 @@
       {
         "command": "computor.manageGitLabTokens",
         "title": "Manage GitLab Tokens",
+        "icon": "$(key)",
         "category": "Computor"
       },
       {
@@ -417,42 +465,6 @@
         "title": "Release Course Content",
         "icon": "$(rocket)",
         "category": "Computor Lecturer"
-      },
-      {
-        "command": "computor.fileExplorer.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.goUp",
-        "title": "Go Up",
-        "icon": "$(arrow-up)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.goHome",
-        "title": "Go Home",
-        "icon": "$(home)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.goToWorkspace",
-        "title": "Go to Workspace",
-        "icon": "$(root-folder)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.toggleHidden",
-        "title": "Toggle Hidden Files",
-        "icon": "$(eye)",
-        "category": "File Explorer"
-      },
-      {
-        "command": "computor.fileExplorer.openFolder",
-        "title": "Open Folder",
-        "icon": "$(folder-opened)",
-        "category": "File Explorer"
       }
     ],
     "viewsContainers": {
@@ -527,14 +539,6 @@
           "when": "computor.lecturer.show"
         }
       ],
-      "explorer": [
-        {
-          "id": "computor.jsonTreeView",
-          "name": "JSON Explorer",
-          "icon": "$(json)",
-          "contextualTitle": "JSON Data Explorer"
-        }
-      ],
       "computor-test-results": [
         {
           "id": "computor.testResultsPanel",
@@ -559,9 +563,19 @@
           "group": "navigation@1"
         },
         {
+          "command": "computor.user.profile",
+          "when": "view == computor.lecturer.courses",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.lecturer.refresh",
           "when": "view == computor.lecturer.courses",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.user.profile",
+          "when": "view == computor.student.courses",
+          "group": "navigation@0"
         },
         {
           "command": "computor.student.refresh",
@@ -569,19 +583,29 @@
           "group": "navigation@1"
         },
         {
+          "command": "computor.user.profile",
+          "when": "view == computor.tutor.courses",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.tutor.refresh",
           "when": "view == computor.tutor.courses",
           "group": "navigation@1"
         },
         {
-          "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.lecturer.courses",
-          "group": "navigation@2"
+          "command": "computor.manageGitLabTokens",
+          "when": "view == computor.student.courses",
+          "group": "navigation@3"
         },
         {
-          "command": "computor.selectWorkspaceDirectory",
+          "command": "computor.manageGitLabTokens",
           "when": "view == computor.tutor.courses",
-          "group": "navigation@2"
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.manageGitLabTokens",
+          "when": "view == computor.lecturer.courses",
+          "group": "navigation@3"
         },
         {
           "command": "computor.lecturer.refreshExamples",
@@ -602,31 +626,6 @@
           "command": "computor.lecturer.filterExamplesByTags",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@4"
-        },
-        {
-          "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.fileExplorerLecturer",
-          "group": "navigation@1"
-        },
-        {
-          "command": "computor.fileExplorer.refresh",
-          "when": "view == computor.fileExplorerLecturer",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.fileExplorer.refresh",
-          "when": "view == computor.fileExplorerStudent",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.fileExplorerTutor",
-          "group": "navigation@1"
-        },
-        {
-          "command": "computor.fileExplorer.refresh",
-          "when": "view == computor.fileExplorerTutor",
-          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -776,6 +775,11 @@
           "group": "2_edit@1"
         },
         {
+          "command": "computor.lecturer.deleteCourseGroup",
+          "when": "view == computor.lecturer.courses && viewItem == course.group",
+          "group": "3_delete@1"
+        },
+        {
           "command": "computor.lecturer.openGitLabRepo",
           "when": "view == computor.lecturer.courses && (viewItem == course || viewItem == course.member)",
           "group": "5_gitlab@1"
@@ -797,23 +801,38 @@
         },
         {
           "command": "computor.tutor.cloneStudentRepository",
-          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "when": "view == computor.tutor.courses && viewItem == tutorVirtualFolder.repository.noRepo",
           "group": "inline@1"
         },
         {
-          "command": "computor.tutor.checkoutAssignment",
-          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
-          "group": "inline@2"
+          "command": "computor.tutor.updateStudentRepository",
+          "when": "view == computor.tutor.courses && viewItem == tutorVirtualFolder.repository.hasRepo",
+          "group": "inline@1"
         },
         {
           "command": "computor.tutor.assignment.grading",
-          "when": "view == computor.tutor.courses && viewItem == tutorStudentContent.assignment",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
           "group": "1_status@1"
         },
         {
-          "command": "computor.tutor.downloadStudentExample",
-          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "command": "computor.tutor.downloadReference",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo || viewItem == tutorVirtualFolder.reference)",
           "group": "3_external@1"
+        },
+        {
+          "command": "computor.tutor.downloadSubmissionArtifact",
+          "when": "view == computor.tutor.courses && (viewItem == tutorVirtualFolder.submissions || viewItem == tutorSubmissionArtifact)",
+          "group": "3_external@2"
+        },
+        {
+          "command": "computor.tutor.compareWithReference",
+          "when": "view == computor.tutor.courses && viewItem == tutorFsFile.submission",
+          "group": "3_external@3"
+        },
+        {
+          "command": "computor.tutor.showSubmissionTestResults",
+          "when": "view == computor.tutor.courses && viewItem == tutorSubmissionArtifact",
+          "group": "3_external@4"
         },
         {
           "command": "computor.tutor.showMessages",
@@ -861,6 +880,11 @@
           "group": "2_discussion@1"
         },
         {
+          "command": "computor.student.showMessages",
+          "when": "view == computor.student.courses && viewItem == studentCourseUnit",
+          "group": "2_discussion@1"
+        },
+        {
           "command": "computor.student.showPreview",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
           "group": "inline@1"
@@ -889,18 +913,30 @@
           "command": "computor.student.viewSubmissionGroup",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
           "group": "2_details@1"
+        },
+        {
+          "command": "computor.lecturer.fs.rename",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^lecturerFs(File|Folder)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.lecturer.fs.delete",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^lecturerFs(File|Folder)$/",
+          "group": "inline@2"
         }
       ]
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "webpack",
+    "type-check": "tsc --noEmit",
+    "compile": "npm run type-check && webpack",
+    "compile:fast": "webpack",
     "watch": "webpack --watch",
-    "package": "webpack --mode production --devtool hidden-source-map",
+    "package": "npm run type-check && webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "npm run compile-tests && npm run compile:fast && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "mocha",
     "test:unit": "mocha --config .mocharc.unit.json",
@@ -922,6 +958,7 @@
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
+    "@vscode/vsce": "^3.6.2",
     "chai": "^4.3.7",
     "eslint": "^8.28.0",
     "mocha": "^10.1.0",

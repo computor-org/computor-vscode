@@ -94,14 +94,14 @@ export class IconGenerator {
     if (badge === 'success') {
       badgeElement = `
         <path d="M4 8.5 L7 11 L12 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M4 8.5 L7 11 L12 6" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 8.5 L7 11 L12 6" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       `;
     } else if (badge === 'failure') {
       badgeElement = `
         <path d="M5 5 L11 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
         <path d="M11 5 L5 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
-        <path d="M5 5 L11 11" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-        <path d="M11 5 L5 11" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M5 5 L11 11" stroke="#ff3f3fff" stroke-width="2" stroke-linecap="round"/>
+        <path d="M11 5 L5 11" stroke="#ff3f3fff" stroke-width="2" stroke-linecap="round"/>
       `;
     }
 
@@ -157,7 +157,8 @@ export class IconGenerator {
       'navy': '#000080',
       'teal': '#008080',
       'maroon': '#800000',
-      'olive': '#808000'
+      'olive': '#808000',
+      'fuchsia': '#FF00FF'
     };
 
     const lowerColor = color.toLowerCase().trim();

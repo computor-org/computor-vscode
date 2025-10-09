@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
-import { 
-  OrganizationList, 
-  CourseFamilyList, 
-  CourseList, 
+import {
+  OrganizationList,
+  CourseFamilyList,
+  CourseList,
   CourseContentList,
+  CourseContentLecturerList,
   CourseContentTypeList,
   ExampleList,
   CourseGroupList,
@@ -74,7 +75,7 @@ export class CourseTreeItem extends vscode.TreeItem {
 
 export class CourseContentTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly courseContent: CourseContentList,
+    public readonly courseContent: CourseContentList | CourseContentLecturerList,
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList,

@@ -25,10 +25,11 @@ import {
   LoadMoreTreeItem,
   CourseContentAssignmentInfo
 } from './LecturerTreeItems';
-import type { 
-  CourseContentList, 
-  CourseContentCreate, 
-  CourseContentUpdate, 
+import type {
+  CourseContentList,
+  CourseContentLecturerList,
+  CourseContentCreate,
+  CourseContentUpdate,
   CourseContentGet,
   CourseList,
   CourseContentTypeList,
@@ -83,8 +84,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   // Drag and drop support
-  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample'];
-  public readonly dragMimeTypes: string[] = []; // This tree only accepts drops, doesn't provide drags
+  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample', 'application/vnd.code.tree.lecturermember'];
+  public readonly dragMimeTypes: string[] = ['application/vnd.code.tree.lecturermember']; // Support dragging members
 
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
@@ -456,7 +457,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           // Use virtual scrolling for large lists (> 100 items)
           if (rootContents.length > 100) {
             const virtualKey = `contents-${element.course.id}`;
-            
+
             // Get or create virtual scrolling service
             let virtualService = this.virtualScrollServices.get(virtualKey);
             if (!virtualService) {
@@ -464,13 +465,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                 async (page: number, pageSize: number) => {
                   const start = page * pageSize;
                   const items = rootContents.slice(start, start + pageSize);
-                  
+
                   // Transform to tree items
                   const treeItems = await Promise.all(items.map(async content => {
                     const hasChildren = this.hasChildContents(content, allContents);
                     let exampleInfo = null;
                     let exampleVersionInfo = null;
-                    
+
                     // Check if example is assigned using helper
                     if (hasExampleAssigned(content)) {
                       const versionId = getExampleVersionId(content);
@@ -479,7 +480,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                         try {
                           exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
                           console.log(`[Virtual scroll] Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
-                          
+
                           // Get example info from the version
                           if (exampleVersionInfo && exampleVersionInfo.example_id) {
                             exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
@@ -553,7 +554,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               const hasChildren = this.hasChildContents(content, allContents);
               let exampleInfo = null;
               let exampleVersionInfo = null;
-              
+
               // Check if example is assigned using helper
               if (hasExampleAssigned(content)) {
                 const versionId = getExampleVersionId(content);
@@ -562,7 +563,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                   try {
                     exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
                     console.log(`Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
-                    
+
                     // Get example info from the version
                     if (exampleVersionInfo && exampleVersionInfo.example_id) {
                       exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
@@ -686,7 +687,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       if (element instanceof CourseContentTreeItem) {
         // Show child course contents or, for assignments (leaves), show local repo files
         const allContents = await this.getCourseContents(element.course.id);
-        const childContents = this.getChildContents(element.courseContent, allContents);
+        const childContents = this.getChildContents(element.courseContent as CourseContentLecturerList, allContents);
         
         // Fetch example info for child contents
         const childItems = await Promise.all(childContents.map(async content => {
@@ -860,7 +861,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
       // Filesystem folder expansion for lecturer assignment folders
       if (element instanceof FSFolderItem) {
-        const items = await this.readDirectoryItems(element.absPath);
+        const items = await this.readDirectoryItems(element.absPath, element.course, element.courseContent, element.repositoryRoot);
         return items;
       }
 
@@ -876,9 +877,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return [];
     }
 
-    const directoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent);
-    if (!directoryName) {
+    const rawDirectoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent as CourseContentLecturerList);
+    if (!rawDirectoryName) {
       return [new InfoItem('Assignment not initialized in assignments repo', 'info')];
+    }
+
+    const directoryName = this.sanitizeAssignmentDirectoryName(rawDirectoryName);
+    if (!directoryName) {
+      return [new InfoItem('Assignment directory name is invalid', 'warning')];
     }
 
     element.assignmentDirectory = directoryName;
@@ -900,7 +906,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         return [new InfoItem('Assignment directory not available locally', 'warning')];
       }
 
-      const children = await this.readDirectoryItems(resolution.absolutePath);
+      const repoRoot = resolution.repositoryPath || this.repositoryManager.getAssignmentsRepoRoot(element.course);
+      const children = await this.readDirectoryItems(resolution.absolutePath, element.course, element.courseContent, repoRoot || resolution.absolutePath);
       if (children.length === 0) {
         return [new InfoItem('Empty assignment directory', 'info')];
       }
@@ -914,35 +921,32 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
   }
 
-  private async resolveAssignmentDirectoryName(content: CourseContentList): Promise<string | undefined> {
+  private async resolveAssignmentDirectoryName(content: CourseContentLecturerList): Promise<string | undefined> {
     const cached = this.assignmentIdentifierCache.get(content.id);
     if (cached !== undefined) {
       return cached || undefined;
     }
 
-    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
-    const deploymentIdentifier = ((deployment as any)?.deployment_path as string | undefined) || deployment?.example_identifier || undefined;
-    if (deploymentIdentifier) {
-      this.assignmentIdentifierCache.set(content.id, deploymentIdentifier);
-      return deploymentIdentifier;
-    }
-
+    // The new lecturer endpoint doesn't include deployment details,
+    // so we need to fetch the full content to get deployment path
     try {
       const full = await this.apiService.getCourseContent(content.id, true) as CourseContentGet | undefined;
       const fullDeployment = full?.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; example_identifier?: string | null; version_identifier?: string | null }) | null | undefined;
       const identifier = ((fullDeployment as any)?.deployment_path as string | undefined)
         || fullDeployment?.example_identifier;
-      this.assignmentIdentifierCache.set(content.id, identifier ?? null);
-      if (identifier) {
-        return identifier;
+      const sanitizedFull = this.sanitizeAssignmentDirectoryName(identifier || undefined);
+      this.assignmentIdentifierCache.set(content.id, sanitizedFull ?? null);
+      if (sanitizedFull) {
+        return sanitizedFull;
       }
     } catch (error) {
       console.warn('Failed to resolve assignment directory name:', error);
     }
 
     const fallback = this.extractSlugFromPath(content.path);
-    this.assignmentIdentifierCache.set(content.id, fallback ?? null);
-    return fallback;
+    const sanitizedFallback = this.sanitizeAssignmentDirectoryName(fallback);
+    this.assignmentIdentifierCache.set(content.id, sanitizedFallback ?? null);
+    return sanitizedFallback;
   }
 
   private extractSlugFromPath(pathValue: string): string | undefined {
@@ -954,6 +958,18 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return undefined;
     }
     return segments[segments.length - 1];
+  }
+
+  private sanitizeAssignmentDirectoryName(raw: string | undefined): string | undefined {
+    if (!raw) {
+      return undefined;
+    }
+    const normalized = path.normalize(raw).replace(/^([/\\]+)/, '');
+    if (!normalized || normalized === '.' || normalized === '..') {
+      return undefined;
+    }
+    const safeSegments = normalized.split(/[\\/]+/).filter(segment => segment && segment !== '..');
+    return safeSegments.join(path.sep);
   }
 
   private async resolveAssignmentDirectory(
@@ -973,13 +989,23 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       };
     }
 
-    let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, directoryName);
+    const sanitizedDirectoryName = this.sanitizeAssignmentDirectoryName(directoryName);
+    if (!sanitizedDirectoryName) {
+      return {
+        absolutePath: null,
+        repositoryPath: repoRoot,
+        exists: false,
+        statusMessage: { message: 'Assignment directory name is invalid', severity: 'warning' }
+      };
+    }
+
+    let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
     let folderExists = folder ? fs.existsSync(folder) : false;
     let statusMessage: AssignmentDirectoryStatus | undefined;
 
     if (!folder && attemptSync) {
       await this.syncAssignmentsRepository(course.id, fullCourse);
-      folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, directoryName);
+      folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
       folderExists = folder ? fs.existsSync(folder) : false;
     }
 
@@ -1019,16 +1045,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   private async computeAssignmentInfo(
     course: CourseList,
-    content: CourseContentList,
+    content: CourseContentLecturerList,
     directoryName?: string
   ): Promise<CourseContentAssignmentInfo | undefined> {
-    const deployment = content.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; version_identifier?: string | null }) | null | undefined;
+    // The new lecturer endpoint has deployment_status and has_deployment directly
     const info: CourseContentAssignmentInfo = {
       directoryName,
-      versionIdentifier: (deployment as any)?.version_identifier || undefined,
-      versionTag: (deployment as any)?.version_tag || undefined,
-      deploymentStatus: deployment?.deployment_status || content.deployment_status || null,
-      hasDeployment: Boolean(deployment)
+      versionIdentifier: undefined, // Will be fetched if needed
+      versionTag: undefined, // Will be fetched if needed
+      deploymentStatus: content.deployment_status || null,
+      hasDeployment: content.has_deployment || false
     };
 
     if (!directoryName) {
@@ -1137,9 +1163,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.assignmentIdentifierCache.set(contentId, identifier);
   }
 
-  private async getCourseContents(courseId: string): Promise<CourseContentList[]> {
-    // Always fetch fresh data from API, include deployment info for proper status display
-    const contents = await this.apiService.getCourseContents(courseId, true, true);
+  private async getCourseContents(courseId: string): Promise<CourseContentLecturerList[]> {
+    // Use new lecturer-specific endpoint that includes repository info
+    const contents = await this.apiService.getLecturerCourseContents(courseId);
     return contents || [];
   }
 
@@ -1168,7 +1194,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     return members || [];
   }
 
-  private getRootContents(contents: CourseContentList[]): CourseContentList[] {
+  private getRootContents(contents: CourseContentLecturerList[]): CourseContentLecturerList[] {
     // Get contents that have no parent (root level)
     return contents.filter(content => {
       const pathParts = content.path.split('.');
@@ -1176,7 +1202,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }).sort((a, b) => a.position - b.position);
   }
 
-  private getChildContents(parent: CourseContentList, allContents: CourseContentList[]): CourseContentList[] {
+  private getChildContents(parent: CourseContentLecturerList, allContents: CourseContentLecturerList[]): CourseContentLecturerList[] {
     // Get direct children of the parent content
     const parentPath = parent.path;
     const parentDepth = parentPath.split('.').length;
@@ -1190,7 +1216,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }).sort((a, b) => a.position - b.position);
   }
 
-  private hasChildContents(content: CourseContentList, allContents: CourseContentList[]): boolean {
+  private hasChildContents(content: CourseContentLecturerList, allContents: CourseContentLecturerList[]): boolean {
     const contentPath = content.path;
     return allContents.some(c => c.path.startsWith(contentPath + '.') && c.path !== contentPath);
   }
@@ -1387,7 +1413,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     const contents = await this.getCourseContents(courseId);
     
     if (parentPath) {
-      const siblings = this.getChildContents({ path: parentPath } as CourseContentList, contents);
+      const siblings = this.getChildContents({ path: parentPath } as CourseContentLecturerList, contents);
       return siblings.length + 1;
     } else {
       const roots = this.getRootContents(contents);
@@ -1396,14 +1422,21 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
   
   private isContentSubmittable(contentType?: CourseContentTypeList): boolean {
-    if (!contentType) return false;
-    
-    // Check if the content type slug indicates it's submittable
-    // Common submittable types: assignment, exercise, homework, task, lab, quiz
-    const submittableTypes = ['assignment', 'exercise', 'homework', 'task', 'lab', 'quiz', 'exam'];
+    if (!contentType) {
+      return false;
+    }
+
+    // Prefer backend flag when available
+    if (contentType.course_content_kind?.submittable) {
+      return true;
+    }
+
+    // Fallback to heuristics based on slug/title for older payloads
     const slug = contentType.slug?.toLowerCase() || '';
-    
-    return submittableTypes.some(type => slug.includes(type));
+    const title = contentType.course_content_kind?.title?.toLowerCase() || '';
+    const submittableTypes = ['assignment', 'exercise', 'homework', 'task', 'lab', 'quiz', 'exam'];
+
+    return submittableTypes.some(type => slug.includes(type) || title.includes(type));
   }
 
   /**
@@ -1495,9 +1528,81 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   // Drag and drop implementation
   public async handleDrag(source: readonly TreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
-    void source;
-    void treeDataTransfer;
-    // This tree doesn't provide drag sources - examples are dragged FROM the example tree
+    // Support dragging course members
+    const members = source.filter(item => item instanceof CourseMemberTreeItem) as CourseMemberTreeItem[];
+
+    if (members.length > 0) {
+      // Serialize member data for drag
+      const memberData = members.map(m => ({
+        memberId: m.member.id,
+        courseId: m.course.id,
+        currentGroupId: m.member.course_group_id
+      }));
+
+      treeDataTransfer.set(
+        'application/vnd.code.tree.lecturermember',
+        new vscode.DataTransferItem(memberData)
+      );
+    }
+  }
+
+  private async handleMemberDrop(target: TreeItem | undefined, memberDataItem: vscode.DataTransferItem): Promise<void> {
+    if (!target) {
+      return;
+    }
+
+    // Determine target group
+    let targetGroupId: string | null = null;
+    let courseId: string;
+
+    if (target instanceof CourseGroupTreeItem) {
+      targetGroupId = target.group.id;
+      courseId = target.course.id;
+    } else if (target instanceof NoGroupTreeItem) {
+      targetGroupId = null; // Moving to "No Group"
+      courseId = target.course.id;
+    } else {
+      vscode.window.showErrorMessage('Members can only be dropped on course groups or "No Group"');
+      return;
+    }
+
+    try {
+      const memberData = await memberDataItem.value;
+      console.log('[LecturerTreeDataProvider] Dropping members:', memberData);
+
+      if (!Array.isArray(memberData)) {
+        return;
+      }
+
+      // Move all members to the target group
+      for (const member of memberData) {
+        if (member.courseId !== courseId) {
+          vscode.window.showWarningMessage(`Cannot move member to a different course`);
+          continue;
+        }
+
+        if (member.currentGroupId === targetGroupId) {
+          continue; // Already in target group
+        }
+
+        await this.apiService.updateCourseMember(member.memberId, {
+          course_group_id: targetGroupId
+        });
+      }
+
+      const groupName = target instanceof CourseGroupTreeItem
+        ? target.group.title || 'the group'
+        : 'No Group';
+
+      vscode.window.showInformationMessage(
+        `Moved ${memberData.length} member(s) to ${groupName}`
+      );
+
+      // Refresh the tree to show changes
+      await this.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to move members: ${error?.message || error}`);
+    }
   }
 
   public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
@@ -1507,12 +1612,20 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       mimeTypes.push(key);
     });
     console.log('Available mime types:', mimeTypes);
-    
+
+    // Check if we have member data being dropped
+    const memberData = dataTransfer.get('application/vnd.code.tree.lecturermember');
+
+    if (memberData) {
+      await this.handleMemberDrop(target, memberData);
+      return;
+    }
+
     // Check if we have example data being dropped
     const exampleData = dataTransfer.get('application/vnd.code.tree.computorexample');
-    
+
     console.log('Example data found:', !!exampleData);
-    
+
     if (!exampleData || !target) {
       console.log('Missing data or target - exampleData:', !!exampleData, 'target:', !!target);
       return;
@@ -1860,7 +1973,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
   }
 
-  private async readDirectoryItems(dir: string): Promise<TreeItem[]> {
+  private async readDirectoryItems(dir: string, course: CourseList, courseContent: CourseContentList, repositoryRoot: string): Promise<TreeItem[]> {
     try {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
       const items: TreeItem[] = [];
@@ -1869,9 +1982,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         const abs = path.join(dir, ent.name);
         const rel = ent.name;
         if (ent.isDirectory()) {
-          items.push(new FSFolderItem(abs, rel));
+          items.push(new FSFolderItem(abs, rel, course, courseContent, repositoryRoot));
         } else {
-          items.push(new FSFileItem(abs, rel));
+          items.push(new FSFileItem(abs, rel, course, courseContent, repositoryRoot));
         }
       }
       // Sort folders first, then files alphabetically
@@ -1891,7 +2004,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 }
 
 class FSFolderItem extends vscode.TreeItem {
-  constructor(public absPath: string, public relPath: string) {
+  constructor(
+    public absPath: string,
+    public relPath: string,
+    public course: CourseList,
+    public courseContent: CourseContentList,
+    public repositoryRoot: string
+  ) {
     super(path.basename(absPath), vscode.TreeItemCollapsibleState.Collapsed);
     this.iconPath = new vscode.ThemeIcon('folder');
     this.resourceUri = vscode.Uri.file(absPath);
@@ -1901,7 +2020,13 @@ class FSFolderItem extends vscode.TreeItem {
 }
 
 class FSFileItem extends vscode.TreeItem {
-  constructor(public absPath: string, public relPath: string) {
+  constructor(
+    public absPath: string,
+    public relPath: string,
+    public course: CourseList,
+    public courseContent: CourseContentList,
+    public repositoryRoot: string
+  ) {
     super(path.basename(absPath), vscode.TreeItemCollapsibleState.None);
     this.iconPath = new vscode.ThemeIcon('file');
     this.resourceUri = vscode.Uri.file(absPath);

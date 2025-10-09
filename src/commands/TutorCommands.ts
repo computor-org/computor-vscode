@@ -6,10 +6,14 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import { createSimpleGit } from '../git/simpleGitFactory';
 import { GitLabTokenManager } from '../services/GitLabTokenManager';
+import { deriveRepositoryDirectoryName } from '../utils/repositoryNaming';
+import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
+import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
+import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -17,11 +21,14 @@ export class TutorCommands {
   private apiService: ComputorApiService;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
   private messagesWebviewProvider: MessagesWebviewProvider;
+  private workspaceStructure: WorkspaceStructureManager;
+  private filterProvider?: TutorFilterPanelProvider;
 
   constructor(
-    context: vscode.ExtensionContext, 
+    context: vscode.ExtensionContext,
     treeDataProvider: TutorStudentTreeProvider,
-    apiService?: ComputorApiService
+    apiService?: ComputorApiService,
+    filterProvider?: TutorFilterPanelProvider
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
@@ -29,6 +36,8 @@ export class TutorCommands {
     this.apiService = apiService || new ComputorApiService(context);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    this.workspaceStructure = WorkspaceStructureManager.getInstance();
+    this.filterProvider = filterProvider;
     // No workspace manager needed for current tutor actions
   }
 
@@ -39,13 +48,19 @@ export class TutorCommands {
         try {
           const sel = TutorSelectionService.getInstance();
           const memberId = sel.getCurrentMemberId();
+          const courseId = sel.getCurrentCourseId();
+          const groupId = sel.getCurrentGroupId();
           if (memberId) {
             this.apiService.clearTutorMemberCourseContentsCache(memberId);
+          }
+          if (courseId) {
+            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
           }
           // Also clear content kinds to be safe
           this.apiService.clearCourseContentKindsCache();
         } catch {}
         this.treeDataProvider.refresh();
+        this.filterProvider?.refreshFilters();
       })
     );
 
@@ -103,13 +118,23 @@ export class TutorCommands {
             return;
           }
 
-          // Determine destination in current workspace: <workspaceRoot>/<courseId>/<memberId>
-          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          if (!wsRoot) {
-            vscode.window.showErrorMessage('No workspace folder is open. Open a folder before cloning.');
-            return;
-          }
-          const dir = path.join(wsRoot, courseId, memberId);
+          // Extract submission group ID if available
+          const submissionGroupId = submission?.id || content?.submission_group?.id;
+          // Include full repository data for full_path
+          const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
+          const repoName = deriveRepositoryDirectoryName({
+            submissionRepo: fullSubmissionRepo,
+            remoteUrl,
+            submissionGroupId,
+            courseId,
+            memberId
+          });
+
+          // Ensure workspace directories exist
+          await this.workspaceStructure.ensureDirectories();
+
+          // Use review directory for tutor repositories
+          const dir = this.workspaceStructure.getReviewRepositoryPath(repoName);
           await fs.promises.mkdir(dir, { recursive: true });
           // Git clone into the destination if empty
           const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
@@ -130,9 +155,10 @@ export class TutorCommands {
                 await createSimpleGit().clone(authUrl, dir);
               });
               vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+              this.treeDataProvider.refresh();
             } catch (e: any) {
               const msg = String(e?.message || e || '');
-              if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('403') || msg.includes('401'))) {
+              if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('401'))) {
                 const newToken = await (async () => {
                   // Reuse token manager's prompt behavior
                   const t = await vscode.window.showInputBox({
@@ -151,6 +177,7 @@ export class TutorCommands {
                   await createSimpleGit().clone(authUrl, dir);
                 });
                 vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+                this.treeDataProvider.refresh();
               } else {
                 throw e;
               }
@@ -163,64 +190,70 @@ export class TutorCommands {
       })
     );
 
-    // Tutor: Checkout assignment submission into workspace root (scaffold)
+    // Tutor: Update student repository (pull latest changes)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.checkoutAssignment', async (item: any) => {
+      vscode.commands.registerCommand('computor.tutor.updateStudentRepository', async (item: any) => {
         try {
+          const content: any = item?.content || item?.courseContent || item?.course_content || item;
+          const submission = content?.submission_group || content?.submission || content;
+          const submissionRepo = submission?.repository || content?.submission_group?.repository;
+
+          // Get course and member context
           const sel = TutorSelectionService.getInstance();
-          const courseId = sel.getCurrentCourseId() || (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
-          const memberId = sel.getCurrentMemberId() || (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
-          if (!courseId || !memberId) return;
-          // Work against current workspace directory for this student
-          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          if (!wsRoot) {
-            vscode.window.showErrorMessage('No workspace folder is open. Open a folder before checkout.');
+          let courseId = sel.getCurrentCourseId();
+          let memberId = sel.getCurrentMemberId();
+
+          if (!courseId || !memberId) {
+            if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
+            if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+          }
+          if (!courseId || !memberId) { return; }
+
+          // Build remote URL
+          let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
+          if (!remoteUrl && submissionRepo) {
+            const base = (submissionRepo as any).provider_url || (submissionRepo as any).provider || submissionRepo.url || '';
+            const full = submissionRepo.full_path || '';
+            if (base && full) {
+              remoteUrl = `${base.replace(/\/$/, '')}/${full.replace(/^\//, '')}`;
+              if (!remoteUrl.endsWith('.git')) remoteUrl += '.git';
+            }
+          }
+
+          // Get repository directory name
+          const submissionGroupId = submission?.id || content?.submission_group?.id;
+          const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
+          const repoName = deriveRepositoryDirectoryName({
+            submissionRepo: fullSubmissionRepo,
+            remoteUrl,
+            submissionGroupId,
+            courseId,
+            memberId
+          });
+
+          const dir = this.workspaceStructure.getReviewRepositoryPath(repoName);
+          const gitDir = path.join(dir, '.git');
+
+          // Check if repository exists
+          if (!fs.existsSync(gitDir)) {
+            vscode.window.showErrorMessage('Repository not found. Please clone it first.');
             return;
           }
-          const repoPath = path.join(wsRoot, courseId, memberId);
-          // Ensure repository exists
-          const gitDir = path.join(repoPath, '.git');
-          try {
-            await fs.promises.access(gitDir);
-          } catch {
-            vscode.window.showErrorMessage('Student repository not found. Please clone it first.');
-            return;
-          }
-          const git = createSimpleGit({ baseDir: repoPath });
-          const content: any = item?.content || item?.courseContent || item;
-          const inferredBranch = await this.apiService.getTutorSubmissionBranch(courseId, memberId, content?.id || '');
-          const branch = inferredBranch || await vscode.window.showInputBox({ title: 'Submission Branch', prompt: 'Enter submission branch to checkout', value: 'main', ignoreFocusOut: true });
-          if (!branch) return;
-          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Syncing branch ${branch}...`, cancellable: false }, async (progress) => {
-            progress.report({ message: 'Fetching...' });
-            await git.fetch();
-            progress.report({ message: `Checking out ${branch}...` });
-            await git.checkout(branch);
-            progress.report({ message: 'Pulling latest...' });
-            try { await git.pull('origin', branch); } catch (e) { /* ignore non-ff errors */ }
-          });
-          const relDir: string | undefined = content?.directory || undefined;
-          const src = relDir ? (path.isAbsolute(relDir) ? relDir : path.join(repoPath, relDir)) : await vscode.window.showInputBox({ title: 'Assignment Path', prompt: 'Relative path in repo to copy', ignoreFocusOut: true });
-          const dest = await vscode.window.showInputBox({ title: 'Destination Path', prompt: 'Destination directory (workspace root)', value: (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath) || '', ignoreFocusOut: true });
-          if (!src || !dest) return;
-          const absSrc = src;
-          await fs.promises.mkdir(dest, { recursive: true });
-          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Checking out assignment...', cancellable: false }, async () => {
-            // Shallow copy directory (simple implementation)
-            const copy = async (s: string, d: string) => {
-              const entries = await fs.promises.readdir(s, { withFileTypes: true });
-              for (const e of entries) {
-                const sp = path.join(s, e.name);
-                const dp = path.join(d, e.name);
-                if (e.isDirectory()) { await fs.promises.mkdir(dp, { recursive: true }); await copy(sp, dp); }
-                else if (e.isFile()) { await fs.promises.copyFile(sp, dp); }
-              }
-            };
-            await copy(absSrc, dest);
-          });
-          vscode.window.showInformationMessage('Assignment checked out to workspace.');
+
+          // Update the repository
+          await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Updating student repository...', cancellable: false },
+            async () => {
+              const git = createSimpleGit({ baseDir: dir });
+              await git.fetch(['--all']);
+              await git.pull(['--ff-only']);
+            }
+          );
+
+          vscode.window.showInformationMessage('Repository updated successfully.');
+          this.treeDataProvider.refresh();
         } catch (e: any) {
-          vscode.window.showErrorMessage(`Failed to checkout assignment: ${e?.message || e}`);
+          vscode.window.showErrorMessage(`Failed to update repository: ${e?.message || e}`);
         }
       })
     );
@@ -263,51 +296,54 @@ export class TutorCommands {
         if (grade > 1) grade = grade / 100; // percentage to fraction
         grade = Math.max(0, Math.min(1, grade));
 
-        const statusPick = await vscode.window.showQuickPick([
-          { label: 'corrected', description: 'Mark as corrected' },
-          { label: 'correction_necessary', description: 'Correction necessary' },
-          { label: 'improvement_possible', description: 'Improvement possible' },
-        ], { title: 'Status', placeHolder: 'Choose status', canPickMany: false, ignoreFocusOut: true });
+        const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
+          { label: 'corrected', description: 'Mark as corrected', value: 1 as GradingStatus },
+          { label: 'correction_necessary', description: 'Correction necessary', value: 2 as GradingStatus },
+          { label: 'improvement_possible', description: 'Improvement possible', value: 3 as GradingStatus },
+          { label: 'not_reviewed', description: 'Not reviewed', value: 0 as GradingStatus },
+        ];
+        const statusPick = await vscode.window.showQuickPick(statusOptions, {
+          title: 'Status',
+          placeHolder: 'Choose status',
+          canPickMany: false,
+          ignoreFocusOut: true
+        });
         if (!statusPick) return; // cancelled
 
         try {
-          await this.apiService.updateTutorCourseContentStudent(memberId, contentId, { grading: grade, status: statusPick.label as any });
+          // Use new TutorGradeCreate type with enum status
+          const tutorGrade: TutorGradeCreate = {
+            grade: grade,
+            status: statusPick.value,
+            feedback: null
+          };
+          await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
+
+          // Clear caches and refresh to get updated data
+          const sel = TutorSelectionService.getInstance();
+          const courseId = sel.getCurrentCourseId();
+          const groupId = sel.getCurrentGroupId();
+
+          this.apiService.clearTutorMemberCourseContentsCache(memberId);
+          if (courseId) {
+            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
+          }
+
           // Fetch fresh item and update the clicked tree item inline
           const updated = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
-          if (updated && item) {
+          if (updated && item && typeof (item as any).updateVisuals === 'function') {
             try {
-              // Update visible item fields
+              // Preserve course_content_type if the updated data doesn't include it
+              // The single-item endpoint may not return this field
+              const oldCourseContentType = (item.content as any)?.course_content_type;
+              if (oldCourseContentType && !(updated as any).course_content_type) {
+                (updated as any).course_content_type = oldCourseContentType;
+              }
+              // Update the content data
               item.content = updated;
               item.label = updated.title || updated.path;
-              const ct: any = (updated as any).course_content_type;
-              const color = ct?.color || 'grey';
-              const kindId = ct?.course_content_kind_id;
-              const shape = kindId === 'assignment' ? 'square' : 'circle';
-              let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
-              const submission: any = (updated as any).submission_group || (updated as any).submission;
-              const status = submission?.status?.toLowerCase?.() || submission?.latest_grading?.status?.toLowerCase?.();
-              if (status === 'corrected') corner = 'corrected';
-              else if (status === 'correction_necessary') corner = 'correction_necessary';
-              else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
-              const gradingVal: number | undefined = (typeof submission?.latest_grading?.grading === 'number')
-                ? submission.latest_grading.grading
-                : (typeof submission?.grading === 'number' ? submission.grading : undefined);
-              const badge: 'success' | 'failure' | 'none' = (typeof gradingVal === 'number') ? (gradingVal === 1 ? 'success' : 'failure') : 'none';
-              item.iconPath = (badge === 'none' && corner === 'none')
-                ? (await import('../utils/IconGenerator').then(m => m.IconGenerator.getColoredIcon(color, shape)))
-                : (await import('../utils/IconGenerator').then(m => m.IconGenerator.getColoredIconWithBadge(color, shape, badge, corner)));
-              // Update tooltip with friendly status
-              const friendlyStatus = (() => {
-                if (!status) return undefined;
-                if (status === 'corrected') return 'Corrected';
-                if (status === 'correction_necessary') return 'Correction Necessary';
-                if (status === 'improvement_possible') return 'Improvement Possible';
-                if (status === 'correction_possible') return 'Correction Possible';
-                const t = status.replace(/_/g, ' ');
-                return t.charAt(0).toUpperCase() + t.slice(1);
-              })();
-              const gradingText = (typeof gradingVal === 'number') ? `Grading: ${(gradingVal * 100).toFixed(2)}%` : undefined;
-              item.tooltip = [`Path: ${updated.path}`, friendlyStatus ? `Status: ${friendlyStatus}` : undefined, gradingText].filter(Boolean).join('\n');
+              // Use the tree item's own method to update icon, tooltip, etc.
+              (item as any).updateVisuals();
               // Trigger a targeted refresh for this item
               (this.treeDataProvider as any).refreshItem?.(item);
             } catch {
@@ -318,6 +354,10 @@ export class TutorCommands {
             // Fallback to full refresh
             this.treeDataProvider.refresh();
           }
+
+          // Refresh filter panel to update ungraded_submissions_count
+          this.filterProvider?.refreshFilters();
+
           vscode.window.showInformationMessage(`Updated: ${(grade * 100).toFixed(1)}% • ${statusPick.label}`);
         } catch (e: any) {
           vscode.window.showErrorMessage(`Failed to update grading/status: ${e?.message || e}`);
@@ -325,15 +365,31 @@ export class TutorCommands {
       })
     );
 
-    // Tutor: Download example for comparison (scaffold)
+    // Tutor: Download reference (example version)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.downloadStudentExample', async (_item: any) => {
-        try {
-          // TODO: Implement endpoint to download example matching assignment for comparison
-          vscode.window.showInformationMessage('Download Example: backend route TBD.');
-        } catch (e: any) {
-          vscode.window.showErrorMessage(`Failed to download example: ${e?.message || e}`);
-        }
+      vscode.commands.registerCommand('computor.tutor.downloadReference', async (item: any) => {
+        await this.downloadReference(item);
+      })
+    );
+
+    // Tutor: Download submission artifact
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.downloadSubmissionArtifact', async (item: any) => {
+        await this.downloadSubmissionArtifact(item);
+      })
+    );
+
+    // Tutor: Compare with reference
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.compareWithReference', async (item: any) => {
+        await this.compareWithReference(item);
+      })
+    );
+
+    // Tutor: Show submission test results
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showSubmissionTestResults', async (item: any) => {
+        await this.showSubmissionTestResults(item);
       })
     );
   }
@@ -388,20 +444,30 @@ export class TutorCommands {
 
       if (content) {
         const contentTitle = content.title || content.path || 'Course content';
+
+        // Query should NOT include course_id or course_member_id
+        // - course_id would return ALL messages in the course (due to OR filter in backend)
+        // - course_member_id would filter to specific member, but tutors want to see all messages
         const query: Record<string, string> = {
-          course_id: courseId,
-          course_content_id: content.id,
-          course_member_id: memberId
-        };
-        const createPayload: Partial<MessageCreate> = {
-          course_id: courseId,
-          course_content_id: content.id,
-          course_member_id: memberId
+          course_content_id: content.id
         };
 
+        // For writing messages, we need to use submission_group_id or course_content_id
+        // course_member_id is not supported for writing
+        let createPayload: Partial<MessageCreate>;
+
         if (submissionGroup?.id) {
-          query.course_submission_group_id = submissionGroup.id;
-          createPayload.course_submission_group_id = submissionGroup.id;
+          // Assignment with submission group - tutors can write to submission_group_id
+          query.submission_group_id = submissionGroup.id;
+          createPayload = {
+            submission_group_id: submissionGroup.id
+          };
+        } else {
+          // Unit content without submission group - tutors can only read (lecturer+ for writing)
+          // Trying to write will fail with ForbiddenException
+          createPayload = {
+            course_content_id: content.id  // Lecturer+ only
+          };
         }
 
         const subtitleSegments = [courseLabel, memberLabel, content.path || contentTitle].filter(Boolean) as string[];
@@ -418,13 +484,17 @@ export class TutorCommands {
       }
 
       if (!target) {
+        // For general course member messages
+        // Tutors cannot write to course_id or course_member_id
+        // course_member_id is not implemented, course_id is lecturer+ only
+        // Use scope filter to show ONLY course-scoped messages, not content/submission messages
         const subtitleSegments = [courseLabel, memberLabel].filter(Boolean) as string[];
         const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
         target = {
           title: memberLabel ? `${memberLabel} — Course messages` : 'Course member messages',
           subtitle,
-          query: { course_id: courseId, course_member_id: memberId },
-          createPayload: { course_id: courseId, course_member_id: memberId },
+          query: { course_id: courseId, course_member_id: memberId, scope: 'course' },
+          createPayload: { course_id: courseId },  // This will fail - lecturer+ only
           sourceRole: 'tutor'
         } satisfies MessageTargetContext;
       }
@@ -434,4 +504,279 @@ export class TutorCommands {
       vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
     }
   }
+
+  private async downloadReference(item: any): Promise<void> {
+    try {
+      const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
+
+      if (!content) {
+        vscode.window.showErrorMessage('No course content information available');
+        return;
+      }
+
+      const deployment = content.deployment;
+      if (!deployment || !deployment.example_version_id) {
+        vscode.window.showErrorMessage('No reference available for this assignment');
+        return;
+      }
+
+      const exampleVersionId = deployment.example_version_id;
+      const referencePath = this.workspaceStructure.getReviewReferencePath(exampleVersionId);
+
+      // Check if reference already exists
+      const exists = await this.workspaceStructure.directoryExists(referencePath);
+      if (exists) {
+        const choice = await vscode.window.showWarningMessage(
+          `Reference for this assignment already exists. The example version may have been updated. Re-download?`,
+          'Re-download',
+          'Cancel'
+        );
+        if (choice !== 'Re-download') {
+          return;
+        }
+        // Remove existing directory
+        await fs.promises.rm(referencePath, { recursive: true, force: true });
+      }
+
+      // Download reference
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Downloading reference...',
+          cancellable: false
+        },
+        async () => {
+          const buffer = await this.apiService.downloadCourseContentReference(content.id, true);
+          if (!buffer) {
+            throw new Error('Failed to download reference');
+          }
+
+          // Extract ZIP to reference path
+          await fs.promises.mkdir(referencePath, { recursive: true });
+          const JSZip = require('jszip');
+          const zip = await JSZip.loadAsync(buffer);
+
+          for (const [filename, file] of Object.entries(zip.files)) {
+            const fileData = file as any;
+            if (!fileData.dir) {
+              const content = await fileData.async('nodebuffer');
+              const filePath = path.join(referencePath, filename);
+              await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+              await fs.promises.writeFile(filePath, content);
+            }
+          }
+        }
+      );
+
+      vscode.window.showInformationMessage(`Reference downloaded to ${referencePath}`);
+      this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to download reference: ${error?.message || error}`);
+    }
+  }
+
+  private async downloadSubmissionArtifact(item: any): Promise<void> {
+    try {
+      // If called from TutorSubmissionItem, we have the artifact info
+      let artifactId = item?.artifactId || item?.artifact_id || item?.id;
+      let submissionGroupId = item?.submissionGroupId || item?.submission_group_id;
+
+      // If called from TutorVirtualFolderItem (Submissions folder), we need to get artifacts from API
+      if (!artifactId || !submissionGroupId) {
+        const content: CourseContentStudentList = item?.content || item?.courseContent;
+        if (!content || !content.submission_group?.id) {
+          vscode.window.showErrorMessage('No submission group available for this assignment');
+          return;
+        }
+
+        submissionGroupId = content.submission_group.id;
+
+        // Fetch available artifacts from API
+        // TODO: Add API method to list artifacts for a submission group
+        // For now, prompt user to select from tree instead
+        vscode.window.showInformationMessage(
+          'Please expand the Submissions folder and right-click on a specific submission to download it.'
+        );
+        return;
+      }
+
+      const submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, artifactId);
+
+      // Check if submission already exists
+      const exists = await this.workspaceStructure.directoryExists(submissionPath);
+      if (exists) {
+        const choice = await vscode.window.showWarningMessage(
+          `Submission artifact already exists. Re-download?`,
+          'Re-download',
+          'Cancel'
+        );
+        if (choice !== 'Re-download') {
+          return;
+        }
+        // Remove existing directory
+        await fs.promises.rm(submissionPath, { recursive: true, force: true });
+      }
+
+      // Download submission artifact
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Downloading submission artifact...',
+          cancellable: false
+        },
+        async () => {
+          const buffer = await this.apiService.downloadSubmissionArtifact(artifactId);
+          if (!buffer) {
+            throw new Error('Failed to download submission artifact');
+          }
+
+          // Extract ZIP to submission path
+          await fs.promises.mkdir(submissionPath, { recursive: true });
+          const JSZip = require('jszip');
+          const zip = await JSZip.loadAsync(buffer);
+
+          for (const [filename, file] of Object.entries(zip.files)) {
+            const fileData = file as any;
+            if (!fileData.dir) {
+              const content = await fileData.async('nodebuffer');
+              const filePath = path.join(submissionPath, filename);
+              await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+              await fs.promises.writeFile(filePath, content);
+            }
+          }
+        }
+      );
+
+      vscode.window.showInformationMessage(`Submission artifact downloaded to ${submissionPath}`);
+      this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to download submission artifact: ${error?.message || error}`);
+    }
+  }
+
+  private async compareWithReference(item: any): Promise<void> {
+    try {
+      // Get the file path from the submission
+      const submissionFilePath = item?.fsPath || item?.resourceUri?.fsPath;
+      if (!submissionFilePath) {
+        vscode.window.showErrorMessage('No file selected for comparison');
+        return;
+      }
+
+      // Extract information from the path
+      // Expected path: review/submissions/<submission_group_id>/<artifact_id>/<file_path>
+      const dirs = this.workspaceStructure.getDirectories();
+      const relativePath = path.relative(dirs.reviewSubmissions, submissionFilePath);
+      const parts = relativePath.split(path.sep);
+
+      if (parts.length < 3) {
+        vscode.window.showErrorMessage('Invalid submission file path');
+        return;
+      }
+
+      const fileInSubmission = parts.slice(2).join(path.sep);
+
+      // Get course content to find example version
+      const content = item?.content || item?.courseContent;
+      if (!content || !content.deployment || !content.deployment.example_version_id) {
+        vscode.window.showErrorMessage('No reference available for comparison');
+        return;
+      }
+
+      const exampleVersionId = content.deployment.example_version_id;
+      const referencePath = this.workspaceStructure.getReviewReferencePath(exampleVersionId);
+      const referenceFilePath = path.join(referencePath, fileInSubmission);
+
+      // Check if reference exists
+      if (!fs.existsSync(referenceFilePath)) {
+        const choice = await vscode.window.showWarningMessage(
+          'Reference file not found. Download reference first?',
+          'Download Reference',
+          'Cancel'
+        );
+        if (choice === 'Download Reference') {
+          await this.downloadReference({ content });
+          // Try again after download
+          if (!fs.existsSync(referenceFilePath)) {
+            vscode.window.showErrorMessage('Reference file still not found after download');
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+
+      // Open diff view (reference on left, submission on right)
+      const submissionUri = vscode.Uri.file(submissionFilePath);
+      const referenceUri = vscode.Uri.file(referenceFilePath);
+      const title = `${path.basename(submissionFilePath)} (Submission ↔ Reference)`;
+
+      await vscode.commands.executeCommand('vscode.diff', submissionUri, referenceUri, title);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to compare with reference: ${error?.message || error}`);
+    }
+  }
+
+  private async showSubmissionTestResults(item: any): Promise<void> {
+    try {
+      console.log('[TutorCommands] showSubmissionTestResults called with item:', item);
+
+      // Extract result data from the submission item
+      // Note: result can be 0, so we check for undefined/null explicitly
+      if (!item || (item.result === undefined || item.result === null)) {
+        console.log('[TutorCommands] No result in item, result value:', item?.result);
+        vscode.window.showWarningMessage('No test results available for this submission.');
+        return;
+      }
+
+      const result = item.result;
+      console.log('[TutorCommands] result type:', typeof result, 'value:', result);
+
+      // Fetch full result data if we only have the result number
+      let resultJson = null;
+
+      if (typeof result === 'number') {
+        // We need to fetch the full result data from the tutor course content endpoint
+        const memberId = item.memberId;
+        const contentId = item.content?.id;
+
+        console.log('[TutorCommands] memberId:', memberId, 'contentId:', contentId);
+
+        if (!memberId || !contentId) {
+          vscode.window.showWarningMessage('Cannot fetch test results: missing member or content ID.');
+          return;
+        }
+
+        // Fetch course content to get result with result_json
+        const courseContent = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
+        console.log('[TutorCommands] courseContent fetched:', JSON.stringify(courseContent, null, 2));
+
+        if (courseContent?.result?.result_json) {
+          resultJson = courseContent.result.result_json;
+        } else {
+          console.log('[TutorCommands] No result_json in courseContent.result');
+          vscode.window.showWarningMessage('No detailed test results available for this submission.');
+          return;
+        }
+      } else if (typeof result === 'object' && result.result_json) {
+        resultJson = result.result_json;
+      }
+
+      if (!resultJson) {
+        console.log('[TutorCommands] resultJson is null');
+        vscode.window.showWarningMessage('No test results data found.');
+        return;
+      }
+
+      console.log('[TutorCommands] Opening results with resultJson:', resultJson);
+      // Display test results using the same method as student view
+      await vscode.commands.executeCommand('computor.results.open', resultJson);
+      await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+
+    } catch (error: any) {
+      console.error('[TutorCommands] Error in showSubmissionTestResults:', error);
+      vscode.window.showErrorMessage(`Failed to show test results: ${error?.message || error}`);
+    }
+  }
+
 }

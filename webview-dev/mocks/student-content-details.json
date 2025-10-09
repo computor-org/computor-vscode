@@ -1,0 +1,96 @@
+{
+  "course": {
+    "id": "course-101",
+    "title": "Algorithms 101"
+  },
+  "content": {
+    "id": "content-assign-3",
+    "title": "Assignment 3 · Hash Maps",
+    "path": "assignments/hash-maps",
+    "description": "Build a hash map with open addressing and linear probing."
+  },
+  "contentType": {
+    "id": "type-programming",
+    "title": "Programming Assignment"
+  },
+  "submissionGroup": {
+    "id": "submission-group-55",
+    "status": "graded",
+    "created_at": "2024-04-08T12:00:00.000Z"
+  },
+  "repository": {
+    "hasRepository": true,
+    "fullPath": "computor/examples/algorithms-101/assignments/hash-maps",
+    "cloneUrl": "https://gitlab.example.com/algorithms-101/hash-maps.git",
+    "webUrl": "https://gitlab.example.com/algorithms-101/hash-maps",
+    "localPath": "/Users/dev/computor/algorithms-101/hash-maps",
+    "isCloned": true,
+    "lastCommit": "a1b2c3d4"
+  },
+  "metrics": {
+    "testsRun": 4,
+    "maxTests": 6,
+    "submissions": 2,
+    "maxSubmissions": 5,
+    "submitted": true,
+    "resultPercent": 92,
+    "gradePercent": 88,
+    "gradeStatus": "passed",
+    "gradedBy": "Tutor Mari",
+    "gradedAt": "2024-04-11T09:45:00.000Z",
+    "status": "complete",
+    "feedback": "Excellent work. Revisit collision handling comments."
+  },
+  "team": {
+    "maxSize": 2,
+    "currentSize": 2,
+    "members": [
+      {
+        "id": "student-01",
+        "name": "Amelia Rivera",
+        "username": "amelia"
+      },
+      {
+        "id": "student-02",
+        "name": "Jon Becker",
+        "username": "jon"
+      }
+    ]
+  },
+  "gradingHistory": [
+    {
+      "id": "grading-001",
+      "gradePercent": 88,
+      "rawGrade": 44,
+      "status": "published",
+      "feedback": "Great implementation. Consider adding more edge-case tests.",
+      "gradedAt": "2024-04-11T09:45:00.000Z",
+      "graderName": "Tutor Mari"
+    }
+  ],
+  "resultsHistory": [
+    {
+      "id": "result-001",
+      "resultPercent": 80,
+      "status": "completed",
+      "submit": false,
+      "created_at": "2024-04-09T14:20:00.000Z",
+      "updated_at": "2024-04-09T14:21:00.000Z",
+      "test_system_id": "ci-pipe-1234"
+    },
+    {
+      "id": "result-002",
+      "resultPercent": 92,
+      "status": "completed",
+      "submit": true,
+      "created_at": "2024-04-10T17:05:00.000Z",
+      "updated_at": "2024-04-10T17:06:00.000Z",
+      "test_system_id": "ci-pipe-1270"
+    }
+  ],
+  "actions": {
+    "localPath": "/Users/dev/computor/algorithms-101/hash-maps",
+    "webUrl": "https://gitlab.example.com/algorithms-101/hash-maps",
+    "cloneUrl": "https://gitlab.example.com/algorithms-101/hash-maps.git"
+  }
+}

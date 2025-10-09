@@ -8,6 +8,7 @@ import {
   ExampleRepositoryList,
   ExampleList
 } from '../../../types/generated';
+import { LecturerRepositoryManager } from '../../../services/LecturerRepositoryManager';
 
 // Export tree items for use in commands
 export { ExampleRepositoryTreeItem, ExampleTreeItem, FileSystemTreeItem };
@@ -161,11 +162,14 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   
   // Track downloaded examples with version information
   private downloadedExamples: Map<string, { path: string; version?: string }> = new Map(); // exampleId -> {path, version}
+  private context: vscode.ExtensionContext;
+  private assignmentsRootCache: { courseId: string; path: string } | null = null;
 
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
+    this.context = context;
     this.apiService = providedApiService || new ComputorApiService(context);
   }
 
@@ -307,6 +311,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
 
     const examples = this.examplesCache.get(cacheKey) || [];
+    const assignmentsRoot = await this.getAssignmentsRoot();
     
     // Apply filters if any
     let filteredExamples = examples;
@@ -335,19 +340,17 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
 
     return filteredExamples.map(example => {
       const downloadInfo = this.downloadedExamples.get(example.id);
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      
+
       // Check if the example is downloaded by checking if directory exists
       let isDownloaded = false;
       let actualPath: string | undefined;
       let version: string | undefined;
       
-      if (workspaceFolder) {
-        const expectedPath = path.join(workspaceFolder.uri.fsPath, example.directory);
+      if (assignmentsRoot) {
+        const expectedPath = path.join(assignmentsRoot, example.directory);
         if (fs.existsSync(expectedPath)) {
           isDownloaded = true;
           actualPath = expectedPath;
-          // Update the downloaded map if not already tracked
           if (!downloadInfo) {
             this.downloadedExamples.set(example.id, { path: expectedPath });
           } else {
@@ -355,9 +358,64 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
           }
         }
       }
+
+      if (!isDownloaded && downloadInfo) {
+        if (fs.existsSync(downloadInfo.path)) {
+          isDownloaded = true;
+          actualPath = downloadInfo.path;
+          version = downloadInfo.version;
+        } else {
+          this.downloadedExamples.delete(example.id);
+        }
+      }
       
-      return new ExampleTreeItem(example, repository, isDownloaded, actualPath || downloadInfo?.path, version);
+      return new ExampleTreeItem(example, repository, isDownloaded, actualPath, version);
     });
+  }
+
+  private async getAssignmentsRoot(): Promise<string | undefined> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      return undefined;
+    }
+
+    const markerPath = path.join(workspaceFolder.uri.fsPath, '.computor');
+    let courseId: string | undefined;
+
+    try {
+      const raw = await fs.promises.readFile(markerPath, 'utf8');
+      const marker = JSON.parse(raw);
+      if (marker && typeof marker.courseId === 'string') {
+        courseId = marker.courseId;
+      }
+    } catch {
+      return undefined;
+    }
+
+    if (!courseId) {
+      return undefined;
+    }
+
+    if (this.assignmentsRootCache && this.assignmentsRootCache.courseId === courseId) {
+      if (fs.existsSync(this.assignmentsRootCache.path)) {
+        return this.assignmentsRootCache.path;
+      }
+      this.assignmentsRootCache = null;
+    }
+
+    const course = await this.apiService.getCourse(courseId);
+    if (!course) {
+      return undefined;
+    }
+
+    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+    const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
+    if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
+      return undefined;
+    }
+
+    this.assignmentsRootCache = { courseId, path: assignmentsRoot };
+    return assignmentsRoot;
   }
 
   private getFileSystemItems(dirPath: string): vscode.TreeItem[] {

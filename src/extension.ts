@@ -5,12 +5,10 @@ import { IconGenerator } from './utils/IconGenerator';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
-import { CourseMemberReadinessStatus } from './types/generated';
-import { GitLabTokenManager } from './services/GitLabTokenManager';
+// GitLabTokenManager is dynamically imported in code blocks below
+// import { GitLabTokenManager } from './services/GitLabTokenManager';
 
-import { BasicAuthHttpClient } from './http/BasicAuthHttpClient';
-import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
-import { JwtHttpClient } from './http/JwtHttpClient';
+import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
 import { BackendConnectionService } from './services/BackendConnectionService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
@@ -19,6 +17,9 @@ import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataPro
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
+import { LecturerFsCommands } from './commands/LecturerFsCommands';
+import { UserPasswordCommands } from './commands/UserPasswordCommands';
+import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProvider';
 
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
@@ -32,17 +33,11 @@ import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/pane
 import { TestResultService } from './services/TestResultService';
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 
-type Role = 'Lecturer' | 'Student' | 'Tutor';
-type AuthType = 'basic' | 'apiKey' | 'jwt';
-
 interface StoredAuth {
-  type: AuthType;
-  username?: string;
-  password?: string;
-  apiKey?: string;
-  token?: string;
-  headerName?: string;
-  headerPrefix?: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: string;
+  userId?: string;
 }
 
 
@@ -71,53 +66,39 @@ async function ensureBaseUrl(settings: ComputorSettingsManager): Promise<string 
   return url;
 }
 
-async function chooseAuthType(settings: ComputorSettingsManager, defaultType?: AuthType): Promise<AuthType | undefined> {
-  const choice = await vscode.window.showQuickPick([
-    { label: 'Basic (username/password)', value: 'basic', picked: defaultType === 'basic' },
-    { label: 'API Key', value: 'apiKey', picked: defaultType === 'apiKey' },
-    { label: 'JWT Token (SSO)', value: 'jwt', picked: defaultType === 'jwt' }
-  ], { title: 'Choose authentication method', placeHolder: 'Select auth method' });
-  if (!choice) return undefined;
-  await settings.setAuthProvider(choice.value);
-  return choice.value as AuthType;
+async function promptCredentials(previous?: { username?: string; password?: string }): Promise<{ username: string; password: string } | undefined> {
+  const username = await vscode.window.showInputBox({
+    title: 'Computor Login',
+    prompt: 'Username',
+    value: previous?.username,
+    ignoreFocusOut: true
+  });
+  if (!username) return undefined;
+
+  const password = await vscode.window.showInputBox({
+    title: 'Computor Login',
+    prompt: 'Password',
+    value: previous?.password,
+    password: true,
+    ignoreFocusOut: true
+  });
+  if (!password) return undefined;
+
+  return { username, password };
 }
 
-async function promptCredentials(role: Role, auth: AuthType, settings: ComputorSettingsManager, previous?: StoredAuth): Promise<StoredAuth | undefined> {
-  switch (auth) {
-    case 'basic': {
-      const username = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Username', value: previous?.username, ignoreFocusOut: true });
-      if (!username) return undefined;
-      const password = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Password', value: previous?.password, password: true, ignoreFocusOut: true });
-      if (!password) return undefined;
-      return { type: 'basic', username, password };
-    }
-    case 'apiKey': {
-      const apiKey = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'API Key', value: previous?.apiKey, password: true, ignoreFocusOut: true });
-      if (!apiKey) return undefined;
-      const tokenSettings = await settings.getTokenSettings();
-      return { type: 'apiKey', apiKey, headerName: tokenSettings.headerName, headerPrefix: tokenSettings.headerPrefix };
-    }
-    case 'jwt': {
-      const token = await vscode.window.showInputBox({ title: `${role} Login`, prompt: 'Paste JWT/OAuth access token', value: previous?.token, password: true, ignoreFocusOut: true });
-      if (!token) return undefined;
-      return { type: 'jwt', token };
-    }
-  }
+function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClient {
+  const client = new BearerTokenHttpClient(baseUrl, 5000);
+  client.setTokens(
+    auth.accessToken,
+    auth.refreshToken,
+    auth.expiresAt ? new Date(auth.expiresAt) : undefined,
+    auth.userId
+  );
+  return client;
 }
 
-function buildHttpClient(baseUrl: string, auth: StoredAuth): BasicAuthHttpClient | ApiKeyHttpClient | JwtHttpClient {
-  if (auth.type === 'basic') {
-    return new BasicAuthHttpClient(baseUrl, auth.username!, auth.password!, 5000);
-  } else if (auth.type === 'apiKey') {
-    return new ApiKeyHttpClient(baseUrl, auth.apiKey!, auth.headerName || 'X-API-Key', auth.headerPrefix || '', 5000);
-  } else {
-    const jwt = new JwtHttpClient(baseUrl, { serverUrl: baseUrl, realm: 'computor', clientId: 'computor-vscode', redirectUri: '' }, 5000);
-    jwt.setTokens(auth.token!);
-    return jwt;
-  }
-}
-
-async function readMarker(file: string): Promise<{ courseId?: string } | undefined> {
+async function readMarker(file: string): Promise<{ backendUrl?: string; courseId?: string } | undefined> {
   try {
     if (!fs.existsSync(file)) return undefined;
     const raw = await fs.promises.readFile(file, 'utf8');
@@ -127,11 +108,11 @@ async function readMarker(file: string): Promise<{ courseId?: string } | undefin
   }
 }
 
-async function writeMarker(file: string, data: { courseId: string }): Promise<void> {
+async function writeMarker(file: string, data: { backendUrl: string }): Promise<void> {
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
-async function ensureCourseMarker(api: ComputorApiService, context?: vscode.ExtensionContext): Promise<string | undefined> {
+async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
     const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
@@ -145,12 +126,7 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
       });
 
       if (folderUri && folderUri.length > 0) {
-        // Store pending login info before workspace change
-        if (context) {
-          await context.globalState.update('pendingLogin', {
-            timestamp: Date.now()
-          });
-        }
+        // No longer storing pending login - will auto-detect .computor file instead
 
         // Add the folder to the current workspace
         // This will restart the extension if no workspace was open
@@ -167,314 +143,64 @@ async function ensureCourseMarker(api: ComputorApiService, context?: vscode.Exte
           // Give VS Code a moment to update
           await new Promise(resolve => setTimeout(resolve, 100));
           // Recursively call to handle the marker with the new workspace
-          return ensureCourseMarker(api, context);
+          await ensureWorkspaceMarker(baseUrl);
+          return;
         }
 
-        // Extension will restart, return undefined
-        return undefined;
+        // Extension will restart
+        return;
       }
     }
-    return undefined;
+    return;
   }
   const file = path.join(root, computorMarker);
   const existing = await readMarker(file);
 
-  // Get all courses the user has access to by trying all endpoints
-  let allCourses: any[] = [];
-
-  try {
-    const studentCourses = await api.getStudentCourses();
-    allCourses.push(...(studentCourses || []));
-  } catch {
-    // User might not have student access
-  }
-
-  try {
-    const tutorCourses = await api.getTutorCourses(false);
-    allCourses.push(...(tutorCourses || []));
-  } catch {
-    // User might not have tutor access
-  }
-
-  try {
-    const lecturerCourses = await api.getLecturerCourses();
-    allCourses.push(...(lecturerCourses || []));
-  } catch {
-    // User might not have lecturer access
-  }
-
-  // Remove duplicates based on course ID
-  const uniqueCourses = allCourses.filter((course, index, arr) =>
-    arr.findIndex(c => c.id === course.id) === index
-  );
-
-  if (uniqueCourses.length === 0) {
-    vscode.window.showWarningMessage('No courses found for your account.');
-    return undefined;
-  }
-
-  if (existing?.courseId) {
-    const match = uniqueCourses.find((course: any) => course.id === existing.courseId);
-    if (match) {
-      return existing.courseId;
-    }
-
-    // Invalid or stale marker – remove and continue as if no marker exists
-    try {
-      await fs.promises.unlink(file);
-    } catch {
-      // Ignore errors when removing invalid marker
-    }
-  }
-
-  const pick = await vscode.window.showQuickPick(
-    uniqueCourses.map((c: any) => ({ label: c.title || c.path || c.name || c.id, description: c.path || '', course: c })),
-    { title: 'Select Course', placeHolder: 'Pick your course' }
-  );
-  if (!pick) return undefined;
-  await writeMarker(file, { courseId: pick.course.id });
-  return pick.course.id as string;
-}
-
-function formatProviderLabel(status: CourseMemberReadinessStatus): string {
-  if (status.provider) {
-    try {
-      const providerUrl = new URL(status.provider);
-      return providerUrl.host;
-    } catch {
-      return status.provider;
-    }
-  }
-  if (status.provider_type) {
-    const label = status.provider_type.trim();
-    if (label.toLowerCase() === 'gitlab') {
-      return 'GitLab';
-    }
-    return label;
-  }
-  return 'provider';
-}
-
-async function ensureCourseProviderAccount(
-  api: ComputorApiService,
-  context: vscode.ExtensionContext,
-  courseId: string,
-  courseLabel: string,
-  providerHint?: string | null,
-  currentUser?: { username?: string }
-): Promise<void> {
-  // Provider URL should always be available from course configuration
-  if (!providerHint) {
-    throw new Error(`No Git provider configured for course "${courseLabel}". Please contact your instructor.`);
-  }
-
-  let readiness: CourseMemberReadinessStatus | undefined;
-  let providerAccessToken: string | undefined;
-  let providerAccountId: string | undefined;
-  const providerUrl = providerHint;
-
-  const resolveProviderUrl = (): string => readiness?.provider ?? providerUrl;
-  const tokenManager = GitLabTokenManager.getInstance(context);
-
-  const acquireToken = async (options?: { defaultValue?: string; forcePrompt?: boolean }): Promise<string> => {
-    const providerUrlString = resolveProviderUrl();
-    const providerUrlObject = new URL(providerUrlString);
-    const origin = `${providerUrlObject.protocol}//${providerUrlObject.host}`;
-
-    if (options?.forcePrompt) {
-      const prompted = await tokenManager.requestAndStoreToken(origin, options.defaultValue);
-      if (!prompted) {
-        throw new Error(`A personal access token for ${origin} is required to verify your account.`);
-      }
-      return prompted;
-    }
-
-    const existing = await tokenManager.ensureTokenForUrl(origin);
-    if (existing) {
-      return existing;
-    }
-
-    const prompted = await tokenManager.requestAndStoreToken(origin, options?.defaultValue);
-    if (!prompted) {
-      throw new Error(`A personal access token for ${origin} is required to verify your account.`);
-    }
-    return prompted;
-  };
-
-  const validate = async (token: string): Promise<CourseMemberReadinessStatus> =>
-    api.validateCourseReadiness(courseId, token);
-
-  const promptRetryOrCancel = async (message: string, retryLabel: string): Promise<boolean> => {
-    const selection = await vscode.window.showWarningMessage(message, retryLabel, 'Cancel');
-    return selection === retryLabel;
-  };
-
-  const promptForAccountId = async (providerLabel: string, defaultValue: string): Promise<string> => {
-    const accountInput = await vscode.window.showInputBox({
-      title: `Link ${providerLabel} account`,
-      prompt: `Enter the ${providerLabel} account ID to use for ${courseLabel}`,
-      value: defaultValue,
-      ignoreFocusOut: true,
-      validateInput: (value) => {
-        const trimmed = value.trim();
-        return trimmed.length === 0 ? 'Account ID is required' : undefined;
-      }
-    });
-
-    if (accountInput === undefined) {
-      throw new Error(`${providerLabel} account registration cancelled for ${courseLabel}`);
-    }
-
-    return accountInput.trim();
-  };
-
-  while (true) {
-    if (!providerAccessToken) {
-      providerAccessToken = await acquireToken();
-    }
-    try {
-      readiness = await validate(providerAccessToken);
-    } catch (error: any) {
-      const status = error?.response?.status;
-      const detail = (error?.response?.data?.detail || error?.message || '').toString().toLowerCase();
-      if (status === 401 || detail.includes('token')) {
-        const label = readiness ? formatProviderLabel(readiness) : 'GitLab';
-        const retry = await promptRetryOrCancel(
-          `${label} token is required to validate your course access. Provide a token?`,
-          'Provide Token'
-        );
-        if (!retry) {
-          throw new Error('Provider account verification cancelled.');
-        }
-        providerAccessToken = await acquireToken({ defaultValue: providerAccessToken, forcePrompt: true });
-        continue;
-      }
-      throw error;
-    }
-
-    if (!readiness.requires_account) {
-      return;
-    }
-
-    if (readiness.is_ready) {
-      return;
-    }
-
-    const providerLabel = formatProviderLabel(readiness);
-
-    if (!providerAccountId) {
-      const defaultAccount = readiness.provider_account_id?.trim() || currentUser?.username || '';
-      providerAccountId = await promptForAccountId(providerLabel, defaultAccount);
-    }
-
-    try {
-      const updated = await api.registerCourseProviderAccount(courseId, {
-        provider_account_id: providerAccountId,
-        provider_access_token: providerAccessToken
-      });
-
-      providerAccountId = updated.provider_account_id?.trim() || providerAccountId;
-
-      if (updated.is_ready) {
-        vscode.window.showInformationMessage(
-          `${formatProviderLabel(updated)} account "${providerAccountId}" linked for ${courseLabel}.`
-        );
-        return;
-      }
-
-      const needsAccount = !updated.has_account || !updated.provider_account_id;
-      const needsToken = !updated.provider_access_token;
-      const missingParts: string[] = [];
-      if (needsAccount) missingParts.push('account ID');
-      if (needsToken) missingParts.push('access token');
-
-      const retry = await promptRetryOrCancel(
-        `${formatProviderLabel(updated)} still needs ${missingParts.join(' and ') || 'additional details'} for ${courseLabel}. Update the details now?`,
-        'Update Details'
-      );
-      if (!retry) {
-        throw new Error('Provider account verification cancelled.');
-      }
-
-      if (needsAccount) {
-        providerAccountId = undefined;
-      }
-
-      if (needsToken) {
-        providerAccessToken = undefined;
-      }
-
-      readiness = updated;
-      continue;
-    } catch (error: any) {
-      const detail = (error?.response?.data?.detail || error?.message || '').toString().toLowerCase();
-      const status = error?.response?.status;
-
-      if (status === 401 || detail.includes('token') || detail.includes('access')) {
-        const retry = await promptRetryOrCancel(
-          `${providerLabel} token was rejected. Provide a new token?`,
-          'Provide Token'
-        );
-        if (!retry) {
-          throw new Error('Provider account verification cancelled.');
-        }
-        providerAccessToken = await acquireToken({ defaultValue: providerAccessToken, forcePrompt: true });
-        continue;
-      }
-
-      if (status === 400 || status === 422 || detail.includes('account')) {
-        const retry = await promptRetryOrCancel(
-          `${providerLabel} account ID was not accepted. Enter a different account ID?`,
-          'Update Account ID'
-        );
-        if (!retry) {
-          throw new Error('Provider account verification cancelled.');
-        }
-        providerAccountId = undefined;
-        continue;
-      }
-
-      throw error;
-    }
+  // Update marker with backend URL if different or missing
+  if (!existing || existing.backendUrl !== baseUrl) {
+    await writeMarker(file, { backendUrl: baseUrl });
   }
 }
+
+
+
 
 class UnifiedController {
   private context: vscode.ExtensionContext;
   private api?: ComputorApiService;
   private disposables: vscode.Disposable[] = [];
   private activeViews: string[] = [];
-  private courseInfo?: { id: string; title: string };
+  private profileWebviewProvider?: UserProfileWebviewProvider;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
   }
 
-  getCourseInfo(): { id: string; title: string } | undefined {
-    return this.courseInfo;
-  }
-
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
     const api = await this.setupApi(client);
 
-    // Ensure course marker exists / choose course
-    const courseId = await ensureCourseMarker(api, this.context);
-    if (!courseId) throw new Error('Course selection cancelled.');
+    this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
+    const profileCommand = vscode.commands.registerCommand('computor.user.profile', async () => {
+      if (!this.profileWebviewProvider) {
+        this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
+      } else {
+        this.profileWebviewProvider.setApiService(api);
+      }
+      await this.profileWebviewProvider.open();
+    });
+    this.disposables.push(profileCommand);
 
-    const currentUser = await api.getCurrentUser();
-
-    // Get available views for this user/course combination
-    const availableViews = await api.getUserCourseViews(courseId);
+    // Get available views for this user across all courses
+    // This is a lightweight check to determine which role views to show
+    const availableViews = await this.getAvailableViews(api);
 
     if (availableViews.length === 0) {
-      throw new Error('No views available for this course.');
+      throw new Error('No views available for your account.');
     }
 
-    // Handle Git provider account setup for any role that needs it
-    await this.setupProviderAccount(api, courseId, currentUser, availableViews);
-
-    // Initialize views based on what's available (now with selection)
-    await this.initializeViews(api, courseId, availableViews);
+    // Initialize views based on what's available
+    // Each view will fetch its own courses
+    await this.initializeViews(api, null, availableViews);
 
     await GitEnvironmentService.getInstance().validateGitEnvironment();
 
@@ -486,117 +212,33 @@ class UnifiedController {
   }
 
   private async setupApi(client: ReturnType<typeof buildHttpClient>): Promise<ComputorApiService> {
-    const api = new ComputorApiService(this.context);
-    (api as any).httpClient = client;
+    const api = new ComputorApiService(this.context, client);
     this.api = api;
     return api;
   }
 
-  private async setupProviderAccount(api: ComputorApiService, courseId: string, currentUser: any, views: string[]): Promise<void> {
-    // Try multiple approaches to get provider URL, as different views have different data structures
-    let providerUrl: string | null = null;
-    let courseLabel: string = courseId;
-    let courseData: any = null;
-
-    // Try lecturer endpoint first (most comprehensive data)
-    if (views.includes('lecturer')) {
-      try {
-        courseData = await api.getCourse(courseId);
-        courseLabel = courseData?.title || courseData?.path || courseId;
-
-        // Store course information
-        this.courseInfo = { id: courseId, title: courseLabel };
-
-        // Try multiple paths for lecturer provider URL
-        providerUrl = courseData?.properties?.gitlab?.url ||
-                     courseData?.repository?.provider_url ||
-                     courseData?.organization?.gitlab?.url || null;
-
-        console.log('Lecturer course data structure:', {
-          title: courseData?.title,
-          properties: courseData?.properties,
-          repository: courseData?.repository,
-          organization: courseData?.organization
-        });
-      } catch (err) {
-        console.warn('Failed to get lecturer course details:', err);
-      }
-    }
-
-    // If no provider URL found, try student endpoint
-    if (!providerUrl && views.includes('student')) {
-      try {
-        courseData = await api.getStudentCourse(courseId);
-        courseLabel = courseData?.title || courseData?.path || courseLabel;
-
-        // Store course information if not already set
-        if (!this.courseInfo) {
-          this.courseInfo = { id: courseId, title: courseLabel };
-        }
-
-        providerUrl = courseData?.repository?.provider_url || null;
-        console.log('Student course data structure:', {
-          title: courseData?.title,
-          repository: courseData?.repository
-        });
-      } catch (err) {
-        console.warn('Failed to get student course details:', err);
-      }
-    }
-
-    // If still no provider URL, try tutor endpoint
-    if (!providerUrl && views.includes('tutor')) {
-      try {
-        courseData = await api.getTutorCourse(courseId);
-        courseLabel = courseData?.title || courseData?.path || courseLabel;
-
-        // Store course information if not already set
-        if (!this.courseInfo) {
-          this.courseInfo = { id: courseId, title: courseLabel };
-        }
-
-        providerUrl = courseData?.repository?.provider_url || null;
-        console.log('Tutor course data structure:', {
-          title: courseData?.title,
-          repository: courseData?.repository
-        });
-      } catch (err) {
-        console.warn('Failed to get tutor course details:', err);
-      }
-    }
-
-    // If we still don't have a provider URL, we might need to skip Git setup
-    if (!providerUrl) {
-      console.warn(`No Git provider found for course "${courseLabel}". Some Git-related features may not work.`);
-      // Don't call ensureCourseProviderAccount if there's no provider configured
-      return;
-    }
-
-    await ensureCourseProviderAccount(
-      api,
-      this.context,
-      courseId,
-      courseLabel,
-      providerUrl,
-      currentUser
-    );
+  private async getAvailableViews(api: ComputorApiService): Promise<string[]> {
+    return await api.getUserViews();
   }
 
-  private async initializeViews(api: ComputorApiService, courseId: string, views: string[]): Promise<void> {
+
+  private async initializeViews(api: ComputorApiService, courseId: string | null, views: string[]): Promise<void> {
+    void courseId; // No longer used - views show all courses
     // Store the active views
     this.activeViews = views;
 
     // Initialize ALL available views - each will get its own activity bar container
+    // Each view will fetch and display all available courses
     if (views.includes('student')) {
-      await this.initializeStudentView(api, courseId);
+      await this.initializeStudentView(api);
       await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
     }
     if (views.includes('tutor')) {
-      await this.initializeTutorView(api, courseId);
+      await this.initializeTutorView(api);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
     }
     if (views.includes('lecturer')) {
-      await this.initializeLecturerView(api, courseId);
+      await this.initializeLecturerView(api);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
     }
 
@@ -659,7 +301,7 @@ class UnifiedController {
     }
   }
 
-  private async initializeStudentView(api: ComputorApiService, courseId: string): Promise<void> {
+  private async initializeStudentView(api: ComputorApiService): Promise<void> {
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
     const statusBar = (await import('./ui/StatusBarService')).StatusBarService.initialize(this.context);
@@ -683,13 +325,13 @@ class UnifiedController {
     });
     this.disposables.push(studentExpandListener, studentCollapseListener);
 
-    // Set selected course into service
-    await courseSelectionService.selectCourse(courseId);
+    // No course pre-selection - tree will show all courses
 
     // Auto-setup repositories
+    // Auto-setup repositories for all courses
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing course repositories...', cancellable: false }, async (progress) => {
       progress.report({ message: 'Starting...' });
-      try { await repositoryManager.autoSetupRepositories(courseId, (msg) => progress.report({ message: msg })); } catch (e) { console.error(e); }
+      try { await repositoryManager.autoSetupRepositories(undefined, (msg) => progress.report({ message: msg })); } catch (e) { console.error(e); }
       tree.refresh();
     });
 
@@ -709,25 +351,14 @@ class UnifiedController {
     this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => panelProvider.updateTestResults(item)));
   }
 
-  private async initializeTutorView(api: ComputorApiService, courseId: string): Promise<void> {
+  private async initializeTutorView(api: ComputorApiService): Promise<void> {
     // Register filter panel and tree
     const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
     const selection = TutorSelectionService.initialize(this.context, api);
 
-    const currentCourseId = selection.getCurrentCourseId();
-    const currentCourseLabel = selection.getCurrentCourseLabel();
-    if (currentCourseId !== courseId || !currentCourseLabel) {
-      let resolvedLabel: string | null = null;
-      try {
-        const tutorCourse = await api.getTutorCourse(courseId);
-        resolvedLabel = tutorCourse?.title || tutorCourse?.path || null;
-      } catch (err) {
-        console.warn('Failed to resolve tutor course label:', err);
-      }
-      await selection.selectCourse(courseId, resolvedLabel ?? currentCourseLabel ?? courseId);
-    }
+    // Don't pre-select any course - tutor will show all courses in dropdown
     const filterProvider = new TutorFilterPanelProvider(this.context.extensionUri, api, selection);
     this.disposables.push(vscode.window.registerWebviewViewProvider(TutorFilterPanelProvider.viewType, filterProvider));
 
@@ -759,11 +390,11 @@ class UnifiedController {
       filterProvider.refreshFilters();
     }));
 
-    const commands = new TutorCommands(this.context, tree, api);
+    const commands = new TutorCommands(this.context, tree, api, filterProvider);
     commands.registerCommands();
   }
 
-  private async initializeLecturerView(api: ComputorApiService, courseId: string): Promise<void> {
+  private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.lecturer.courses', tree));
 
@@ -801,6 +432,8 @@ class UnifiedController {
 
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
+    new LecturerFsCommands(this.context, api).register();
+    new UserPasswordCommands(this.context, api).register();
 
     // Initialize lecturer assignments repository manager and trigger a background sync
     try {
@@ -821,6 +454,7 @@ class UnifiedController {
     this.disposables = [];
     if (this.api) this.api.clearHttpClient();
     this.api = undefined;
+    this.profileWebviewProvider = undefined;
   }
 
   getActiveViews(): string[] {
@@ -837,6 +471,7 @@ interface UnifiedSession {
 
 let activeSession: UnifiedSession | null = null;
 let isAuthenticating = false;
+let extensionUpdateService: ExtensionUpdateService | undefined;
 
 const backendConnectionService = BackendConnectionService.getInstance();
 
@@ -859,10 +494,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
         });
 
         if (folderUri && folderUri.length > 0) {
-          // Store pending login info before workspace change
-          await context.globalState.update('pendingLogin', {
-            timestamp: Date.now()
-          });
+          // No longer storing pending login - will auto-detect .computor file instead
 
           // Add the folder to the current workspace
           // This will restart the extension if no workspace was open
@@ -893,15 +525,18 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       activeSession = null;
     }
 
-    // Prompt for authentication - use generic auth since we don't know roles yet
     const secretKey = 'computor.auth';
-    const storedRaw = await context.secrets.get(secretKey);
-    const previous: StoredAuth | undefined = storedRaw ? JSON.parse(storedRaw) as StoredAuth : undefined;
-    const type = await chooseAuthType(settings, previous?.type);
-    if (!type) { return; }
-    const creds = await promptCredentials('Student', type, settings, previous);
+    const usernameKey = 'computor.username';
+    const passwordKey = 'computor.password';
+
+    const storedUsername = await context.secrets.get(usernameKey);
+    const storedPassword = await context.secrets.get(passwordKey);
+    const creds = await promptCredentials(
+      storedUsername || storedPassword
+        ? { username: storedUsername, password: storedPassword }
+        : undefined
+    );
     if (!creds) { return; }
-    const auth: StoredAuth = creds;
 
     backendConnectionService.setBaseUrl(baseUrl);
     const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
@@ -910,7 +545,24 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       return;
     }
 
-    const client = buildHttpClient(baseUrl, auth);
+    const client = new BearerTokenHttpClient(baseUrl, 5000);
+
+    try {
+      await client.authenticateWithCredentials(creds.username, creds.password);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Authentication failed: ${error.message}`);
+      return;
+    }
+
+    const tokenData = client.getTokenData();
+    const auth: StoredAuth = {
+      accessToken: tokenData.accessToken!,
+      refreshToken: tokenData.refreshToken || undefined,
+      expiresAt: tokenData.expiresAt?.toISOString(),
+      userId: tokenData.userId || undefined
+    };
+
+    await ensureWorkspaceMarker(baseUrl);
     const controller = new UnifiedController(context);
 
     try {
@@ -923,20 +575,50 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
           await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
           await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
           await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+          // Clear persisted tutor selection to prevent stale auth errors on next login
+          await context.globalState.update('computor.tutor.selection', undefined);
           backendConnectionService.stopHealthCheck();
         }),
         getActiveViews: () => controller.getActiveViews()
       };
 
       await context.secrets.store(secretKey, JSON.stringify(auth));
+      await context.secrets.store(usernameKey, creds.username);
+      await context.secrets.store(passwordKey, creds.password);
+
+      if (extensionUpdateService) {
+        extensionUpdateService.checkForUpdates().catch(err => {
+          console.warn('Extension update check failed:', err);
+        });
+      }
       await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
 
-      const courseInfo = controller.getCourseInfo();
-      const courseTitle = courseInfo?.title || 'Unknown Course';
-      vscode.window.showInformationMessage(`Logged in: ${courseTitle}`);
+      vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
     } catch (error: any) {
+      console.error('Login failed:', error);
       await controller.dispose();
-      vscode.window.showErrorMessage(`Failed to login: ${error?.message || error}`);
+
+      let errorMessage = 'Unknown error';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.toString) {
+        errorMessage = error.toString();
+      }
+
+      const fullError = error?.stack ? `${errorMessage}\n\nStack trace:\n${error.stack}` : errorMessage;
+      console.error('Full error details:', fullError);
+
+      vscode.window.showErrorMessage(
+        `Failed to login: ${errorMessage}`,
+        'Show Details'
+      ).then(selection => {
+        if (selection === 'Show Details') {
+          vscode.window.showErrorMessage(fullError, { modal: true });
+        }
+      });
+
       backendConnectionService.stopHealthCheck();
     }
   } finally {
@@ -945,14 +627,13 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 }
 
 
-// Removed automatic marker-based login prompts per user request
+// Automatic login prompt when .computor file is detected
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
 
-  const updateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
-  void updateService.checkForUpdates();
+  extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 
   // Initialize all view contexts to false to hide views until login
   await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
@@ -966,20 +647,83 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.commands.registerCommand('computor.manageGitLabTokens', async () => {
     await manageGitLabTokens(context);
   }));
-  
-  // Check for pending login after workspace change
-  const pendingLogin = context.globalState.get<{ timestamp: number }>('pendingLogin');
-  if (pendingLogin) {
-    // Clear the pending login state
-    await context.globalState.update('pendingLogin', undefined);
 
-    // Check if the login is recent (within 5 seconds)
-    if (Date.now() - pendingLogin.timestamp < 5000) {
-      // Automatically continue the login flow
-      setTimeout(() => {
-        vscode.window.showInformationMessage('Continuing login after workspace change...');
-        unifiedLoginFlow(context);
-      }, 1000);
+  // Check backend connection command
+  context.subscriptions.push(vscode.commands.registerCommand('computor.checkBackendConnection', async () => {
+    try {
+      const settings = new ComputorSettingsManager(context);
+      const baseUrl = await settings.getBaseUrl();
+
+      if (!baseUrl) {
+        const action = await vscode.window.showWarningMessage(
+          'No backend URL configured. Would you like to configure it now?',
+          'Configure',
+          'Cancel'
+        );
+        if (action === 'Configure') {
+          await vscode.commands.executeCommand('computor.changeRealmUrl');
+        }
+        return;
+      }
+
+      const backendConnectionService = BackendConnectionService.getInstance();
+      backendConnectionService.setBaseUrl(baseUrl);
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Checking backend connection...',
+        cancellable: false
+      }, async () => {
+        const status = await backendConnectionService.checkBackendConnection(baseUrl);
+
+        if (status.isReachable) {
+          vscode.window.showInformationMessage(`✓ Backend is reachable at ${baseUrl}`);
+        } else {
+          await backendConnectionService.showConnectionError(status);
+        }
+      });
+    } catch (error: any) {
+      console.error('Backend connection check failed:', error);
+
+      let errorMessage = 'Unknown error';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.toString) {
+        errorMessage = error.toString();
+      }
+
+      const fullError = error?.stack ? `${errorMessage}\n\nStack trace:\n${error.stack}` : errorMessage;
+      console.error('Full error details:', fullError);
+
+      vscode.window.showErrorMessage(
+        `Backend connection check failed: ${errorMessage}`,
+        'Show Details'
+      ).then(selection => {
+        if (selection === 'Show Details') {
+          vscode.window.showErrorMessage(fullError, { modal: true });
+        }
+      });
+    }
+  }));
+  
+  // Check if workspace has .computor file and automatically prompt for login
+  const workspaceRoot = getWorkspaceRoot();
+  if (workspaceRoot && !activeSession) {
+    const computorMarkerPath = path.join(workspaceRoot, computorMarker);
+    if (fs.existsSync(computorMarkerPath)) {
+      // Workspace has .computor file - prompt for login after a short delay
+      setTimeout(async () => {
+        const action = await vscode.window.showInformationMessage(
+          'Computor workspace detected. Would you like to login?',
+          'Login',
+          'Not Now'
+        );
+        if (action === 'Login') {
+          await unifiedLoginFlow(context);
+        }
+      }, 1500); // Small delay to let the extension fully initialize
     }
   }
 
@@ -998,47 +742,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.showInformationMessage('Computor backend URL updated.');
   }));
 
-  // Detect marker files on startup and when workspace changes
-  // Disabled: no automatic login prompt based on marker files
+  // Listen for workspace folder changes to detect .computor files
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+    if (!activeSession) {
+      const workspaceRoot = getWorkspaceRoot();
+      if (workspaceRoot) {
+        const computorMarkerPath = path.join(workspaceRoot, computorMarker);
+        if (fs.existsSync(computorMarkerPath)) {
+          // New workspace has .computor file - prompt for login
+          setTimeout(async () => {
+            const action = await vscode.window.showInformationMessage(
+              'Computor workspace detected. Would you like to login?',
+              'Login',
+              'Not Now'
+            );
+            if (action === 'Login') {
+              await unifiedLoginFlow(context);
+            }
+          }, 1500);
+        }
+      }
+    }
+  }));
 
   // Maintain legacy settings command to open extension settings scope
   context.subscriptions.push(vscode.commands.registerCommand('computor.settings', async () => {
     await vscode.commands.executeCommand('workbench.action.openSettings', 'computor');
   }));
 
-  // Token management commands
-  context.subscriptions.push(vscode.commands.registerCommand('computor.tokens.manage', async () => {
-    const { GitLabTokenManager } = await import('./services/GitLabTokenManager');
-    const mgr = GitLabTokenManager.getInstance(context);
-    const originInput = await vscode.window.showInputBox({
-      title: 'GitLab Origin',
-      prompt: 'Enter GitLab origin (e.g., http://localhost:8084)',
-      value: 'http://',
-      ignoreFocusOut: true,
-      validateInput: (v) => { try { const u = new URL(v); return u.origin ? undefined : 'Enter a valid origin URL'; } catch { return 'Enter a valid origin URL'; } }
-    });
-    if (!originInput) return;
-    const origin = new URL(originInput).origin;
-    const existing = await mgr.getToken(origin);
-    if (existing) {
-      const choice = await vscode.window.showQuickPick(['Update Token', 'Remove Token', 'Cancel'], { title: `Token for ${origin}` });
-      if (choice === 'Update Token') {
-        const tok = await vscode.window.showInputBox({ title: `Update Token for ${origin}`, password: true, ignoreFocusOut: true });
-        if (tok) await mgr.storeToken(origin, tok);
-      } else if (choice === 'Remove Token') {
-        await mgr.removeToken(origin);
-        vscode.window.showInformationMessage(`Removed token for ${origin}`);
-      }
-    } else {
-      const tok = await vscode.window.showInputBox({ title: `Set Token for ${origin}`, password: true, ignoreFocusOut: true });
-      if (tok) await mgr.storeToken(origin, tok);
-    }
-  }));
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   if (activeSession) {
-    void activeSession.deactivate();
+    await activeSession.deactivate();
     activeSession = null;
   }
   IconGenerator.cleanup();

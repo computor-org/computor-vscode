@@ -43,8 +43,8 @@ export class BackendConnectionService {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
-      const response = await fetch(`${baseUrl}/health`, {
-        method: 'GET',
+      const response = await fetch(`${baseUrl}/`, {
+        method: 'HEAD',
         signal: controller.signal,
         headers: {
           'Accept': 'application/json'

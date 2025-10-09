@@ -1,0 +1,33 @@
+{
+  "courseMemberId": "member-123",
+  "title": "Algorithms 101 / Assignment 2",
+  "comments": [
+    {
+      "id": "cmt-001",
+      "message": "Remember to push your feature branch before testing.",
+      "created_at": "2024-04-12T08:30:00.000Z",
+      "updated_at": "2024-04-12T08:30:00.000Z",
+      "transmitter": {
+        "user": {
+          "given_name": "Amelia",
+          "family_name": "Rivera",
+          "username": "amelia"
+        }
+      }
+    },
+    {
+      "id": "cmt-002",
+      "message": "Thanks! I just retried and the pipeline is green now.",
+      "parent_id": "cmt-001",
+      "created_at": "2024-04-12T09:02:00.000Z",
+      "updated_at": "2024-04-12T09:05:00.000Z",
+      "transmitter": {
+        "user": {
+          "given_name": "Daniel",
+          "family_name": "Nguyen",
+          "username": "daniel"
+        }
+      }
+    }
+  ]
+}

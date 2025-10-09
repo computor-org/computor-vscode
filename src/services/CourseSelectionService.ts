@@ -1,7 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs/promises';
-import * as os from 'os';
 import { ComputorApiService } from './ComputorApiService';
 import { StatusBarService } from '../ui/StatusBarService';
 
@@ -30,7 +27,11 @@ export class CourseSelectionService {
         this.context = context;
         this.apiService = apiService;
         this.statusBarService = statusBarService;
-        this.workspaceRoot = path.join(os.homedir(), '.computor', 'workspace');
+        const firstWorkspace = vscode.workspace.workspaceFolders?.[0];
+        if (!firstWorkspace) {
+            throw new Error('CourseSelectionService requires an open workspace folder.');
+        }
+        this.workspaceRoot = firstWorkspace.uri.fsPath;
         
         // Don't auto-load last selected course - let the student extension handle it
         // This prevents loading stale/invalid course IDs from previous sessions
@@ -128,33 +129,7 @@ export class CourseSelectionService {
         this.currentCourseId = course.id;
         this.currentCourseInfo = course;
 
-        // Update workspace folder - use the same workspace root as assignments
-        const courseWorkspace = this.workspaceRoot;
-        
-        // Ensure directory exists
-        try {
-            await fs.mkdir(courseWorkspace, { recursive: true });
-        } catch (error) {
-            // Directory might already exist, that's fine
-        }
-
-        // Update VSCode workspace folders
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        const existingIndex = workspaceFolders.findIndex(
-            folder => folder.uri.fsPath === courseWorkspace
-        );
-
-        if (existingIndex === -1) {
-            // Add new workspace folder
-            vscode.workspace.updateWorkspaceFolders(
-                workspaceFolders.length,
-                0,
-                { 
-                    uri: vscode.Uri.file(courseWorkspace), 
-                    name: `📚 ${course.title}` 
-                }
-            );
-        }
+        // Workspace folder already exists; nothing else to do here.
 
         // Save selection to global state
         await this.context.globalState.update('selectedCourseId', course.id);

@@ -1,0 +1,206 @@
+.profile-root {
+  padding: 16px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.profile-notice {
+  padding: 12px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.profile-notice.info {
+  background: var(--vscode-infoMessageBackground, rgba(0, 122, 204, 0.2));
+  border-color: var(--vscode-inputValidation-infoBorder, rgba(0, 122, 204, 0.4));
+  color: var(--vscode-foreground);
+}
+
+.profile-notice.success {
+  background: rgba(56, 142, 60, 0.2);
+  border-color: rgba(56, 142, 60, 0.5);
+  color: var(--vscode-foreground);
+}
+
+.profile-notice.warning {
+  background: rgba(255, 193, 7, 0.2);
+  border-color: rgba(255, 193, 7, 0.5);
+  color: var(--vscode-foreground);
+}
+
+.profile-notice.error {
+  background: rgba(211, 47, 47, 0.2);
+  border-color: rgba(211, 47, 47, 0.5);
+  color: var(--vscode-foreground);
+}
+
+.profile-section {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 6px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-section h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.profile-section p.section-description {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 16px;
+}
+
+.profile-grid .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-grid label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.profile-grid input,
+.profile-grid textarea,
+.profile-grid select {
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  color: var(--vscode-input-foreground);
+  border-radius: 4px;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.profile-grid input:focus,
+.profile-grid textarea:focus,
+.profile-grid select:focus {
+  outline: 1px solid var(--vscode-focusBorder, rgba(0, 122, 204, 0.8));
+  outline-offset: -1px;
+}
+
+.profile-grid textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.profile-actions button {
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.profile-actions button.primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.profile-actions button:hover {
+  filter: brightness(1.05);
+}
+
+.student-profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.student-profile-card {
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 6px;
+  padding: 16px;
+  background: var(--vscode-editor-background);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.student-profile-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.student-profile-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-state {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+  padding: 8px 0;
+}
+
+.password-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+
+.password-grid .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.password-grid label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.password-grid input {
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  color: var(--vscode-input-foreground);
+  border-radius: 4px;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.password-grid input:focus {
+  outline: 1px solid var(--vscode-focusBorder, rgba(0, 122, 204, 0.8));
+  outline-offset: -1px;
+}
+
+.profile-divider {
+  height: 1px;
+  background: var(--vscode-editorWidget-border);
+  margin: 8px 0;
+}
+
+@media (max-width: 640px) {
+  .profile-root {
+    padding: 16px;
+  }
+}

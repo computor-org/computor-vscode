@@ -7,12 +7,13 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitBranchManager } from '../services/GitBranchManager';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, CourseSubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { execAsync } from '../utils/exec';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
+import { GitEnvironmentService } from '../services/GitEnvironmentService';
 import JSZip from 'jszip';
 
 // (Deprecated legacy types removed)
@@ -74,6 +75,85 @@ export class StudentCommands {
   setCourseContentTreeProvider(provider: any): void {
     this.courseContentTreeProvider = provider;
   }
+
+  private async openReadmeIfExists(dir: string, silent: boolean = false): Promise<boolean> {
+    try {
+      let readmePath: string | undefined;
+      let preferredLanguage: string | null = null;
+
+      try {
+        const userAccount = await this.apiService.getUserAccount();
+        const userLanguage = userAccount?.profile?.language_code || null;
+
+        const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
+        let courseLanguage: string | null = null;
+        if (courseId) {
+          const course = await this.apiService.getCourse(courseId);
+          courseLanguage = course?.language_code || null;
+        }
+
+        preferredLanguage = userLanguage || courseLanguage;
+      } catch (error) {
+        console.warn('[openReadmeIfExists] Failed to fetch language preferences:', error);
+      }
+
+      if (preferredLanguage) {
+        const localizedPath = path.join(dir, `README_${preferredLanguage}.md`);
+        if (fs.existsSync(localizedPath)) {
+          readmePath = localizedPath;
+        }
+      }
+
+      if (!readmePath) {
+        const files = fs.readdirSync(dir);
+        const readmeFiles = files.filter(f => f.match(/^README(_[a-z]{2})?\.md$/i));
+
+        if (readmeFiles.length === 1) {
+          readmePath = path.join(dir, readmeFiles[0]!);
+        } else if (readmeFiles.includes('README.md')) {
+          readmePath = path.join(dir, 'README.md');
+        } else if (readmeFiles.length > 0) {
+          readmePath = path.join(dir, readmeFiles[0]!);
+        }
+      }
+
+      if (readmePath && fs.existsSync(readmePath)) {
+        const readmeUri = vscode.Uri.file(readmePath);
+        await vscode.commands.executeCommand('markdown.showPreview', readmeUri, vscode.ViewColumn.Two, { sideBySide: true });
+        return true;
+      }
+
+      if (!silent) {
+        vscode.window.showInformationMessage('No README.md found in this assignment');
+      }
+      return false;
+    } catch (e) {
+      console.error('openReadmeIfExists failed:', e);
+      if (!silent) vscode.window.showErrorMessage('Failed to open README.md');
+      return false;
+    }
+  }
+
+  private async findRepoRoot(startPath: string): Promise<string | undefined> {
+    try {
+      let current = startPath;
+      while (true) {
+        const stat = fs.existsSync(current) ? fs.statSync(current) : undefined;
+        const dir = stat && stat.isDirectory() ? current : path.dirname(current);
+        const gitDir = path.join(dir, '.git');
+        if (fs.existsSync(gitDir)) {
+          return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        current = parent;
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
 
   registerCommands(): void {
     // Refresh student view
@@ -278,7 +358,7 @@ export class StudentCommands {
 
     // Submit assignment
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.submitAssignment', async (itemOrSubmissionGroup: any, maybeCourse?: any) => {
+      vscode.commands.registerCommand('computor.student.submitAssignment', async (itemOrSubmissionGroup: any) => {
         try {
           // Support invocation from tree item (preferred)
           let directory: string | undefined;
@@ -403,36 +483,43 @@ export class StudentCommands {
               const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: repoPath });
               submissionVersion = headStdout.trim();
 
-              let uploadRequired = true;
+              let existingArtifactId: string | undefined;
+              let alreadySubmitted = false;
               try {
-                const existingSubmissions = await this.apiService.listStudentSubmissions({
-                  course_submission_group_id: submissionGroupId,
-                  version_identifier: submissionVersion,
-                  submit: true
+                const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
+                  submission_group_id: submissionGroupId,
+                  version_identifier: submissionVersion
                 });
-                if (existingSubmissions.length > 0) {
-                  uploadRequired = false;
+                if (existingSubmissions.length > 0 && existingSubmissions[0]?.id) {
+                  existingArtifactId = existingSubmissions[0].id;
+                  alreadySubmitted = existingSubmissions[0].submit === true;
                 }
               } catch (listError) {
                 console.warn('[StudentCommands] Failed to check existing submissions:', listError);
               }
 
-              if (!uploadRequired) {
+              if (existingArtifactId && alreadySubmitted) {
                 reusedExistingSubmission = true;
                 submissionOk = true;
-                progress.report({ message: 'Submission already exists for this version; skipping upload.' });
+                progress.report({ message: 'Submission already exists for this version.' });
                 return;
+              } else if (existingArtifactId && !alreadySubmitted) {
+                progress.report({ message: 'Marking existing artifact as submitted...' });
+                submissionResponse = await this.apiService.updateStudentSubmission(
+                  existingArtifactId,
+                  { submit: true }
+                );
+              } else {
+                progress.report({ message: 'Packaging submission archive...' });
+                const archive = await this.createSubmissionArchive(submissionDirectory);
+
+                progress.report({ message: 'Creating submission...' });
+                submissionResponse = await this.apiService.createStudentSubmission({
+                  submission_group_id: submissionGroupId,
+                  version_identifier: submissionVersion || undefined,
+                  submit: true
+                }, archive);
               }
-
-              progress.report({ message: 'Packaging submission archive...' });
-              const archive = await this.createSubmissionArchive(submissionDirectory);
-
-              progress.report({ message: 'Creating submission...' });
-              submissionResponse = await this.apiService.createStudentSubmission({
-                course_submission_group_id: submissionGroupId,
-                version_identifier: submissionVersion || undefined,
-                submit: true
-              }, archive);
 
               submissionOk = true;
             } catch (e) {
@@ -519,7 +606,7 @@ export class StudentCommands {
             title: `Committing and pushing ${assignmentTitle}...`,
             cancellable: false
           }, async (progress) => {
-            progress.report({ increment: 0, message: 'Checking branch...' });
+            progress.report({ increment: 0, message: 'Preparing to commit...' });
 
             // Find repository root
             const repoPath = await this.findRepoRoot(directory);
@@ -527,26 +614,32 @@ export class StudentCommands {
               throw new Error('Could not determine repository root');
             }
 
-            // Ensure we're on the main branch
-            const currentBranch = await this.gitBranchManager.getCurrentBranch(repoPath);
-            const mainBranch = await this.gitBranchManager.getMainBranch(repoPath);
-            
-            if (currentBranch !== mainBranch) {
-              progress.report({ increment: 20, message: `Switching to ${mainBranch} branch...` });
-              await this.gitBranchManager.checkoutBranch(repoPath, mainBranch);
-            }
-
             progress.report({ increment: 40, message: 'Committing changes...' });
             // Stage only the assignment directory
             const relAssignmentPath = path.relative(repoPath, directory);
             await execAsync(`git add ${JSON.stringify(relAssignmentPath)}`, { cwd: repoPath });
-            
+
             // Commit only if something is staged
             const { stdout: staged } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
             if (staged.trim().length === 0) {
               throw new Error('No changes to commit in the assignment folder');
             }
-            await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+
+            try {
+              await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+            } catch (commitError: any) {
+              if (commitError.message?.includes('user.name') || commitError.message?.includes('user.email') || commitError.message?.includes('Author identity')) {
+                const gitEnv = GitEnvironmentService.getInstance();
+                const configured = await gitEnv.promptAndConfigureGit();
+                if (configured) {
+                  await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+                } else {
+                  throw new Error('Git configuration is required to commit. Please configure git user.name and user.email.');
+                }
+              } else {
+                throw commitError;
+              }
+            }
 
             progress.report({ increment: 60, message: 'Pushing to remote...' });
             // Push to main branch, prompting for new token if required
@@ -614,6 +707,7 @@ export class StudentCommands {
           ? item.courseContent.id
           : String(item.courseContent.id);
 
+        let testSucceeded = false;
         try {
           // Always show a single progress for the entire test flow
           await vscode.window.withProgress({
@@ -626,14 +720,6 @@ export class StudentCommands {
             let commitHash: string | null = null;
 
             if (hasChanges) {
-              progress.report({ message: 'Checking branch...' });
-              const currentBranch = await this.gitBranchManager.getCurrentBranch(submissionDirectory);
-              const mainBranch = await this.gitBranchManager.getMainBranch(submissionDirectory);
-              if (currentBranch !== mainBranch) {
-                progress.report({ message: `Switching to ${mainBranch} branch...` });
-                await this.gitBranchManager.checkoutBranch(submissionDirectory, mainBranch);
-              }
-
               progress.report({ message: 'Committing changes...' });
               await this.gitBranchManager.stageAll(submissionDirectory);
               const now = new Date();
@@ -658,64 +744,97 @@ export class StudentCommands {
             }
 
             if (commitHash && courseContentId) {
-              let uploadRequired = true;
+              let existingArtifactId: string | undefined;
               try {
-                const existingSubmissions = await this.apiService.listStudentSubmissions({
-                  course_submission_group_id: submissionGroupId,
+                const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
+                  submission_group_id: submissionGroupId,
                   version_identifier: commitHash,
                   submit: false
                 });
-                if (existingSubmissions.length > 0) {
-                  uploadRequired = false;
+                console.log(`[TestAssignment] Found ${existingSubmissions.length} existing artifacts for commit ${commitHash}`);
+
+                // IMPORTANT: Backend currently doesn't filter by version_identifier, so we must validate client-side
+                const matchingArtifact = existingSubmissions.find(
+                  (artifact: any) => artifact.version_identifier === commitHash
+                );
+
+                if (matchingArtifact?.id) {
+                  existingArtifactId = matchingArtifact.id;
+                  console.log(`[TestAssignment] Reusing artifact ID: ${existingArtifactId} with matching version`);
+                } else if (existingSubmissions.length > 0) {
+                  console.log(`[TestAssignment] Found ${existingSubmissions.length} artifacts but none match version ${commitHash}`);
                 }
               } catch (listError) {
                 console.warn('[TestAssignment] Failed to check existing submissions:', listError);
               }
 
-              if (uploadRequired) {
-                progress.report({ message: 'Packaging submission archive...' });
-                const archive = await this.createSubmissionArchive(submissionDirectory);
+              let submissionResponse: any = null;
 
-                if (token?.isCancellationRequested) {
-                  return;
-                }
-
-                progress.report({ message: 'Uploading submission package...' });
-                await this.apiService.createStudentSubmission({
-                  course_submission_group_id: submissionGroupId,
-                  version_identifier: commitHash
-                }, archive);
+              if (existingArtifactId) {
+                console.log(`[TestAssignment] Path: Reusing existing artifact`);
+                progress.report({ message: 'Reusing existing test submission...' });
+                submissionResponse = { artifacts: [existingArtifactId] };
               } else {
-                progress.report({ message: 'Reusing existing submission archive.' });
+                console.log(`[TestAssignment] Path: Creating new artifact`);
+                progress.report({ message: 'Packaging submission archive...' });
+
+                try {
+                  const archive = await this.createSubmissionArchive(submissionDirectory);
+                  console.log(`[TestAssignment] Archive created successfully`);
+
+                  if (token?.isCancellationRequested) {
+                    console.log(`[TestAssignment] Cancelled before upload`);
+                    return;
+                  }
+
+                  progress.report({ message: 'Uploading submission package...' });
+                  submissionResponse = await this.apiService.createStudentSubmission({
+                    submission_group_id: submissionGroupId,
+                    version_identifier: commitHash,
+                    submit: false
+                  }, archive);
+                  console.log(`[TestAssignment] Created new submission:`, submissionResponse);
+                } catch (uploadError) {
+                  console.error(`[TestAssignment] Failed to create submission:`, uploadError);
+                  throw uploadError;
+                }
               }
 
-              // Submit test and reuse the same progress indicator for polling
-              await this.testResultService.submitTestAndAwaitResults(
-                courseContentId,
-                commitHash,
-                assignmentTitle,
-                undefined,
-                { progress, token, showProgress: false }
-              );
+              // Submit test using artifact_id - artifact is now required
+              if (submissionResponse?.artifacts?.length > 0) {
+                const artifactId = submissionResponse.artifacts[0];
+                console.log(`[TestAssignment] Submitting test with artifact ID: ${artifactId}`);
+                await this.testResultService.submitTestByArtifactAndAwaitResults(
+                  artifactId,
+                  assignmentTitle,
+                  undefined,
+                  { progress, token, showProgress: false }
+                );
+              } else {
+                console.error('[TestAssignment] No artifact ID available, cannot submit test');
+                throw new Error('Failed to create or retrieve submission artifact');
+              }
+              testSucceeded = true;
             } else {
               vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
             }
           });
 
-          // Refresh just this course content from API after results
-          await this.treeDataProvider.refreshContentItem(courseContentId);
+          // Only refresh if test completed successfully
+          if (testSucceeded) {
+            // Clear the cache for this specific content to ensure fresh data
+            this.apiService.clearStudentCourseContentCache(courseContentId);
+            // Use full refresh to ensure tree updates properly
+            this.treeDataProvider.refresh();
+          }
         } catch (error: any) {
           console.error('Failed to test assignment:', error);
+          // Only show error message for git push failures
+          // Other errors (like test submission errors) are already handled by TestResultService
           if (error?.message && error.message.includes('Failed to push changes to remote')) {
             vscode.window.showErrorMessage(`Assignment test aborted: ${error.message}`);
-          } else {
-            const message = typeof error?.message === 'string'
-              ? error.message
-              : typeof error === 'string'
-                ? error
-                : 'Unknown error';
-            vscode.window.showErrorMessage(`Failed to test assignment: ${message}`);
           }
+          // For other errors, TestResultService has already shown the error message
         }
       })
     );
@@ -725,32 +844,62 @@ export class StudentCommands {
     try {
       const courseSelection = CourseSelectionService.getInstance();
       const courseInfo = courseSelection.getCurrentCourseInfo();
-      const courseId = courseSelection.getCurrentCourseId();
-      if (!courseId) {
-        vscode.window.showWarningMessage('No course selected.');
-        return;
-      }
+      let courseId = courseSelection.getCurrentCourseId();
 
       let target: MessageTargetContext | undefined;
 
-      const content = item?.courseContent as any;
+      // Check if item is a course tree node (CourseRootItem has courseId property)
+      if (item?.courseId && typeof item.courseId === 'string') {
+        courseId = item.courseId;
+      }
+
+      // Also check if item has a nested course object
+      const course = item?.course as any;
+      if (course && typeof course.id === 'string') {
+        courseId = course.id;
+      }
+
+      // Extract course content - could be in item.courseContent or item.node.courseContent (for units)
+      let content = item?.courseContent as any;
+      if (!content && item?.node?.courseContent) {
+        content = item.node.courseContent;
+      }
+
       if (content && typeof content.id === 'string') {
+        courseId = content.course_id || courseId;
+
+        if (!courseId) {
+          vscode.window.showWarningMessage('No course selected.');
+          return;
+        }
+
         const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
         const contentTitle: string = content.title || content.path || 'Course content';
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
         const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
+
+        // Query should NOT include course_id when viewing content-specific messages
+        // Including course_id would return ALL messages in the course (due to OR filter in backend)
         const query: Record<string, string> = {
-          course_id: content.course_id || courseId,
-          course_content_id: content.id
-        };
-        const createPayload: Partial<MessageCreate> = {
-          course_id: content.course_id || courseId,
           course_content_id: content.id
         };
 
+        // Students can only write to submission_group_id, not course_content_id
+        // course_content_id is for lecturers+ only
+        let createPayload: Partial<MessageCreate>;
+
         if (submissionGroup?.id) {
-          query.course_submission_group_id = submissionGroup.id;
-          createPayload.course_submission_group_id = submissionGroup.id;
+          // Assignment with submission group - students can write to submission_group_id
+          query.submission_group_id = submissionGroup.id;
+          createPayload = {
+            submission_group_id: submissionGroup.id
+          };
+        } else {
+          // Unit content without submission group - students can only read course_content messages
+          // Trying to write will fail with ForbiddenException (lecturer+ only)
+          createPayload = {
+            course_content_id: content.id  // This will fail with ForbiddenException, but allows reading
+          };
         }
 
         target = {
@@ -763,13 +912,22 @@ export class StudentCommands {
       }
 
       if (!target) {
+        if (!courseId) {
+          vscode.window.showWarningMessage('No course selected.');
+          return;
+        }
+
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course messages';
         const subtitle = courseInfo?.path ? `Course • ${courseInfo.path}` : undefined;
+
+        // Students cannot write to course_id (lecturer+ only)
+        // This will show course messages but prevent students from creating them
+        // Use scope filter to show ONLY course-scoped messages, not content/submission messages
         target = {
           title: courseLabel,
           subtitle,
-          query: { course_id: courseId },
-          createPayload: { course_id: courseId },
+          query: { course_id: courseId, scope: 'course' },
+          createPayload: { course_id: courseId },  // This will fail with ForbiddenException
           sourceRole: 'student'
         } satisfies MessageTargetContext;
       }
@@ -1020,7 +1178,7 @@ export class StudentCommands {
       resultPercent: normalizedResult !== null ? normalizedResult * 100 : null,
       rawResult: normalizedResult,
       status: entry.status ?? null,
-      submit: typeof entry.submit === 'boolean' ? entry.submit : null,
+      submit: null,
       createdAt: entry.created_at ?? null,
       updatedAt: entry.updated_at ?? null,
       versionIdentifier: entry.version_identifier ?? null,
@@ -1030,17 +1188,17 @@ export class StudentCommands {
 
 
   private buildGradingHistory(entries: unknown): StudentGradingHistoryEntry[] {
-    let normalized: CourseSubmissionGroupGradingList[] = [];
+    let normalized: SubmissionGroupGradingList[] = [];
 
     if (Array.isArray(entries)) {
-      normalized = entries.filter((entry): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+      normalized = entries.filter((entry): entry is SubmissionGroupGradingList => Boolean(entry));
     } else if (entries && typeof entries === 'object') {
       const maybeItems = (entries as any).items;
       if (Array.isArray(maybeItems)) {
-        normalized = maybeItems.filter((entry: any): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+        normalized = maybeItems.filter((entry: any): entry is SubmissionGroupGradingList => Boolean(entry));
       } else {
-        normalized = Object.values(entries as Record<string, CourseSubmissionGroupGradingList>)
-          .filter((entry): entry is CourseSubmissionGroupGradingList => Boolean(entry));
+        normalized = Object.values(entries as Record<string, SubmissionGroupGradingList>)
+          .filter((entry): entry is SubmissionGroupGradingList => Boolean(entry));
       }
     }
 
@@ -1057,7 +1215,7 @@ export class StudentCommands {
     return sorted.map((entry) => this.createHistoryEntry(entry));
   }
 
-  private createHistoryEntry(entry: CourseSubmissionGroupGradingList): StudentGradingHistoryEntry {
+  private createHistoryEntry(entry: SubmissionGroupGradingList): StudentGradingHistoryEntry {
     const grade = this.normalizeGradeValue(entry.grading);
     const graderName = this.formatGraderName(entry.graded_by_course_member as any, entry.graded_by_course_member_id);
     const status = this.mapGradingStatus(entry.status) || 'unknown';
@@ -1182,94 +1340,3 @@ export class StudentCommands {
     return path.join(workspaceRoot, directory);
   }
 }
-
-// Private helpers
-export interface StudentCommands {
-  openReadmeIfExists(dir: string, silent?: boolean): Promise<boolean>;
-  findRepoRoot(startPath: string): Promise<string | undefined>;
-  copyDirectory(src: string, dest: string): Promise<void>;
-}
-
-StudentCommands.prototype.openReadmeIfExists = async function (dir: string, silent: boolean = false): Promise<boolean> {
-  try {
-    const readmePath = path.join(dir, 'README.md');
-    if (fs.existsSync(readmePath)) {
-      const readmeUri = vscode.Uri.file(readmePath);
-      await vscode.commands.executeCommand('markdown.showPreview', readmeUri, vscode.ViewColumn.Two, { sideBySide: true });
-      return true;
-    }
-    if (!silent) {
-      vscode.window.showInformationMessage('No README.md found in this assignment');
-    }
-    return false;
-  } catch (e) {
-    console.error('openReadmeIfExists failed:', e);
-    if (!silent) vscode.window.showErrorMessage('Failed to open README.md');
-    return false;
-  }
-};
-
-// Extract GitLab origin (protocol + host) from a git remote URL
-(StudentCommands.prototype as any).extractGitLabOrigin = function(remote: string): string | undefined {
-  try {
-    if (remote.startsWith('http://') || remote.startsWith('https://')) {
-      const u = new URL(remote);
-      return `${u.protocol}//${u.host}`;
-    }
-    // git@host:group/repo.git
-    if (remote.startsWith('git@')) {
-      const at = remote.indexOf('@');
-      const colon = remote.indexOf(':');
-      if (at !== -1 && colon !== -1 && colon > at) {
-        const host = remote.substring(at + 1, colon);
-        return `https://${host}`;
-      }
-    }
-  } catch {}
-  try {
-    const u = new URL(remote);
-    return `${u.protocol}//${u.host}`;
-  } catch {}
-  return undefined;
-};
-
-
-StudentCommands.prototype.findRepoRoot = async function (startPath: string): Promise<string | undefined> {
-  try {
-    let current = startPath;
-    while (true) {
-      const stat = fs.existsSync(current) ? fs.statSync(current) : undefined;
-      const dir = stat && stat.isDirectory() ? current : path.dirname(current);
-      const gitDir = path.join(dir, '.git');
-      if (fs.existsSync(gitDir)) {
-        return dir;
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      current = parent;
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-StudentCommands.prototype.copyDirectory = async function (src: string, dest: string): Promise<void> {
-  const stat = await fs.promises.stat(src);
-  if (!stat.isDirectory()) {
-    throw new Error('Source is not a directory');
-  }
-  await fs.promises.rm(dest, { recursive: true, force: true });
-  await fs.promises.mkdir(dest, { recursive: true });
-
-  const entries = await fs.promises.readdir(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const s = path.join(src, entry.name);
-    const d = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      await this.copyDirectory(s, d);
-    } else if (entry.isFile()) {
-      await fs.promises.copyFile(s, d);
-    }
-  }
-};
