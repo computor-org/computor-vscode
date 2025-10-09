@@ -9,4 +9,4 @@ VS Code extension for computor teaching software
 
 ## Token Management
 
-- Use the command "Manage Git Tokens" to set or remove a GitLab Personal Access Token per origin (e.g., `http://localhost:8084`). Tokens are stored securely in VS Code secret storage and used for cloning student repositories in Tutor workflows.
+- Use the command "Manage GitLab Tokens" to set or remove a GitLab Personal Access Token per origin (e.g., `http://localhost:8084`). Tokens are stored securely in VS Code secret storage and used for cloning student repositories in Tutor workflows.
