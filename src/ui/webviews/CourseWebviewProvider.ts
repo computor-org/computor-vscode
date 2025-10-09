@@ -19,117 +19,44 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     courseFamily: CourseFamilyList;
     organization: OrganizationList;
   }): Promise<string> {
+    if (!this.panel) {
+      return this.getBaseHtml('Course', '<p>Loading…</p>');
+    }
+
     if (!data) {
       return this.getBaseHtml('Course', '<p>No course data available</p>');
     }
 
     const { course, courseFamily, organization } = data;
-    
-    const content = `
-      <h1>${course.title || course.path}</h1>
-      
-      <div class="info-section">
-        <h2>Course Information</h2>
-        <p><strong>ID:</strong> ${course.id}</p>
-        <p><strong>Path:</strong> ${course.path}</p>
-        <p><strong>Course Family:</strong> ${courseFamily.title || courseFamily.path}</p>
-        <p><strong>Organization:</strong> ${organization.title || organization.path}</p>
-        ${course.properties?.gitlab ? `
-          <p><strong>GitLab Repository:</strong> <a href="${course.properties.gitlab.url}">${course.properties.gitlab.url}</a></p>
-        ` : ''}
-      </div>
 
-      <div class="form-section">
-        <h2>Edit Course</h2>
-        <form id="editCourseForm">
-          <div class="form-group">
-            <label for="title">Title</label>
-            <input type="text" id="title" name="title" value="${course.title || ''}" />
-          </div>
-          
-          <div class="form-group">
-            <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4">${course.description || ''}</textarea>
-          </div>
-          
-          <div class="form-group">
-            <label for="gitlabUrl">GitLab Repository URL</label>
-            <input type="url" id="gitlabUrl" name="gitlabUrl" value="${course.properties?.gitlab?.url || ''}" />
-          </div>
-          
-          <div class="actions">
-            <button type="submit" class="button">Save Changes</button>
-          </div>
-        </form>
-      </div>
+    const webview = this.panel.webview;
+    const nonce = this.getNonce();
+    const initialState = JSON.stringify({ course, courseFamily, organization });
+    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
+    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'course-details.css');
+    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
+    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'course-details.js');
 
-      <div class="actions-section">
-        <h2>Actions</h2>
-        <div class="actions">
-          <button class="button" onclick="openInGitLab()">Open in GitLab</button>
-          <button class="button" onclick="cloneRepository()">Clone Repository</button>
-          <button class="button" onclick="releaseContent()">Release Content</button>
-          <button class="button secondary" onclick="showMembers()">Manage Members</button>
-        </div>
-      </div>
-
-      <script nonce="{{NONCE}}">
-        const courseData = ${JSON.stringify(data)};
-        
-        // Handle form submission
-        document.getElementById('editCourseForm').addEventListener('submit', (e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target);
-          sendMessage('updateCourse', {
-            courseId: courseData.course.id,
-            updates: {
-              title: formData.get('title'),
-              description: formData.get('description'),
-              properties: {
-                gitlab: formData.get('gitlabUrl') ? {
-                  url: formData.get('gitlabUrl')
-                } : null
-              }
-            }
-          });
-        });
-        
-        function refreshView() {
-          sendMessage('refresh', { courseId: courseData.course.id });
-        }
-        
-        function openInGitLab() {
-          sendMessage('openInGitLab', { url: courseData.course.properties?.gitlab?.url });
-        }
-        
-        function cloneRepository() {
-          sendMessage('cloneRepository', { 
-            courseId: courseData.course.id,
-            url: courseData.course.properties?.gitlab?.url 
-          });
-        }
-        
-        function releaseContent() {
-          sendMessage('releaseContent', { courseId: courseData.course.id });
-        }
-        
-        function showMembers() {
-          sendMessage('showMembers', { courseId: courseData.course.id });
-        }
-        
-        // Override updateView
-        function updateView(data) {
-          // Update form fields with new data if provided
-          if (data && data.course) {
-            document.getElementById('title').value = data.course.title || '';
-            document.getElementById('gitlabUrl').value = data.course.properties?.gitlab?.url || '';
-            courseData.course = data.course;
-          }
-        }
+    return `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
+      <title>Course Details</title>
+      <link rel="stylesheet" href="${componentsCssUri}">
+      <link rel="stylesheet" href="${stylesUri}">
+    </head>
+    <body>
+      <div id="app" class="view-root"></div>
+      <script nonce="${nonce}">
+        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
+        window.__INITIAL_STATE__ = ${initialState};
       </script>
-    `;
-
-    return this.getBaseHtml(`Course: ${course.title || course.path}`, content);
+      <script nonce="${nonce}" src="${componentsJsUri}"></script>
+      <script nonce="${nonce}" src="${scriptUri}"></script>
+    </body>
+    </html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -149,43 +76,21 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        // Reload the webview with fresh data
         if (message.data.courseId) {
           try {
             const course = await this.apiService.getCourse(message.data.courseId);
             if (course && this.currentData) {
-              // Update the current data and re-render the entire webview
               this.currentData.course = course;
-              const content = await this.getWebviewContent(this.currentData);
-              if (this.panel) {
-                this.panel.webview.html = content;
-              }
+              this.panel?.webview.postMessage({
+                command: 'updateState',
+                data: { course, courseFamily: this.currentData.courseFamily, organization: this.currentData.organization }
+              });
               vscode.window.showInformationMessage('Course refreshed');
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
           }
         }
-        break;
-
-      case 'openInGitLab':
-        if (message.data.url) {
-          vscode.env.openExternal(vscode.Uri.parse(message.data.url));
-        }
-        break;
-
-      case 'cloneRepository':
-        vscode.commands.executeCommand('computor.cloneCourseRepository', message.data);
-        break;
-
-      case 'releaseContent':
-        // Convert course data to a format that the command expects
-        // The command expects either a CourseTreeItem or course data with an id
-        vscode.commands.executeCommand('computor.lecturer.releaseCourseContentFromWebview', message.data);
-        break;
-
-      case 'showMembers':
-        vscode.window.showInformationMessage('Member management coming soon!');
         break;
     }
   }
