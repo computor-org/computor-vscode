@@ -1350,7 +1350,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
       return created;
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create course content: ${error}`);
+      vscode.window.showErrorMessage(`Failed to create content: ${error}`);
       return undefined;
     }
   }

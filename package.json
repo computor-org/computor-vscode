@@ -316,7 +316,7 @@
       },
       {
         "command": "computor.lecturer.createCourseContent",
-        "title": "Create Course Content",
+        "title": "create content",
         "icon": "$(add)",
         "category": "Computor Lecturer"
       },
@@ -462,7 +462,7 @@
       },
       {
         "command": "computor.lecturer.releaseCourseContent",
-        "title": "Release Course Content",
+        "title": "Release Content",
         "icon": "$(rocket)",
         "category": "Computor Lecturer"
       }
