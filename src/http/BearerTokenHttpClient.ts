@@ -115,11 +115,36 @@ export class BearerTokenHttpClient extends HttpClient {
     data?: any,
     params?: Record<string, any>
   ): Promise<import('../types/HttpTypes').HttpResponse<T>> {
+    // Proactive refresh: check if token is expired before making request
     if (this.isTokenExpired() && this.refreshToken) {
       await this.refreshAuth();
     }
 
-    return super.request(method, endpoint, data, params);
+    try {
+      // Make the request
+      const response = await super.request<T>(method, endpoint, data, params);
+      return response;
+    } catch (error: any) {
+      // Reactive refresh: handle 401 Unauthorized by refreshing and retrying
+      if (error?.status === 401 && this.refreshToken && !this.isTokenExpired()) {
+        console.log('[BearerTokenHttpClient] Received 401, attempting token refresh and retry');
+
+        try {
+          // Refresh the token
+          await this.refreshAuth();
+
+          // Retry the original request with new token
+          console.log('[BearerTokenHttpClient] Token refreshed, retrying request');
+          return await super.request<T>(method, endpoint, data, params);
+        } catch (refreshError: any) {
+          console.error('[BearerTokenHttpClient] Token refresh failed:', refreshError);
+          throw error; // Throw original 401 error
+        }
+      }
+
+      // For all other errors, just rethrow
+      throw error;
+    }
   }
 
   private setTokensFromResponse(loginResponse: LocalLoginResponse): void {
@@ -157,7 +182,8 @@ export class BearerTokenHttpClient extends HttpClient {
     }
 
     const now = new Date();
-    const expiryWithBuffer = new Date(this.tokenExpiry.getTime() - 60000);
+    // Refresh 1 hour (3600 seconds) before expiration as recommended by backend
+    const expiryWithBuffer = new Date(this.tokenExpiry.getTime() - 3600000);
     return now >= expiryWithBuffer;
   }
 
