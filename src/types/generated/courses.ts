@@ -93,6 +93,12 @@ export interface CourseContentLecturerQuery {
   execution_backend_id?: string | null;
   /** Filter by whether content has a deployment */
   has_deployment?: boolean | null;
+  directory?: string | null;
+  project?: string | null;
+  provider_url?: string | null;
+  nlevel?: number | null;
+  descendants?: string | null;
+  ascendants?: string | null;
 }
 
 /**
@@ -199,6 +205,15 @@ export interface CourseMemberCommentQuery {
   id?: string | null;
   transmitter_id?: string | null;
   course_member_id?: string | null;
+}
+
+export interface CommentCreate {
+  course_member_id: any;
+  message: string;
+}
+
+export interface CommentUpdate {
+  message: string;
 }
 
 /**
@@ -315,16 +330,18 @@ export interface CourseContentQuery {
   limit?: number | null;
   id?: string | null;
   title?: string | null;
+  description?: string | null;
   path?: string | null;
   course_id?: string | null;
   course_content_type_id?: string | null;
-  properties?: CourseContentProperties | null;
   archived?: boolean | null;
   position?: number | null;
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
   execution_backend_id?: string | null;
+  /** DEPRECATED: Filter by example version ID */
+  example_version_id?: string | null;
   /** Filter by whether content has a deployment */
   has_deployment?: boolean | null;
 }
@@ -534,7 +551,7 @@ export interface CourseContentStudentList {
 }
 
 export interface CourseContentStudentUpdate {
-  status?: any | null;
+  status?: "corrected" | "correction_necessary" | "improvement_possible" | "not_reviewed" | null;
   grading?: number | null;
   feedback?: string | null;
 }
@@ -610,7 +627,6 @@ export interface CourseFamilyQuery {
   description?: string | null;
   path?: string | null;
   organization_id?: string | null;
-  properties?: string | null;
 }
 
 export interface CourseStudentRepository {
@@ -703,7 +719,6 @@ export interface CourseMemberQuery {
   course_id?: string | null;
   course_group_id?: string | null;
   course_role_id?: string | null;
-  properties?: CourseMemberProperties | null;
   given_name?: string | null;
   family_name?: string | null;
 }
@@ -724,6 +739,14 @@ export interface CourseCreate {
   course_family_id: string;
   language_code?: string | null;
   properties?: CourseProperties | null;
+  team_mode?: string | null;
+  team_min_group_size?: number | null;
+  team_allow_student_creation?: boolean | null;
+  team_allow_join?: boolean | null;
+  team_allow_leave?: boolean | null;
+  team_auto_assign_unmatched?: boolean | null;
+  team_lock_at_deadline?: boolean | null;
+  team_require_approval?: boolean | null;
 }
 
 export interface CourseGet {
@@ -734,6 +757,14 @@ export interface CourseGet {
   course_family_id: string;
   language_code?: string | null;
   properties?: CoursePropertiesGet | null;
+  team_mode?: string | null;
+  team_min_group_size?: number | null;
+  team_allow_student_creation?: boolean | null;
+  team_allow_join?: boolean | null;
+  team_allow_leave?: boolean | null;
+  team_auto_assign_unmatched?: boolean | null;
+  team_lock_at_deadline?: boolean | null;
+  team_require_approval?: boolean | null;
   /** Creation timestamp */
   created_at?: string | null;
   /** Update timestamp */
@@ -752,13 +783,22 @@ export interface CourseList {
   path: string;
   language_code?: string | null;
   properties?: CoursePropertiesGet | null;
+  team_mode?: string | null;
+  team_allow_student_creation?: boolean | null;
 }
 
 export interface CourseUpdate {
   title?: string | null;
   description?: string | null;
   language_code?: string | null;
-  properties?: CourseProperties | null;
+  team_mode?: string | null;
+  team_min_group_size?: number | null;
+  team_allow_student_creation?: boolean | null;
+  team_allow_join?: boolean | null;
+  team_allow_leave?: boolean | null;
+  team_auto_assign_unmatched?: boolean | null;
+  team_lock_at_deadline?: boolean | null;
+  team_require_approval?: boolean | null;
 }
 
 export interface CourseQuery {
@@ -770,6 +810,7 @@ export interface CourseQuery {
   path?: string | null;
   course_family_id?: string | null;
   organization_id?: string | null;
+  language_code?: string | null;
   provider_url?: string | null;
   full_path?: string | null;
 }
@@ -868,7 +909,6 @@ export interface CourseGroupQuery {
   id?: string | null;
   title?: string | null;
   course_id?: string | null;
-  properties?: string | null;
 }
 
 export interface CourseContentTypeCreate {
@@ -926,7 +966,6 @@ export interface CourseContentTypeQuery {
   color?: string | null;
   description?: string | null;
   course_id?: string | null;
-  properties?: string | null;
   course_content_kind_id?: string | null;
 }
 
@@ -988,18 +1027,4 @@ export interface CourseExecutionBackendQuery {
   limit?: number | null;
   execution_backend_id?: string | null;
   course_id?: string | null;
-  properties?: string | null;
-}
-
-export interface CommentCreate {
-  course_member_id: any;
-  message: string;
-}
-
-export interface CommentUpdate {
-  message: string;
-}
-
-export interface CourseContentFileQuery {
-  filename?: string | null;
 }

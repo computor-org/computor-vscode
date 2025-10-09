@@ -433,6 +433,7 @@
       {
         "command": "computor.manageGitLabTokens",
         "title": "Manage GitLab Tokens",
+        "icon": "$(key)",
         "category": "Computor"
       },
       {
@@ -568,14 +569,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "computor.selectWorkspaceDirectory",
-          "when": "view == computor.lecturer.courses",
-          "group": "navigation@2"
+          "command": "computor.manageGitLabTokens",
+          "when": "view == computor.student.courses",
+          "group": "navigation@3"
         },
         {
-          "command": "computor.selectWorkspaceDirectory",
+          "command": "computor.manageGitLabTokens",
           "when": "view == computor.tutor.courses",
-          "group": "navigation@2"
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.manageGitLabTokens",
+          "when": "view == computor.lecturer.courses",
+          "group": "navigation@3"
         },
         {
           "command": "computor.lecturer.refreshExamples",

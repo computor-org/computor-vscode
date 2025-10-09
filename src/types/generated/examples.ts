@@ -221,12 +221,19 @@ export interface ExampleDependencyGet {
 export interface ExampleQuery {
   skip?: number | null;
   limit?: number | null;
+  /** Filter by example ID */
+  id?: string | null;
+  /** Filter by repository ID */
   repository_id?: string | null;
   /** Filter by identifier (supports Ltree patterns with *) */
   identifier?: string | null;
+  /** Filter by title (partial match) */
   title?: string | null;
+  /** Filter by category */
   category?: string | null;
+  /** Filter by tags (array contains all) */
   tags?: string[] | null;
+  /** Full-text search in title and description */
   search?: string | null;
 }
 
@@ -236,8 +243,13 @@ export interface ExampleQuery {
 export interface ExampleRepositoryQuery {
   skip?: number | null;
   limit?: number | null;
+  /** Filter by repository ID */
+  id?: string | null;
+  /** Filter by name (partial match) */
   name?: string | null;
+  /** Filter by source type */
   source_type?: string | null;
+  /** Filter by organization ID */
   organization_id?: string | null;
 }
 

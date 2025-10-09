@@ -92,7 +92,6 @@ export interface AccountQuery {
   type?: string | null;
   provider_account_id?: string | null;
   user_id?: string | null;
-  properties?: string | null;
 }
 
 export interface UserGroupCreate {
@@ -243,9 +242,20 @@ export interface UserQuery {
   email?: string | null;
   number?: string | null;
   user_type?: UserTypeEnum | null;
-  properties?: any | null;
   archived?: boolean | null;
   username?: string | null;
+}
+
+/**
+ * Password update request for user endpoints.
+ */
+export interface UserPassword {
+  /** Target username (admin only, otherwise current user) */
+  username?: string | null;
+  /** New password */
+  password: string;
+  /** Old password (required for non-admin password changes) */
+  password_old?: string | null;
 }
 
 export interface UserRoleCreate {
@@ -278,12 +288,6 @@ export interface UserRoleQuery {
   limit?: number | null;
   user_id?: string | null;
   role_id?: string | null;
-}
-
-export interface UserPassword {
-  username?: string | null;
-  password: string;
-  password_old?: string | null;
 }
 
 

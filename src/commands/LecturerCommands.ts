@@ -435,7 +435,6 @@ export class LecturerCommands {
     // Show management options
     const action = await vscode.window.showQuickPick([
       { label: '$(edit) Edit Course Details', value: 'edit' },
-      { label: '$(repo) Configure GitLab Repository', value: 'gitlab' },
       { label: '$(gear) Course Settings', value: 'settings' },
       { label: '$(trash) Delete Course', value: 'delete' }
     ], {
@@ -449,9 +448,6 @@ export class LecturerCommands {
     switch (action.value) {
       case 'edit':
         await this.editCourseDetails(course);
-        break;
-      case 'gitlab':
-        await this.configureGitLabRepository(course);
         break;
       case 'settings':
         await this.showCourseSettings(course);
@@ -500,32 +496,6 @@ export class LecturerCommands {
     }
   }
 
-  private async configureGitLabRepository(course: any): Promise<void> {
-    const repoUrl = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab repository URL',
-      placeHolder: 'https://gitlab.example.com/org/repo.git',
-      value: course.properties?.gitlab?.url || ''
-    });
-
-    if (!repoUrl) {
-      return;
-    }
-
-    try {
-      await this.apiService.updateCourse(course.id, {
-        properties: {
-          ...course.properties,
-          gitlab: {
-            ...course.properties?.gitlab,
-            url: repoUrl
-          }
-        }
-      });
-      vscode.window.showInformationMessage('GitLab repository configured successfully');
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to configure repository: ${error}`);
-    }
-  }
 
   private async showCourseSettings(course: any): Promise<void> {
     // For now, just show the course details webview

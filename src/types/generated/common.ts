@@ -591,6 +591,7 @@ export interface SubmissionGroupProperties {
 
 export interface SubmissionGroupCreate {
   properties?: SubmissionGroupProperties | null;
+  display_name?: string | null;
   max_group_size?: number;
   max_submissions?: number | null;
   course_content_id: string;
@@ -599,6 +600,7 @@ export interface SubmissionGroupCreate {
 
 export interface SubmissionGroupGet {
   properties?: SubmissionGroupProperties | null;
+  display_name?: string | null;
   max_group_size?: number;
   max_submissions?: number | null;
   course_content_id: string;
@@ -617,6 +619,7 @@ export interface SubmissionGroupGet {
 export interface SubmissionGroupList {
   id: string;
   properties?: SubmissionGroupProperties | null;
+  display_name?: string | null;
   max_group_size: number;
   max_submissions?: number | null;
   course_id: string;
@@ -627,6 +630,7 @@ export interface SubmissionGroupList {
 
 export interface SubmissionGroupUpdate {
   properties?: SubmissionGroupProperties | null;
+  display_name?: string | null;
   max_group_size?: number | null;
   max_submissions?: number | null;
   status?: string | null;
@@ -636,6 +640,7 @@ export interface SubmissionGroupQuery {
   skip?: number | null;
   limit?: number | null;
   id?: string | null;
+  display_name?: string | null;
   max_group_size?: number | null;
   max_submissions?: number | null;
   course_id?: string | null;
@@ -659,6 +664,7 @@ export interface SubmissionGroupStudentQuery {
  */
 export interface SubmissionGroupWithGrading {
   properties?: SubmissionGroupProperties | null;
+  display_name?: string | null;
   max_group_size?: number;
   max_submissions?: number | null;
   course_content_id: string;
@@ -685,6 +691,7 @@ export interface SubmissionGroupDetailed {
   course_id: string;
   course_content_id: string;
   properties?: SubmissionGroupProperties | null;
+  display_name?: string | null;
   max_group_size: number;
   max_submissions?: number | null;
   max_test_runs?: number | null;
@@ -846,7 +853,6 @@ export interface ExecutionBackendQuery {
   id?: string | null;
   type?: string | null;
   slug?: string | null;
-  properties?: string | null;
 }
 
 export interface ListQuery {
@@ -1187,16 +1193,74 @@ export interface CodeAbilityReport {
   tests?: CodeAbilityReportMain[] | null;
 }
 
-export interface Claims {
-  general?: any;
-  dependent?: any;
+/**
+ * Member information in a submission group.
+ */
+export interface TutorSubmissionGroupMember {
+  id: string;
+  course_member_id: string;
+  user_id: string;
+  given_name?: string | null;
+  family_name?: string | null;
+  email?: string | null;
 }
 
-export interface Principal {
-  is_admin?: boolean;
-  user_id?: string | null;
-  roles?: string[];
-  claims?: Claims;
+/**
+ * List view of submission groups for tutors.
+ */
+export interface TutorSubmissionGroupList {
+  id: string;
+  course_id: string;
+  course_content_id: string;
+  display_name: string;
+  max_group_size: number;
+  max_submissions?: number | null;
+  max_test_runs?: number | null;
+  member_count?: number;
+  submission_count?: number;
+  latest_submission_at?: string | null;
+  has_ungraded_submissions?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Detailed view of a submission group for tutors.
+ */
+export interface TutorSubmissionGroupGet {
+  id: string;
+  course_id: string;
+  course_content_id: string;
+  display_name: string;
+  max_group_size: number;
+  max_submissions?: number | null;
+  max_test_runs?: number | null;
+  properties?: any | null;
+  members?: TutorSubmissionGroupMember[];
+  member_count?: number;
+  submission_count?: number;
+  test_run_count?: number;
+  latest_submission_at?: string | null;
+  latest_submission_id?: string | null;
+  has_ungraded_submissions?: boolean;
+  graded_submission_count?: number;
+  latest_grade?: number | null;
+  average_grade?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Query parameters for filtering submission groups.
+ */
+export interface TutorSubmissionGroupQuery {
+  course_id?: string | null;
+  course_content_id?: string | null;
+  course_group_id?: string | null;
+  has_submissions?: boolean | null;
+  has_ungraded_submissions?: boolean | null;
+  limit?: number;
+  offset?: number;
 }
 
 /**
@@ -1594,6 +1658,113 @@ export interface GroupClaimQuery {
 }
 
 /**
+ * Information about a team member (for display in team lists).
+ */
+export interface TeamMemberInfo {
+  course_member_id: string;
+  user_id: string;
+  given_name?: string | null;
+  family_name?: string | null;
+  email?: string | null;
+}
+
+/**
+ * Team formation rules resolved from Course and CourseContent.
+ */
+export interface TeamFormationRules {
+  mode?: string;
+  max_group_size: number;
+  min_group_size?: number;
+  formation_deadline?: string | null;
+  allow_student_group_creation?: boolean;
+  allow_student_join_groups?: boolean;
+  allow_student_leave_groups?: boolean;
+  auto_assign_unmatched?: boolean;
+  lock_teams_at_deadline?: boolean;
+  require_approval?: boolean;
+}
+
+/**
+ * Request to create a new team.
+ */
+export interface TeamCreate {
+  /** Optional team name (default: generated from members) */
+  team_name?: string | null;
+}
+
+/**
+ * Response when team is created or retrieved.
+ */
+export interface TeamResponse {
+  id: string;
+  course_content_id: string;
+  course_id: string;
+  max_group_size: number;
+  status?: string;
+  created_by?: string;
+  join_code?: string | null;
+  members: TeamMemberInfo[];
+  member_count: number;
+  can_join: boolean;
+  locked_at?: string | null;
+}
+
+/**
+ * Team available for joining (limited info for privacy).
+ */
+export interface AvailableTeam {
+  id: string;
+  member_count: number;
+  max_group_size: number;
+  join_code?: string | null;
+  requires_approval: boolean;
+  status: string;
+  members: TeamMemberInfo[];
+}
+
+/**
+ * Request to join a team.
+ */
+export interface JoinTeamRequest {
+  /** Optional join code for direct access */
+  join_code?: string | null;
+}
+
+/**
+ * Response when joining a team.
+ */
+export interface JoinTeamResponse {
+  id: string;
+  status: string;
+  message: string;
+}
+
+/**
+ * Response when leaving a team.
+ */
+export interface LeaveTeamResponse {
+  success: boolean;
+  message: string;
+}
+
+/**
+ * Request to lock a team (instructor only).
+ */
+export interface TeamLockRequest {
+  /** Optional reason for locking */
+  reason?: string | null;
+}
+
+/**
+ * Response when team is locked.
+ */
+export interface TeamLockResponse {
+  id: string;
+  locked_at: string;
+  message: string;
+}
+
+/**
  * DTO for creating submission artifacts.
  * 
  * This is used internally when processing submission uploads.
@@ -1895,6 +2066,8 @@ export interface LanguageQuery {
   code?: string | null;
   /** Filter by language name */
   name?: string | null;
+  /** Filter by native language name */
+  native_name?: string | null;
 }
 
 /**
@@ -1922,7 +2095,7 @@ export interface CourseContentDeploymentCreate {
   /** Example version to deploy */
   example_version_id: string;
   /** Initial deployment status */
-  deployment_status?: any;
+  deployment_status?: "pending" | "deploying" | "deployed" | "failed" | "unassigned";
   /** Optional message */
   deployment_message?: string | null;
   /** Additional metadata */
@@ -1933,7 +2106,7 @@ export interface CourseContentDeploymentCreate {
  * Update deployment status.
  */
 export interface CourseContentDeploymentUpdate {
-  deployment_status?: any | null;
+  deployment_status?: "pending" | "deploying" | "deployed" | "failed" | "unassigned" | null;
   deployment_message?: string | null;
   deployed_at?: string | null;
   last_attempt_at?: string | null;
@@ -2004,7 +2177,7 @@ export interface CourseContentDeploymentQuery {
  */
 export interface DeploymentHistoryCreate {
   deployment_id: string;
-  action: any;
+  action: "assigned" | "reassigned" | "deploying" | "deployed" | "failed" | "unassigned" | "updated" | "migrated";
   example_version_id?: string | null;
   example_identifier?: string | null;
   version_tag?: string | null;
@@ -2564,6 +2737,21 @@ export interface TutorGradeCreate {
 }
 
 /**
+ * Information about the artifact that was graded.
+ * 
+ * This provides context about which specific artifact received the grade,
+ * useful for tracking grading history and artifact metadata.
+ */
+export interface GradedArtifactInfo {
+  /** The artifact ID that was graded */
+  id: string;
+  /** When the artifact was created (ISO format) */
+  created_at?: string | null;
+  /** Additional artifact properties (e.g., GitLab info) */
+  properties?: Record<string, any> | null;
+}
+
+/**
  * Response after creating a grade through the tutor endpoint.
  * 
  * Returns the updated course content information with the new grade applied.
@@ -2589,7 +2777,25 @@ export interface TutorGradeResponse {
   submission_group?: SubmissionGroupStudentList | null;
   unread_message_count?: number;
   graded_artifact_id?: string | null;
-  graded_artifact_info?: any | null;
+  graded_artifact_info?: GradedArtifactInfo | null;
+}
+
+/**
+ * Metadata extracted from a VSIX manifest.
+ */
+export interface VsixMetadata {
+  /** Publisher identifier from manifest */
+  publisher: string;
+  /** Extension name/ID from manifest */
+  name: string;
+  /** Semantic version from manifest */
+  version: string;
+  /** Display name from manifest */
+  display_name?: string | null;
+  /** Description from manifest */
+  description?: string | null;
+  /** VS Code engine compatibility range */
+  engine_range?: string | null;
 }
 
 /**
@@ -2806,7 +3012,6 @@ export interface SubmissionGroupMemberQuery {
   submission_group_id?: string | null;
   grading?: number | null;
   status?: string | null;
-  properties?: SubmissionGroupMemberProperties | null;
 }
 
 

@@ -41,9 +41,28 @@ export async function manageGitLabTokens(context: vscode.ExtensionContext): Prom
     });
 
     if (url) {
-      const token = await gitLabTokenManager.ensureTokenForUrl(url);
+      const token = await vscode.window.showInputBox({
+        title: `Add Token for ${url}`,
+        prompt: 'Enter your GitLab Personal Access Token',
+        password: true,
+        ignoreFocusOut: true,
+        placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx'
+      });
+
       if (token) {
-        vscode.window.showInformationMessage(`Token added for ${url}`);
+        // Validate token before storing
+        const testResult = await validateGitLabToken(url, token, gitLabTokenManager);
+
+        if (testResult.valid) {
+          await gitLabTokenManager.storeToken(url, token);
+          vscode.window.showInformationMessage(
+            `✅ Token added successfully for ${url}\nAuthenticated as: ${testResult.name} (${testResult.username})`
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `❌ Token validation failed: ${testResult.error}\nToken was not saved.`
+          );
+        }
       }
     }
 
@@ -56,9 +75,28 @@ export async function manageGitLabTokens(context: vscode.ExtensionContext): Prom
   );
 
   if (action === 'Update Token') {
-    const token = await gitLabTokenManager.ensureTokenForUrl(selected.label);
-    if (token) {
-      vscode.window.showInformationMessage('Token updated successfully');
+    const newToken = await vscode.window.showInputBox({
+      title: `Update Token for ${selected.label}`,
+      prompt: 'Enter your GitLab Personal Access Token',
+      password: true,
+      ignoreFocusOut: true,
+      placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx'
+    });
+
+    if (newToken) {
+      // Validate token before storing
+      const testResult = await validateGitLabToken(selected.label, newToken, gitLabTokenManager);
+
+      if (testResult.valid) {
+        await gitLabTokenManager.storeToken(selected.label, newToken);
+        vscode.window.showInformationMessage(
+          `✅ Token updated successfully for ${selected.label}\nAuthenticated as: ${testResult.name} (${testResult.username})`
+        );
+      } else {
+        vscode.window.showErrorMessage(
+          `❌ Token validation failed: ${testResult.error}\nToken was not saved.`
+        );
+      }
     }
   } else if (action === 'Remove Token') {
     await gitLabTokenManager.removeToken(selected.label);
@@ -68,49 +106,32 @@ export async function manageGitLabTokens(context: vscode.ExtensionContext): Prom
   }
 }
 
+async function validateGitLabToken(gitlabUrl: string, token: string, tokenManager: GitLabTokenManager): Promise<{ valid: boolean; name?: string; username?: string; error?: string }> {
+  return await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: `Validating token for ${gitlabUrl}...`,
+    cancellable: false
+  }, async (progress) => {
+    progress.report({ message: 'Connecting to GitLab...' });
+    return await tokenManager.validateToken(gitlabUrl, token);
+  });
+}
+
 async function testGitLabToken(gitlabUrl: string, tokenManager: GitLabTokenManager): Promise<void> {
-  try {
-    const token = await tokenManager.getToken(gitlabUrl);
+  const token = await tokenManager.getToken(gitlabUrl);
 
-    if (!token) {
-      vscode.window.showErrorMessage(`No token found for ${gitlabUrl}`);
-      return;
-    }
+  if (!token) {
+    vscode.window.showErrorMessage(`No token found for ${gitlabUrl}`);
+    return;
+  }
 
-    // Show progress while testing
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Testing token for ${gitlabUrl}...`,
-      cancellable: false
-    }, async (progress) => {
-      progress.report({ message: 'Connecting to GitLab...' });
+  const result = await validateGitLabToken(gitlabUrl, token, tokenManager);
 
-      // Normalize URL and construct API endpoint
-      const baseUrl = gitlabUrl.endsWith('/') ? gitlabUrl.slice(0, -1) : gitlabUrl;
-      const apiUrl = `${baseUrl}/api/v4/user`;
-
-      const response = await fetch(apiUrl, {
-        headers: {
-          'PRIVATE-TOKEN': token
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
-      }
-
-      const userData = await response.json();
-      const name = userData.name || 'Unknown';
-      const username = userData.username || 'unknown';
-
-      vscode.window.showInformationMessage(
-        `✅ Token valid for ${gitlabUrl}\nAuthenticated as: ${name} (${username})`
-      );
-    });
-  } catch (error: any) {
-    console.error('[manageGitLabTokens] Token test failed:', error);
-    const message = error?.message || String(error);
-    vscode.window.showErrorMessage(`❌ Token test failed: ${message}`);
+  if (result.valid) {
+    vscode.window.showInformationMessage(
+      `✅ Token valid for ${gitlabUrl}\nAuthenticated as: ${result.name} (${result.username})`
+    );
+  } else {
+    vscode.window.showErrorMessage(`❌ Token test failed: ${result.error}`);
   }
 }

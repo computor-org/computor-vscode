@@ -89,10 +89,62 @@ export class GitLabTokenManager {
 
     // Check stored token
     let token = await this.getToken(gitlabUrl);
-    
+
     if (!token) {
-      // Prompt for token
-      token = await this.promptForToken(gitlabUrl);
+      // Prompt for token and validate before storing
+      token = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `GitLab Authentication for ${gitlabUrl}`,
+        cancellable: false
+      }, async (progress) => {
+        let validatedToken: string | undefined;
+        let attempts = 0;
+        const maxAttempts = 3;
+
+        while (attempts < maxAttempts && !validatedToken) {
+          attempts++;
+
+          progress.report({ message: attempts > 1 ? `Attempt ${attempts}/${maxAttempts}` : 'Requesting token...' });
+
+          const inputToken = await this.promptForToken(gitlabUrl);
+          if (!inputToken) {
+            // User cancelled
+            return undefined;
+          }
+
+          progress.report({ message: 'Validating token...' });
+          const validation = await this.validateToken(gitlabUrl, inputToken);
+
+          if (validation.valid) {
+            vscode.window.showInformationMessage(
+              `✅ GitLab token validated successfully\nAuthenticated as: ${validation.name} (${validation.username})`
+            );
+            validatedToken = inputToken;
+          } else {
+            const retry = attempts < maxAttempts;
+            const message = retry
+              ? `❌ Token validation failed: ${validation.error}\n\nPlease try again.`
+              : `❌ Token validation failed: ${validation.error}\n\nMaximum attempts reached.`;
+
+            if (retry) {
+              const choice = await vscode.window.showErrorMessage(
+                message,
+                'Retry',
+                'Cancel'
+              );
+              if (choice !== 'Retry') {
+                return undefined;
+              }
+            } else {
+              vscode.window.showErrorMessage(message);
+              return undefined;
+            }
+          }
+        }
+
+        return validatedToken;
+      });
+
       if (token) {
         await this.storeToken(gitlabUrl, token);
       }
@@ -350,6 +402,50 @@ export class GitLabTokenManager {
       }
     } catch (error) {
       console.warn(`[GitLabTokenManager] Could not enumerate remotes for ${repoPath}:`, error);
+    }
+  }
+
+  /**
+   * Validate a GitLab token by testing it against the GitLab API
+   * @param gitlabUrl The GitLab instance URL
+   * @param token The token to validate
+   * @returns Validation result with user info or error
+   */
+  async validateToken(gitlabUrl: string, token: string): Promise<{ valid: boolean; name?: string; username?: string; error?: string }> {
+    try {
+      // Normalize URL and construct API endpoint
+      const baseUrl = gitlabUrl.endsWith('/') ? gitlabUrl.slice(0, -1) : gitlabUrl;
+      const apiUrl = `${baseUrl}/api/v4/user`;
+
+      const response = await fetch(apiUrl, {
+        headers: {
+          'PRIVATE-TOKEN': token
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return {
+          valid: false,
+          error: `HTTP ${response.status}: ${errorText || response.statusText}`
+        };
+      }
+
+      const userData = await response.json();
+      const name = userData.name || 'Unknown';
+      const username = userData.username || 'unknown';
+
+      return {
+        valid: true,
+        name,
+        username
+      };
+    } catch (error: any) {
+      console.error('[GitLabTokenManager] Token validation failed:', error);
+      return {
+        valid: false,
+        error: error?.message || String(error)
+      };
     }
   }
 }

@@ -93,4 +93,5 @@ export interface MessageQuery {
   course_content_id?: string | null;
   course_id?: string | null;
   course_id_all_messages?: boolean | null;
+  scope?: "user" | "course_member" | "submission_group" | "course_group" | "course_content" | "course" | null;
 }

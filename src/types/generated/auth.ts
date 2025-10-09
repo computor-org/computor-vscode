@@ -8,6 +8,22 @@
 
 
 
+/**
+ * Query parameters for updating organization token.
+ */
+export interface OrganizationUpdateTokenQuery {
+  /** Token type (e.g., 'gitlab', 'github') */
+  type: string;
+}
+
+/**
+ * Payload for updating organization provider token.
+ */
+export interface OrganizationUpdateTokenUpdate {
+  /** Provider access token */
+  token: string;
+}
+
 export interface AuthConfig {
 }
 
@@ -87,28 +103,6 @@ export interface LocalTokenRefreshResponse {
   token_type?: string;
 }
 
-export interface MessageAuthor {
-  /** Author's given name */
-  given_name?: string | null;
-  /** Author's family name */
-  family_name?: string | null;
-}
-
-export interface GradingAuthor {
-  /** Author's given name */
-  given_name?: string | null;
-  /** Author's family name */
-  family_name?: string | null;
-}
-
-export interface OrganizationUpdateTokenQuery {
-  type: string;
-}
-
-export interface OrganizationUpdateTokenUpdate {
-  token: string;
-}
-
 /**
  * Information about an authentication provider.
  */
@@ -172,7 +166,7 @@ export interface UserRegistrationResponse {
 }
 
 /**
- * Token refresh request.
+ * Token refresh request for SSO.
  */
 export interface TokenRefreshRequest {
   /** Refresh token from initial authentication */
@@ -182,7 +176,7 @@ export interface TokenRefreshRequest {
 }
 
 /**
- * Response after successful token refresh.
+ * Response after successful SSO token refresh.
  */
 export interface TokenRefreshResponse {
   /** New access token */
@@ -191,4 +185,18 @@ export interface TokenRefreshResponse {
   expires_in?: number | null;
   /** New refresh token if rotated */
   refresh_token?: string | null;
+}
+
+export interface MessageAuthor {
+  /** Author's given name */
+  given_name?: string | null;
+  /** Author's family name */
+  family_name?: string | null;
+}
+
+export interface GradingAuthor {
+  /** Author's given name */
+  given_name?: string | null;
+  /** Author's family name */
+  family_name?: string | null;
 }

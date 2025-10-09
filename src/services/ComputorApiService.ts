@@ -70,7 +70,7 @@ import {
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate
 } from '../types/generated';
-import { TutorGradeCreate } from '../types/generated/common';
+import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery } from '../types/generated/common';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -1964,6 +1964,55 @@ export class ComputorApiService {
     } catch (e) {
       console.error('Failed to get tutor course members:', e);
       return [];
+    }
+  }
+
+  async getTutorSubmissionGroups(query?: TutorSubmissionGroupQuery): Promise<TutorSubmissionGroupList[]> {
+    const cacheKey = `tutorSubmissionGroups-${JSON.stringify(query || {})}`;
+    const cached = multiTierCache.get<TutorSubmissionGroupList[]>(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const params = new URLSearchParams();
+        if (query?.course_id) params.append('course_id', query.course_id);
+        if (query?.course_content_id) params.append('course_content_id', query.course_content_id);
+        if (query?.course_group_id) params.append('course_group_id', query.course_group_id);
+        if (query?.has_submissions !== undefined && query.has_submissions !== null) {
+          params.append('has_submissions', String(query.has_submissions));
+        }
+        if (query?.has_ungraded_submissions !== undefined && query.has_ungraded_submissions !== null) {
+          params.append('has_ungraded_submissions', String(query.has_ungraded_submissions));
+        }
+        if (query?.limit !== undefined && query.limit !== null) params.append('limit', String(query.limit));
+        if (query?.offset !== undefined && query.offset !== null) params.append('offset', String(query.offset));
+        const url = params.toString() ? `/tutors/submission-groups?${params.toString()}` : '/tutors/submission-groups';
+        const response = await client.get<TutorSubmissionGroupList[]>(url);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result || [];
+    } catch (e) {
+      console.error('Failed to get tutor submission groups:', e);
+      return [];
+    }
+  }
+
+  async getTutorSubmissionGroup(submissionGroupId: string): Promise<TutorSubmissionGroupGet | null> {
+    const cacheKey = `tutorSubmissionGroup-${submissionGroupId}`;
+    const cached = multiTierCache.get<TutorSubmissionGroupGet>(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<TutorSubmissionGroupGet>(`/tutors/submission-groups/${submissionGroupId}`);
+        return response.data;
+      }, { maxRetries: 2, exponentialBackoff: true });
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (e) {
+      console.error('Failed to get tutor submission group:', e);
+      return null;
     }
   }
 
