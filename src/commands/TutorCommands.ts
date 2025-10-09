@@ -13,6 +13,7 @@ import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMember
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
+import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -21,11 +22,13 @@ export class TutorCommands {
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private workspaceStructure: WorkspaceStructureManager;
+  private filterProvider?: TutorFilterPanelProvider;
 
   constructor(
-    context: vscode.ExtensionContext, 
+    context: vscode.ExtensionContext,
     treeDataProvider: TutorStudentTreeProvider,
-    apiService?: ComputorApiService
+    apiService?: ComputorApiService,
+    filterProvider?: TutorFilterPanelProvider
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
@@ -34,6 +37,7 @@ export class TutorCommands {
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
+    this.filterProvider = filterProvider;
     // No workspace manager needed for current tutor actions
   }
 
@@ -44,13 +48,19 @@ export class TutorCommands {
         try {
           const sel = TutorSelectionService.getInstance();
           const memberId = sel.getCurrentMemberId();
+          const courseId = sel.getCurrentCourseId();
+          const groupId = sel.getCurrentGroupId();
           if (memberId) {
             this.apiService.clearTutorMemberCourseContentsCache(memberId);
+          }
+          if (courseId) {
+            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
           }
           // Also clear content kinds to be safe
           this.apiService.clearCourseContentKindsCache();
         } catch {}
         this.treeDataProvider.refresh();
+        this.filterProvider?.refreshFilters();
       })
     );
 
@@ -308,6 +318,17 @@ export class TutorCommands {
             feedback: null
           };
           await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
+
+          // Clear caches and refresh to get updated data
+          const sel = TutorSelectionService.getInstance();
+          const courseId = sel.getCurrentCourseId();
+          const groupId = sel.getCurrentGroupId();
+
+          this.apiService.clearTutorMemberCourseContentsCache(memberId);
+          if (courseId) {
+            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
+          }
+
           // Fetch fresh item and update the clicked tree item inline
           const updated = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
           if (updated && item && typeof (item as any).updateVisuals === 'function') {
@@ -333,6 +354,10 @@ export class TutorCommands {
             // Fallback to full refresh
             this.treeDataProvider.refresh();
           }
+
+          // Refresh filter panel to update ungraded_submissions_count
+          this.filterProvider?.refreshFilters();
+
           vscode.window.showInformationMessage(`Updated: ${(grade * 100).toFixed(1)}% • ${statusPick.label}`);
         } catch (e: any) {
           vscode.window.showErrorMessage(`Failed to update grading/status: ${e?.message || e}`);
@@ -358,6 +383,13 @@ export class TutorCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.tutor.compareWithReference', async (item: any) => {
         await this.compareWithReference(item);
+      })
+    );
+
+    // Tutor: Show submission test results
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showSubmissionTestResults', async (item: any) => {
+        await this.showSubmissionTestResults(item);
       })
     );
   }
@@ -682,6 +714,68 @@ export class TutorCommands {
       await vscode.commands.executeCommand('vscode.diff', submissionUri, referenceUri, title);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to compare with reference: ${error?.message || error}`);
+    }
+  }
+
+  private async showSubmissionTestResults(item: any): Promise<void> {
+    try {
+      console.log('[TutorCommands] showSubmissionTestResults called with item:', item);
+
+      // Extract result data from the submission item
+      // Note: result can be 0, so we check for undefined/null explicitly
+      if (!item || (item.result === undefined || item.result === null)) {
+        console.log('[TutorCommands] No result in item, result value:', item?.result);
+        vscode.window.showWarningMessage('No test results available for this submission.');
+        return;
+      }
+
+      const result = item.result;
+      console.log('[TutorCommands] result type:', typeof result, 'value:', result);
+
+      // Fetch full result data if we only have the result number
+      let resultJson = null;
+
+      if (typeof result === 'number') {
+        // We need to fetch the full result data from the tutor course content endpoint
+        const memberId = item.memberId;
+        const contentId = item.content?.id;
+
+        console.log('[TutorCommands] memberId:', memberId, 'contentId:', contentId);
+
+        if (!memberId || !contentId) {
+          vscode.window.showWarningMessage('Cannot fetch test results: missing member or content ID.');
+          return;
+        }
+
+        // Fetch course content to get result with result_json
+        const courseContent = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
+        console.log('[TutorCommands] courseContent fetched:', JSON.stringify(courseContent, null, 2));
+
+        if (courseContent?.result?.result_json) {
+          resultJson = courseContent.result.result_json;
+        } else {
+          console.log('[TutorCommands] No result_json in courseContent.result');
+          vscode.window.showWarningMessage('No detailed test results available for this submission.');
+          return;
+        }
+      } else if (typeof result === 'object' && result.result_json) {
+        resultJson = result.result_json;
+      }
+
+      if (!resultJson) {
+        console.log('[TutorCommands] resultJson is null');
+        vscode.window.showWarningMessage('No test results data found.');
+        return;
+      }
+
+      console.log('[TutorCommands] Opening results with resultJson:', resultJson);
+      // Display test results using the same method as student view
+      await vscode.commands.executeCommand('computor.results.open', resultJson);
+      await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+
+    } catch (error: any) {
+      console.error('[TutorCommands] Error in showSubmissionTestResults:', error);
+      vscode.window.showErrorMessage(`Failed to show test results: ${error?.message || error}`);
     }
   }
 

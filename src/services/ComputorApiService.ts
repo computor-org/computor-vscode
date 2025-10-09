@@ -762,11 +762,23 @@ export class ComputorApiService {
     try {
       const client = await this.getHttpClient();
       const response = await client.get<SubmissionArtifactList[]>(`/submissions/artifacts`, {
-        submission_group_id: submissionGroupId
+        submission_group_id: submissionGroupId,
+        with_latest_result: 'true'
       });
       return response.data;
     } catch (error) {
       console.error('Failed to list submission artifacts:', error);
+      return undefined;
+    }
+  }
+
+  async getSubmissionArtifact(artifactId: string): Promise<any | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<any>(`/submissions/artifacts/${artifactId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get submission artifact:', error);
       return undefined;
     }
   }
@@ -992,6 +1004,11 @@ export class ComputorApiService {
 
   clearCourseContentKindsCache(): void {
     multiTierCache.delete('courseContentKinds');
+  }
+
+  clearTutorCourseMembersCache(courseId: string, groupId?: string): void {
+    const cacheKey = groupId ? `tutorCourseMembers-${courseId}-${groupId}` : `tutorCourseMembers-${courseId}`;
+    multiTierCache.delete(cacheKey);
   }
 
   clearStudentCourseContentCache(contentId: string): void {

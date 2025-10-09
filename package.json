@@ -58,6 +58,12 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.showSubmissionTestResults",
+        "title": "Show Test Results",
+        "icon": "$(beaker)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.changeRealmUrl",
         "title": "Computor: Change Backend URL",
         "category": "Computor"
@@ -811,6 +817,11 @@
           "command": "computor.tutor.compareWithReference",
           "when": "view == computor.tutor.courses && viewItem == tutorFsFile.submission",
           "group": "3_external@3"
+        },
+        {
+          "command": "computor.tutor.showSubmissionTestResults",
+          "when": "view == computor.tutor.courses && viewItem == tutorSubmissionArtifact",
+          "group": "3_external@4"
         },
         {
           "command": "computor.tutor.showMessages",

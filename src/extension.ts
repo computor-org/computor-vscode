@@ -391,7 +391,7 @@ class UnifiedController {
       filterProvider.refreshFilters();
     }));
 
-    const commands = new TutorCommands(this.context, tree, api);
+    const commands = new TutorCommands(this.context, tree, api, filterProvider);
     commands.registerCommands();
   }
 

@@ -116,10 +116,17 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
           const getGroupLabel = (group) => group.title || group.name || group.id;
           const getMemberLabel = (member) => {
             const user = member?.user;
+            let name = '';
             if (user?.given_name && user?.family_name) {
-              return user.given_name + ' ' + user.family_name;
+              name = user.given_name + ' ' + user.family_name;
+            } else {
+              name = (user?.full_name) || (user?.username) || member.id;
             }
-            return (user?.full_name) || (user?.username) || member.id;
+
+            if (member.ungraded_submissions_count && member.ungraded_submissions_count > 0) {
+              return name + ' (📝 ' + member.ungraded_submissions_count + ')';
+            }
+            return name;
           };
 
           const updatePanelState = () => {

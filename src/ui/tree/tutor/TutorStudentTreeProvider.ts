@@ -358,6 +358,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
         const timestamp = artifact.uploaded_at || artifact.created_at;
         const formattedDate = timestamp ? new Date(timestamp).toLocaleString() : artifact.id;
         const isLatest = index === 0; // First item after sorting is the latest
+        const result = (artifact as any).latest_result?.result;
         return new TutorSubmissionItem(
           artifact.id,
           submissionGroupId,
@@ -365,7 +366,8 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
           element.courseId,
           element.memberId,
           formattedDate,
-          isLatest
+          isLatest,
+          result
         );
       });
 
@@ -622,6 +624,8 @@ class TutorVirtualFolderItem extends vscode.TreeItem {
 }
 
 class TutorSubmissionItem extends vscode.TreeItem {
+  public result?: number;
+
   constructor(
     public artifactId: string,
     public submissionGroupId: string,
@@ -629,14 +633,27 @@ class TutorSubmissionItem extends vscode.TreeItem {
     public courseId: string,
     public memberId: string,
     createdAt?: string,
-    isLatest?: boolean
+    isLatest?: boolean,
+    result?: number
   ) {
     // Use created_at as label if available, otherwise use artifact ID
-    const baseLabel = createdAt || artifactId;
-    const label = isLatest ? `${baseLabel} (latest)` : baseLabel;
+    let label = createdAt || artifactId;
+
+    // Add result percentage if available
+    if (typeof result === 'number') {
+      const percentage = (result * 100).toFixed(1);
+      label = `${label} ${percentage}%`;
+    }
+
+    // Add (latest) suffix after result
+    if (isLatest) {
+      label = `${label} (latest)`;
+    }
+
     super(label, vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'tutorSubmissionArtifact';
     this.id = `tutorSubmission:${artifactId}:${submissionGroupId}:${courseId}:${memberId}`;
+    this.result = result;
 
     // Use different icon for latest submission
     if (isLatest) {
@@ -645,6 +662,10 @@ class TutorSubmissionItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon('file-zip');
     }
 
-    this.tooltip = isLatest ? `Latest Artifact: ${artifactId}` : `Artifact: ${artifactId}`;
+    let tooltip = isLatest ? `Latest Artifact: ${artifactId}` : `Artifact: ${artifactId}`;
+    if (typeof result === 'number') {
+      tooltip += `\nResult: ${(result * 100).toFixed(1)}%`;
+    }
+    this.tooltip = tooltip;
   }
 }

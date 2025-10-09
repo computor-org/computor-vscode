@@ -8,7 +8,7 @@ import { StudentRepositoryManager } from '../../../services/StudentRepositoryMan
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
-import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
+import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { deriveRepositoryDirectoryName, buildStudentRepoRoot } from '../../../utils/repositoryNaming';
 
 interface ContentNode {
@@ -1032,27 +1032,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     private setupTooltip(): void {
         const lines: string[] = [];
         const unreadCount = (this.courseContent?.unread_message_count ?? 0) + (this.submissionGroup?.unread_message_count ?? 0);
-        
+
+        if (this.submissionGroup?.repository) {
+            lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);
+        }
+
         const tooltipContentType = this.contentType || (this.courseContent as any)?.course_content_type;
         if (tooltipContentType) {
             lines.push(`Type: ${tooltipContentType.title || tooltipContentType.slug}`);
         }
-        
-        if (hasExampleAssigned(this.courseContent)) {
-            // Note: We can't easily get the example_id from the new structure
-            // Show version ID if available
-            const versionId = getExampleVersionId(this.courseContent);
-            if (versionId) {
-                lines.push(`Example Version ID: ${versionId}`);
-            }
-        }
 
         if (unreadCount > 0) {
             lines.push(`Unread messages: ${unreadCount}`);
-        }
-
-        if (this.submissionGroup?.repository) {
-            lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);
         }
 
         // Attempts and points

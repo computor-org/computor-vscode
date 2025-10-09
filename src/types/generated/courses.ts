@@ -996,6 +996,7 @@ export interface TutorCourseMemberList {
   course_group_id?: string | null;
   course_role_id: string;
   unreviewed?: boolean | null;
+  ungraded_submissions_count?: number | null;
   user: UserList;
 }
 
