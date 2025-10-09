@@ -6,6 +6,9 @@ export interface WorkspaceDirectories {
   root: string;
   student: string;
   review: string;
+  reviewRepositories: string;
+  reviewReference: string;
+  reviewSubmissions: string;
   reference: string;
 }
 
@@ -32,10 +35,14 @@ export class WorkspaceStructureManager {
    * Get all workspace directories
    */
   getDirectories(): WorkspaceDirectories {
+    const review = path.join(this.workspaceRoot, 'review');
     return {
       root: this.workspaceRoot,
       student: path.join(this.workspaceRoot, 'student'),
-      review: path.join(this.workspaceRoot, 'review'),
+      review,
+      reviewRepositories: path.join(review, 'repositories'),
+      reviewReference: path.join(review, 'reference'),
+      reviewSubmissions: path.join(review, 'submissions'),
       reference: path.join(this.workspaceRoot, 'reference')
     };
   }
@@ -47,6 +54,9 @@ export class WorkspaceStructureManager {
     const dirs = this.getDirectories();
     await fs.promises.mkdir(dirs.student, { recursive: true });
     await fs.promises.mkdir(dirs.review, { recursive: true });
+    await fs.promises.mkdir(dirs.reviewRepositories, { recursive: true });
+    await fs.promises.mkdir(dirs.reviewReference, { recursive: true });
+    await fs.promises.mkdir(dirs.reviewSubmissions, { recursive: true });
     await fs.promises.mkdir(dirs.reference, { recursive: true });
   }
 
@@ -59,11 +69,27 @@ export class WorkspaceStructureManager {
   }
 
   /**
-   * Get tutor review repository path using submission group UUID
+   * Get tutor review repository path using repository name
    */
-  getReviewRepositoryPath(submissionGroupId: string): string {
+  getReviewRepositoryPath(repoName: string): string {
     const dirs = this.getDirectories();
-    return path.join(dirs.review, submissionGroupId);
+    return path.join(dirs.reviewRepositories, repoName);
+  }
+
+  /**
+   * Get tutor review reference path using example version ID
+   */
+  getReviewReferencePath(exampleVersionId: string): string {
+    const dirs = this.getDirectories();
+    return path.join(dirs.reviewReference, exampleVersionId);
+  }
+
+  /**
+   * Get tutor review submission artifact path
+   */
+  getReviewSubmissionPath(submissionGroupId: string, artifactId: string): string {
+    const dirs = this.getDirectories();
+    return path.join(dirs.reviewSubmissions, submissionGroupId, artifactId);
   }
 
   /**
@@ -144,13 +170,13 @@ export class WorkspaceStructureManager {
   async getExistingReviewRepositories(): Promise<string[]> {
     const dirs = this.getDirectories();
     try {
-      const entries = await fs.promises.readdir(dirs.review, { withFileTypes: true });
+      const entries = await fs.promises.readdir(dirs.reviewRepositories, { withFileTypes: true });
       const repos: string[] = [];
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          const repoPath = path.join(dirs.review, entry.name);
+          const repoPath = path.join(dirs.reviewRepositories, entry.name);
           if (await this.repositoryExists(repoPath)) {
-            repos.push(entry.name); // Return the submission group ID
+            repos.push(entry.name);
           }
         }
       }
@@ -177,6 +203,50 @@ export class WorkspaceStructureManager {
         }
       }
       return repos;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Check if directory exists and is not empty
+   */
+  async directoryExists(dirPath: string): Promise<boolean> {
+    try {
+      const stats = await fs.promises.stat(dirPath);
+      return stats.isDirectory();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if reference exists for given example version ID
+   */
+  async referenceExists(exampleVersionId: string): Promise<boolean> {
+    const refPath = this.getReviewReferencePath(exampleVersionId);
+    return this.directoryExists(refPath);
+  }
+
+  /**
+   * Check if submission artifact exists
+   */
+  async submissionArtifactExists(submissionGroupId: string, artifactId: string): Promise<boolean> {
+    const submissionPath = this.getReviewSubmissionPath(submissionGroupId, artifactId);
+    return this.directoryExists(submissionPath);
+  }
+
+  /**
+   * Get all submission artifacts for a submission group
+   */
+  async getSubmissionArtifacts(submissionGroupId: string): Promise<string[]> {
+    const dirs = this.getDirectories();
+    const submissionGroupPath = path.join(dirs.reviewSubmissions, submissionGroupId);
+    try {
+      const entries = await fs.promises.readdir(submissionGroupPath, { withFileTypes: true });
+      return entries
+        .filter(entry => entry.isDirectory())
+        .map(entry => entry.name);
     } catch {
       return [];
     }

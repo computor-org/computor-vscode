@@ -70,7 +70,7 @@ import {
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery } from '../types/generated/common';
+import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList } from '../types/generated/common';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -729,6 +729,68 @@ export class ComputorApiService {
       return response.data;
     } catch (error) {
       console.error('Failed to download example:', error);
+      return undefined;
+    }
+  }
+
+  async downloadCourseContentReference(courseContentId: string, withDependencies: boolean = true): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const params = withDependencies ? '?with_dependencies=true' : '';
+      const endpoint = `/tutors/course-contents/${courseContentId}/reference${params}`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Failed to download course content reference:', error);
+      return undefined;
+    }
+  }
+
+  async listSubmissionArtifacts(submissionGroupId: string): Promise<SubmissionArtifactList[] | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<SubmissionArtifactList[]>(`/submissions/artifacts`, {
+        submission_group_id: submissionGroupId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to list submission artifacts:', error);
+      return undefined;
+    }
+  }
+
+  async downloadSubmissionArtifact(artifactId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/submissions/artifacts/${artifactId}/download`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Failed to download submission artifact:', error);
       return undefined;
     }
   }

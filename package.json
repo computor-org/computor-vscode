@@ -40,9 +40,21 @@
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.tutor.downloadStudentExample",
-        "title": "Download Example for Comparison",
-        "icon": "$(repo)",
+        "command": "computor.tutor.downloadReference",
+        "title": "Download Reference",
+        "icon": "$(cloud-download)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.downloadSubmissionArtifact",
+        "title": "Download Submission Artifact",
+        "icon": "$(cloud-download)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.compareWithReference",
+        "title": "Compare with Reference",
+        "icon": "$(diff)",
         "category": "Computor Tutor"
       },
       {
@@ -772,12 +784,12 @@
         },
         {
           "command": "computor.tutor.cloneStudentRepository",
-          "when": "view == computor.tutor.courses && viewItem == tutorStudentContent.assignment.noRepo",
+          "when": "view == computor.tutor.courses && viewItem == tutorVirtualFolder.repository.noRepo",
           "group": "inline@1"
         },
         {
           "command": "computor.tutor.updateStudentRepository",
-          "when": "view == computor.tutor.courses && viewItem == tutorStudentContent.assignment.hasRepo",
+          "when": "view == computor.tutor.courses && viewItem == tutorVirtualFolder.repository.hasRepo",
           "group": "inline@1"
         },
         {
@@ -786,9 +798,19 @@
           "group": "1_status@1"
         },
         {
-          "command": "computor.tutor.downloadStudentExample",
-          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
+          "command": "computor.tutor.downloadReference",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo || viewItem == tutorVirtualFolder.reference)",
           "group": "3_external@1"
+        },
+        {
+          "command": "computor.tutor.downloadSubmissionArtifact",
+          "when": "view == computor.tutor.courses && (viewItem == tutorVirtualFolder.submissions || viewItem == tutorSubmissionArtifact)",
+          "group": "3_external@2"
+        },
+        {
+          "command": "computor.tutor.compareWithReference",
+          "when": "view == computor.tutor.courses && viewItem == tutorFsFile.submission",
+          "group": "3_external@3"
         },
         {
           "command": "computor.tutor.showMessages",

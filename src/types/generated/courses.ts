@@ -527,6 +527,8 @@ export interface CourseContentStudentGet {
   directory?: string | null;
   color: string;
   submission_group?: SubmissionGroupStudentGet | null;
+  deployment?: CourseContentDeploymentList | null;
+  has_deployment?: boolean | null;
 }
 
 export interface CourseContentStudentList {
@@ -548,6 +550,8 @@ export interface CourseContentStudentList {
   result?: ResultStudentList | null;
   submission_group?: SubmissionGroupStudentList | null;
   unread_message_count?: number;
+  deployment?: CourseContentDeploymentList | null;
+  has_deployment?: boolean | null;
 }
 
 export interface CourseContentStudentUpdate {

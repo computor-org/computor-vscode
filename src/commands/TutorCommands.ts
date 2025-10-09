@@ -340,15 +340,24 @@ export class TutorCommands {
       })
     );
 
-    // Tutor: Download example for comparison (scaffold)
+    // Tutor: Download reference (example version)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.downloadStudentExample', async (_item: any) => {
-        try {
-          // TODO: Implement endpoint to download example matching assignment for comparison
-          vscode.window.showInformationMessage('Download Example: backend route TBD.');
-        } catch (e: any) {
-          vscode.window.showErrorMessage(`Failed to download example: ${e?.message || e}`);
-        }
+      vscode.commands.registerCommand('computor.tutor.downloadReference', async (item: any) => {
+        await this.downloadReference(item);
+      })
+    );
+
+    // Tutor: Download submission artifact
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.downloadSubmissionArtifact', async (item: any) => {
+        await this.downloadSubmissionArtifact(item);
+      })
+    );
+
+    // Tutor: Compare with reference
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.compareWithReference', async (item: any) => {
+        await this.compareWithReference(item);
       })
     );
   }
@@ -461,6 +470,218 @@ export class TutorCommands {
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
+    }
+  }
+
+  private async downloadReference(item: any): Promise<void> {
+    try {
+      const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
+
+      if (!content) {
+        vscode.window.showErrorMessage('No course content information available');
+        return;
+      }
+
+      const deployment = content.deployment;
+      if (!deployment || !deployment.example_version_id) {
+        vscode.window.showErrorMessage('No reference available for this assignment');
+        return;
+      }
+
+      const exampleVersionId = deployment.example_version_id;
+      const referencePath = this.workspaceStructure.getReviewReferencePath(exampleVersionId);
+
+      // Check if reference already exists
+      const exists = await this.workspaceStructure.directoryExists(referencePath);
+      if (exists) {
+        const choice = await vscode.window.showWarningMessage(
+          `Reference for this assignment already exists. The example version may have been updated. Re-download?`,
+          'Re-download',
+          'Cancel'
+        );
+        if (choice !== 'Re-download') {
+          return;
+        }
+        // Remove existing directory
+        await fs.promises.rm(referencePath, { recursive: true, force: true });
+      }
+
+      // Download reference
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Downloading reference...',
+          cancellable: false
+        },
+        async () => {
+          const buffer = await this.apiService.downloadCourseContentReference(content.id, true);
+          if (!buffer) {
+            throw new Error('Failed to download reference');
+          }
+
+          // Extract ZIP to reference path
+          await fs.promises.mkdir(referencePath, { recursive: true });
+          const JSZip = require('jszip');
+          const zip = await JSZip.loadAsync(buffer);
+
+          for (const [filename, file] of Object.entries(zip.files)) {
+            const fileData = file as any;
+            if (!fileData.dir) {
+              const content = await fileData.async('nodebuffer');
+              const filePath = path.join(referencePath, filename);
+              await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+              await fs.promises.writeFile(filePath, content);
+            }
+          }
+        }
+      );
+
+      vscode.window.showInformationMessage(`Reference downloaded to ${referencePath}`);
+      this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to download reference: ${error?.message || error}`);
+    }
+  }
+
+  private async downloadSubmissionArtifact(item: any): Promise<void> {
+    try {
+      // If called from TutorSubmissionItem, we have the artifact info
+      let artifactId = item?.artifactId || item?.artifact_id || item?.id;
+      let submissionGroupId = item?.submissionGroupId || item?.submission_group_id;
+
+      // If called from TutorVirtualFolderItem (Submissions folder), we need to get artifacts from API
+      if (!artifactId || !submissionGroupId) {
+        const content: CourseContentStudentList = item?.content || item?.courseContent;
+        if (!content || !content.submission_group?.id) {
+          vscode.window.showErrorMessage('No submission group available for this assignment');
+          return;
+        }
+
+        submissionGroupId = content.submission_group.id;
+
+        // Fetch available artifacts from API
+        // TODO: Add API method to list artifacts for a submission group
+        // For now, prompt user to select from tree instead
+        vscode.window.showInformationMessage(
+          'Please expand the Submissions folder and right-click on a specific submission to download it.'
+        );
+        return;
+      }
+
+      const submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, artifactId);
+
+      // Check if submission already exists
+      const exists = await this.workspaceStructure.directoryExists(submissionPath);
+      if (exists) {
+        const choice = await vscode.window.showWarningMessage(
+          `Submission artifact already exists. Re-download?`,
+          'Re-download',
+          'Cancel'
+        );
+        if (choice !== 'Re-download') {
+          return;
+        }
+        // Remove existing directory
+        await fs.promises.rm(submissionPath, { recursive: true, force: true });
+      }
+
+      // Download submission artifact
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Downloading submission artifact...',
+          cancellable: false
+        },
+        async () => {
+          const buffer = await this.apiService.downloadSubmissionArtifact(artifactId);
+          if (!buffer) {
+            throw new Error('Failed to download submission artifact');
+          }
+
+          // Extract ZIP to submission path
+          await fs.promises.mkdir(submissionPath, { recursive: true });
+          const JSZip = require('jszip');
+          const zip = await JSZip.loadAsync(buffer);
+
+          for (const [filename, file] of Object.entries(zip.files)) {
+            const fileData = file as any;
+            if (!fileData.dir) {
+              const content = await fileData.async('nodebuffer');
+              const filePath = path.join(submissionPath, filename);
+              await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+              await fs.promises.writeFile(filePath, content);
+            }
+          }
+        }
+      );
+
+      vscode.window.showInformationMessage(`Submission artifact downloaded to ${submissionPath}`);
+      this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to download submission artifact: ${error?.message || error}`);
+    }
+  }
+
+  private async compareWithReference(item: any): Promise<void> {
+    try {
+      // Get the file path from the submission
+      const submissionFilePath = item?.fsPath || item?.resourceUri?.fsPath;
+      if (!submissionFilePath) {
+        vscode.window.showErrorMessage('No file selected for comparison');
+        return;
+      }
+
+      // Extract information from the path
+      // Expected path: review/submissions/<submission_group_id>/<artifact_id>/<file_path>
+      const dirs = this.workspaceStructure.getDirectories();
+      const relativePath = path.relative(dirs.reviewSubmissions, submissionFilePath);
+      const parts = relativePath.split(path.sep);
+
+      if (parts.length < 3) {
+        vscode.window.showErrorMessage('Invalid submission file path');
+        return;
+      }
+
+      const fileInSubmission = parts.slice(2).join(path.sep);
+
+      // Get course content to find example version
+      const content = item?.content || item?.courseContent;
+      if (!content || !content.deployment || !content.deployment.example_version_id) {
+        vscode.window.showErrorMessage('No reference available for comparison');
+        return;
+      }
+
+      const exampleVersionId = content.deployment.example_version_id;
+      const referencePath = this.workspaceStructure.getReviewReferencePath(exampleVersionId);
+      const referenceFilePath = path.join(referencePath, fileInSubmission);
+
+      // Check if reference exists
+      if (!fs.existsSync(referenceFilePath)) {
+        const choice = await vscode.window.showWarningMessage(
+          'Reference file not found. Download reference first?',
+          'Download Reference',
+          'Cancel'
+        );
+        if (choice === 'Download Reference') {
+          await this.downloadReference({ content });
+          // Try again after download
+          if (!fs.existsSync(referenceFilePath)) {
+            vscode.window.showErrorMessage('Reference file still not found after download');
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+
+      // Open diff view (reference on left, submission on right)
+      const submissionUri = vscode.Uri.file(submissionFilePath);
+      const referenceUri = vscode.Uri.file(referenceFilePath);
+      const title = `${path.basename(submissionFilePath)} (Reference ↔ Submission)`;
+
+      await vscode.commands.executeCommand('vscode.diff', referenceUri, submissionUri, title);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to compare with reference: ${error?.message || error}`);
     }
   }
 

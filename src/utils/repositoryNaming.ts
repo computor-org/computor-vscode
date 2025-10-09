@@ -59,7 +59,7 @@ export function buildStudentRepoRoot(workspaceRoot: string, repoName: string): s
 }
 
 export function buildReviewRepoRoot(workspaceRoot: string, repoName: string): string {
-  return path.join(workspaceRoot, 'review', repoName);
+  return path.join(workspaceRoot, 'review', 'repositories', repoName);
 }
 
 export function buildReferenceRepoRoot(workspaceRoot: string, repoName: string): string {

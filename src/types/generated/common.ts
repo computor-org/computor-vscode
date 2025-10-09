@@ -2776,6 +2776,8 @@ export interface TutorGradeResponse {
   result?: ResultStudentList | null;
   submission_group?: SubmissionGroupStudentList | null;
   unread_message_count?: number;
+  deployment?: CourseContentDeploymentList | null;
+  has_deployment?: boolean | null;
   graded_artifact_id?: string | null;
   graded_artifact_info?: GradedArtifactInfo | null;
 }
