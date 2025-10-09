@@ -2203,6 +2203,28 @@ export class ComputorApiService {
   async listMessages(params: MessageQueryParams = {}): Promise<MessageList[]> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
+
+      // If both course_content_id and submission_group_id are present,
+      // make two separate calls and merge results (backend does AND, we want OR)
+      if (params.course_content_id && params.submission_group_id) {
+        const [contentMessages, submissionMessages] = await Promise.all([
+          client.get<MessageList[]>('/messages', {
+            course_content_id: params.course_content_id
+          }).then(r => r.data),
+          client.get<MessageList[]>('/messages', {
+            submission_group_id: params.submission_group_id
+          }).then(r => r.data)
+        ]);
+
+        // Merge and deduplicate by message id
+        const messageMap = new Map<string, MessageList>();
+        for (const msg of [...contentMessages, ...submissionMessages]) {
+          messageMap.set(msg.id, msg);
+        }
+        return Array.from(messageMap.values());
+      }
+
+      // Otherwise, make a single call with all params
       const query = Object.fromEntries(
         Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
       );
