@@ -316,7 +316,7 @@
       },
       {
         "command": "computor.lecturer.createCourseContent",
-        "title": "create content",
+        "title": "Create content",
         "icon": "$(add)",
         "category": "Computor Lecturer"
       },
