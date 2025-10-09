@@ -624,15 +624,21 @@ export class LecturerCommands {
     }
 
     // For assignments, auto-generate the identifier from title
-    const autoIdentifier = title.toLowerCase()
+    const autoSlug = title.toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_|_$/g, '');
 
-    const ltreeIdentifier = autoIdentifier;
+    // Build full identifier: <organization_path>.<course_family_path>.<course_path>.<slug>
+    const orgPath = folderItem.organization.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const familyPath = folderItem.courseFamily.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const coursePath = folderItem.course.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const fullIdentifier = `${orgPath}.${familyPath}.${coursePath}.${autoSlug}`;
+
+    const ltreeIdentifier = fullIdentifier;
 
     const versionTagInput = await vscode.window.showInputBox({
       prompt: 'Version tag for this assignment',
-      value: 'v1',
+      value: '0.0.1',
       ignoreFocusOut: true
     });
 
@@ -646,9 +652,8 @@ export class LecturerCommands {
       return;
     }
 
-    const segments = ltreeIdentifier.split('.');
-    const slugSegmentSource = segments[segments.length - 1] || ltreeIdentifier;
-    const slug = slugSegmentSource.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || initialSlug || 'assignment';
+    // Use the autoSlug for the course content path (not the full identifier)
+    const slug = autoSlug || initialSlug || 'assignment';
 
     try {
       const createdContent = await this.treeDataProvider.createCourseContent(
