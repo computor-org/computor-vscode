@@ -212,8 +212,7 @@ class UnifiedController {
   }
 
   private async setupApi(client: ReturnType<typeof buildHttpClient>): Promise<ComputorApiService> {
-    const api = new ComputorApiService(this.context);
-    (api as any).httpClient = client;
+    const api = new ComputorApiService(this.context, client);
     this.api = api;
     return api;
   }

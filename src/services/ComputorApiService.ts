@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import FormData = require('form-data');
-import { BasicAuthHttpClient } from '../http/BasicAuthHttpClient';
+import { HttpClient } from '../http/HttpClient';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
@@ -96,25 +96,24 @@ type MessageQueryParams = Partial<{
 }>;
 
 export class ComputorApiService {
-  public httpClient?: BasicAuthHttpClient;
+  public httpClient?: HttpClient;
   private settingsManager: ComputorSettingsManager;
-  private context: vscode.ExtensionContext;
-  
+
   // Batched method versions for improved performance
   public readonly batchedGetCourseContents: (courseId: string) => Promise<CourseContentList[] | undefined>;
   public readonly batchedGetCourseContentTypes: (courseId: string) => Promise<CourseContentTypeList[] | undefined>;
 
-  constructor(context: vscode.ExtensionContext) {
-    this.context = context;
+  constructor(context: vscode.ExtensionContext, httpClient?: HttpClient) {
     this.settingsManager = new ComputorSettingsManager(context);
-    
+    this.httpClient = httpClient;
+
     // Create batched versions of frequently called methods
     this.batchedGetCourseContents = requestBatchingService.createBatchedFunction(
       this.getCourseContents.bind(this),
       (courseId) => `getCourseContents-${courseId}`,
       { maxBatchSize: 5, batchDelay: 100 }
     );
-    
+
     this.batchedGetCourseContentTypes = requestBatchingService.createBatchedFunction(
       this.getCourseContentTypes.bind(this),
       (courseId) => `getCourseContentTypes-${courseId}`,
@@ -122,47 +121,11 @@ export class ComputorApiService {
     );
   }
 
-  private async getHttpClient(): Promise<BasicAuthHttpClient> {
+  private async getHttpClient(): Promise<HttpClient> {
     console.log('[getHttpClient] Checking httpClient availability:', !!this.httpClient);
 
     if (!this.httpClient) {
-      console.log('[getHttpClient] httpClient not set, attempting to create from stored credentials...');
-      const settings = await this.settingsManager.getSettings();
-
-      // Try to get stored credentials
-      const username = await this.context.secrets.get('computor.username');
-      const password = await this.context.secrets.get('computor.password');
-
-      console.log('[getHttpClient] Credentials check:', {
-        hasUsername: !!username,
-        hasPassword: !!password
-      });
-
-      if (!username || !password) {
-        throw new Error('Not authenticated. Please login first using the Computor: Login command.');
-      }
-
-      console.log('[getHttpClient] Creating BasicAuthHttpClient with baseUrl:', settings.authentication.baseUrl);
-
-      // Use BasicAuthHttpClient for proper Basic authentication handling
-      this.httpClient = new BasicAuthHttpClient(
-        settings.authentication.baseUrl,
-        username,
-        password,
-        5000
-      );
-
-      // Authenticate to verify credentials
-      try {
-        console.log('[getHttpClient] Authenticating client...');
-        await this.httpClient.authenticate();
-        console.log('[getHttpClient] Authentication successful');
-      } catch (error) {
-        console.error('[getHttpClient] Authentication failed:', error);
-        // Clear invalid client
-        this.httpClient = undefined;
-        throw error;
-      }
+      throw new Error('Not authenticated. Please login first using the Computor: Login command.');
     }
 
     console.log('[getHttpClient] Returning httpClient:', {
