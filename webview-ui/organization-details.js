@@ -63,11 +63,6 @@
             <textarea id="description" name="description" class="vscode-input" rows="4">${escapeHtml(organization.description || '')}</textarea>
           </div>
 
-          <div class="form-group">
-            <label for="path">Path</label>
-            <input type="text" id="path" name="path" class="vscode-input" value="${escapeHtml(organization.path)}" required />
-          </div>
-
           <div class="form-actions">
             <button type="submit" class="vscode-button vscode-button--primary">Save Changes</button>
           </div>
@@ -89,8 +84,7 @@
       organizationId: state.organization.id,
       updates: {
         title: formData.get('title'),
-        description: formData.get('description'),
-        path: formData.get('path')
+        description: formData.get('description')
       }
     });
   }

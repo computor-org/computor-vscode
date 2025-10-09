@@ -25,46 +25,42 @@
     const app = document.getElementById('app');
     if (!app) return;
 
-    const { courseFamily, organization, coursesCount } = state;
+    const { group, course, membersCount } = state;
 
     app.innerHTML = `
       <div class="view-header">
-        <h1>${escapeHtml(courseFamily.title || courseFamily.path)}</h1>
+        <h1>${escapeHtml(group.title || `Group ${group.id}`)}</h1>
       </div>
 
       <div class="card">
-        <h2>Course Family Information</h2>
+        <h2>Course Group Information</h2>
         <div class="info-grid">
           <div class="info-item">
             <div class="info-item-label">ID</div>
-            <div class="info-item-value">${escapeHtml(courseFamily.id)}</div>
+            <div class="info-item-value">${escapeHtml(group.id)}</div>
           </div>
           <div class="info-item">
-            <div class="info-item-label">Path</div>
-            <div class="info-item-value">${escapeHtml(courseFamily.path)}</div>
+            <div class="info-item-label">Course</div>
+            <div class="info-item-value">${escapeHtml(course?.title || course?.path || '-')}</div>
           </div>
           <div class="info-item">
-            <div class="info-item-label">Organization</div>
-            <div class="info-item-value">${escapeHtml(organization.title || organization.path)}</div>
-          </div>
-          <div class="info-item">
-            <div class="info-item-label">Courses</div>
-            <div class="info-item-value">${coursesCount ?? 0}</div>
+            <div class="info-item-label">Members</div>
+            <div class="info-item-value">${membersCount ?? 0}</div>
           </div>
         </div>
       </div>
 
       <div class="card">
-        <h2>Edit Course Family</h2>
-        <form id="editCourseFamilyForm">
+        <h2>Edit Course Group</h2>
+        <form id="editCourseGroupForm">
           <div class="form-group">
             <label for="title">Title</label>
-            <input type="text" id="title" name="title" class="vscode-input" value="${escapeHtml(courseFamily.title || '')}" required />
+            <input type="text" id="title" name="title" class="vscode-input" value="${escapeHtml(group.title || '')}" required />
           </div>
 
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea id="description" name="description" class="vscode-input" rows="4">${escapeHtml(courseFamily.description || '')}</textarea>
+            <textarea id="description" name="description" class="vscode-input" rows="4">${escapeHtml(group.description || '')}</textarea>
           </div>
 
           <div class="form-actions">
@@ -75,7 +71,7 @@
     `;
 
     // Attach event listeners
-    const form = document.getElementById('editCourseFamilyForm');
+    const form = document.getElementById('editCourseGroupForm');
     if (form) {
       form.addEventListener('submit', handleFormSubmit);
     }
@@ -84,8 +80,8 @@
   function handleFormSubmit(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
-    sendMessage('updateCourseFamily', {
-      familyId: state.courseFamily.id,
+    sendMessage('updateCourseGroup', {
+      groupId: state.group.id,
       updates: {
         title: formData.get('title'),
         description: formData.get('description')
