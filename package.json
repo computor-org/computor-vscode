@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "publisher": "itpcp-tugraz",
   "engines": {
     "vscode": "^1.74.0"
@@ -655,18 +655,13 @@
           "group": "1_content@1"
         },
         {
-          "command": "computor.lecturer.showMessages",
-          "when": "view == computor.lecturer.courses && viewItem =~ /course\\.contents/",
-          "group": "2_discussion@1"
-        },
-        {
           "command": "computor.lecturer.createCourseContent",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent\\.nonSubmittable/",
           "group": "1_content@1"
         },
         {
           "command": "computor.lecturer.showMessages",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "2_discussion@1"
         },
         {
@@ -681,7 +676,7 @@
         },
         {
           "command": "computor.lecturer.changeCourseContentType",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "2_edit@2"
         },
         {
@@ -692,11 +687,6 @@
         {
           "command": "computor.lecturer.showMessages",
           "when": "view == computor.lecturer.courses && viewItem == course.group",
-          "group": "2_discussion@1"
-        },
-        {
-          "command": "computor.lecturer.showMessages",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "2_discussion@1"
         },
         {
