@@ -455,6 +455,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.viewDeploymentInfo",
+        "title": "View Deployment Info",
+        "icon": "$(info)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.openGitLabRepo",
         "title": "Open GitLab Repository",
         "icon": "$(github)",
@@ -734,6 +740,16 @@
           "command": "computor.lecturer.assignExample",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*noExample/",
           "group": "4_example@1"
+        },
+        {
+          "command": "computor.lecturer.unassignExample",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "4_example@2"
+        },
+        {
+          "command": "computor.lecturer.viewDeploymentInfo",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "4_example@3"
         },
         {
           "command": "computor.lecturer.showCourseDetails",

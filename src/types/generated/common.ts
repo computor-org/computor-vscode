@@ -10,7 +10,7 @@
 
 import type { CourseContentTypeList, CourseExecutionBackendConfig, GradedByCourseMember, ResultStudentList, SubmissionGroupStudentList } from './courses';
 
-import type { ExampleVersionList } from './examples';
+import type { ExampleValidationResult, ExampleVersionList } from './examples';
 
 import type { OrganizationGet } from './organizations';
 
@@ -1194,6 +1194,28 @@ export interface CodeAbilityReport {
 }
 
 /**
+ * Semantic version following semver.org spec (subset).
+ * 
+ * Supports format: <major>.<minor>.<patch>[-<prerelease>]
+ * 
+ * Examples:
+ * - 1.0.0
+ * - 2.1.3
+ * - 1.0.0-alpha
+ * - 3.2.1-beta.2
+ */
+export interface SemanticVersion {
+  /** Major version number */
+  major: number;
+  /** Minor version number */
+  minor: number;
+  /** Patch version number */
+  patch: number;
+  /** Optional prerelease identifier */
+  prerelease?: any;
+}
+
+/**
  * Member information in a submission group.
  */
 export interface TutorSubmissionGroupMember {
@@ -1532,50 +1554,100 @@ export interface SubmissionQuery {
 export interface SessionCreate {
   /** Associated user ID */
   user_id: string;
-  /** Session identifier/token */
+  /** Hashed session token */
   session_id: string;
-  /** IP address of the session */
-  ip_address: string;
+  /** Hashed refresh token (binary) */
+  refresh_token_hash?: any | null;
+  /** IP address at session creation */
+  created_ip: string;
+  /** Last seen IP address */
+  last_ip?: string | null;
+  /** User agent string */
+  user_agent?: string | null;
+  /** Human-readable device description */
+  device_label?: string | null;
+  /** Session expiration time */
+  expires_at?: string | null;
+  /** Refresh token expiration */
+  refresh_expires_at?: string | null;
   /** Additional session properties */
   properties?: any | null;
 }
 
 export interface SessionGet {
-  /** Creation timestamp */
-  created_at?: string | null;
+  /** Session creation time */
+  created_at: string;
   /** Update timestamp */
   updated_at?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
   /** Session unique identifier */
   id: string;
+  /** Unique session ID per device */
+  sid: string;
   /** Associated user ID */
   user_id: string;
-  /** Session identifier/token */
+  /** Hashed session token */
   session_id: string;
-  /** Logout timestamp */
-  logout_time?: string | null;
-  /** IP address */
-  ip_address: string;
+  /** Last activity time */
+  last_seen_at?: string | null;
+  /** Expiration time */
+  expires_at?: string | null;
+  /** Revocation timestamp */
+  revoked_at?: string | null;
+  /** Reason for revocation */
+  revocation_reason?: string | null;
+  /** End timestamp (logout) */
+  ended_at?: string | null;
+  /** Number of token refreshes */
+  refresh_counter?: number;
+  /** IP at creation */
+  created_ip: string;
+  /** Last seen IP */
+  last_ip?: string | null;
+  /** Device description */
+  device_label?: string | null;
   /** Additional properties */
   properties?: any | null;
+  /** Deprecated: use ended_at */
+  logout_time?: string | null;
+  /** Deprecated: use created_ip */
+  ip_address?: string | null;
 }
 
 export interface SessionList {
-  /** Creation timestamp */
-  created_at?: string | null;
+  /** Session creation time */
+  created_at: string;
   /** Update timestamp */
   updated_at?: string | null;
   /** Session unique identifier */
   id: string;
+  /** Unique session ID per device */
+  sid: string;
   /** Associated user ID */
   user_id: string;
-  /** Session identifier/token */
+  /** Hashed session token */
   session_id: string;
-  /** Logout timestamp */
+  /** Last activity time */
+  last_seen_at?: string | null;
+  /** Expiration time */
+  expires_at?: string | null;
+  /** Revocation timestamp */
+  revoked_at?: string | null;
+  /** End timestamp */
+  ended_at?: string | null;
+  /** IP at creation */
+  created_ip: string;
+  /** Last seen IP */
+  last_ip?: string | null;
+  /** Device description */
+  device_label?: string | null;
+  /** Refresh count */
+  refresh_counter?: number;
+  /** Deprecated */
   logout_time?: string | null;
-  /** IP address */
-  ip_address: string;
+  /** Deprecated */
+  ip_address?: string | null;
 }
 
 export interface SessionUpdate {
@@ -1806,6 +1878,7 @@ export interface SubmissionArtifactList {
   uploaded_at: string;
   version_identifier?: string | null;
   properties?: Record<string, any> | null;
+  latest_result?: ResultList | null;
 }
 
 /**
@@ -1826,10 +1899,10 @@ export interface SubmissionArtifactGet {
   uploaded_at: string;
   version_identifier?: string | null;
   properties?: Record<string, any> | null;
+  latest_result?: ResultList | null;
   test_results_count?: number | null;
   grades_count?: number | null;
   reviews_count?: number | null;
-  latest_result?: ResultList | null;
   average_grade?: number | null;
 }
 
@@ -2783,6 +2856,67 @@ export interface TutorGradeResponse {
 }
 
 /**
+ * Single content item to validate.
+ */
+export interface ContentValidationItem {
+  /** UUID of course content */
+  content_id: string;
+  /** Example identifier/slug from meta.yaml */
+  example_identifier: string;
+  /** Version tag from meta.yaml (e.g., '1.0.0') */
+  version_tag: string;
+}
+
+/**
+ * Validation result for version existence.
+ */
+export interface VersionValidationResult {
+  /** Version tag that was checked */
+  version_tag: string;
+  /** Whether the version exists */
+  exists: boolean;
+  /** Version ID if exists */
+  version_id?: string | null;
+  /** Error message if not exists */
+  message?: string | null;
+}
+
+/**
+ * Validation result for a single content item.
+ */
+export interface ContentValidationResult {
+  content_id: string;
+  /** Whether this content is valid overall */
+  valid: boolean;
+  example_validation: ExampleValidationResult;
+  version_validation: VersionValidationResult;
+  /** Overall validation message for this content */
+  validation_message?: string | null;
+}
+
+/**
+ * Request to validate multiple course contents - batch validation.
+ */
+export interface ContentValidationCreate {
+  /** List of course content to validate */
+  content_validations: ContentValidationItem[];
+}
+
+/**
+ * Response from batch validation.
+ */
+export interface ContentValidationGet {
+  /** Overall validation status */
+  valid: boolean;
+  /** Total items validated */
+  total_validated: number;
+  /** Number of issues found */
+  total_issues: number;
+  /** Validation results for each content item */
+  validation_results: ContentValidationResult[];
+}
+
+/**
  * Metadata extracted from a VSIX manifest.
  */
 export interface VsixMetadata {
@@ -2957,6 +3091,90 @@ export interface ExtensionPublishResponse {
   publisher: string;
   /** Extension name */
   name: string;
+}
+
+/**
+ * Response after assigning an example.
+ */
+export interface AssignExampleResponse {
+  /** ID of the deployment record */
+  deployment_id: string;
+  course_content_id: string;
+  example_id: string;
+  example_version_id: string;
+  version_tag: string;
+  /** Status: 'pending' */
+  deployment_status: string;
+  assigned_at: string;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Detailed deployment information for a course content.
+ */
+export interface DeploymentGet {
+  id: string;
+  course_content_id: string;
+  example_id?: string | null;
+  example_version_id?: string | null;
+  example_identifier?: string | null;
+  version_tag?: string | null;
+  deployment_status: string;
+  deployment_message?: string | null;
+  assigned_at: string;
+  deployed_at?: string | null;
+  deployment_path?: string | null;
+  example_title?: string | null;
+  example_directory?: string | null;
+  example_description?: string | null;
+  course_content_title?: string | null;
+  course_content_path?: string | null;
+}
+
+/**
+ * Minimal deployment info for list views.
+ */
+export interface DeploymentList {
+  id: string;
+  course_content_id: string;
+  deployment_status: string;
+  version_tag?: string | null;
+  assigned_at: string;
+  deployed_at?: string | null;
+}
+
+/**
+ * Response after unassigning an example.
+ */
+export interface UnassignExampleResponse {
+  course_content_id: string;
+  /** Success message */
+  message: string;
+  previous_example_id?: string | null;
+  previous_version_tag?: string | null;
+}
+
+/**
+ * Single validation error for release validation.
+ */
+export interface ValidationError {
+  course_content_id: string;
+  title: string;
+  path: string;
+  issue: string;
+}
+
+/**
+ * Error response when release validation fails.
+ */
+export interface ReleaseValidationError {
+  /** Main error message */
+  error: string;
+  /** List of specific issues */
+  validation_errors: ValidationError[];
+  /** Count of validation errors */
+  total_issues: number;
 }
 
 export interface SubmissionGroupMemberProperties {

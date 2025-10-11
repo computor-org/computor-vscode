@@ -15,16 +15,16 @@ import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewPro
 import { CourseMemberWebviewProvider } from '../ui/webviews/CourseMemberWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
+import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebviewProvider';
+import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { createSimpleGit } from '../git/simpleGitFactory';
-
-interface ExampleQuickPickItem extends vscode.QuickPickItem {
-  example: ExampleGet;
-}
+import JSZip from 'jszip';
+import * as yaml from 'js-yaml';
 
 interface ReleaseScope {
   label?: string;
@@ -45,6 +45,8 @@ export class LecturerCommands {
   private courseGroupCommands: CourseGroupCommands;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
+  private deploymentInfoWebviewProvider: DeploymentInfoWebviewProvider;
+  private releaseValidationWebviewProvider: ReleaseValidationWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -62,6 +64,8 @@ export class LecturerCommands {
     this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
+    this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
+    this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
@@ -205,6 +209,12 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.unassignExample', async (item: CourseContentTreeItem) => {
         await this.unassignExample(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.viewDeploymentInfo', async (item: CourseContentTreeItem) => {
+        await this.viewDeploymentInfo(item);
       })
     );
 
@@ -1247,168 +1257,628 @@ export class LecturerCommands {
     }
   }
 
+  /**
+   * Check local assignments repository for examples and upload them if they don't exist in the backend
+   * Uses course contents from API and checks corresponding directories for meta.yaml files
+   * @param course The course to check
+   * @param contentIds Optional list of content IDs to check (if not provided, checks all assignments)
+   */
+  private async checkAndUploadLocalExamples(course: CourseList, contentIds?: string[]): Promise<void> {
+    console.log('[AUTO-UPLOAD] ========================================');
+    console.log('[AUTO-UPLOAD] Checking for local examples to upload');
+    console.log('[AUTO-UPLOAD] Course:', course.title, '(', course.id, ')');
+    try {
+      const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+      const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
+      console.log('[AUTO-UPLOAD] Assignments root:', assignmentsRoot);
+
+      if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
+        console.log('[AUTO-UPLOAD] ❌ No assignments root found, skipping');
+        console.warn('[AUTO-UPLOAD] Expected assignments repository at:', assignmentsRoot || '(path not determined)');
+        console.warn('[AUTO-UPLOAD] Please clone the assignments repository first before releasing');
+        console.log('[AUTO-UPLOAD] ========================================');
+        return;
+      }
+
+      console.log('[AUTO-UPLOAD] ✓ Assignments repository found!');
+
+      // Step 1: Get course contents with deployment info
+      console.log('[AUTO-UPLOAD] Getting course contents with deployment info from API...');
+      const allContents = await this.apiService.getCourseContents(course.id, false, true);
+
+      if (!allContents || allContents.length === 0) {
+        console.log('[AUTO-UPLOAD] No course contents found in API');
+        return;
+      }
+
+      // Step 2: Filter to submittable contents and optionally by content IDs
+      let contentsToCheck = allContents.filter(content => content.is_submittable);
+
+      if (contentIds && contentIds.length > 0) {
+        console.log('[AUTO-UPLOAD] Filtering to specific content IDs:', contentIds);
+        contentsToCheck = contentsToCheck.filter(content =>
+          contentIds.includes(content.id)
+        );
+      }
+
+      console.log(`[AUTO-UPLOAD] Found ${contentsToCheck.length} submittable content(s) to check`);
+
+      // Step 3: For each content, use deployment.example_identifier as directory name
+      const metaDataList: Array<{
+        contentId: string;
+        exampleIdentifier: string;
+        dir: string;
+        metaPath: string;
+        meta: any
+      }> = [];
+
+      for (const content of contentsToCheck) {
+        const exampleIdentifier = content.deployment?.example_identifier;
+        if (!exampleIdentifier) {
+          console.warn(`[AUTO-UPLOAD] Content ${content.id} (${content.path}) has no example_identifier in deployment, skipping`);
+          continue;
+        }
+
+        const contentPath = path.join(assignmentsRoot, exampleIdentifier);
+        const metaPath = path.join(contentPath, 'meta.yaml');
+
+        console.log(`[AUTO-UPLOAD] Checking ${exampleIdentifier} for meta.yaml...`);
+
+        if (!fs.existsSync(metaPath)) {
+          console.log(`[AUTO-UPLOAD] No meta.yaml in ${exampleIdentifier}, skipping`);
+          continue;
+        }
+
+        try {
+          const metaContent = fs.readFileSync(metaPath, 'utf-8');
+          const meta = yaml.load(metaContent) as any;
+
+          if (!meta || !meta.slug || !meta.version) {
+            console.warn(`[AUTO-UPLOAD] Invalid meta.yaml in ${exampleIdentifier} (missing slug or version)`);
+            continue;
+          }
+
+          console.log(`[AUTO-UPLOAD] ✓ Found meta.yaml in ${exampleIdentifier}: slug="${meta.slug}", version="${meta.version}"`);
+          metaDataList.push({
+            contentId: content.id,
+            exampleIdentifier,
+            dir: contentPath,
+            metaPath,
+            meta
+          });
+        } catch (error) {
+          console.error(`[AUTO-UPLOAD] ❌ Failed to read meta.yaml in ${exampleIdentifier}:`, error);
+          continue;
+        }
+      }
+
+      if (metaDataList.length === 0) {
+        console.log('[AUTO-UPLOAD] No valid meta.yaml files found');
+        return;
+      }
+
+      // Step 3: Prepare batch validation request
+      const validationItems = metaDataList.map(item => ({
+        content_id: item.contentId,
+        example_identifier: item.meta.slug,
+        version_tag: item.meta.version
+      }));
+
+      console.log(`[AUTO-UPLOAD] Validating ${validationItems.length} items in batch...`);
+
+      // Step 4: Batch validate
+      const validationResult = await this.apiService.validateCourseContent(course.id, validationItems);
+
+      console.log('[AUTO-UPLOAD] Batch validation result:', {
+        valid: validationResult.valid,
+        total_validated: validationResult.total_validated,
+        total_issues: validationResult.total_issues
+      });
+
+      // Step 5: Determine what needs uploading based on validation results
+      const examplestoUpload: Array<{ dir: string; metaPath: string; meta: any }> = [];
+
+      validationResult.validation_results.forEach((result: any) => {
+        const metaItem = metaDataList.find(m => m.contentId === result.content_id);
+        if (!metaItem) {return;}
+
+        if (!result.valid) {
+          console.log(`[AUTO-UPLOAD] ⚠️  Will upload: ${metaItem.meta.slug} v${metaItem.meta.version} (${metaItem.exampleIdentifier})`);
+          console.log(`[AUTO-UPLOAD]     Reason: ${result.validation_message || 'Invalid'}`);
+          examplestoUpload.push({ dir: metaItem.dir, metaPath: metaItem.metaPath, meta: metaItem.meta });
+        } else {
+          console.log(`[AUTO-UPLOAD] ✓ Already exists: ${metaItem.meta.slug} v${metaItem.meta.version}`);
+        }
+      });
+
+      console.log('[AUTO-UPLOAD] ========================================');
+      console.log('[AUTO-UPLOAD] Summary: Found', examplestoUpload.length, 'example(s) to upload');
+      if (examplestoUpload.length > 0) {
+        console.log('[AUTO-UPLOAD] Examples to upload:');
+        examplestoUpload.forEach(ex => {
+          console.log(`[AUTO-UPLOAD]   - ${ex.meta.slug} v${ex.meta.version} from ${ex.dir}`);
+        });
+      }
+      console.log('[AUTO-UPLOAD] ========================================');
+
+      // Upload examples that don't exist in backend
+      if (examplestoUpload.length > 0) {
+        const confirm = await vscode.window.showInformationMessage(
+          `Found ${examplestoUpload.length} local example(s) that need to be uploaded. Upload now?`,
+          'Upload All',
+          'Skip',
+          'Cancel'
+        );
+
+        console.log('[AUTO-UPLOAD] User selected:', confirm || 'dismissed');
+
+        if (confirm === 'Upload All') {
+          console.log('[AUTO-UPLOAD] Starting upload process...');
+          await this.uploadLocalExamples(examplestoUpload, course);
+          console.log('[AUTO-UPLOAD] ✓ Upload process complete');
+        } else if (confirm === 'Cancel') {
+          console.log('[AUTO-UPLOAD] User cancelled upload');
+          throw new Error('Upload cancelled by user');
+        } else {
+          console.log('[AUTO-UPLOAD] User skipped upload - examples will NOT be uploaded');
+        }
+      } else {
+        console.log('[AUTO-UPLOAD] No examples need uploading');
+      }
+    } catch (error) {
+      console.error('[AUTO-UPLOAD] ❌ ERROR in checkAndUploadLocalExamples:', error);
+      vscode.window.showErrorMessage(`Auto-upload failed: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Auto-assign examples to assignments based on local meta.yaml data
+   */
+  private async autoAssignExamplesFromLocal(courseId: string): Promise<void> {
+    console.log('[AUTO-ASSIGN] ========================================');
+    console.log('[AUTO-ASSIGN] Starting auto-assignment for course:', courseId);
+    try {
+      const course = await this.apiService.getCourse(courseId);
+      if (!course) {
+        console.log('[AUTO-ASSIGN] ❌ Course not found');
+        return;
+      }
+
+      const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+      const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
+      console.log('[AUTO-ASSIGN] Assignments root:', assignmentsRoot);
+
+      if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
+        console.log('[AUTO-ASSIGN] ❌ No assignments repository found, skipping');
+        return;
+      }
+
+      console.log('[AUTO-ASSIGN] ✓ Assignments repository found');
+
+      // Get all course contents
+      const contents = await this.apiService.getCourseContents(courseId, false, true);
+      if (!contents) {
+        return;
+      }
+
+      // Get content types to identify submittable content (assignments)
+      const contentTypes = await this.apiService.getCourseContentTypes(courseId);
+      const submittableTypeIds = new Set<string>();
+
+      for (const type of contentTypes) {
+        const fullType = await this.apiService.getCourseContentType(type.id);
+        if (fullType?.course_content_kind?.submittable) {
+          submittableTypeIds.add(type.id);
+        }
+      }
+
+      // Find assignments without examples and try to match them
+      const assignmentsToAssign: Array<{ contentId: string; exampleId: string; versionTag: string; title: string }> = [];
+
+      for (const content of contents) {
+        const isSubmittable = submittableTypeIds.has(content.course_content_type_id);
+        if (!isSubmittable) {
+          continue;
+        }
+
+        const hasDeployment = content.has_deployment;
+        if (hasDeployment) {
+          continue; // Already assigned
+        }
+
+        // Try to find matching example in local repository
+        // Assignment path format: assignments/<path>/<assignment-dir>
+        const assignmentPath = path.join(assignmentsRoot, content.path);
+
+        if (!fs.existsSync(assignmentPath)) {
+          continue;
+        }
+
+        // Look for meta.yaml in assignment directory
+        const metaPath = path.join(assignmentPath, 'meta.yaml');
+        if (!fs.existsSync(metaPath)) {
+          continue;
+        }
+
+        try {
+          const metaContent = fs.readFileSync(metaPath, 'utf-8');
+          const meta = yaml.load(metaContent) as any;
+
+          if (!meta || !meta.slug || !meta.version) {
+            continue;
+          }
+
+          // Query example by identifier (slug) using the new method
+          const example = await this.apiService.getExampleByIdentifier(meta.slug);
+          if (!example) {
+            console.warn(`Example ${meta.slug} not found in backend for assignment ${content.title}`);
+            continue;
+          }
+
+          // Check if version exists by querying with version_tag parameter
+          const versions = await this.apiService.getExampleVersions(example.id, meta.version);
+          const matchingVersion = versions && versions.length > 0 ? versions[0] : null;
+
+          if (!matchingVersion) {
+            console.warn(`Version ${meta.version} not found for example ${meta.slug}`);
+            continue;
+          }
+
+          assignmentsToAssign.push({
+            contentId: content.id,
+            exampleId: example.id,
+            versionTag: meta.version,
+            title: content.title || content.path
+          });
+        } catch (error) {
+          console.warn(`Failed to read meta.yaml for ${content.path}:`, error);
+          continue;
+        }
+      }
+
+      // Auto-assign if we found matches
+      if (assignmentsToAssign.length > 0) {
+        const confirm = await vscode.window.showInformationMessage(
+          `Found ${assignmentsToAssign.length} assignment(s) that can be auto-assigned from local examples. Assign now?`,
+          'Assign All',
+          'Skip',
+          'Cancel'
+        );
+
+        if (confirm === 'Assign All') {
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Auto-assigning ${assignmentsToAssign.length} assignment(s)...`,
+            cancellable: false
+          }, async (progress) => {
+            let successCount = 0;
+            const errors: string[] = [];
+
+            for (let i = 0; i < assignmentsToAssign.length; i++) {
+              const assignment = assignmentsToAssign[i];
+              if (!assignment) {
+                continue;
+              }
+
+              try {
+                progress.report({
+                  increment: (100 / assignmentsToAssign.length),
+                  message: `Assigning: ${assignment.title} (${i + 1}/${assignmentsToAssign.length})`
+                });
+
+                await this.apiService.lecturerAssignExample(
+                  assignment.contentId,
+                  {
+                    example_id: assignment.exampleId,
+                    version_tag: assignment.versionTag
+                  }
+                );
+
+                successCount++;
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                errors.push(`${assignment.title}: ${errorMsg}`);
+                console.error(`Failed to assign ${assignment.title}:`, error);
+              }
+            }
+
+            if (successCount > 0) {
+              vscode.window.showInformationMessage(
+                `✅ Auto-assigned ${successCount} assignment(s) successfully`
+              );
+            }
+
+            if (errors.length > 0) {
+              vscode.window.showWarningMessage(
+                `Failed to assign ${errors.length} assignment(s). Check console for details.`
+              );
+            }
+          });
+        } else if (confirm === 'Cancel') {
+          throw new Error('Auto-assignment cancelled by user');
+        }
+      }
+    } catch (error) {
+      console.error('[AUTO-ASSIGN] ERROR in autoAssignExamplesFromLocal:', error);
+      vscode.window.showErrorMessage(`Auto-assign failed: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload local examples to the backend
+   */
+  private async uploadLocalExamples(
+    examples: Array<{ dir: string; metaPath: string; meta: any }>,
+    course: CourseList
+  ): Promise<void> {
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Uploading ${examples.length} example(s)...`,
+      cancellable: false
+    }, async (progress) => {
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < examples.length; i++) {
+        const item = examples[i];
+        if (!item) {
+          continue;
+        }
+        const { dir, meta } = item;
+        const exampleName = meta.title || meta.slug;
+
+        try {
+          progress.report({
+            increment: (100 / examples.length),
+            message: `Uploading: ${exampleName} (${i + 1}/${examples.length})`
+          });
+
+          // Package as zip
+          const zipper = new JSZip();
+          const addToZip = (dirPath: string, basePath: string) => {
+            const entries = fs.readdirSync(dirPath);
+            for (const entry of entries) {
+              if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) {
+                continue;
+              }
+              const fullPath = path.join(dirPath, entry);
+              const stat = fs.statSync(fullPath);
+              const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+              if (stat.isFile()) {
+                const data = fs.readFileSync(fullPath);
+                zipper.file(relativePath, data);
+              } else if (stat.isDirectory()) {
+                addToZip(fullPath, basePath);
+              }
+            }
+          };
+
+          addToZip(dir, dir);
+          const base64Zip = await zipper.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+
+          // Get repository ID from course
+          // Assuming course has an example_repository_id, otherwise use default
+          const repositoryId = (course as any).example_repository_id || '00000000-0000-0000-0000-000000000000';
+
+          // Upload via API
+          const uploadRequest = {
+            repository_id: repositoryId,
+            directory: path.basename(dir),
+            files: { [`${path.basename(dir)}.zip`]: base64Zip }
+          };
+
+          await this.apiService.uploadExample(uploadRequest);
+          successCount++;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`${exampleName}: ${errorMsg}`);
+          console.error(`Failed to upload ${exampleName}:`, error);
+        }
+      }
+
+      if (successCount > 0) {
+        vscode.window.showInformationMessage(
+          `✅ Uploaded ${successCount} example(s) successfully`
+        );
+      }
+
+      if (errors.length > 0) {
+        vscode.window.showWarningMessage(
+          `Failed to upload ${errors.length} example(s). Check console for details.`
+        );
+      }
+    });
+  }
+
   private async assignExample(item: CourseContentTreeItem): Promise<void> {
     try {
-      const searchQuery = await this.promptForExampleSearch();
-      const examples = await this.searchExamples(item.course.id, searchQuery);
-      
-      if (!examples || examples.length === 0) {
-        vscode.window.showWarningMessage('No examples found matching your search');
-        return;
-      }
+      // Step 1: Check local assignments repository for examples and auto-upload if needed
+      await this.checkAndUploadLocalExamples(item.course);
 
-      const selected = await this.selectExample(examples);
-      if (!selected) {
-        return;
-      }
-
-      await this.performExampleAssignment(item, selected.example);
-      
-      vscode.window.showInformationMessage(
-        `✅ Example "${selected.label}" assigned successfully!`
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to assign example: ${error}`);
-    }
-  }
-  
-  private async promptForExampleSearch(): Promise<string | undefined> {
-    return vscode.window.showInputBox({
-      prompt: 'Search for examples (optional)',
-      placeHolder: 'Enter search terms or leave empty to see all'
-    });
-  }
-  
-  private async searchExamples(courseId: string, searchQuery?: string): Promise<ExampleGet[]> {
-    void courseId; // courseId - parameter kept for compatibility
-    void searchQuery; // searchQuery - not used in current implementation
-    return this.apiService.getAvailableExamples() || [];
-  }
-  
-  private async selectExample(examples: ExampleGet[]): Promise<ExampleQuickPickItem | undefined> {
-    const quickPickItems: ExampleQuickPickItem[] = examples.map((example: ExampleGet) => ({
-      label: example.title,
-      description: [
-        example.identifier && `🔖 ${example.identifier}`,
-        example.repository && `📦 latest`
-      ].filter(Boolean).join(' • '),
-      detail: example.description || '',
-      example: example
-    }));
-
-    return vscode.window.showQuickPick(quickPickItems, {
-      placeHolder: `Select an example to assign (${examples.length} found)`,
-      matchOnDescription: true,
-      matchOnDetail: true
-    });
-  }
-  
-  private async performExampleAssignment(item: CourseContentTreeItem, example: ExampleGet): Promise<void> {
-    // First, get the example with versions if not already loaded
-    let exampleWithVersions = example;
-    if (!example.versions || example.versions.length === 0) {
-      const fullExample = await this.apiService.getExample(example.id);
-      if (!fullExample || !fullExample.versions || fullExample.versions.length === 0) {
-        throw new Error('Example has no versions available');
-      }
-      exampleWithVersions = fullExample;
-    }
-
-    // Select version - for now use the latest version
-    // TODO: In future, allow user to select specific version
-    const latestVersion = exampleWithVersions.versions!.reduce((latest, current) => 
-      current.version_number > latest.version_number ? current : latest
-    );
-
-    // Get the updated content from the API response using the new method
-    const updatedContent = await this.apiService.assignExampleVersionToCourseContent(
-      item.courseContent.id,
-      latestVersion.id
-    );
-    
-    console.log('Assignment API returned updated content:', {
-      id: updatedContent.id,
-      title: updatedContent.title,
-      hasExample: hasExampleAssigned(updatedContent),
-      versionId: getExampleVersionId(updatedContent),
-      deployment: updatedContent.deployment
-    });
-    
-    // Check deployment status if deployment is included
-    if (updatedContent.deployment) {
-      const deploymentStatus = updatedContent.deployment.deployment_status;
-      if (deploymentStatus !== 'pending' && deploymentStatus !== 'assigned') {
-        console.warn(`Unexpected deployment_status: ${deploymentStatus}. Expected 'pending' or 'assigned'.`);
-      }
-    }
-
-    // Trigger assignments sync so files are populated in assignments repo for this content
-    try {
-      await this.apiService.generateAssignments(item.course.id, {
-        course_content_ids: [item.courseContent.id],
-        overwrite_strategy: 'skip_if_exists',
-        commit_message: `Initialize assignment from example ${example.identifier || example.title}`
+      // Step 2: Get available examples
+      const examples = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Loading examples...',
+        cancellable: false
+      }, async () => {
+        return await this.apiService.getAvailableExamples();
       });
-    } catch (e) {
-      console.warn('Failed to trigger assignments generation after assigning example:', e);
-    }
 
-    console.log('Example assignment completed, refreshing tree...');
-    
-    // Clear cache and refresh the specific item
-    this.apiService.clearCourseCache(item.course.id);
-    
-    // Refresh the parent of the content item to properly update the display
-    // This ensures the item's visual state (icon, description) is updated
-    const parent = await this.treeDataProvider.getParent(item);
-    if (parent) {
-      console.log(`Refreshing parent node: ${parent.id}`);
-      (this.treeDataProvider as any).refreshNode(parent);
-    } else {
-      console.log('No parent found, refreshing the item itself');
-      (this.treeDataProvider as any).refreshNode(item);
+      if (!examples || examples.length === 0) {
+        const action = await vscode.window.showWarningMessage(
+          'No examples available. You need to upload examples before assigning them.',
+          'Upload Example',
+          'Cancel'
+        );
+
+        if (action === 'Upload Example') {
+          vscode.commands.executeCommand('computor.lecturer.examples.focus');
+          vscode.window.showInformationMessage(
+            'Navigate to the Examples view, right-click an example, and select "Upload Example"'
+          );
+        }
+        return;
+      }
+
+      // Step 2: Show example picker
+      const selectedExample = await vscode.window.showQuickPick(
+        examples.map((ex: ExampleGet) => ({
+          label: ex.title,
+          description: ex.identifier || 'No identifier',
+          detail: ex.description || '',
+          id: ex.id
+        })),
+        {
+          placeHolder: 'Select example to assign',
+          matchOnDescription: true,
+          matchOnDetail: true
+        }
+      );
+
+      if (!selectedExample) {
+        return;
+      }
+
+      // Step 3: Load versions for selected example
+      const versions = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Loading example versions...',
+        cancellable: false
+      }, async () => {
+        return await this.apiService.getExampleVersions(selectedExample.id);
+      });
+
+      if (!versions || versions.length === 0) {
+        vscode.window.showWarningMessage('No versions available for this example');
+        return;
+      }
+
+      // Step 4: Show version picker
+      const selectedVersion = await vscode.window.showQuickPick(
+        versions.map((v: any) => ({
+          label: v.version_tag,
+          description: `Created: ${new Date(v.created_at).toLocaleDateString()}`,
+          detail: v.description || '',
+          versionTag: v.version_tag
+        })),
+        {
+          placeHolder: 'Select version to assign'
+        }
+      );
+
+      if (!selectedVersion) {
+        return;
+      }
+
+      // Step 5: Confirm assignment
+      const confirm = await vscode.window.showInformationMessage(
+        `Assign "${selectedExample.label}" (v${selectedVersion.versionTag}) to this assignment?`,
+        'Assign',
+        'Cancel'
+      );
+
+      if (confirm !== 'Assign') {
+        return;
+      }
+
+      // Step 6: Perform assignment using new lecturer endpoint
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Assigning example...',
+        cancellable: false
+      }, async () => {
+        await this.apiService.lecturerAssignExample(
+          item.courseContent.id,
+          {
+            example_id: selectedExample.id,
+            version_tag: selectedVersion.versionTag
+          }
+        );
+      });
+
+      // Step 7: Success
+      vscode.window.showInformationMessage(
+        `✅ Example assigned successfully!`
+      );
+
+      // Step 8: Refresh tree
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+
+    } catch (error: any) {
+      console.error('Failed to assign example:', error);
+      const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to assign example: ${errorMessage}`);
     }
   }
 
   private async unassignExample(item: CourseContentTreeItem): Promise<void> {
-    const confirmation = await vscode.window.showWarningMessage(
-      `Remove example assignment from "${item.courseContent.title}"?`,
-      'Yes',
-      'No'
-    );
+    try {
+      // Step 1: Get current deployment info to check status
+      const deployment = await this.apiService.lecturerGetDeployment(item.courseContent.id);
 
-    if (confirmation === 'Yes') {
-      try {
-        // Get the updated content from the API response
-        const updatedContent = await this.apiService.unassignExampleFromCourseContent(
-          item.course.id,
-          item.courseContent.id
+      // Step 2: Check if unassignable
+      const deploymentStatus = deployment?.deployment_status || 'unassigned';
+      if (deploymentStatus === 'deployed' || deploymentStatus === 'deploying') {
+        vscode.window.showErrorMessage(
+          `Cannot unassign: Example is ${deploymentStatus}.\n\nUnassignment is only allowed for pending or failed deployments.`
         );
-        
-        console.log('Unassign API returned updated content:', {
-          id: updatedContent.id,
-          title: updatedContent.title,
-          hasExample: hasExampleAssigned(updatedContent),
-          deploymentStatus: getDeploymentStatus(updatedContent)
-        });
-        
-        // Clear cache and refresh the specific item
-        this.apiService.clearCourseCache(item.course.id);
-        
-        // Refresh the parent of the content item to properly update the display
-        const parent = await this.treeDataProvider.getParent(item);
-        if (parent) {
-          console.log(`Refreshing parent node after unassign: ${parent.id}`);
-          (this.treeDataProvider as any).refreshNode(parent);
-        } else {
-          console.log('No parent found, refreshing the item itself');
-          (this.treeDataProvider as any).refreshNode(item);
-        }
-        
-        vscode.window.showInformationMessage('Example unassigned successfully');
-      } catch (error) {
-        vscode.window.showErrorMessage(`Failed to unassign example: ${error}`);
+        return;
       }
+
+      // Step 3: Confirm unassignment
+      const confirmation = await vscode.window.showWarningMessage(
+        `Unassign example from "${item.courseContent.title}"?`,
+        { modal: true },
+        'Unassign',
+        'Cancel'
+      );
+
+      if (confirmation !== 'Unassign') {
+        return;
+      }
+
+      // Step 4: Perform unassignment using new lecturer endpoint
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Unassigning example...',
+        cancellable: false
+      }, async () => {
+        await this.apiService.lecturerUnassignExample(item.courseContent.id);
+      });
+
+      // Step 5: Success
+      vscode.window.showInformationMessage('✅ Example unassigned successfully');
+
+      // Step 6: Refresh tree
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+
+    } catch (error: any) {
+      console.error('Failed to unassign example:', error);
+
+      // Handle specific error cases
+      if (error?.response?.status === 400) {
+        const errorDetail = error.response.data?.detail || 'Cannot unassign example';
+        vscode.window.showErrorMessage(`❌ Cannot unassign: ${errorDetail}`);
+      } else {
+        const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
+        vscode.window.showErrorMessage(`❌ Unassignment failed: ${errorMessage}`);
+      }
+    }
+  }
+
+  private async viewDeploymentInfo(item: CourseContentTreeItem): Promise<void> {
+    try {
+      await this.deploymentInfoWebviewProvider.showDeploymentInfo(
+        item.courseContent.id,
+        item.courseContent.title || item.courseContent.path
+      );
+    } catch (error: any) {
+      console.error('Failed to view deployment info:', error);
+      vscode.window.showErrorMessage(`Failed to view deployment info: ${error.message}`);
     }
   }
 
@@ -1584,13 +2054,21 @@ export class LecturerCommands {
   }
 
   private async releaseCourseContent(item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
+    console.log('============================================');
+    console.log('releaseCourseContent CALLED');
+    console.log('Item type:', item.constructor.name);
+    console.log('============================================');
     try {
       const scopeInfo = this.buildReleaseScopeFromTreeItem(item);
+      console.log('Scope info:', scopeInfo);
       if (!scopeInfo) {
+        console.log('❌ No scope info, returning');
         return;
       }
+      console.log('Calling startReleaseWorkflow with courseId:', scopeInfo.courseId);
       await this.startReleaseWorkflow(scopeInfo.courseId, scopeInfo.scope);
     } catch (error) {
+      console.error('❌ Error in releaseCourseContent:', error);
       vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
     }
   }
@@ -1654,6 +2132,78 @@ export class LecturerCommands {
   }
 
   private async startReleaseWorkflow(courseId: string, scope: ReleaseScope): Promise<void> {
+    console.log('[RELEASE] ========================================');
+    console.log('[RELEASE] Starting release workflow for course:', courseId);
+    console.log('[RELEASE] Scope:', JSON.stringify(scope));
+    console.log('[RELEASE] ========================================');
+
+    // Step 0: Get course and check for local examples that need uploading
+    const course = await this.apiService.getCourse(courseId);
+    console.log('[RELEASE] Course fetched:', course ? `${course.title} (${course.id})` : 'NOT FOUND');
+
+    if (course) {
+      console.log('[RELEASE] Found course, checking for pending content to determine which examples to check...');
+
+      // First, get the pending release contents to know which assignments we're actually releasing
+      const pendingContents = await this.getPendingReleaseContents(courseId, scope);
+      const pendingIds = pendingContents.map(c => c.id);
+
+      console.log('[RELEASE] Pending content IDs:', pendingIds.length > 0 ? pendingIds : 'None - will check all');
+
+      try {
+        // Check and upload local examples - only for the pending content IDs
+        console.log('[RELEASE] Calling checkAndUploadLocalExamples...');
+        await this.checkAndUploadLocalExamples(course, pendingIds.length > 0 ? pendingIds : undefined);
+        console.log('[RELEASE] ✓ Example check/upload complete');
+
+        // Auto-assign examples to assignments based on identifiers
+        console.log('[RELEASE] Calling autoAssignExamplesFromLocal...');
+        await this.autoAssignExamplesFromLocal(courseId);
+        console.log('[RELEASE] ✓ Auto-assignment complete');
+      } catch (error: any) {
+        console.error('[RELEASE] ❌ Error during auto-upload/assign:', error);
+        if (error.message === 'Upload cancelled by user') {
+          vscode.window.showInformationMessage('Release cancelled');
+          return;
+        }
+        console.warn('[RELEASE] ⚠️  Failed to auto-upload/assign examples, continuing anyway...', error);
+        // Continue anyway - validation will catch missing examples
+      }
+    } else {
+      console.warn('[RELEASE] ⚠️  Course not found');
+    }
+
+    // Step 1: Pre-flight validation
+    const validationResult = await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Validating course for release...',
+      cancellable: false
+    }, async () => {
+      try {
+        return await this.apiService.validateCourseForRelease(courseId);
+      } catch (error: any) {
+        return {
+          valid: false,
+          error: 'Validation failed',
+          validation_errors: [],
+          total_issues: 0
+        };
+      }
+    });
+
+    // Step 2: If validation fails, show errors
+    if (!validationResult.valid) {
+      const course = await this.apiService.getCourse(courseId);
+      const courseTitle = course?.title || course?.path || 'Unknown Course';
+
+      await this.releaseValidationWebviewProvider.showValidationErrors(
+        validationResult,
+        courseTitle
+      );
+      return;
+    }
+
+    // Step 3: Continue with normal release flow
     let repoInfo: { repoRoot: string; head: string } | undefined;
     try {
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing assignments repository...' }, async (progress) => {
