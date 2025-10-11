@@ -645,7 +645,6 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
       activeSession = {
         deactivate: () => controller.dispose().then(async () => {
-          await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
           await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
           await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
           await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
@@ -666,7 +665,6 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
           console.warn('Extension update check failed:', err);
         });
       }
-      await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', true);
 
       vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
     } catch (error: any) {
@@ -711,7 +709,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 
   // Initialize all view contexts to false to hide views until login
-  await vscode.commands.executeCommand('setContext', 'computor.isLoggedIn', false);
   await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
   await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
   await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
