@@ -170,6 +170,7 @@ async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
 class UnifiedController {
   private context: vscode.ExtensionContext;
   private api?: ComputorApiService;
+  private httpClient?: BearerTokenHttpClient;
   private disposables: vscode.Disposable[] = [];
   private activeViews: string[] = [];
   private profileWebviewProvider?: UserProfileWebviewProvider;
@@ -179,6 +180,7 @@ class UnifiedController {
   }
 
   async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
+    this.httpClient = client;
     const api = await this.setupApi(client);
 
     this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
@@ -462,6 +464,10 @@ class UnifiedController {
   getActiveViews(): string[] {
     return [...this.activeViews];
   }
+
+  getHttpClient(): BearerTokenHttpClient | undefined {
+    return this.httpClient;
+  }
 }
 
 
@@ -469,6 +475,7 @@ class UnifiedController {
 interface UnifiedSession {
   deactivate: () => Promise<void>;
   getActiveViews: () => string[];
+  getHttpClient: () => BearerTokenHttpClient | undefined;
 }
 
 let activeSession: UnifiedSession | null = null;
@@ -476,6 +483,68 @@ let isAuthenticating = false;
 let extensionUpdateService: ExtensionUpdateService | undefined;
 
 const backendConnectionService = BackendConnectionService.getInstance();
+
+async function performTokenRefresh(
+  context: vscode.ExtensionContext,
+  baseUrl: string,
+  session: UnifiedSession
+): Promise<void> {
+  const secretKey = 'computor.auth';
+  const usernameKey = 'computor.username';
+  const passwordKey = 'computor.password';
+
+  const storedUsername = await context.secrets.get(usernameKey);
+  const storedPassword = await context.secrets.get(passwordKey);
+  const creds = await promptCredentials(
+    storedUsername || storedPassword
+      ? { username: storedUsername, password: storedPassword }
+      : undefined
+  );
+  if (!creds) { return; }
+
+  backendConnectionService.setBaseUrl(baseUrl);
+  const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+  if (!connectionStatus.isReachable) {
+    await backendConnectionService.showConnectionError(connectionStatus);
+    return;
+  }
+
+  const tempClient = new BearerTokenHttpClient(baseUrl, 5000);
+
+  try {
+    await tempClient.authenticateWithCredentials(creds.username, creds.password);
+  } catch (error: any) {
+    vscode.window.showErrorMessage(`Authentication failed: ${error.message}`);
+    return;
+  }
+
+  const tokenData = tempClient.getTokenData();
+  const auth: StoredAuth = {
+    accessToken: tokenData.accessToken!,
+    refreshToken: tokenData.refreshToken || undefined,
+    expiresAt: tokenData.expiresAt?.toISOString(),
+    userId: tokenData.userId || undefined
+  };
+
+  // Update the existing HTTP client with new tokens
+  const existingClient = session.getHttpClient?.();
+  if (existingClient && existingClient instanceof BearerTokenHttpClient) {
+    existingClient.setTokens(
+      auth.accessToken,
+      auth.refreshToken,
+      auth.expiresAt ? new Date(auth.expiresAt) : undefined,
+      auth.userId
+    );
+  }
+
+  await ensureWorkspaceMarker(baseUrl);
+
+  await context.secrets.store(secretKey, JSON.stringify(auth));
+  await context.secrets.store(usernameKey, creds.username);
+  await context.secrets.store(passwordKey, creds.password);
+
+  vscode.window.showInformationMessage(`Re-authenticated successfully: ${baseUrl}`);
+}
 
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
   if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
@@ -515,16 +584,18 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     const baseUrl = await ensureBaseUrl(settings);
     if (!baseUrl) { return; }
 
-    // If already logged in, ask if user wants to re-login
+    // If already logged in, refresh tokens without re-registering commands
     if (activeSession) {
       const currentViews = activeSession.getActiveViews();
       const answer = await vscode.window.showWarningMessage(
-        `Already logged in with views: ${currentViews.join(', ')}. Re-login?`,
+        `Already logged in with views: ${currentViews.join(', ')}. Re-login with different credentials?`,
         'Re-login', 'Cancel'
       );
       if (answer !== 'Re-login') { return; }
-      await activeSession.deactivate();
-      activeSession = null;
+
+      // Perform token refresh without deactivating the session
+      await performTokenRefresh(context, baseUrl, activeSession);
+      return;
     }
 
     const secretKey = 'computor.auth';
@@ -582,7 +653,8 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
           await context.globalState.update('computor.tutor.selection', undefined);
           backendConnectionService.stopHealthCheck();
         }),
-        getActiveViews: () => controller.getActiveViews()
+        getActiveViews: () => controller.getActiveViews(),
+        getHttpClient: () => controller.getHttpClient()
       };
 
       await context.secrets.store(secretKey, JSON.stringify(auth));
