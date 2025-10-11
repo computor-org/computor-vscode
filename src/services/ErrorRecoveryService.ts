@@ -74,13 +74,13 @@ export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
 
   async recover(error: Error): Promise<void> {
     const action = await vscode.window.showErrorMessage(
-      'Authentication failed. Your session may have expired.',
-      'Sign In',
+      'Authentication failed. Your session may have expired. Please reload the window to refresh your session.',
+      'Reload Window',
       'Cancel'
     );
 
-    if (action === 'Sign In') {
-      await vscode.commands.executeCommand('computor.login');
+    if (action === 'Reload Window') {
+      await vscode.commands.executeCommand('workbench.action.reloadWindow');
     } else {
       throw error;
     }

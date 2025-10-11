@@ -37,6 +37,7 @@ interface StoredAuth {
   accessToken: string;
   refreshToken?: string;
   expiresAt?: string;
+  issuedAt?: string;
   userId?: string;
 }
 
@@ -89,12 +90,13 @@ async function promptCredentials(previous?: { username?: string; password?: stri
 
 function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClient {
   const client = new BearerTokenHttpClient(baseUrl, 5000);
-  client.setTokens(
-    auth.accessToken,
-    auth.refreshToken,
-    auth.expiresAt ? new Date(auth.expiresAt) : undefined,
-    auth.userId
-  );
+  client.setTokenData({
+    accessToken: auth.accessToken,
+    refreshToken: auth.refreshToken,
+    expiresAt: auth.expiresAt ? new Date(auth.expiresAt) : undefined,
+    issuedAt: auth.issuedAt ? new Date(auth.issuedAt) : undefined,
+    userId: auth.userId
+  });
   return client;
 }
 
@@ -559,6 +561,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       accessToken: tokenData.accessToken!,
       refreshToken: tokenData.refreshToken || undefined,
       expiresAt: tokenData.expiresAt?.toISOString(),
+      issuedAt: tokenData.issuedAt?.toISOString(),
       userId: tokenData.userId || undefined
     };
 
