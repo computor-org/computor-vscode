@@ -1,7 +1,7 @@
 // Course Content Type Details Webview Script
 
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.vscodeApi || acquireVsCodeApi();
   let state = window.__INITIAL_STATE__ || {};
 
   // Initialize the view
@@ -152,14 +152,6 @@
             </div>
           </form>
         </div>
-
-        <div class="section actions-section">
-          <h2 class="section-title">Actions</h2>
-          <div class="button-group">
-            <button class="button button-secondary" id="findUsageBtn">Find Usage</button>
-            <button class="button button-danger" id="deleteBtn">Delete Content Type</button>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -194,16 +186,6 @@
     if (refreshBtn) {
       refreshBtn.addEventListener('click', handleRefresh);
     }
-
-    const findUsageBtn = document.getElementById('findUsageBtn');
-    if (findUsageBtn) {
-      findUsageBtn.addEventListener('click', handleFindUsage);
-    }
-
-    const deleteBtn = document.getElementById('deleteBtn');
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', handleDelete);
-    }
   }
 
   // Handle form submission
@@ -233,30 +215,6 @@
       command: 'refresh',
       data: { typeId: state.contentType.id }
     });
-  }
-
-  // Handle find usage
-  function handleFindUsage() {
-    vscode.postMessage({
-      command: 'findUsage',
-      data: {
-        courseId: state.course.id,
-        typeId: state.contentType.id
-      }
-    });
-  }
-
-  // Handle delete
-  function handleDelete() {
-    const typeName = state.contentType.title || state.contentType.slug;
-    const confirmed = confirm(`Are you sure you want to delete the content type "${typeName}"? This action cannot be undone.`);
-
-    if (confirmed) {
-      vscode.postMessage({
-        command: 'deleteContentType',
-        data: { typeId: state.contentType.id }
-      });
-    }
   }
 
   // Listen for messages from extension

@@ -1,7 +1,7 @@
 // Generic Content Details Webview Script
 
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.vscodeApi || acquireVsCodeApi();
   let state = window.__INITIAL_STATE__ || {};
 
   function init() {

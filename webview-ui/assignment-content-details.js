@@ -1,7 +1,7 @@
 // Assignment Content Details Webview Script
 
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.vscodeApi || acquireVsCodeApi();
   let state = window.__INITIAL_STATE__ || {};
 
   function init() {
@@ -176,17 +176,6 @@
             </div>
           </form>
         </div>
-
-        <div class="section actions-section">
-          <h2 class="section-title">Actions</h2>
-          <div class="button-group">
-            ${hasExample && deploymentStatus !== 'deployed' ? `
-              <button class="button button-primary" id="deployBtn">Deploy to Students</button>
-            ` : ''}
-            <button class="button button-secondary" id="createChildBtn">Create Child Content</button>
-            <button class="button button-danger" id="deleteBtn">Delete Assignment</button>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -209,15 +198,6 @@
 
     const openGitLabBtn = document.getElementById('openGitLabBtn');
     if (openGitLabBtn) openGitLabBtn.addEventListener('click', handleOpenGitLab);
-
-    const deployBtn = document.getElementById('deployBtn');
-    if (deployBtn) deployBtn.addEventListener('click', handleDeploy);
-
-    const createChildBtn = document.getElementById('createChildBtn');
-    if (createChildBtn) createChildBtn.addEventListener('click', handleCreateChild);
-
-    const deleteBtn = document.getElementById('deleteBtn');
-    if (deleteBtn) deleteBtn.addEventListener('click', handleDelete);
   }
 
   function handleFormSubmit(e) {
@@ -299,42 +279,6 @@
         contentId: state.courseContent.id
       }
     });
-  }
-
-  function handleDeploy() {
-    const confirmed = confirm('Deploy this assignment to students?');
-    if (confirmed) {
-      vscode.postMessage({
-        command: 'deployAssignment',
-        data: {
-          courseId: state.course.id,
-          contentId: state.courseContent.id
-        }
-      });
-    }
-  }
-
-  function handleCreateChild() {
-    vscode.postMessage({
-      command: 'createChild',
-      data: {
-        courseId: state.course.id,
-        parentContent: state.courseContent
-      }
-    });
-  }
-
-  function handleDelete() {
-    const confirmed = confirm(`Are you sure you want to delete "${state.courseContent.title || state.courseContent.path}"? This action cannot be undone.`);
-    if (confirmed) {
-      vscode.postMessage({
-        command: 'deleteContent',
-        data: {
-          courseId: state.course.id,
-          contentId: state.courseContent.id
-        }
-      });
-    }
   }
 
   window.addEventListener('message', (event) => {

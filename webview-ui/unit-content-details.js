@@ -1,7 +1,7 @@
 // Unit Content Details Webview Script
 
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.vscodeApi || acquireVsCodeApi();
   let state = window.__INITIAL_STATE__ || {};
 
   function init() {
@@ -66,14 +66,6 @@
             </div>
           </form>
         </div>
-
-        <div class="section actions-section">
-          <h2 class="section-title">Actions</h2>
-          <div class="button-group">
-            <button class="button button-primary" id="createChildBtn">Create Child Content</button>
-            <button class="button button-danger" id="deleteBtn">Delete Unit</button>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -84,12 +76,6 @@
 
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', handleRefresh);
-
-    const createChildBtn = document.getElementById('createChildBtn');
-    if (createChildBtn) createChildBtn.addEventListener('click', handleCreateChild);
-
-    const deleteBtn = document.getElementById('deleteBtn');
-    if (deleteBtn) deleteBtn.addEventListener('click', handleDelete);
   }
 
   function handleFormSubmit(e) {
@@ -110,17 +96,6 @@
 
   function handleRefresh() {
     vscode.postMessage({ command: 'refresh', data: { courseId: state.course.id, contentId: state.courseContent.id } });
-  }
-
-  function handleCreateChild() {
-    vscode.postMessage({ command: 'createChild', data: { courseId: state.course.id, parentContent: state.courseContent } });
-  }
-
-  function handleDelete() {
-    const confirmed = confirm(`Delete "${state.courseContent.title || state.courseContent.path}"?`);
-    if (confirmed) {
-      vscode.postMessage({ command: 'deleteContent', data: { courseId: state.course.id, contentId: state.courseContent.id } });
-    }
   }
 
   window.addEventListener('message', (event) => {
