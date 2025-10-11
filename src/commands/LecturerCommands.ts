@@ -1483,19 +1483,25 @@ export class LecturerCommands {
       return;
     }
 
-    const slug = await vscode.window.showInputBox({
-      prompt: 'Enter a unique slug for this content type',
-      placeHolder: 'e.g., lecture, assignment, exercise'
+    const title = await vscode.window.showInputBox({
+      prompt: 'Enter content type title',
+      placeHolder: 'e.g., Lecture, Assignment, Special Topics'
     });
 
-    if (!slug) {
+    if (!title) {
       return;
     }
 
-    const title = await vscode.window.showInputBox({
-      prompt: 'Enter content type title',
-      placeHolder: 'e.g., Lecture, Assignment'
-    });
+    // Auto-generate slug from title: lowercase, replace spaces with underscores, remove non-alphanumeric
+    const slug = title.toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+      .replace(/^_|_$/g, '');
+
+    if (!slug) {
+      vscode.window.showErrorMessage('Invalid title: cannot generate slug');
+      return;
+    }
 
     const color = await vscode.window.showInputBox({
       prompt: 'Enter color (optional)',
@@ -1506,15 +1512,15 @@ export class LecturerCommands {
     try {
       await this.apiService.createCourseContentType({
         slug,
-        title: title || slug,
+        title,
         color: color || 'green',
         course_id: item.course.id,
         course_content_kind_id: selectedKind.kindData.id
       });
-      
+
       // Clear cache and refresh
       this.treeDataProvider.refreshNode(item);
-      vscode.window.showInformationMessage(`Content type "${title || slug}" created successfully`);
+      vscode.window.showInformationMessage(`Content type "${title}" created successfully (slug: ${slug})`);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create content type: ${error}`);
     }
