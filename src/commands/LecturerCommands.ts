@@ -7,11 +7,12 @@ import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseConte
 import { CourseGroupCommands } from './lecturer/courseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
-import { CourseContentWebviewProvider } from '../ui/webviews/CourseContentWebviewProvider';
+import { CourseContentWebviewFactory } from '../ui/webviews/content/CourseContentWebviewFactory';
 import { OrganizationWebviewProvider } from '../ui/webviews/OrganizationWebviewProvider';
 import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewProvider';
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
+import { CourseMemberWebviewProvider } from '../ui/webviews/CourseMemberWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
@@ -36,11 +37,11 @@ export class LecturerCommands {
   private settingsManager: ComputorSettingsManager;
   private apiService: ComputorApiService;
   private courseWebviewProvider: CourseWebviewProvider;
-  private courseContentWebviewProvider: CourseContentWebviewProvider;
   private organizationWebviewProvider: OrganizationWebviewProvider;
   private courseFamilyWebviewProvider: CourseFamilyWebviewProvider;
   private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
   private courseGroupWebviewProvider: CourseGroupWebviewProvider;
+  private courseMemberWebviewProvider: CourseMemberWebviewProvider;
   private courseGroupCommands: CourseGroupCommands;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
@@ -54,11 +55,11 @@ export class LecturerCommands {
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService, this.treeDataProvider);
-    this.courseContentWebviewProvider = new CourseContentWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
@@ -262,6 +263,12 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
         await this.showCourseGroupDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showCourseMemberDetails', async (item: CourseMemberTreeItem) => {
+        await this.showCourseMemberDetails(item);
       })
     );
 
@@ -1885,7 +1892,7 @@ export class LecturerCommands {
   private async showCourseContentDetails(item: CourseContentTreeItem): Promise<void> {
     // Fetch full course content data from API (individual GET has all fields)
     const freshContent = await this.apiService.getCourseContent(item.courseContent.id, true) || item.courseContent;
-    
+
     // Fetch example info if the content has an example assigned
     let exampleInfo = item.exampleInfo;
     if (hasExampleAssigned(freshContent) && !exampleInfo) {
@@ -1902,13 +1909,38 @@ export class LecturerCommands {
         console.error(`Failed to fetch example info:`, error);
       }
     }
-    
-    await this.courseContentWebviewProvider.show(
-      `Content: ${freshContent.title || freshContent.path}`,
+
+    // Fetch content kind to determine appropriate webview provider
+    let contentKind;
+    try {
+      const kinds = await this.apiService.getCourseContentKinds();
+      contentKind = kinds.find(k => k.id === freshContent.course_content_kind_id);
+    } catch (error) {
+      console.error('Failed to get content kind:', error);
+    }
+
+    if (!contentKind) {
+      vscode.window.showErrorMessage('Unable to determine content kind for this item');
+      return;
+    }
+
+    // Create appropriate webview provider using factory
+    const webviewProvider = CourseContentWebviewFactory.create(
+      this.context,
+      this.apiService,
+      contentKind,
+      this.treeDataProvider
+    );
+
+    const providerType = CourseContentWebviewFactory.getProviderType(contentKind);
+
+    await webviewProvider.show(
+      `${providerType}: ${freshContent.title || freshContent.path}`,
       {
         courseContent: freshContent,
         course: item.course,
         contentType: item.contentType,
+        contentKind: contentKind,
         exampleInfo: exampleInfo,
         isSubmittable: item.isSubmittable
       }
@@ -1987,6 +2019,41 @@ export class LecturerCommands {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to show group details: ${error}`);
     }
+  }
+
+  private async showCourseMemberDetails(item: CourseMemberTreeItem): Promise<void> {
+    // Fetch full course member data from API
+    const freshMember = await this.apiService.getCourseMember(item.member.id) || item.member;
+
+    // Fetch group info if member is in a group
+    let group = item.group;
+    if (freshMember.course_group_id && !group) {
+      try {
+        group = await this.apiService.getCourseGroup(freshMember.course_group_id);
+      } catch (error) {
+        console.error('Failed to fetch group:', error);
+      }
+    }
+
+    // Fetch available groups for the course
+    let availableGroups: any[] = [];
+    try {
+      availableGroups = await this.apiService.getCourseGroups(item.course.id);
+    } catch (error) {
+      console.error('Failed to fetch available groups:', error);
+    }
+
+    await this.courseMemberWebviewProvider.show(
+      `Member: ${freshMember.user?.username || freshMember.user?.email || 'Unknown'}`,
+      {
+        member: freshMember,
+        course: item.course,
+        group,
+        role: undefined,
+        availableGroups,
+        availableRoles: undefined
+      }
+    );
   }
 
   private async renameCourseGroup(item: CourseGroupTreeItem): Promise<void> {
