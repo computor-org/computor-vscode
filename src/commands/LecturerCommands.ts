@@ -1403,24 +1403,65 @@ export class LecturerCommands {
 
       // Upload examples that don't exist in backend
       if (examplestoUpload.length > 0) {
-        const confirm = await vscode.window.showInformationMessage(
-          `Found ${examplestoUpload.length} local example(s) that need to be uploaded. Upload now?`,
-          'Upload All',
-          'Skip',
-          'Cancel'
-        );
+        console.log('[AUTO-UPLOAD] Showing selection dialog for examples to upload...');
 
-        console.log('[AUTO-UPLOAD] User selected:', confirm || 'dismissed');
+        // Create QuickPick items for each example
+        const items = examplestoUpload.map(ex => ({
+          label: ex.meta.slug,
+          description: `v${ex.meta.version}`,
+          detail: ex.dir,
+          picked: true, // Pre-selected
+          example: ex
+        }));
 
-        if (confirm === 'Upload All') {
-          console.log('[AUTO-UPLOAD] Starting upload process...');
-          await this.uploadLocalExamples(examplestoUpload, course);
-          console.log('[AUTO-UPLOAD] ✓ Upload process complete');
-        } else if (confirm === 'Cancel') {
-          console.log('[AUTO-UPLOAD] User cancelled upload');
+        const selected = await vscode.window.showQuickPick(items, {
+          canPickMany: true,
+          placeHolder: 'Select examples to upload (pre-selected)',
+          title: `Found ${examplestoUpload.length} example(s) to upload`
+        });
+
+        if (!selected) {
+          console.log('[AUTO-UPLOAD] User cancelled upload selection');
           throw new Error('Upload cancelled by user');
+        }
+
+        if (selected.length === 0) {
+          console.log('[AUTO-UPLOAD] User deselected all examples - skipping upload');
+          vscode.window.showInformationMessage('No examples selected for upload');
         } else {
-          console.log('[AUTO-UPLOAD] User skipped upload - examples will NOT be uploaded');
+          console.log(`[AUTO-UPLOAD] User selected ${selected.length} example(s) to upload`);
+
+          // Get example repositories
+          console.log('[AUTO-UPLOAD] Fetching example repositories...');
+          const repositories = await this.apiService.getExampleRepositories();
+
+          if (!repositories || repositories.length === 0) {
+            vscode.window.showErrorMessage('No example repositories available. Cannot upload examples.');
+            throw new Error('No example repositories available');
+          }
+
+          // Show repository selection
+          const repositoryItems = repositories.map(repo => ({
+            label: repo.name,
+            description: repo.source_type,
+            detail: repo.description || repo.source_url,
+            repository: repo
+          }));
+
+          const selectedRepo = await vscode.window.showQuickPick(repositoryItems, {
+            placeHolder: 'Select target example repository',
+            title: 'Upload Examples To'
+          });
+
+          if (!selectedRepo) {
+            console.log('[AUTO-UPLOAD] User cancelled repository selection');
+            throw new Error('Repository selection cancelled by user');
+          }
+
+          console.log(`[AUTO-UPLOAD] User selected repository: ${selectedRepo.repository.name} (${selectedRepo.repository.id})`);
+          const selectedExamples = selected.map(item => item.example);
+          await this.uploadLocalExamples(selectedExamples, selectedRepo.repository.id);
+          console.log('[AUTO-UPLOAD] ✓ Upload process complete');
         }
       } else {
         console.log('[AUTO-UPLOAD] No examples need uploading');
@@ -1474,7 +1515,7 @@ export class LecturerCommands {
       }
 
       // Find assignments without examples and try to match them
-      const assignmentsToAssign: Array<{ contentId: string; exampleId: string; versionTag: string; title: string }> = [];
+      const assignmentsToAssign: Array<{ contentId: string; exampleIdentifier: string; versionTag: string; title: string }> = [];
 
       for (const content of contents) {
         const isSubmittable = submittableTypeIds.has(content.course_content_type_id);
@@ -1482,14 +1523,16 @@ export class LecturerCommands {
           continue;
         }
 
-        const hasDeployment = content.has_deployment;
-        if (hasDeployment) {
-          continue; // Already assigned
+        // Check if deployment has an actual example version assigned
+        const hasExampleVersion = content.deployment?.example_version_id;
+        if (hasExampleVersion) {
+          continue; // Already has example version assigned
         }
 
         // Try to find matching example in local repository
-        // Assignment path format: assignments/<path>/<assignment-dir>
-        const assignmentPath = path.join(assignmentsRoot, content.path);
+        // Use deployment.example_identifier as directory name if available
+        const directoryName = content.deployment?.example_identifier || content.path;
+        const assignmentPath = path.join(assignmentsRoot, directoryName);
 
         if (!fs.existsSync(assignmentPath)) {
           continue;
@@ -1527,7 +1570,7 @@ export class LecturerCommands {
 
           assignmentsToAssign.push({
             contentId: content.id,
-            exampleId: example.id,
+            exampleIdentifier: meta.slug,
             versionTag: meta.version,
             title: content.title || content.path
           });
@@ -1539,19 +1582,12 @@ export class LecturerCommands {
 
       // Auto-assign if we found matches
       if (assignmentsToAssign.length > 0) {
-        const confirm = await vscode.window.showInformationMessage(
-          `Found ${assignmentsToAssign.length} assignment(s) that can be auto-assigned from local examples. Assign now?`,
-          'Assign All',
-          'Skip',
-          'Cancel'
-        );
-
-        if (confirm === 'Assign All') {
-          await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Auto-assigning ${assignmentsToAssign.length} assignment(s)...`,
-            cancellable: false
-          }, async (progress) => {
+        console.log(`[AUTO-ASSIGN] Auto-assigning ${assignmentsToAssign.length} assignment(s)...`);
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: `Auto-assigning ${assignmentsToAssign.length} assignment(s)...`,
+          cancellable: false
+        }, async (progress) => {
             let successCount = 0;
             const errors: string[] = [];
 
@@ -1570,7 +1606,7 @@ export class LecturerCommands {
                 await this.apiService.lecturerAssignExample(
                   assignment.contentId,
                   {
-                    example_id: assignment.exampleId,
+                    example_identifier: assignment.exampleIdentifier,
                     version_tag: assignment.versionTag
                   }
                 );
@@ -1595,9 +1631,6 @@ export class LecturerCommands {
               );
             }
           });
-        } else if (confirm === 'Cancel') {
-          throw new Error('Auto-assignment cancelled by user');
-        }
       }
     } catch (error) {
       console.error('[AUTO-ASSIGN] ERROR in autoAssignExamplesFromLocal:', error);
@@ -1611,7 +1644,7 @@ export class LecturerCommands {
    */
   private async uploadLocalExamples(
     examples: Array<{ dir: string; metaPath: string; meta: any }>,
-    course: CourseList
+    repositoryId: string
   ): Promise<void> {
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
@@ -1629,6 +1662,7 @@ export class LecturerCommands {
         const { dir, meta } = item;
         const exampleName = meta.title || meta.slug;
 
+        let uploadRequest: any = null;
         try {
           progress.report({
             increment: (100 / examples.length),
@@ -1658,35 +1692,46 @@ export class LecturerCommands {
           addToZip(dir, dir);
           const base64Zip = await zipper.generateAsync({ type: 'base64', compression: 'DEFLATE' });
 
-          // Get repository ID from course
-          // Assuming course has an example_repository_id, otherwise use default
-          const repositoryId = (course as any).example_repository_id || '00000000-0000-0000-0000-000000000000';
-
           // Upload via API
-          const uploadRequest = {
+          uploadRequest = {
             repository_id: repositoryId,
             directory: path.basename(dir),
             files: { [`${path.basename(dir)}.zip`]: base64Zip }
           };
 
+          console.log(`[AUTO-UPLOAD] Uploading ${exampleName} with request:`, {
+            repository_id: uploadRequest.repository_id,
+            directory: uploadRequest.directory,
+            files_keys: Object.keys(uploadRequest.files)
+          });
           await this.apiService.uploadExample(uploadRequest);
           successCount++;
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
           errors.push(`${exampleName}: ${errorMsg}`);
           console.error(`Failed to upload ${exampleName}:`, error);
+          if (uploadRequest) {
+            console.error(`Upload request was:`, {
+              repository_id: uploadRequest.repository_id,
+              directory: uploadRequest.directory,
+              files_count: Object.keys(uploadRequest.files).length
+            });
+          }
         }
+      }
+
+      if (errors.length > 0) {
+        const errorDetails = errors.join('\n');
+        console.error('[AUTO-UPLOAD] Upload errors:', errorDetails);
+        vscode.window.showErrorMessage(
+          `Failed to upload ${errors.length} example(s). Release cancelled.`
+        );
+        throw new Error(`Failed to upload ${errors.length} example(s): ${errorDetails}`);
       }
 
       if (successCount > 0) {
         vscode.window.showInformationMessage(
           `✅ Uploaded ${successCount} example(s) successfully`
-        );
-      }
-
-      if (errors.length > 0) {
-        vscode.window.showWarningMessage(
-          `Failed to upload ${errors.length} example(s). Check console for details.`
         );
       }
     });
@@ -1728,7 +1773,8 @@ export class LecturerCommands {
           label: ex.title,
           description: ex.identifier || 'No identifier',
           detail: ex.description || '',
-          id: ex.id
+          id: ex.id,
+          identifier: ex.identifier
         })),
         {
           placeHolder: 'Select example to assign',
@@ -1792,7 +1838,7 @@ export class LecturerCommands {
         await this.apiService.lecturerAssignExample(
           item.courseContent.id,
           {
-            example_id: selectedExample.id,
+            example_identifier: selectedExample.identifier,
             version_tag: selectedVersion.versionTag
           }
         );
@@ -2162,8 +2208,13 @@ export class LecturerCommands {
         console.log('[RELEASE] ✓ Auto-assignment complete');
       } catch (error: any) {
         console.error('[RELEASE] ❌ Error during auto-upload/assign:', error);
-        if (error.message === 'Upload cancelled by user') {
+        if (error.message === 'Upload cancelled by user' || error.message === 'Repository selection cancelled by user') {
           vscode.window.showInformationMessage('Release cancelled');
+          return;
+        }
+        // If upload failed, stop the release process
+        if (error.message && error.message.includes('Failed to upload')) {
+          vscode.window.showErrorMessage(`Release cancelled: ${error.message}`);
           return;
         }
         console.warn('[RELEASE] ⚠️  Failed to auto-upload/assign examples, continuing anyway...', error);

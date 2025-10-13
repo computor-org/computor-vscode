@@ -945,12 +945,12 @@ export class ComputorApiService {
    */
   async lecturerAssignExample(
     contentId: string,
-    request: { example_id: string; version_tag: string }
+    request: { example_identifier: string; version_tag: string }
   ): Promise<any> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
       const response = await client.post(
-        `/lecturer/course-contents/${contentId}/assign-example`,
+        `/course-contents/${contentId}/assign-example`,
         request
       );
 
