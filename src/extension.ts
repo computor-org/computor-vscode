@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IconGenerator } from './utils/IconGenerator';
+import { errorCatalog } from './exceptions/ErrorCatalog';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -705,6 +706,9 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
+
+  // Initialize backend error catalog
+  errorCatalog.initialize();
 
   extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 

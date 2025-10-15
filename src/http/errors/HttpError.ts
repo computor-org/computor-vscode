@@ -1,36 +1,93 @@
+import { errorCatalog } from '../../exceptions/ErrorCatalog';
+import { BackendErrorDefinition } from '../../exceptions/types';
+
 export class HttpError extends Error {
+  public readonly errorCode?: string;
+  public readonly backendError?: BackendErrorDefinition;
+
   constructor(
     message: string,
     public readonly status: number,
     public readonly statusText: string,
     public readonly response?: any
   ) {
-    // Create a more detailed error message if response contains detail
     let enhancedMessage = message;
-    if (response?.detail) {
-      // If detail is a string, append it
-      if (typeof response.detail === 'string') {
-        enhancedMessage = `${message} - ${response.detail}`;
-      } 
-      // If detail is an array (validation errors), format them
-      else if (Array.isArray(response.detail)) {
-        const details = response.detail.map((d: any) => 
-          typeof d === 'string' ? d : d.msg || JSON.stringify(d)
-        ).join(', ');
-        enhancedMessage = `${message} - ${details}`;
+    let errorCode: string | undefined;
+    let backendError: BackendErrorDefinition | undefined;
+
+    // Check for backend error_code in response
+    if (response?.error_code && typeof response.error_code === 'string') {
+      const codeFromResponse: string = response.error_code;
+      errorCode = codeFromResponse;
+      const catalogError = errorCatalog.getError(codeFromResponse);
+      if (catalogError) {
+        backendError = catalogError;
       }
-      // If detail is an object, try to extract a message
-      else if (typeof response.detail === 'object' && response.detail.message) {
-        enhancedMessage = `${message} - ${response.detail.message}`;
+
+      // If we found the error in catalog, use its user-friendly message
+      if (backendError) {
+        enhancedMessage = backendError.message.plain;
+        console.log(`[HttpError] Using backend error catalog for ${codeFromResponse}: ${backendError.title}`);
       }
     }
-    // Also check for 'message' field in response (some APIs use this)
-    else if (response?.message && typeof response.message === 'string') {
-      enhancedMessage = `${message} - ${response.message}`;
+
+    // Fallback to legacy error message extraction if no backend error found
+    if (!backendError) {
+      if (response?.detail) {
+        // If detail is a string, append it
+        if (typeof response.detail === 'string') {
+          enhancedMessage = `${message} - ${response.detail}`;
+        }
+        // If detail is an array (validation errors), format them
+        else if (Array.isArray(response.detail)) {
+          const details = response.detail.map((d: any) =>
+            typeof d === 'string' ? d : d.msg || JSON.stringify(d)
+          ).join(', ');
+          enhancedMessage = `${message} - ${details}`;
+        }
+        // If detail is an object, try to extract a message
+        else if (typeof response.detail === 'object' && response.detail.message) {
+          enhancedMessage = `${message} - ${response.detail.message}`;
+        }
+      }
+      // Also check for 'message' field in response (some APIs use this)
+      else if (response?.message && typeof response.message === 'string') {
+        enhancedMessage = `${message} - ${response.message}`;
+      }
     }
-    
+
     super(enhancedMessage);
     this.name = 'HttpError';
+    this.errorCode = errorCode;
+    this.backendError = backendError;
+  }
+
+  /**
+   * Check if this error has a backend error code
+   */
+  hasBackendError(): boolean {
+    return this.backendError !== undefined;
+  }
+
+  /**
+   * Get the error category if available
+   */
+  getCategory(): string | undefined {
+    return this.backendError?.category;
+  }
+
+  /**
+   * Get the error severity if available
+   */
+  getSeverity(): string | undefined {
+    return this.backendError?.severity;
+  }
+
+  /**
+   * Get retry_after value if available (in seconds)
+   */
+  getRetryAfter(): number | null | undefined {
+    return this.backendError?.retry_after;
   }
 }
 

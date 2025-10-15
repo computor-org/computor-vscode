@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { BackendConnectionService } from './BackendConnectionService';
+import { HttpError } from '../http/errors/HttpError';
+import { ErrorDisplayStrategyFactory } from '../exceptions/ErrorDisplayStrategy';
 
 export interface RetryOptions {
   maxRetries?: number;
@@ -90,30 +92,43 @@ export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
 export class RateLimitErrorStrategy implements ErrorRecoveryStrategy {
   private lastRetryTime: number = 0;
   private readonly minRetryDelay = 5000; // 5 seconds
-  
+
   canRecover(error: Error): boolean {
+    if (error instanceof HttpError && error.hasBackendError()) {
+      return error.getCategory() === 'rate_limit';
+    }
     return error.message.includes('429') ||
            error.message.includes('Too Many Requests') ||
            error.message.includes('Rate limit');
   }
-  
+
   async recover(error: Error): Promise<void> {
     const now = Date.now();
-    const timeSinceLastRetry = now - this.lastRetryTime;
-    
-    if (timeSinceLastRetry < this.minRetryDelay) {
-      const waitTime = Math.ceil((this.minRetryDelay - timeSinceLastRetry) / 1000);
-      throw new Error(`Rate limited. Please wait ${waitTime} seconds before retrying.`);
+    let waitTime = this.minRetryDelay;
+
+    // Use retry_after from backend if available
+    if (error instanceof HttpError && error.hasBackendError()) {
+      const retryAfter = error.getRetryAfter();
+      if (retryAfter && retryAfter > 0) {
+        waitTime = retryAfter * 1000; // Convert seconds to milliseconds
+      }
     }
-    
+
+    const timeSinceLastRetry = now - this.lastRetryTime;
+
+    if (timeSinceLastRetry < waitTime) {
+      const remainingWait = Math.ceil((waitTime - timeSinceLastRetry) / 1000);
+      throw new Error(`Rate limited. Please wait ${remainingWait} seconds before retrying.`);
+    }
+
     this.lastRetryTime = now;
-    
+
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: 'Rate limited. Waiting before retry...',
+      title: `Rate limited. Waiting ${Math.ceil(waitTime / 1000)} seconds before retry...`,
       cancellable: false
     }, async (progress) => {
-      await new Promise(resolve => setTimeout(resolve, this.minRetryDelay));
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     });
   }
 }
@@ -286,20 +301,35 @@ export class ErrorRecoveryService {
       alternativeLabel?: string;
     }
   ): Promise<void> {
+    // If this is an HttpError with backend error definition, use the display strategy
+    if (error instanceof HttpError && error.hasBackendError() && error.backendError) {
+      const displayStrategy = ErrorDisplayStrategyFactory.createStrategy('interactive', {
+        onRetry: recoveryOptions?.retry,
+        onShowDetails: (backendError) => {
+          const detailedStrategy = ErrorDisplayStrategyFactory.createStrategy('detailed');
+          void detailedStrategy.display(backendError);
+        }
+      });
+
+      await displayStrategy.display(error.backendError);
+      return;
+    }
+
+    // Fallback to legacy error display
     const actions: string[] = [];
-    
+
     if (recoveryOptions?.retry) {
       actions.push('Retry');
     }
-    
+
     if (recoveryOptions?.alternative) {
       actions.push(recoveryOptions.alternativeLabel || 'Alternative Action');
     }
-    
+
     actions.push('Show Details');
-    
+
     const selection = await vscode.window.showErrorMessage(message, ...actions);
-    
+
     if (selection === 'Retry' && recoveryOptions?.retry) {
       try {
         await recoveryOptions.retry();
@@ -316,6 +346,33 @@ export class ErrorRecoveryService {
       const details = `Error: ${error.message}\n\nStack trace:\n${error.stack}`;
       vscode.window.showErrorMessage(details, { modal: true });
     }
+  }
+
+  /**
+   * Display a backend error using appropriate strategy
+   */
+  displayBackendError(
+    error: HttpError,
+    strategyType: 'notification' | 'interactive' | 'detailed' = 'notification',
+    recoveryOptions?: {
+      retry?: () => Promise<void>;
+    }
+  ): void {
+    if (!error.hasBackendError() || !error.backendError) {
+      // Fallback to simple error message
+      vscode.window.showErrorMessage(error.message);
+      return;
+    }
+
+    const displayStrategy = ErrorDisplayStrategyFactory.createStrategy(strategyType, {
+      onRetry: recoveryOptions?.retry,
+      onShowDetails: (backendError) => {
+        const detailedStrategy = ErrorDisplayStrategyFactory.createStrategy('detailed');
+        void detailedStrategy.display(backendError);
+      }
+    });
+
+    void displayStrategy.display(error.backendError);
   }
 }
 
