@@ -154,6 +154,23 @@ export class StudentCommands {
     }
   }
 
+  private async saveAllFilesInDirectory(directory: string): Promise<void> {
+    const normalizedDir = path.normalize(directory);
+    const textDocuments = vscode.workspace.textDocuments;
+
+    const savePromises = textDocuments
+      .filter(doc => {
+        if (!doc.isDirty) {
+          return false;
+        }
+        const docPath = path.normalize(doc.uri.fsPath);
+        return docPath.startsWith(normalizedDir);
+      })
+      .map(doc => doc.save());
+
+    await Promise.all(savePromises);
+  }
+
 
   registerCommands(): void {
     // Refresh student view
@@ -431,6 +448,9 @@ export class StudentCommands {
             return;
           }
 
+          // Save all open files in the assignment directory
+          await this.saveAllFilesInDirectory(submissionDirectory);
+
           // Perform submission by ensuring latest work is committed and pushed
           let submissionOk = false;
           let submissionVersion: string | undefined;
@@ -588,6 +608,9 @@ export class StudentCommands {
         const assignmentTitle = item.courseContent.title || assignmentPath;
 
         try {
+          // Save all open files in the assignment directory
+          await this.saveAllFilesInDirectory(directory);
+
           // Check if there are any changes to commit
           const hasChanges = await this.gitBranchManager.hasChanges(directory);
           if (!hasChanges) {
@@ -709,6 +732,9 @@ export class StudentCommands {
 
         let testSucceeded = false;
         try {
+          // Save all open files in the assignment directory
+          await this.saveAllFilesInDirectory(submissionDirectory);
+
           // Always show a single progress for the entire test flow
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
