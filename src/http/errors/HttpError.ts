@@ -22,12 +22,12 @@ export class HttpError extends Error {
       const catalogError = errorCatalog.getError(codeFromResponse);
       if (catalogError) {
         backendError = catalogError;
-      }
-
-      // If we found the error in catalog, use its user-friendly message
-      if (backendError) {
+        // If we found the error in catalog, use its user-friendly message
         enhancedMessage = backendError.message.plain;
         console.log(`[HttpError] Using backend error catalog for ${codeFromResponse}: ${backendError.title}`);
+      } else {
+        // Error code provided but not found in catalog
+        console.warn(`[HttpError] Error code '${codeFromResponse}' not found in catalog. Available codes: ${errorCatalog.isLoaded() ? 'catalog loaded' : 'catalog not loaded'}`);
       }
     }
 
