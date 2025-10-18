@@ -1,5 +1,21 @@
 # Student Guide: Courses
 
+## Table of Contents
+
+- [What is a Course?](#what-is-a-course)
+- [What You See](#what-you-see)
+- [Course Information](#course-information)
+  - [Tooltip Information](#tooltip-information)
+  - [Tree Structure](#tree-structure)
+- [Available Actions](#available-actions)
+  - [Show Messages](#show-messages)
+  - [Help](#help)
+- [Understanding Course Organization](#understanding-course-organization)
+- [Tips](#tips)
+- [Next Steps](#next-steps)
+
+---
+
 ## What is a Course?
 
 A **Course** is the top-level container in your student view. It represents a complete class or module you're enrolled in, such as "Introduction to Programming" or "Data Structures".

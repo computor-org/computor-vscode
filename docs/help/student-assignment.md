@@ -1,5 +1,55 @@
 # Student Guide: Assignments
 
+## Table of Contents
+
+- [What is an Assignment?](#what-is-an-assignment)
+- [What You See](#what-you-see)
+- [Assignment Information](#assignment-information)
+  - [Tooltip Information](#tooltip-information)
+  - [Description in Tree](#description-in-tree)
+- [Assignment Lifecycle](#assignment-lifecycle)
+  - [1. Work on Your Code](#1-work-on-your-code)
+  - [2. Test Locally](#2-test-locally)
+  - [3. Commit Your Changes](#3-commit-your-changes)
+  - [4. Submit the Assignment](#4-submit-the-assignment)
+  - [5. View Feedback and Grades](#5-view-feedback-and-grades)
+- [Available Actions](#available-actions)
+  - [Show README Preview](#-show-readme-preview-inline-icon)
+  - [Test Assignment](#-test-assignment-inline-icon-only-if-cloned)
+  - [Commit Assignment](#-commit-assignment-inline-icon-only-if-cloned)
+  - [Submit Assignment](#-submit-assignment-inline-icon-only-if-cloned)
+  - [Show Test Results](#-show-test-results)
+  - [View Details](#-view-details)
+  - [Show Messages](#-show-messages)
+  - [Help](#-help)
+- [Assignment Types](#assignment-types)
+  - [Individual Assignments](#individual-assignments)
+  - [Team Assignments](#team-assignments)
+- [Understanding Icons and Badges](#understanding-icons-and-badges)
+  - [Assignment Icons](#assignment-icons)
+  - [Inline Action Icons](#inline-action-icons)
+- [File and Folder Expansion](#file-and-folder-expansion)
+- [Common Scenarios](#common-scenarios)
+  - [Starting a New Assignment](#starting-a-new-assignment)
+  - [Debugging Test Failures](#debugging-test-failures)
+  - [Submitting Work](#submitting-work)
+  - [After Receiving Feedback](#after-receiving-feedback)
+- [Tips and Best Practices](#tips-and-best-practices)
+  - [Commit Frequently](#commit-frequently)
+  - [Test Before Submitting](#test-before-submitting)
+  - [Manage Test Attempts](#manage-test-attempts)
+  - [Watch Submission Limits](#watch-submission-limits)
+  - [Read Messages](#read-messages)
+  - [Understand the Metrics](#understand-the-metrics)
+- [Troubleshooting](#troubleshooting)
+  - ["Cannot clone repository"](#cannot-clone-repository)
+  - ["Tests won't run"](#tests-wont-run)
+  - ["Submission failed"](#submission-failed)
+  - ["No test attempts remaining"](#no-test-attempts-remaining)
+- [Next Steps](#next-steps)
+
+---
+
 ## What is an Assignment?
 
 An **Assignment** is a submittable task with a Git repository where you write code, complete exercises, or create deliverables. Assignments are the core interactive element of your coursework - you clone them, work on them, test them, and submit them for grading.

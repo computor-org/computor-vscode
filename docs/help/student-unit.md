@@ -1,5 +1,26 @@
 # Student Guide: Units and Folders
 
+## Table of Contents
+
+- [What is a Unit?](#what-is-a-unit)
+- [What You See](#what-you-see)
+- [Unit Information](#unit-information)
+  - [Tooltip Information](#tooltip-information)
+  - [Description in Tree](#description-in-tree)
+- [Available Actions](#available-actions)
+  - [Show Messages](#show-messages)
+  - [Help](#help)
+- [Understanding Unit Organization](#understanding-unit-organization)
+  - [Item Count](#item-count)
+- [Content Types and Colors](#content-types-and-colors)
+- [Messages and Notifications](#messages-and-notifications)
+  - [Unread Message Indicator](#unread-message-indicator)
+  - [Checking Messages](#checking-messages)
+- [Tips](#tips)
+- [Next Steps](#next-steps)
+
+---
+
 ## What is a Unit?
 
 A **Unit** (also called a course folder or course group) is an organizational container within a course. It groups related assignments, readings, and other content together - typically by week, module, topic, or concept.
