@@ -120,6 +120,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.help",
+        "title": "Help",
+        "icon": "$(question)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.showGitStatus",
         "title": "Computor: Show Git Status",
         "category": "Git"
@@ -930,6 +936,21 @@
           "command": "computor.student.viewSubmissionGroup",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
           "group": "2_details@1"
+        },
+        {
+          "command": "computor.student.help",
+          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "group": "3_help@1"
+        },
+        {
+          "command": "computor.student.help",
+          "when": "view == computor.student.courses && viewItem == studentCourseUnit",
+          "group": "3_help@1"
+        },
+        {
+          "command": "computor.student.help",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
+          "group": "3_help@1"
         },
         {
           "command": "computor.lecturer.fs.rename",

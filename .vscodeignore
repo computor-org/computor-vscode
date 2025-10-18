@@ -16,6 +16,7 @@ tsconfig.test.json
 
 # Documentation and project files
 docs/**
+!docs/help/**
 old/**
 .claude/**
 .vscode/**

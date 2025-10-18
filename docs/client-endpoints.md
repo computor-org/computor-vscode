@@ -66,7 +66,7 @@
 | `createCourseContentsCourseContentsPost` | POST | `/course-contents` | `CourseContentCreate` | `CourseContentGet` |
 | `getCourseDeploymentSummaryCourseContentsCoursesCourseIdDeploymentSummaryGet` | GET | `/course-contents/courses/{course_id}/deployment-summary` | — | `DeploymentSummary` |
 | `getDeploymentStatusWithWorkflowCourseContentsDeploymentContentIdGet` | GET | `/course-contents/deployment/{content_id}` | — | `Record<string, unknown> & Record<string, unknown>` |
-| `assignExampleToContentCourseContentsContentIdAssignExamplePost` | POST | `/course-contents/{content_id}/assign-example` | `AssignExampleRequest` | `DeploymentWithHistory` |
+| `assignExampleToContentCourseContentsContentIdAssignExamplePost` | POST | `/course-contents/{content_id}/assign-example` | `computor_types__deployment__AssignExampleRequest` | `DeploymentWithHistory` |
 | `getContentDeploymentCourseContentsContentIdDeploymentGet` | GET | `/course-contents/{content_id}/deployment` | — | `DeploymentWithHistory | null` |
 | `unassignExampleFromContentCourseContentsContentIdExampleDelete` | DELETE | `/course-contents/{content_id}/example` | — | `Record<string, unknown> & Record<string, string>` |
 | `getAvailableTeamsCourseContentsCourseContentIdSubmissionGroupsAvailableGet` | GET | `/course-contents/{course_content_id}/submission-groups/available` | — | `AvailableTeam[]` |
@@ -242,8 +242,12 @@
 | --- | --- | --- | --- | --- |
 | `lecturerListCourseContentsEndpointLecturersCourseContentsGet` | GET | `/lecturers/course-contents` | — | `CourseContentLecturerList[]` |
 | `lecturerGetCourseContentsEndpointLecturersCourseContentsCourseContentIdGet` | GET | `/lecturers/course-contents/{course_content_id}` | — | `CourseContentLecturerGet` |
+| `assignExampleToCourseContentLecturersCourseContentsCourseContentIdAssignExamplePost` | POST | `/lecturers/course-contents/{course_content_id}/assign-example` | `computor_types__lecturer_deployments__AssignExampleRequest` | `AssignExampleResponse` |
+| `unassignExampleFromCourseContentLecturersCourseContentsCourseContentIdDeploymentDelete` | DELETE | `/lecturers/course-contents/{course_content_id}/deployment` | — | `UnassignExampleResponse` |
+| `getCourseContentDeploymentLecturersCourseContentsCourseContentIdDeploymentGet` | GET | `/lecturers/course-contents/{course_content_id}/deployment` | — | `DeploymentGet` |
 | `lecturerListCoursesEndpointLecturersCoursesGet` | GET | `/lecturers/courses` | — | `CourseList[]` |
 | `lecturerGetCoursesEndpointLecturersCoursesCourseIdGet` | GET | `/lecturers/courses/{course_id}` | — | `CourseGet` |
+| `validateCourseContentBatchLecturersCoursesCourseIdValidatePost` | POST | `/lecturers/courses/{course_id}/validate` | `ContentValidationCreate` | `ContentValidationGet` |
 
 ## MessagesClient
 - Base path: `/messages`
@@ -331,6 +335,14 @@
 | --- | --- | --- | --- | --- |
 | `listSessionsSessionsGet` | GET | `/sessions` | — | `SessionList[]` |
 | `createSessionsSessionsPost` | POST | `/sessions` | `SessionCreate` | `SessionGet` |
+| `getSessionStatsSessionsAdminStatsGet` | GET | `/sessions/admin/stats` | — | `void` |
+| `listUserSessionsAdminSessionsAdminUsersUserIdGet` | GET | `/sessions/admin/users/{user_id}` | — | `SessionGet[]` |
+| `revokeAllUserSessionsAdminSessionsAdminUsersUserIdAllDelete` | DELETE | `/sessions/admin/users/{user_id}/all` | — | `void` |
+| `revokeSessionAdminSessionsAdminSessionIdDelete` | DELETE | `/sessions/admin/{session_id}` | — | `void` |
+| `listMySessionsSessionsMeGet` | GET | `/sessions/me` | — | `SessionList[]` |
+| `revokeAllMySessionsSessionsMeAllDelete` | DELETE | `/sessions/me/all` | — | `void` |
+| `getCurrentSessionSessionsMeCurrentGet` | GET | `/sessions/me/current` | — | `SessionGet` |
+| `revokeMySessionSessionsMeSessionIdDelete` | DELETE | `/sessions/me/{session_id}` | — | `void` |
 | `deleteSessionsSessionsIdDelete` | DELETE | `/sessions/{id}` | — | `void` |
 | `getSessionsSessionsIdGet` | GET | `/sessions/{id}` | — | `SessionGet` |
 | `updateSessionsSessionsIdPatch` | PATCH | `/sessions/{id}` | `SessionUpdate` | `SessionGet` |
@@ -471,6 +483,7 @@
 
 | TS Method | HTTP | Path | Request | Response |
 | --- | --- | --- | --- | --- |
+| `downloadCourseContentReferenceTutorsCourseContentsCourseContentIdReferenceGet` | GET | `/tutors/course-contents/{course_content_id}/reference` | — | `void` |
 | `tutorListCourseMembersEndpointTutorsCourseMembersGet` | GET | `/tutors/course-members` | — | `TutorCourseMemberList[]` |
 | `tutorGetCourseMembersEndpointTutorsCourseMembersCourseMemberIdGet` | GET | `/tutors/course-members/{course_member_id}` | — | `TutorCourseMemberGet` |
 | `tutorListCourseContentsEndpointTutorsCourseMembersCourseMemberIdCourseContentsGet` | GET | `/tutors/course-members/{course_member_id}/course-contents` | — | `CourseContentStudentList[]` |
