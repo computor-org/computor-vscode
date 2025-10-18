@@ -119,7 +119,12 @@ export class StudentCommands {
 
       if (readmePath && fs.existsSync(readmePath)) {
         const readmeUri = vscode.Uri.file(readmePath);
-        await vscode.commands.executeCommand('markdown.showPreview', readmeUri, vscode.ViewColumn.Two, { sideBySide: true });
+        // Open beside active editor if one exists
+        if (vscode.window.activeTextEditor) {
+          await vscode.commands.executeCommand('markdown.showPreviewToSide', readmeUri);
+        } else {
+          await vscode.commands.executeCommand('markdown.showPreview', readmeUri);
+        }
         return true;
       }
 
