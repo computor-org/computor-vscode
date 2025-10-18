@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "generated_at": "2025-10-14T14:32:49.592908",
-  "error_count": 50,
+  "generated_at": "2025-10-17T13:17:52.878553",
+  "error_count": 51,
   "errors": {
     "AUTH_001": {
       "code": "AUTH_001",
@@ -468,6 +468,19 @@
         "plain": "You must provide either an artifact ID or submission group ID to test.",
         "markdown": "**Test Identifier Required**\n\nYou must provide either an artifact ID or submission group ID to identify what to test.",
         "html": "<strong>Test Identifier Required</strong><p>You must provide an identifier for what to test.</p>"
+      },
+      "retry_after": null
+    },
+    "SUBMIT_008": {
+      "code": "SUBMIT_008",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "warning",
+      "title": "Artifact Already Tested",
+      "message": {
+        "plain": "You have already tested this artifact. Multiple tests are not allowed unless the previous test crashed or was cancelled.",
+        "markdown": "**Artifact Already Tested**\n\nYou have already successfully tested this artifact. Multiple tests are not allowed unless the previous test crashed or was cancelled.",
+        "html": "<strong>Artifact Already Tested</strong><p>You have already tested this artifact. Multiple tests are not allowed unless the previous test crashed or was cancelled.</p>"
       },
       "retry_after": null
     },

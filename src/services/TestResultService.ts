@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
+import { showErrorWithSeverity } from '../utils/errorDisplay';
 //import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/panels/TestResultsPanel';
 
 /**
@@ -201,7 +202,7 @@ export class TestResultService {
       }
     } catch (error: any) {
       console.error('[TestResultService] Error in submitTestByArtifactAndAwaitResults:', error);
-      vscode.window.showErrorMessage(`Test submission failed: ${error.message}`);
+      showErrorWithSeverity(error);
       throw error;
     }
   }
@@ -378,7 +379,7 @@ export class TestResultService {
       }
     } catch (error: any) {
       console.error('[TestResultService] Error in submitTestAndAwaitResults:', error);
-      vscode.window.showErrorMessage(`Test submission failed: ${error.message}`);
+      showErrorWithSeverity(error);
     }
   }
 

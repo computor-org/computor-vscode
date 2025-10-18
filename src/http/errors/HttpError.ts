@@ -16,10 +16,12 @@ export class HttpError extends Error {
     let backendError: BackendErrorDefinition | undefined;
 
     // Check for backend error_code in response
+    console.log('[HttpError] Response data:', JSON.stringify(response));
     if (response?.error_code && typeof response.error_code === 'string') {
       const codeFromResponse: string = response.error_code;
       errorCode = codeFromResponse;
       const catalogError = errorCatalog.getError(codeFromResponse);
+      console.log(`[HttpError] Found error_code: ${codeFromResponse}, catalog entry:`, catalogError);
       if (catalogError) {
         backendError = catalogError;
         // If we found the error in catalog, use its user-friendly message
@@ -29,6 +31,8 @@ export class HttpError extends Error {
         // Error code provided but not found in catalog
         console.warn(`[HttpError] Error code '${codeFromResponse}' not found in catalog. Available codes: ${errorCatalog.isLoaded() ? 'catalog loaded' : 'catalog not loaded'}`);
       }
+    } else {
+      console.log('[HttpError] No error_code found in response');
     }
 
     // Fallback to legacy error message extraction if no backend error found

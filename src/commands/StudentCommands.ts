@@ -510,26 +510,51 @@ export class StudentCommands {
                   submission_group_id: submissionGroupId,
                   version_identifier: submissionVersion
                 });
-                if (existingSubmissions.length > 0 && existingSubmissions[0]?.id) {
-                  existingArtifactId = existingSubmissions[0].id;
-                  alreadySubmitted = existingSubmissions[0].submit === true;
+                console.log(`[submitAssignment] GET response: Found ${existingSubmissions.length} existing submissions for version ${submissionVersion}`);
+                console.log(`[submitAssignment] Full response:`, JSON.stringify(existingSubmissions, null, 2));
+
+                if (existingSubmissions.length > 0) {
+                  // Find submission artifact with matching version identifier
+                  const matchingArtifact = existingSubmissions.find(
+                    artifact => artifact.version_identifier === submissionVersion
+                  );
+
+                  if (matchingArtifact?.id) {
+                    existingArtifactId = matchingArtifact.id;
+                    alreadySubmitted = matchingArtifact.submit === true;
+                    console.log(`[submitAssignment] Found matching artifact ${existingArtifactId}:`);
+                    console.log(`  - submit field value: ${matchingArtifact.submit}`);
+                    console.log(`  - submit field type: ${typeof matchingArtifact.submit}`);
+                    console.log(`  - alreadySubmitted: ${alreadySubmitted}`);
+                    console.log(`  - Full artifact:`, JSON.stringify(matchingArtifact, null, 2));
+                  } else {
+                    console.log(`[submitAssignment] No artifact with matching version identifier found in response`);
+                  }
+                } else {
+                  console.log(`[submitAssignment] GET returned empty array - no existing artifacts`);
                 }
               } catch (listError) {
-                console.warn('[StudentCommands] Failed to check existing submissions:', listError);
+                console.warn('[submitAssignment] Failed to check existing submissions:', listError);
               }
 
               if (existingArtifactId && alreadySubmitted) {
+                // Case 1: Artifact exists AND submit=true → Do nothing
                 reusedExistingSubmission = true;
                 submissionOk = true;
                 progress.report({ message: 'Submission already exists for this version.' });
+                console.log('[submitAssignment] Case 1: Artifact already submitted (submit=true), doing nothing');
                 return;
               } else if (existingArtifactId && !alreadySubmitted) {
+                // Case 2: Artifact exists AND submit=false → PATCH to mark as submitted
+                console.log('[submitAssignment] Case 2: Artifact exists but submit=false, calling PATCH');
                 progress.report({ message: 'Marking existing artifact as submitted...' });
                 submissionResponse = await this.apiService.updateStudentSubmission(
                   existingArtifactId,
                   { submit: true }
                 );
               } else {
+                // Case 3: No existing artifact → POST to create new submission
+                console.log('[submitAssignment] Case 3: No existing artifact found, calling POST to create new submission');
                 progress.report({ message: 'Packaging submission archive...' });
                 const archive = await this.createSubmissionArchive(submissionDirectory);
 
@@ -558,7 +583,7 @@ export class StudentCommands {
             }
 
             if (reusedExistingSubmission) {
-              vscode.window.showInformationMessage('A submission for this version already exists; skipped re-upload.');
+              vscode.window.showWarningMessage('This artifact has already been submitted. No action taken.');
             } else if (submissionResponse) {
               const successMessage = 'Assignment submitted successfully.';
 
@@ -864,6 +889,47 @@ export class StudentCommands {
         }
       })
     );
+
+    // Help command
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.help', async (item?: any) => {
+        await this.showHelp(item);
+      })
+    );
+  }
+
+  private async showHelp(item?: any): Promise<void> {
+    try {
+      let helpFileName = 'student-course.md';
+
+      // Determine which help file to show based on context value
+      if (item?.contextValue) {
+        const contextValue = item.contextValue as string;
+
+        if (contextValue.startsWith('studentCourseContent')) {
+          // All course content items show assignment help
+          helpFileName = 'student-assignment.md';
+        } else if (contextValue === 'studentCourseUnit') {
+          helpFileName = 'student-unit.md';
+        } else if (contextValue === 'studentCourseRoot') {
+          helpFileName = 'student-course.md';
+        }
+      }
+
+      const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
+
+      if (!fs.existsSync(helpPath)) {
+        vscode.window.showWarningMessage(`Help file not found: ${helpFileName}`);
+        return;
+      }
+
+      const helpUri = vscode.Uri.file(helpPath);
+      await vscode.commands.executeCommand('markdown.showPreview', helpUri);
+
+    } catch (error) {
+      console.error('[showHelp] Failed to show help:', error);
+      vscode.window.showErrorMessage('Failed to open help documentation');
+    }
   }
 
   private async showMessages(item?: any): Promise<void> {

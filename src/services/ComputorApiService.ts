@@ -2385,11 +2385,8 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to submit test:', error);
-      // Extract detailed error message and re-throw for upper layer to handle
-      const message = error?.response?.data?.detail || error?.message || 'Failed to submit test';
-      const detailedError = new Error(message);
-      (detailedError as any).originalError = error;
-      throw detailedError;
+      // Re-throw HttpError as-is to preserve error_code, severity, and other metadata
+      throw error;
     }
   }
 

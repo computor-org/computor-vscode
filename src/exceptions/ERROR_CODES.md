@@ -1,8 +1,8 @@
 # Error Code Reference
 
 **Auto-generated documentation**
-**Generated:** 2025-10-14 14:32:49
-**Total errors:** 50
+**Generated:** 2025-10-17 13:17:52
+**Total errors:** 51
 
 To regenerate: `bash generate_error_codes.sh`
 
@@ -1438,6 +1438,34 @@ Neither artifact_id nor submission_group_id provided in request
 **Resolution Steps:**
 1. Provide artifact_id or submission_group_id
 2. Check API documentation
+
+---
+
+### SUBMIT_008 - Artifact Already Tested
+
+**HTTP Status:** `400`  
+**Severity:** `warning`  
+**Category:** `validation`  
+**Documentation:** [/docs/testing#duplicate-tests](/docs/testing#duplicate-tests)  
+
+**Description:**  
+User attempted to test an artifact that already has a successful test result
+
+**User Message:**  
+> You have already tested this artifact. Multiple tests are not allowed unless the previous test crashed or was cancelled.
+
+**Affected Functions:**
+- `create_test_run`
+- `check_existing_test`
+
+**Common Causes:**
+- Duplicate test attempt
+- Previous test completed successfully
+
+**Resolution Steps:**
+1. Review your previous test results
+2. Submit a new version if you need to test again
+3. Contact instructor if test needs to be reset
 
 ---
 
