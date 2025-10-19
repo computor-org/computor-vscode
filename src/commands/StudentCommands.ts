@@ -783,17 +783,19 @@ export class StudentCommands {
           // Save all open files in the assignment directory
           await this.saveAllFilesInDirectory(submissionDirectory);
 
-          // Always show a single progress for the entire test flow
-          await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Testing ${assignmentTitle}...`,
-            cancellable: true
-          }, async (progress, token) => {
-            // Check if there are any changes to commit
-            const hasChanges = await this.gitBranchManager.hasChanges(submissionDirectory);
-            let commitHash: string | null = null;
+          const hasChanges = await this.gitBranchManager.hasChanges(submissionDirectory);
 
-            if (hasChanges) {
+          let commitHash: string | null = null;
+          let submissionResponse: any = null;
+
+          // If there are changes, show progress for git operations AND artifact upload
+          if (hasChanges) {
+            await vscode.window.withProgress({
+              location: vscode.ProgressLocation.Notification,
+              title: `Preparing ${assignmentTitle}...`,
+              cancellable: true
+            }, async (progress, token) => {
+              // Git operations
               progress.report({ message: 'Committing changes...' });
               await this.gitBranchManager.stageAll(submissionDirectory);
               const now = new Date();
@@ -812,10 +814,59 @@ export class StudentCommands {
 
               progress.report({ message: 'Getting commit hash...' });
               commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
-            } else {
-              // No changes: get current commit hash
-              commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
-            }
+
+              // Handle artifact upload (inside same withProgress)
+              if (commitHash && courseContentId) {
+                let existingArtifactId: string | undefined;
+                try {
+                  const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
+                    submission_group_id: submissionGroupId,
+                    version_identifier: commitHash,
+                    submit: false
+                  });
+                  console.log(`[TestAssignment] Found ${existingSubmissions.length} existing artifacts for commit ${commitHash}`);
+
+                  const matchingArtifact = existingSubmissions.find(
+                    (artifact: any) => artifact.version_identifier === commitHash
+                  );
+
+                  if (matchingArtifact?.id) {
+                    existingArtifactId = matchingArtifact.id;
+                    console.log(`[TestAssignment] Reusing artifact ID: ${existingArtifactId} with matching version`);
+                  }
+                } catch (listError) {
+                  console.warn('[TestAssignment] Failed to check existing submissions:', listError);
+                }
+
+                if (existingArtifactId) {
+                  console.log(`[TestAssignment] Path: Reusing existing artifact`);
+                  submissionResponse = { artifacts: [existingArtifactId] };
+                } else {
+                  // Create new artifact
+                  console.log(`[TestAssignment] Path: Creating new artifact`);
+                  progress.report({ message: 'Packaging submission archive...' });
+
+                  const archive = await this.createSubmissionArchive(submissionDirectory);
+                  console.log(`[TestAssignment] Archive created successfully`);
+
+                  if (token?.isCancellationRequested) {
+                    console.log(`[TestAssignment] Cancelled before upload`);
+                    throw new Error('Upload cancelled');
+                  }
+
+                  progress.report({ message: 'Uploading submission package...' });
+                  submissionResponse = await this.apiService.createStudentSubmission({
+                    submission_group_id: submissionGroupId,
+                    version_identifier: commitHash,
+                    submit: false
+                  }, archive);
+                  console.log(`[TestAssignment] Created new submission:`, submissionResponse);
+                }
+              }
+            });
+          } else {
+            // No changes: get current commit hash and check for existing artifact
+            commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
 
             if (commitHash && courseContentId) {
               let existingArtifactId: string | undefined;
@@ -827,7 +878,6 @@ export class StudentCommands {
                 });
                 console.log(`[TestAssignment] Found ${existingSubmissions.length} existing artifacts for commit ${commitHash}`);
 
-                // IMPORTANT: Backend currently doesn't filter by version_identifier, so we must validate client-side
                 const matchingArtifact = existingSubmissions.find(
                   (artifact: any) => artifact.version_identifier === commitHash
                 );
@@ -835,64 +885,35 @@ export class StudentCommands {
                 if (matchingArtifact?.id) {
                   existingArtifactId = matchingArtifact.id;
                   console.log(`[TestAssignment] Reusing artifact ID: ${existingArtifactId} with matching version`);
-                } else if (existingSubmissions.length > 0) {
-                  console.log(`[TestAssignment] Found ${existingSubmissions.length} artifacts but none match version ${commitHash}`);
                 }
               } catch (listError) {
                 console.warn('[TestAssignment] Failed to check existing submissions:', listError);
               }
 
-              let submissionResponse: any = null;
-
               if (existingArtifactId) {
-                console.log(`[TestAssignment] Path: Reusing existing artifact`);
-                progress.report({ message: 'Reusing existing test submission...' });
+                console.log(`[TestAssignment] Path: Reusing existing artifact (no changes)`);
                 submissionResponse = { artifacts: [existingArtifactId] };
-              } else {
-                console.log(`[TestAssignment] Path: Creating new artifact`);
-                progress.report({ message: 'Packaging submission archive...' });
-
-                try {
-                  const archive = await this.createSubmissionArchive(submissionDirectory);
-                  console.log(`[TestAssignment] Archive created successfully`);
-
-                  if (token?.isCancellationRequested) {
-                    console.log(`[TestAssignment] Cancelled before upload`);
-                    return;
-                  }
-
-                  progress.report({ message: 'Uploading submission package...' });
-                  submissionResponse = await this.apiService.createStudentSubmission({
-                    submission_group_id: submissionGroupId,
-                    version_identifier: commitHash,
-                    submit: false
-                  }, archive);
-                  console.log(`[TestAssignment] Created new submission:`, submissionResponse);
-                } catch (uploadError) {
-                  console.error(`[TestAssignment] Failed to create submission:`, uploadError);
-                  throw uploadError;
-                }
               }
-
-              // Submit test using artifact_id - artifact is now required
-              if (submissionResponse?.artifacts?.length > 0) {
-                const artifactId = submissionResponse.artifacts[0];
-                console.log(`[TestAssignment] Submitting test with artifact ID: ${artifactId}`);
-                await this.testResultService.submitTestByArtifactAndAwaitResults(
-                  artifactId,
-                  assignmentTitle,
-                  undefined,
-                  { progress, token, showProgress: false, courseContentId }
-                );
-              } else {
-                console.error('[TestAssignment] No artifact ID available, cannot submit test');
-                throw new Error('Failed to create or retrieve submission artifact');
-              }
-              testSucceeded = true;
-            } else {
-              vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
             }
-          });
+          }
+
+          // Submit test - TestResultService will handle its own progress if polling is needed
+          if (submissionResponse?.artifacts?.length > 0) {
+            const artifactId = submissionResponse.artifacts[0];
+            console.log(`[TestAssignment] Submitting test with artifact ID: ${artifactId}`);
+            await this.testResultService.submitTestByArtifactAndAwaitResults(
+              artifactId,
+              assignmentTitle,
+              undefined,
+              { courseContentId }
+            );
+            testSucceeded = true;
+          } else if (commitHash && courseContentId) {
+            console.error('[TestAssignment] No artifact ID available, cannot submit test');
+            throw new Error('Failed to create or retrieve submission artifact');
+          } else {
+            vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
+          }
 
           // Only refresh if test completed successfully
           if (testSucceeded) {
