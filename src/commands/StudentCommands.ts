@@ -4,16 +4,14 @@ import * as fs from 'fs';
 // import * as os from 'os';
 import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { GitBranchManager } from '../services/GitBranchManager';
+import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
 import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
-import { execAsync } from '../utils/exec';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
-import { GitEnvironmentService } from '../services/GitEnvironmentService';
 import JSZip from 'jszip';
 
 // (Deprecated legacy types removed)
@@ -26,7 +24,7 @@ export class StudentCommands {
   private apiService: ComputorApiService; // Used for future API calls
   // private workspaceManager: WorkspaceManager;
   private repositoryManager?: StudentRepositoryManager;
-  private gitBranchManager: GitBranchManager;
+  private gitService: GitService;
   private testResultService: TestResultService;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private contentDetailsWebviewProvider: StudentCourseContentDetailsWebviewProvider;
@@ -43,7 +41,7 @@ export class StudentCommands {
     this.apiService = apiService || new ComputorApiService(context);
     // this.workspaceManager = WorkspaceManager.getInstance(context);
     this.repositoryManager = repositoryManager;
-    this.gitBranchManager = GitBranchManager.getInstance();
+    this.gitService = GitService.getInstance();
     this.testResultService = TestResultService.getInstance();
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
@@ -54,14 +52,14 @@ export class StudentCommands {
 
   private async pushWithAuthRetry(repoPath: string): Promise<void> {
     try {
-      await this.gitBranchManager.pushCurrentBranch(repoPath);
+      await this.gitService.pushCurrentBranch(repoPath);
     } catch (error) {
       const originalError = error;
       try {
         if (this.repositoryManager && this.repositoryManager.isAuthenticationError(error)) {
           const refreshed = await this.repositoryManager.refreshRepositoryAuth(repoPath);
           if (refreshed) {
-            await this.gitBranchManager.pushCurrentBranch(repoPath);
+            await this.gitService.pushCurrentBranch(repoPath);
             return;
           }
         }
@@ -489,42 +487,32 @@ export class StudentCommands {
               const commitLabel = assignmentTitle || assignmentPath || assignmentId;
 
               progress.report({ message: 'Staging changes...' });
-              await execAsync('git add -A', { cwd: repoPath });
+              await this.gitService.stageAll(repoPath);
 
-              const { stdout: stagedStdout } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
-              const stagedFiles = stagedStdout
-                .split(/\r?\n/g)
-                .map(line => line.trim())
-                .filter(line => line.length > 0);
+              const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
 
-              if (stagedFiles.length > 0) {
+              if (hasStagedFiles) {
                 const commitDate = new Date().toISOString();
                 const commitMessage = `Submit ${commitLabel} at ${commitDate}`;
                 progress.report({ message: 'Committing changes...' });
-                await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+                await this.gitService.commitChanges(repoPath, commitMessage);
               } else {
                 progress.report({ message: 'No new changes detected; using latest commit.' });
               }
 
-              const { stdout: branchStdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
-              const currentBranch = branchStdout.trim();
+              const currentBranch = await this.gitService.getCurrentBranch(repoPath);
               if (!currentBranch) {
                 throw new Error('Could not determine current branch.');
               }
 
               progress.report({ message: `Pushing ${currentBranch}...` });
-              try {
-                await execAsync(`git push origin ${JSON.stringify(currentBranch)}`, { cwd: repoPath });
-              } catch (pushError) {
-                try {
-                  await execAsync(`git push -u origin ${JSON.stringify(currentBranch)}`, { cwd: repoPath });
-                } catch (secondaryPushError) {
-                  throw pushError instanceof Error ? pushError : secondaryPushError;
-                }
-              }
+              await this.pushWithAuthRetry(repoPath);
 
-              const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: repoPath });
-              submissionVersion = headStdout.trim();
+              const commitHash = await this.gitService.getLatestCommitHash(repoPath);
+              if (!commitHash) {
+                throw new Error('Failed to get commit hash after push');
+              }
+              submissionVersion = commitHash;
 
               let existingArtifactId: string | undefined;
               let alreadySubmitted = false;
@@ -660,7 +648,7 @@ export class StudentCommands {
           await this.saveAllFilesInDirectory(directory);
 
           // Check if there are any changes to commit
-          const hasChanges = await this.gitBranchManager.hasChanges(directory);
+          const hasChanges = await this.gitService.hasChanges(directory);
           if (!hasChanges) {
             vscode.window.showInformationMessage('No changes to commit in this assignment.');
             return;
@@ -687,30 +675,15 @@ export class StudentCommands {
 
             progress.report({ increment: 40, message: 'Committing changes...' });
             // Stage only the assignment directory
-            const relAssignmentPath = path.relative(repoPath, directory);
-            await execAsync(`git add ${JSON.stringify(relAssignmentPath)}`, { cwd: repoPath });
+            await this.gitService.stagePath(repoPath, directory);
 
             // Commit only if something is staged
-            const { stdout: staged } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
-            if (staged.trim().length === 0) {
+            const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
+            if (!hasStagedFiles) {
               throw new Error('No changes to commit in the assignment folder');
             }
 
-            try {
-              await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
-            } catch (commitError: any) {
-              if (commitError.message?.includes('user.name') || commitError.message?.includes('user.email') || commitError.message?.includes('Author identity')) {
-                const gitEnv = GitEnvironmentService.getInstance();
-                const configured = await gitEnv.promptAndConfigureGit();
-                if (configured) {
-                  await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
-                } else {
-                  throw new Error('Git configuration is required to commit. Please configure git user.name and user.email.');
-                }
-              } else {
-                throw commitError;
-              }
-            }
+            await this.gitService.commitChanges(repoPath, commitMessage);
 
             progress.report({ increment: 60, message: 'Pushing to remote...' });
             // Push to main branch, prompting for new token if required
@@ -718,6 +691,8 @@ export class StudentCommands {
 
             progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
           });
+
+          vscode.window.showInformationMessage(`Successfully committed and pushed ${assignmentTitle}`);
 
           // Optionally refresh the tree to update any status indicators
           this.treeDataProvider.refreshNode(item);
@@ -783,7 +758,7 @@ export class StudentCommands {
           // Save all open files in the assignment directory
           await this.saveAllFilesInDirectory(submissionDirectory);
 
-          const hasChanges = await this.gitBranchManager.hasChanges(submissionDirectory);
+          const hasChanges = await this.gitService.hasChanges(submissionDirectory);
 
           let commitHash: string | null = null;
           let submissionResponse: any = null;
@@ -797,11 +772,11 @@ export class StudentCommands {
             }, async (progress, token) => {
               // Git operations
               progress.report({ message: 'Committing changes...' });
-              await this.gitBranchManager.stageAll(submissionDirectory);
+              await this.gitService.stageAll(submissionDirectory);
               const now = new Date();
               const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
               const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
-              await this.gitBranchManager.commitChanges(submissionDirectory, commitMessage);
+              await this.gitService.commitChanges(submissionDirectory, commitMessage);
 
               progress.report({ message: 'Pushing to remote...' });
               try {
@@ -813,7 +788,7 @@ export class StudentCommands {
               }
 
               progress.report({ message: 'Getting commit hash...' });
-              commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
+              commitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
 
               // Handle artifact upload (inside same withProgress)
               if (commitHash && courseContentId) {
@@ -866,7 +841,7 @@ export class StudentCommands {
             });
           } else {
             // No changes: get current commit hash and check for existing artifact
-            commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
+            commitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
 
             if (commitHash && courseContentId) {
               let existingArtifactId: string | undefined;

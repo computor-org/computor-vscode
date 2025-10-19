@@ -11,19 +11,19 @@ export interface AssignmentBranchInfo {
   isCurrent: boolean;
 }
 
-export class GitBranchManager {
-  private static instance: GitBranchManager;
+export class GitService {
+  private static instance: GitService;
   private gitWrapper: GitWrapper;
 
   private constructor() {
     this.gitWrapper = new GitWrapper();
   }
 
-  static getInstance(): GitBranchManager {
-    if (!GitBranchManager.instance) {
-      GitBranchManager.instance = new GitBranchManager();
+  static getInstance(): GitService {
+    if (!GitService.instance) {
+      GitService.instance = new GitService();
     }
-    return GitBranchManager.instance;
+    return GitService.instance;
   }
 
   /**
@@ -163,14 +163,8 @@ export class GitBranchManager {
    * Commit changes with assignment context
    */
   async commitChanges(repoPath: string, message: string): Promise<void> {
-    try {
-      await this.gitWrapper.add(repoPath, '.');
-      await this.gitWrapper.commit(repoPath, message);
-      vscode.window.showInformationMessage('Changes committed');
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to commit: ${error}`);
-      throw error;
-    }
+    await this.gitWrapper.add(repoPath, '.');
+    await this.gitWrapper.commit(repoPath, message);
   }
 
   /**
@@ -258,6 +252,32 @@ export class GitBranchManager {
     } catch (error) {
       console.error(`Failed to stage changes: ${error}`);
       throw error;
+    }
+  }
+
+  /**
+   * Stage a specific path (relative to repo root)
+   */
+  async stagePath(repoPath: string, targetPath: string): Promise<void> {
+    try {
+      const relPath = path.relative(repoPath, targetPath);
+      await this.gitWrapper.add(repoPath, relPath);
+    } catch (error) {
+      console.error(`Failed to stage path ${targetPath}: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if there are staged files
+   */
+  async hasStagedFiles(repoPath: string): Promise<boolean> {
+    try {
+      const status = await this.gitWrapper.status(repoPath);
+      return status.staged.length > 0;
+    } catch (error) {
+      console.error(`Failed to check staged files: ${error}`);
+      return false;
     }
   }
 
