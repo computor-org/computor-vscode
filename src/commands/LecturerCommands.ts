@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
@@ -34,7 +33,6 @@ interface ReleaseScope {
 }
 
 export class LecturerCommands {
-  private settingsManager: ComputorSettingsManager;
   private apiService: ComputorApiService;
   private courseWebviewProvider: CourseWebviewProvider;
   private organizationWebviewProvider: OrganizationWebviewProvider;
@@ -53,7 +51,6 @@ export class LecturerCommands {
     private treeDataProvider: LecturerTreeDataProvider,
     apiService?: ComputorApiService
   ) {
-    this.settingsManager = new ComputorSettingsManager(context);
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService, this.treeDataProvider);
@@ -70,13 +67,6 @@ export class LecturerCommands {
   }
 
   registerCommands(): void {
-    // Workspace directory selection
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.selectWorkspaceDirectory', async () => {
-        await this.selectWorkspaceDirectory();
-      })
-    );
-
     // Tree refresh - register both command names for compatibility
     const refreshHandler = async () => {
       console.log('=== LECTURER TREE REFRESH COMMAND TRIGGERED ===');
@@ -557,25 +547,6 @@ export class LecturerCommands {
       } catch (error) {
         vscode.window.showErrorMessage(`Failed to delete course: ${error}`);
       }
-    }
-  }
-
-  private async selectWorkspaceDirectory(): Promise<void> {
-    const result = await vscode.window.showOpenDialog({
-      canSelectFolders: true,
-      canSelectFiles: false,
-      canSelectMany: false,
-      openLabel: 'Select Workspace Directory',
-      title: 'Select Workspace Directory'
-    });
-
-    if (result && result.length > 0 && result[0]) {
-      const directory = result[0].fsPath;
-      await this.settingsManager.setWorkspaceDirectory(directory);
-      vscode.window.showInformationMessage(`Workspace directory set to: ${directory}`);
-      
-      // Update file explorers to show new workspace
-      await vscode.commands.executeCommand('computor.fileExplorer.goToWorkspace');
     }
   }
 

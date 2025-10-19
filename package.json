@@ -126,27 +126,6 @@
         "category": "Computor Student"
       },
       {
-        "command": "computor.showGitStatus",
-        "title": "Computor: Show Git Status",
-        "category": "Git"
-      },
-      {
-        "command": "computor.goToTest",
-        "title": "Go to Test",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.runSingleTest",
-        "title": "Run Test",
-        "icon": "$(run)",
-        "category": "Computor Tree"
-      },
-      {
-        "command": "computor.selectWorkspaceDirectory",
-        "title": "Select Workspace Directory",
-        "category": "Computor"
-      },
-      {
         "command": "computor.lecturer.checkoutExample",
         "title": "Checkout Example",
         "icon": "$(cloud-download)",
@@ -656,16 +635,6 @@
           "command": "computor.lecturer.uploadExamplesFromZip",
           "when": "view == computor.lecturer.examples && viewItem == exampleRepository",
           "group": "1_actions@2"
-        },
-        {
-          "command": "computor.goToTest",
-          "when": "view == computor.testResultsView && viewItem =~ /testResult/",
-          "group": "1_test@1"
-        },
-        {
-          "command": "computor.runSingleTest",
-          "when": "view == computor.testResultsView && viewItem =~ /testResult/",
-          "group": "1_test@2"
         },
         {
           "command": "computor.lecturer.createCourseContent",
