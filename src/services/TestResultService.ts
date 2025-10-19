@@ -57,7 +57,7 @@ export class TestResultService {
     artifactId: string,
     assignmentTitle: string,
     submit?: boolean,
-    options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean }
+    options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean; courseContentId?: string }
   ): Promise<void> {
     if (!this.apiService) {
       vscode.window.showErrorMessage('Test service not properly initialized');
@@ -71,10 +71,28 @@ export class TestResultService {
       ) => {
         progress.report({ message: 'Submitting test request...' });
 
-        const testResult = await this.apiService!.submitTest({
-          artifact_id: artifactId,
-          submit,
-        });
+        let testResult: any;
+        try {
+          testResult = await this.apiService!.submitTest({
+            artifact_id: artifactId,
+            submit,
+          });
+        } catch (error: any) {
+          // If POST /tests returns 400 (test already running or exists), try to fetch existing result
+          const is400Error = error?.response?.status === 400 || error?.message?.includes('400');
+          if (is400Error && options?.courseContentId) {
+            console.log('[TestResultService] Test POST returned 400, fetching existing result from course content...');
+            const courseContent = await this.apiService!.getStudentCourseContent(options.courseContentId, { force: true });
+            if (courseContent?.result) {
+              testResult = courseContent.result;
+              console.log('[TestResultService] Retrieved existing result:', testResult);
+            } else {
+              throw error; // Re-throw if we can't get the result
+            }
+          } else {
+            throw error; // Re-throw other errors
+          }
+        }
 
         console.log("[Debug] " + JSON.stringify(testResult,null,2));
 

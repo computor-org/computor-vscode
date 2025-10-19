@@ -196,10 +196,28 @@ export class StudentCommands {
         try {
           let resultPayload: any | undefined;
 
-          const courseContent = item?.courseContent as any;
-          const result = courseContent?.result;
-          if (result) {
-            resultPayload = result.result_json ?? result;
+          // Get course content ID from the item
+          const courseContentId = item?.courseContent?.id;
+
+          if (courseContentId) {
+            // Fetch fresh data from API to get latest test results
+            const freshCourseContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
+            console.log('[showTestResults] Fresh course content:', JSON.stringify(freshCourseContent, null, 2));
+            const result = freshCourseContent?.result;
+            console.log('[showTestResults] Result object:', JSON.stringify(result, null, 2));
+            console.log('[showTestResults] Result keys:', result ? Object.keys(result) : 'no result');
+            if (result) {
+              resultPayload = result.result_json ?? result;
+              console.log('[showTestResults] Result payload:', JSON.stringify(resultPayload, null, 2));
+              console.log('[showTestResults] Has result_json?', !!result.result_json);
+            }
+          } else {
+            // Fallback to item data if no ID available
+            const courseContent = item?.courseContent as any;
+            const result = courseContent?.result;
+            if (result) {
+              resultPayload = result.result_json ?? result;
+            }
           }
 
           if (resultPayload) {
@@ -864,7 +882,7 @@ export class StudentCommands {
                   artifactId,
                   assignmentTitle,
                   undefined,
-                  { progress, token, showProgress: false }
+                  { progress, token, showProgress: false, courseContentId }
                 );
               } else {
                 console.error('[TestAssignment] No artifact ID available, cannot submit test');

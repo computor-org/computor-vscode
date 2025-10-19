@@ -104,7 +104,14 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 let toolTipHead: any = undefined;
 
                 if ('timestamp' in data) {
-                    descriptionHead = `${data.timestamp}`;
+                    // Convert UTC timestamp to local time
+                    try {
+                        const date = new Date(data.timestamp);
+                        descriptionHead = date.toLocaleString();
+                    } catch (e) {
+                        // Fallback to raw timestamp if parsing fails
+                        descriptionHead = `${data.timestamp}`;
+                    }
                 }
 
                 if ('description' in data) {
