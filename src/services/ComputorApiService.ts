@@ -1856,13 +1856,13 @@ export class ComputorApiService {
   async getStudentCourseContent(
     contentId: string,
     options?: { force?: boolean }
-  ): Promise<CourseContentStudentList | undefined> {
+  ): Promise<CourseContentStudentGet | undefined> {
     const cacheKey = `studentCourseContent-${contentId}`;
 
     if (options?.force) {
       multiTierCache.delete(cacheKey);
     } else {
-      const cached = multiTierCache.get<CourseContentStudentList>(cacheKey);
+      const cached = multiTierCache.get<CourseContentStudentGet>(cacheKey);
       if (cached) {
         return cached;
       }
@@ -1871,7 +1871,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<CourseContentStudentList>(`/students/course-contents/${contentId}`);
+        const response = await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`);
         return response.data;
       }, {
         maxRetries: 2,

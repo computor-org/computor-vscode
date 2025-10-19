@@ -7,7 +7,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel, CourseContentStudentGet } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
@@ -1097,7 +1097,7 @@ export class StudentCommands {
       const courseInfo = courseSelection.getCurrentCourseInfo();
       const currentCourseId = courseSelection.getCurrentCourseId();
 
-      let courseContentSummary: CourseContentStudentList | undefined;
+      let courseContentSummary: CourseContentStudentList | CourseContentStudentGet | undefined;
       let submissionGroupSummary: SubmissionGroupStudentList | undefined;
       let contentType: CourseContentTypeList | undefined;
       let localPath: string | undefined;
@@ -1411,7 +1411,7 @@ export class StudentCommands {
 
 
   private resolveLocalRepositoryPath(
-    courseContent: CourseContentStudentList,
+    courseContent: CourseContentStudentList | CourseContentStudentGet,
     submissionGroup?: SubmissionGroupStudentList
   ): string | undefined {
     const directory = (courseContent as any)?.directory as string | undefined;

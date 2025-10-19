@@ -204,10 +204,10 @@
 
     const actions = createElement('div', { className: 'message-actions' });
 
-    const canEdit = Boolean(message.can_edit);
-    const canDelete = Boolean(message.can_delete);
+    // Only show edit/delete buttons if the user is the author
+    const isAuthor = Boolean(message.is_author);
 
-    if (canEdit && createButton) {
+    if (isAuthor && createButton) {
       const editBtn = createButton({
         text: 'Edit',
         size: 'sm',
@@ -221,19 +221,16 @@
       actions.appendChild(editBtn.render());
     }
 
-    if (canDelete && createButton) {
+    if (isAuthor && createButton) {
       const deleteBtn = createButton({
         text: 'Delete',
         size: 'sm',
         variant: 'tertiary',
         onClick: () => {
-          const confirmed = confirm('Delete this message?');
-          if (confirmed) {
-            vscode.postMessage({
-              command: 'deleteMessage',
-              data: { messageId: message.id }
-            });
-          }
+          vscode.postMessage({
+            command: 'confirmDeleteMessage',
+            data: { messageId: message.id, title: message.title }
+          });
         }
       });
       actions.appendChild(deleteBtn.render());

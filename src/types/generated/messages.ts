@@ -46,6 +46,8 @@ export interface MessageGet {
   /** Author details */
   author?: MessageAuthor | null;
   is_read?: boolean;
+  /** True if the requesting user is the message author */
+  is_author?: boolean;
   user_id?: string | null;
   course_member_id?: string | null;
   submission_group_id?: string | null;
@@ -70,6 +72,8 @@ export interface MessageList {
   /** Author details */
   author?: MessageAuthor | null;
   is_read?: boolean;
+  /** True if the requesting user is the message author */
+  is_author?: boolean;
   user_id?: string | null;
   course_member_id?: string | null;
   submission_group_id?: string | null;
@@ -94,4 +98,16 @@ export interface MessageQuery {
   course_id?: string | null;
   course_id_all_messages?: boolean | null;
   scope?: "user" | "course_member" | "submission_group" | "course_group" | "course_content" | "course" | null;
+}
+
+/**
+ * Multi-format error message.
+ */
+export interface ErrorMessageFormat {
+  /** Plain text error message */
+  plain: string;
+  /** Markdown formatted message */
+  markdown?: string | null;
+  /** HTML formatted message */
+  html?: string | null;
 }

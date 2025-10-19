@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "generated_at": "2025-10-17T13:17:52.878553",
-  "error_count": 51,
+  "generated_at": "2025-10-20T00:08:53.335077",
+  "error_count": 52,
   "errors": {
     "AUTH_001": {
       "code": "AUTH_001",
@@ -262,6 +262,19 @@
         "html": "<strong>Login Rate Limit Exceeded</strong><p>Too many login attempts for this username. Please wait <code>{retry_after}</code> seconds before trying again.</p>"
       },
       "retry_after": 60
+    },
+    "RATE_003": {
+      "code": "RATE_003",
+      "http_status": 429,
+      "category": "rate_limit",
+      "severity": "warning",
+      "title": "Test Request Rate Limit Exceeded",
+      "message": {
+        "plain": "Too many test requests. Please wait before submitting another test.",
+        "markdown": "**Test Request Rate Limit Exceeded**\n\nYou are submitting tests too quickly. Please wait {retry_after} second before trying again.",
+        "html": "<strong>Test Request Rate Limit Exceeded</strong><p>You are submitting tests too quickly. Please wait <code>{retry_after}</code> second before trying again.</p>"
+      },
+      "retry_after": 1
     },
     "CONTENT_001": {
       "code": "CONTENT_001",

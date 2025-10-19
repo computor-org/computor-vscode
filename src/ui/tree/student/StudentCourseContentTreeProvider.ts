@@ -89,9 +89,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         try {
             console.log(`[TreeProvider] Refreshing content item: ${contentId}`);
             const selectedCourseId = this.courseSelection.getCurrentCourseId();
-            console.log(`[TreeProvider] Fetching single content: ${contentId}`);
-            let updated = await this.apiService.getStudentCourseContent(contentId, { force: true });
-            console.log(`[TreeProvider] Single content fetched:`, updated);
+
+            let updatedFromList: CourseContentStudentList | undefined;
 
             if (selectedCourseId) {
                 // Always refresh the cached course contents so we preserve
@@ -106,16 +105,15 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 }
 
                 // Prefer the freshly cached entry so we retain content type data.
-                const refreshed = refreshedList.find(c => c.id === contentId);
-                console.log(`[TreeProvider] Found content in list:`, refreshed ? 'yes' : 'no');
-                if (refreshed) {
-                    console.log(`[TreeProvider] Using refreshed content from list, result:`, refreshed.result);
-                    updated = refreshed;
+                updatedFromList = refreshedList.find(c => c.id === contentId);
+                console.log(`[TreeProvider] Found content in list:`, updatedFromList ? 'yes' : 'no');
+                if (updatedFromList) {
+                    console.log(`[TreeProvider] Using refreshed content from list, result:`, updatedFromList.result);
                 }
             }
 
-            if (!updated) {
-                console.log(`[TreeProvider] No updated content found, firing full tree refresh`);
+            if (!updatedFromList) {
+                console.log(`[TreeProvider] No updated content found in list, firing full tree refresh`);
                 this._onDidChangeTreeData.fire(undefined);
                 return;
             }
@@ -125,11 +123,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             console.log(`[TreeProvider] Found tree item:`, ti ? 'yes' : 'no');
             if (ti && ti instanceof CourseContentItem) {
                 console.log(`[TreeProvider] Applying update to CourseContentItem`);
-                ti.applyUpdate(updated);
+                ti.applyUpdate(updatedFromList);
                 this._onDidChangeTreeData.fire(ti);
                 console.log(`[TreeProvider] Tree change event fired for item`);
                 // Also refresh parent unit if possible
-                const parentPath = (updated.path || '').split('.').slice(0, -1).join('.');
+                const parentPath = (updatedFromList.path || '').split('.').slice(0, -1).join('.');
                 if (parentPath && selectedCourseId) {
                     const list = this.courseContentsCache.get(selectedCourseId) || [];
                     const parent = list.find(c => c.path === parentPath);

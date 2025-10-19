@@ -50,6 +50,8 @@ export interface CourseContentLecturerGet {
   deployment_status?: string | null;
   course_content_type?: CourseContentTypeGet | null;
   repository: CourseContentRepositoryLecturerGet;
+  /** Deployment information if requested via include=deployment */
+  deployment?: CourseContentDeploymentGet | null;
 }
 
 /**
@@ -72,6 +74,8 @@ export interface CourseContentLecturerList {
   deployment_status?: string | null;
   course_content_type?: CourseContentTypeList | null;
   repository: CourseContentRepositoryLecturerGet;
+  /** Deployment information if requested via include=deployment */
+  deployment?: CourseContentDeploymentList | null;
 }
 
 /**
@@ -492,8 +496,17 @@ export interface ResultStudentList {
   version_identifier?: string | null;
   status?: TaskStatus | null;
   result?: number | null;
-  result_json?: any | null;
   submit?: boolean | null;
+}
+
+export interface ResultStudentGet {
+  execution_backend_id?: string | null;
+  test_system_id?: string | null;
+  version_identifier?: string | null;
+  status?: TaskStatus | null;
+  result?: number | null;
+  submit?: boolean | null;
+  result_json?: any | null;
 }
 
 export interface CourseContentStudentProperties {
@@ -523,7 +536,7 @@ export interface CourseContentStudentGet {
   submission_count: number;
   max_test_runs?: number | null;
   unread_message_count?: number;
-  result?: ResultStudentList | null;
+  result?: ResultStudentGet | null;
   directory?: string | null;
   color: string;
   submission_group?: SubmissionGroupStudentGet | null;

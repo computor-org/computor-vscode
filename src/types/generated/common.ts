@@ -12,6 +12,8 @@ import type { CourseContentTypeList, CourseExecutionBackendConfig, GradedByCours
 
 import type { ExampleValidationResult, ExampleVersionList } from './examples';
 
+import type { ErrorMessageFormat } from './messages';
+
 import type { OrganizationGet } from './organizations';
 
 import type { TaskStatus } from './tasks';
@@ -1877,6 +1879,7 @@ export interface SubmissionArtifactList {
   object_key: string;
   uploaded_at: string;
   version_identifier?: string | null;
+  submit?: boolean;
   properties?: Record<string, any> | null;
   latest_result?: ResultList | null;
 }
@@ -1898,6 +1901,7 @@ export interface SubmissionArtifactGet {
   object_key: string;
   uploaded_at: string;
   version_identifier?: string | null;
+  submit?: boolean;
   properties?: Record<string, any> | null;
   latest_result?: ResultList | null;
   test_results_count?: number | null;
@@ -2475,6 +2479,100 @@ export interface GenerateAssignmentsResponse {
   contents_to_process: number;
 }
 
+/**
+ * Complete error definition from registry.
+ */
+export interface ErrorDefinition {
+  /** Unique error code (e.g., AUTH_001) */
+  code: string;
+  /** HTTP status code */
+  http_status: number;
+  /** Error category */
+  category: ErrorCategory;
+  /** Error severity */
+  severity: ErrorSeverity;
+  /** Short error title */
+  title: string;
+  /** Error messages in multiple formats */
+  message: ErrorMessageFormat;
+  /** Seconds to wait before retry */
+  retry_after?: number | null;
+  /** Link to documentation */
+  documentation_url?: string | null;
+  /** Internal description for developers */
+  internal_description: string;
+  /** Functions that may raise this error */
+  affected_functions?: string[];
+  /** Common causes of this error */
+  common_causes?: string[];
+  /** Steps to resolve the error */
+  resolution_steps?: string[];
+}
+
+/**
+ * Standard error response structure sent to clients.
+ */
+export interface ErrorResponse {
+  /** Unique error code */
+  error_code: string;
+  /** Human-readable error message */
+  message: string;
+  /** Additional error details */
+  details?: any | null;
+  /** Error severity */
+  severity: ErrorSeverity;
+  /** Error category */
+  category: ErrorCategory;
+  /** Seconds to wait before retry */
+  retry_after?: number | null;
+  /** Link to documentation */
+  documentation_url?: string | null;
+  /** Debug information (dev mode only) */
+  debug?: ErrorDebugInfo | null;
+}
+
+/**
+ * Debug information included in development mode.
+ */
+export interface ErrorDebugInfo {
+  /** ISO 8601 timestamp */
+  timestamp: string;
+  /** Request trace ID */
+  request_id?: string | null;
+  /** Function where error occurred */
+  function?: string | null;
+  /** File where error occurred */
+  file?: string | null;
+  /** Line number where error occurred */
+  line?: number | null;
+  /** User ID if authenticated */
+  user_id?: string | null;
+  /** Additional context */
+  additional_context?: Record<string, any> | null;
+}
+
+/**
+ * Metadata attached to exception instances for rich error handling.
+ * 
+ * This is used internally when raising exceptions to provide context.
+ */
+export interface ErrorMetadata {
+  /** Error code from registry */
+  error_code: string;
+  /** Function raising the error */
+  function_name?: string | null;
+  /** Additional context */
+  context?: Record<string, any>;
+  /** User ID if available */
+  user_id?: string | null;
+  /** Request ID for tracing */
+  request_id?: string | null;
+  /** Override default message */
+  override_message?: string | null;
+  /** Override default details */
+  override_details?: any | null;
+}
+
 export interface ResultCreate {
   course_member_id: string;
   course_content_id: string;
@@ -2562,7 +2660,6 @@ export interface ResultQuery {
   latest?: boolean | null;
   result?: number | null;
   grade?: number | null;
-  result_json?: string | null;
 }
 
 /**
@@ -3252,4 +3349,10 @@ export type LanguageEnum = "de" | "en";
 
 export type MetaTypeEnum = "course" | "unit" | "assignment";
 
+export type ErrorSeverity = "info" | "warning" | "error" | "critical";
+
+export type ErrorCategory = "authentication" | "authorization" | "validation" | "not_found" | "conflict" | "rate_limit" | "external_service" | "database" | "internal" | "not_implemented";
+
 export type GradingStatus = 0 | 1 | 2 | 3;
+
+export type ErrorCode = "AUTH_001" | "AUTH_002" | "AUTH_003" | "AUTH_004" | "AUTHZ_001" | "AUTHZ_002" | "AUTHZ_003" | "AUTHZ_004" | "VAL_001" | "VAL_002" | "VAL_003" | "VAL_004" | "NF_001" | "NF_002" | "NF_003" | "NF_004" | "CONFLICT_001" | "CONFLICT_002" | "RATE_001" | "RATE_002" | "RATE_003" | "CONTENT_001" | "CONTENT_002" | "CONTENT_003" | "CONTENT_004" | "CONTENT_005" | "DEPLOY_001" | "DEPLOY_002" | "DEPLOY_003" | "DEPLOY_004" | "SUBMIT_001" | "SUBMIT_002" | "SUBMIT_003" | "SUBMIT_004" | "SUBMIT_005" | "SUBMIT_006" | "SUBMIT_007" | "SUBMIT_008" | "TASK_001" | "TASK_002" | "TASK_003" | "TASK_004" | "EXT_001" | "EXT_002" | "EXT_003" | "EXT_004" | "DB_001" | "DB_002" | "DB_003" | "INT_001" | "INT_002" | "NIMPL_001";
