@@ -258,7 +258,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         
                         if (!assignmentPath || !fs.existsSync(assignmentPath)) {
                             console.log('[StudentTree] Directory not available after setup:', assignmentPath);
-                            return [new MessageItem('Assignment not deployed yet - sync repository to get updates', 'info')];
+                            return [new MessageItem('Assignment not available yet', 'info')];
                         }
                     } else {
                         return [new MessageItem('Unable to setup repository', 'error')];

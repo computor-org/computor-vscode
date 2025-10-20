@@ -248,11 +248,17 @@ export class StudentCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.showPreview', async (item?: any) => {
         try {
-          // If item provided and has a directory, open README from there
-          const directoryFromItem: string | undefined = item?.courseContent ? (item.courseContent as any).directory : undefined;
-          if (directoryFromItem) {
-            await this.openReadmeIfExists(directoryFromItem);
-            return;
+          // If item provided, check if it has a directory
+          if (item?.courseContent) {
+            const directoryFromItem: string | undefined = (item.courseContent as any).directory;
+            if (directoryFromItem) {
+              await this.openReadmeIfExists(directoryFromItem);
+              return;
+            } else {
+              // Assignment directory not available (likely not released yet)
+              vscode.window.showWarningMessage('Assignment not available yet. README preview cannot be shown.');
+              return;
+            }
           }
 
           // Try to infer from active editor

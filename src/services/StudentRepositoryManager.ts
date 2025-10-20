@@ -370,11 +370,11 @@ export class StudentRepositoryManager {
               if (fs.existsSync(fullPath)) {
                 content.directory = fullPath;
                 console.log(`[StudentRepositoryManager] Found existing directory for ${content.title}: ${fullPath}`);
+              } else {
+                console.log(`[StudentRepositoryManager] Assignment directory not found for ${content.title}: ${subdirectory}`);
               }
             } else {
-              // No subdirectory, use the repository root
-              content.directory = repoPath;
-              console.log(`[StudentRepositoryManager] Using repository root for ${content.title}: ${repoPath}`);
+              console.log(`[StudentRepositoryManager] No subdirectory defined for ${content.title} - assignment not deployed yet`);
             }
           }
         }
