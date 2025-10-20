@@ -431,7 +431,8 @@ export class StudentRepositoryManager {
       const gitHelper = new CTGit(repoPath);
       const updateResult = await gitHelper.forkUpdate(authenticatedUpstreamUrl, {
         defaultBranch,
-        removeRemote: !remoteExisted
+        removeRemote: !remoteExisted,
+        autoResolveConflicts: true  // Automatically resolve conflicts without user prompts
       });
 
       if (updateResult.updated) {
