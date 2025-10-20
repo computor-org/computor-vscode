@@ -65,28 +65,28 @@
       },
       {
         "command": "computor.changeRealmUrl",
-        "title": "Computor: Change Backend URL",
+        "title": "Change Backend URL",
         "category": "Computor"
       },
       {
         "command": "computor.checkBackendConnection",
-        "title": "Computor: Check Backend Connection",
+        "title": "Check Backend Connection",
         "category": "Computor"
       },
       {
         "command": "computor.settings",
-        "title": "Computor: Settings",
+        "title": "Settings",
         "category": "Computor"
       },
       {
         "command": "computor.user.profile",
-        "title": "Computor: Edit Profile",
+        "title": "Edit Profile",
         "category": "Computor",
         "icon": "$(account)"
       },
       {
         "command": "computor.login",
-        "title": "Computor: Login",
+        "title": "Login",
         "category": "Computor"
       },
       {
@@ -223,7 +223,7 @@
       },
       {
         "command": "computor.user.changePassword",
-        "title": "Computor: Change Password",
+        "title": "Change Password",
         "icon": "$(key)",
         "category": "Computor"
       },
