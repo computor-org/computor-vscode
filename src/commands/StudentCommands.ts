@@ -178,8 +178,30 @@ export class StudentCommands {
   registerCommands(): void {
     // Refresh student view
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.refresh', () => {
-        this.treeDataProvider.refresh();
+      vscode.commands.registerCommand('computor.student.refresh', async () => {
+        // Show progress notification while refreshing
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: 'Refreshing student view...',
+          cancellable: false
+        }, async (progress) => {
+          // Update repositories (includes fork updates) if repository manager is available
+          if (this.repositoryManager) {
+            try {
+              await this.repositoryManager.autoSetupRepositories(
+                undefined, // All courses
+                (msg) => progress.report({ message: msg })
+              );
+            } catch (error) {
+              console.error('[StudentCommands] Failed during repository refresh:', error);
+              // Continue with tree refresh even if repository operations fail
+            }
+          }
+
+          // Refresh the tree view
+          progress.report({ message: 'Refreshing tree view...' });
+          this.treeDataProvider.refresh();
+        });
       })
     );
 

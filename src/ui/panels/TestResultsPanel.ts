@@ -65,6 +65,48 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
     }
 
     convertToNodes(data: Record<string, any>): ResultsTreeNode[] {
+        // Handle error field in the result payload
+        if (!Array.isArray(data) && 'error' in data && typeof data.error === 'string') {
+            const errorChildren: ResultsTreeNode[] = [
+                {
+                    label: data.error,
+                    themeIcon: new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'))
+                }
+            ];
+
+            // Add test statistics if available
+            if ('passed' in data || 'failed' in data || 'total' in data) {
+                const passed = data.passed ?? 0;
+                const failed = data.failed ?? 0;
+                const total = data.total ?? (passed + failed);
+                errorChildren.push({
+                    label: `Tests: ${passed} passed, ${failed} failed, ${total} total`,
+                    themeIcon: new vscode.ThemeIcon('graph-line')
+                });
+            }
+
+            // Add result value if available
+            if ('result_value' in data) {
+                const percentage = Math.round((data.result_value ?? 0) * 100);
+                errorChildren.push({
+                    label: `Result: ${percentage}%`,
+                    themeIcon: new vscode.ThemeIcon('symbol-numeric')
+                });
+            }
+
+            return [{
+                label: 'Test Execution Error',
+                description: undefined,
+                passed: false,
+                isTest: false,
+                toolTip: data.error,
+                collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
+                themeIcon: new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground')),
+                message: data.error,
+                children: errorChildren
+            }];
+        }
+
         if (Array.isArray(data)) {
             return data.map((item) => {
                 const totalSubtests = item.tests ? item.tests.length : 0;

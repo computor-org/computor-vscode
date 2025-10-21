@@ -9,7 +9,7 @@ import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManag
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
-import { deriveRepositoryDirectoryName, buildStudentRepoRoot } from '../../../utils/repositoryNaming';
+import { buildStudentRepoRoot } from '../../../utils/repositoryNaming';
 
 interface ContentNode {
     name?: string;
@@ -698,32 +698,32 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         courseId: string,
         submissionGroup?: SubmissionGroupStudentList
     ): string | undefined {
+        void courseId; // courseId - only used for logging/context
+
         if (!submissionGroup) {
+            console.log('[StudentTree] No submission group available');
             return undefined;
         }
 
-        const repo: any = submissionGroup.repository;
-        let remoteUrl: string | undefined = repo?.clone_url || repo?.url || repo?.web_url;
-        if (!remoteUrl && repo) {
-            const base = repo?.provider_url || repo?.provider || repo?.url || '';
-            const full = repo?.full_path || '';
-            if (base && full) {
-                remoteUrl = `${String(base).replace(/\/$/, '')}/${String(full).replace(/^\//, '')}`;
-                if (!remoteUrl.endsWith('.git')) {
-                    remoteUrl += '.git';
-                }
-            }
+        if (!submissionGroup.repository) {
+            console.log('[StudentTree] No repository in submission group');
+            return undefined;
         }
 
-        const repoName = deriveRepositoryDirectoryName({
-            submissionRepo: repo,
-            remoteUrl,
-            courseId,
-            memberId: submissionGroup.id || undefined,
-            submissionGroupId: submissionGroup.id || undefined
-        });
+        if (!submissionGroup.repository.full_path) {
+            console.log('[StudentTree] Repository missing full_path:', {
+                clone_url: submissionGroup.repository.clone_url,
+                url: submissionGroup.repository.url,
+                web_url: submissionGroup.repository.web_url
+            });
+            return undefined;
+        }
 
-        return buildStudentRepoRoot(workspaceRoot, repoName);
+        // Use the same logic as StudentRepositoryManager for consistency
+        // Convert repository full_path (e.g., "course/student-123") to directory name (e.g., "course.student-123")
+        const dirName = submissionGroup.repository.full_path.replace(/\//g, '.');
+        console.log('[StudentTree] Derived repository directory name:', dirName);
+        return buildStudentRepoRoot(workspaceRoot, dirName);
     }
 
     private getExpandedState(nodeId: string): boolean {
