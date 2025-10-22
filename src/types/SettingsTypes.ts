@@ -7,6 +7,7 @@ export interface ComputorSettings {
 
 export interface AuthenticationSettings {
   baseUrl: string;
+  autoLogin?: boolean;
 }
 
 export interface WorkspaceSettings {
@@ -26,7 +27,8 @@ export interface UISettings {
 export const defaultSettings: ComputorSettings = {
   version: '1.0.0',
   authentication: {
-    baseUrl: 'http://localhost:8000'
+    baseUrl: 'http://localhost:8000',
+    autoLogin: false
   },
   workspace: {
     repositoryDirectory: undefined,

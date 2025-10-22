@@ -68,7 +68,62 @@ async function ensureBaseUrl(settings: ComputorSettingsManager): Promise<string 
   return url;
 }
 
-async function promptCredentials(previous?: { username?: string; password?: string }): Promise<{ username: string; password: string } | undefined> {
+async function attemptSilentAutoLogin(
+  context: vscode.ExtensionContext,
+  baseUrl: string,
+  username: string,
+  password: string
+): Promise<boolean> {
+  try {
+    const client = new BearerTokenHttpClient(baseUrl, 5000);
+    await client.authenticateWithCredentials(username, password);
+
+    const tokenData = client.getTokenData();
+    const auth: StoredAuth = {
+      accessToken: tokenData.accessToken!,
+      refreshToken: tokenData.refreshToken || undefined,
+      expiresAt: tokenData.expiresAt?.toISOString(),
+      issuedAt: tokenData.issuedAt?.toISOString(),
+      userId: tokenData.userId || undefined
+    };
+
+    await ensureWorkspaceMarker(baseUrl);
+    const controller = new UnifiedController(context);
+
+    await controller.activate(client as any);
+    backendConnectionService.startHealthCheck(baseUrl);
+
+    activeSession = {
+      deactivate: () => controller.dispose().then(async () => {
+        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+        await context.globalState.update('computor.tutor.selection', undefined);
+        backendConnectionService.stopHealthCheck();
+      }),
+      getActiveViews: () => controller.getActiveViews(),
+      getHttpClient: () => controller.getHttpClient()
+    };
+
+    await context.secrets.store('computor.auth', JSON.stringify(auth));
+
+    if (extensionUpdateService) {
+      extensionUpdateService.checkForUpdates().catch(err => {
+        console.warn('Extension update check failed:', err);
+      });
+    }
+
+    return true;
+  } catch (error: any) {
+    console.error('Auto-login failed:', error);
+    return false;
+  }
+}
+
+async function promptCredentials(
+  previous?: { username?: string; password?: string },
+  currentAutoLogin?: boolean
+): Promise<{ username: string; password: string; enableAutoLogin: boolean } | undefined> {
   const username = await vscode.window.showInputBox({
     title: 'Computor Login',
     prompt: 'Username',
@@ -86,7 +141,31 @@ async function promptCredentials(previous?: { username?: string; password?: stri
   });
   if (!password) return undefined;
 
-  return { username, password };
+  const autoLoginChoice = await vscode.window.showQuickPick(
+    [
+      {
+        label: '$(check) Enable auto-login',
+        description: 'Automatically login when opening this workspace',
+        picked: currentAutoLogin ?? false,
+        value: true
+      },
+      {
+        label: '$(close) Disable auto-login',
+        description: 'Always prompt for login',
+        picked: currentAutoLogin === false,
+        value: false
+      }
+    ],
+    {
+      title: 'Computor Login - Auto-Login Settings',
+      placeHolder: 'Choose whether to enable auto-login with stored credentials',
+      ignoreFocusOut: true
+    }
+  );
+
+  const enableAutoLogin = autoLoginChoice?.value ?? false;
+
+  return { username, password, enableAutoLogin };
 }
 
 function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClient {
@@ -605,10 +684,12 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
     const storedUsername = await context.secrets.get(usernameKey);
     const storedPassword = await context.secrets.get(passwordKey);
+    const currentAutoLogin = await settings.isAutoLoginEnabled();
     const creds = await promptCredentials(
       storedUsername || storedPassword
         ? { username: storedUsername, password: storedPassword }
-        : undefined
+        : undefined,
+      currentAutoLogin
     );
     if (!creds) { return; }
 
@@ -660,6 +741,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       await context.secrets.store(secretKey, JSON.stringify(auth));
       await context.secrets.store(usernameKey, creds.username);
       await context.secrets.store(passwordKey, creds.password);
+      await settings.setAutoLoginEnabled(creds.enableAutoLogin);
 
       if (extensionUpdateService) {
         extensionUpdateService.checkForUpdates().catch(err => {
@@ -784,22 +866,75 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }));
   
-  // Check if workspace has .computor file and automatically prompt for login
+  // Check if workspace has .computor file and automatically login if enabled
   const workspaceRoot = getWorkspaceRoot();
   if (workspaceRoot && !activeSession) {
     const computorMarkerPath = path.join(workspaceRoot, computorMarker);
     if (fs.existsSync(computorMarkerPath)) {
-      // Workspace has .computor file - prompt for login after a short delay
       setTimeout(async () => {
-        const action = await vscode.window.showInformationMessage(
-          'Computor workspace detected. Would you like to login?',
-          'Login',
-          'Not Now'
-        );
-        if (action === 'Login') {
-          await unifiedLoginFlow(context);
+        const settings = new ComputorSettingsManager(context);
+        const autoLoginEnabled = await settings.isAutoLoginEnabled();
+
+        if (autoLoginEnabled) {
+          const storedUsername = await context.secrets.get('computor.username');
+          const storedPassword = await context.secrets.get('computor.password');
+
+          if (storedUsername && storedPassword) {
+            await vscode.window.withProgress({
+              location: vscode.ProgressLocation.Notification,
+              title: 'Auto-logging in to Computor...',
+              cancellable: false
+            }, async () => {
+              try {
+                const marker = await readMarker(computorMarkerPath);
+                const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
+
+                backendConnectionService.setBaseUrl(baseUrl);
+                const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+                if (!connectionStatus.isReachable) {
+                  await backendConnectionService.showConnectionError(connectionStatus);
+                  return;
+                }
+
+                const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
+                if (success) {
+                  vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
+                } else {
+                  throw new Error('Authentication failed');
+                }
+              } catch (error: any) {
+                console.warn('Auto-login failed:', error);
+                const action = await vscode.window.showWarningMessage(
+                  'Auto-login failed. Would you like to login manually?',
+                  'Login',
+                  'Not Now'
+                );
+                if (action === 'Login') {
+                  await unifiedLoginFlow(context);
+                }
+              }
+            });
+          } else {
+            const action = await vscode.window.showInformationMessage(
+              'Computor workspace detected. Would you like to login?',
+              'Login',
+              'Not Now'
+            );
+            if (action === 'Login') {
+              await unifiedLoginFlow(context);
+            }
+          }
+        } else {
+          const action = await vscode.window.showInformationMessage(
+            'Computor workspace detected. Would you like to login?',
+            'Login',
+            'Not Now'
+          );
+          if (action === 'Login') {
+            await unifiedLoginFlow(context);
+          }
         }
-      }, 1500); // Small delay to let the extension fully initialize
+      }, 1500);
     }
   }
 
@@ -825,20 +960,84 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (workspaceRoot) {
         const computorMarkerPath = path.join(workspaceRoot, computorMarker);
         if (fs.existsSync(computorMarkerPath)) {
-          // New workspace has .computor file - prompt for login
           setTimeout(async () => {
-            const action = await vscode.window.showInformationMessage(
-              'Computor workspace detected. Would you like to login?',
-              'Login',
-              'Not Now'
-            );
-            if (action === 'Login') {
-              await unifiedLoginFlow(context);
+            const settings = new ComputorSettingsManager(context);
+            const autoLoginEnabled = await settings.isAutoLoginEnabled();
+
+            if (autoLoginEnabled) {
+              const storedUsername = await context.secrets.get('computor.username');
+              const storedPassword = await context.secrets.get('computor.password');
+
+              if (storedUsername && storedPassword) {
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: 'Auto-logging in to Computor...',
+                  cancellable: false
+                }, async () => {
+                  try {
+                    const marker = await readMarker(computorMarkerPath);
+                    const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
+
+                    backendConnectionService.setBaseUrl(baseUrl);
+                    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+                    if (!connectionStatus.isReachable) {
+                      await backendConnectionService.showConnectionError(connectionStatus);
+                      return;
+                    }
+
+                    const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
+                    if (success) {
+                      vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
+                    } else {
+                      throw new Error('Authentication failed');
+                    }
+                  } catch (error: any) {
+                    console.warn('Auto-login failed:', error);
+                    const action = await vscode.window.showWarningMessage(
+                      'Auto-login failed. Would you like to login manually?',
+                      'Login',
+                      'Not Now'
+                    );
+                    if (action === 'Login') {
+                      await unifiedLoginFlow(context);
+                    }
+                  }
+                });
+              } else {
+                const action = await vscode.window.showInformationMessage(
+                  'Computor workspace detected. Would you like to login?',
+                  'Login',
+                  'Not Now'
+                );
+                if (action === 'Login') {
+                  await unifiedLoginFlow(context);
+                }
+              }
+            } else {
+              const action = await vscode.window.showInformationMessage(
+                'Computor workspace detected. Would you like to login?',
+                'Login',
+                'Not Now'
+              );
+              if (action === 'Login') {
+                await unifiedLoginFlow(context);
+              }
             }
           }, 1500);
         }
       }
     }
+  }));
+
+  // Toggle auto-login command
+  context.subscriptions.push(vscode.commands.registerCommand('computor.toggleAutoLogin', async () => {
+    const settings = new ComputorSettingsManager(context);
+    const currentValue = await settings.isAutoLoginEnabled();
+    const newValue = !currentValue;
+    await settings.setAutoLoginEnabled(newValue);
+    vscode.window.showInformationMessage(
+      `Auto-login ${newValue ? 'enabled' : 'disabled'}. ${newValue ? 'You will be automatically logged in when opening Computor workspaces.' : 'You will be prompted to login when opening Computor workspaces.'}`
+    );
   }));
 
   // Maintain legacy settings command to open extension settings scope

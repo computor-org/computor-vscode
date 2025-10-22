@@ -46,7 +46,18 @@ export class ComputorSettingsManager {
     settings.authentication.baseUrl = url;
     await this.settingsStorage.save(settings);
   }
-  
+
+  async isAutoLoginEnabled(): Promise<boolean> {
+    const settings = await this.settingsStorage.load();
+    return settings.authentication.autoLogin ?? false;
+  }
+
+  async setAutoLoginEnabled(enabled: boolean): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    settings.authentication.autoLogin = enabled;
+    await this.settingsStorage.save(settings);
+  }
+
   async storeSecureToken(key: string, token: string): Promise<void> {
     await this.secureStorage.store(key, token);
   }

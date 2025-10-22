@@ -90,6 +90,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.toggleAutoLogin",
+        "title": "Toggle Auto-Login",
+        "category": "Computor"
+      },
+      {
         "command": "computor.student.cloneRepository",
         "title": "Clone Repository",
         "icon": "$(cloud-download)",
