@@ -25,8 +25,38 @@ export class GitLabTokenManager {
   static getInstance(context: vscode.ExtensionContext): GitLabTokenManager {
     if (!GitLabTokenManager.instance) {
       GitLabTokenManager.instance = new GitLabTokenManager(context);
+      void GitLabTokenManager.instance.migrateOldTokens();
     }
     return GitLabTokenManager.instance;
+  }
+
+  /**
+   * Migrate old tokens from JSON config to URL tracking
+   * This handles the case where tokens were stored in plain text before the security fix
+   */
+  private async migrateOldTokens(): Promise<void> {
+    try {
+      const settings = await this.settingsManager.getSettings();
+      const legacyTokens = (settings.workspace as any)?.gitlabTokens;
+
+      if (legacyTokens && typeof legacyTokens === 'object' && Object.keys(legacyTokens).length > 0) {
+        console.log('[GitLabTokenManager] Migrating legacy tokens from JSON config...');
+
+        for (const [url, token] of Object.entries(legacyTokens)) {
+          if (typeof token === 'string' && token.length > 0) {
+            await this.context.secrets.store(`gitlab-token-${url}`, token);
+            await this.settingsManager.addGitLabUrl(url);
+            console.log(`[GitLabTokenManager] Migrated token for ${url}`);
+          }
+        }
+
+        delete (settings.workspace as any).gitlabTokens;
+        await this.settingsManager.saveSettings(settings);
+        console.log('[GitLabTokenManager] Migration complete, legacy tokens removed from JSON');
+      }
+    } catch (error) {
+      console.warn('[GitLabTokenManager] Migration failed, but continuing:', error);
+    }
   }
 
   /**
@@ -216,11 +246,11 @@ export class GitLabTokenManager {
    * Store token securely for a GitLab URL
    */
   async storeToken(gitlabUrl: string, token: string): Promise<void> {
-    // Store in secure storage
+    // Store in secure storage ONLY
     await this.context.secrets.store(`gitlab-token-${gitlabUrl}`, token);
 
-    // Persist in config for management commands
-    await this.settingsManager.setGitLabToken(gitlabUrl, token);
+    // Track the URL (but NOT the token) in config for management UI
+    await this.settingsManager.addGitLabUrl(gitlabUrl);
 
     // Update cache
     this.tokenCache.set(gitlabUrl, token);
@@ -239,26 +269,20 @@ export class GitLabTokenManager {
   async removeToken(gitlabUrl: string): Promise<void> {
     // Remove from secure storage
     await this.context.secrets.delete(`gitlab-token-${gitlabUrl}`);
-    
+
     // Remove from cache
     this.tokenCache.delete(gitlabUrl);
 
-    // Remove from persisted config if present
-    const settings = await this.settingsManager.getSettings();
-    if (settings.workspace?.gitlabTokens && gitlabUrl in settings.workspace.gitlabTokens) {
-      delete settings.workspace.gitlabTokens[gitlabUrl];
-      await this.settingsManager.saveSettings(settings);
-    }
+    // Remove the URL from config tracking
+    await this.settingsManager.removeGitLabUrl(gitlabUrl);
   }
 
   /**
    * Get all stored GitLab URLs
    */
   async getStoredGitLabUrls(): Promise<string[]> {
-    // This is a bit tricky as VS Code doesn't provide a way to list all secrets
-    // We'll need to track this separately in settings
-    const settings = await this.settingsManager.getSettings();
-    return Object.keys(settings.workspace?.gitlabTokens || {});
+    // Get tracked URLs from settings (VS Code doesn't provide a way to list all secrets)
+    return await this.settingsManager.getGitLabUrls();
   }
 
   /**

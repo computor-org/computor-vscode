@@ -6,13 +6,7 @@ export async function manageGitLabTokens(context: vscode.ExtensionContext): Prom
   const settingsManager = new ComputorSettingsManager(context);
   const gitLabTokenManager = GitLabTokenManager.getInstance(context);
 
-  const settings = await settingsManager.getSettings();
-  const urls = Object.keys(settings.workspace?.gitlabTokens || {});
-
-  if (urls.length === 0) {
-    vscode.window.showInformationMessage('No GitLab tokens configured yet. Tokens will be requested when needed.');
-    return;
-  }
+  const urls = await settingsManager.getGitLabUrls();
 
   const items: vscode.QuickPickItem[] = urls.map((url) => ({
     label: url,
