@@ -123,7 +123,7 @@ async function attemptSilentAutoLogin(
 async function promptCredentials(
   previous?: { username?: string; password?: string },
   currentAutoLogin?: boolean
-): Promise<{ username: string; password: string; enableAutoLogin: boolean } | undefined> {
+): Promise<{ username: string; password: string; enableAutoLogin?: boolean } | undefined> {
   const username = await vscode.window.showInputBox({
     title: 'Computor Login',
     prompt: 'Username',
@@ -141,29 +141,34 @@ async function promptCredentials(
   });
   if (!password) return undefined;
 
-  const autoLoginChoice = await vscode.window.showQuickPick(
-    [
-      {
-        label: '$(check) Enable auto-login',
-        description: 'Automatically login when opening this workspace',
-        picked: currentAutoLogin ?? false,
-        value: true
-      },
-      {
-        label: '$(close) Disable auto-login',
-        description: 'Always prompt for login',
-        picked: currentAutoLogin === false,
-        value: false
-      }
-    ],
-    {
-      title: 'Computor Login - Auto-Login Settings',
-      placeHolder: 'Choose whether to enable auto-login with stored credentials',
-      ignoreFocusOut: true
-    }
-  );
+  // Only ask about auto-login if the setting is undefined (not yet configured)
+  let enableAutoLogin: boolean | undefined = currentAutoLogin;
 
-  const enableAutoLogin = autoLoginChoice?.value ?? false;
+  if (currentAutoLogin === undefined) {
+    const autoLoginChoice = await vscode.window.showQuickPick(
+      [
+        {
+          label: '$(check) Enable auto-login',
+          description: 'Automatically login when opening this workspace',
+          picked: false,
+          value: true
+        },
+        {
+          label: '$(close) Disable auto-login',
+          description: 'Always prompt for login',
+          picked: true,
+          value: false
+        }
+      ],
+      {
+        title: 'Computor Login - Auto-Login Settings',
+        placeHolder: 'Choose whether to enable auto-login with stored credentials',
+        ignoreFocusOut: true
+      }
+    );
+
+    enableAutoLogin = autoLoginChoice?.value ?? false;
+  }
 
   return { username, password, enableAutoLogin };
 }
@@ -291,6 +296,10 @@ class UnifiedController {
     // Refresh GitLab tokens in workspace repositories after login
     await this.refreshWorkspaceGitLabTokens();
 
+    // Validate and register course provider accounts (GitLab access)
+    // This ensures the user has proper access to all course repositories
+    await this.validateCourseProviderAccess(api);
+
     // Focus on the highest priority view: lecturer > tutor > student
     await this.focusHighestPriorityView(availableViews);
   }
@@ -382,6 +391,20 @@ class UnifiedController {
       }
     } catch (error) {
       console.warn('[UnifiedController] Failed to refresh workspace GitLab tokens:', error);
+    }
+  }
+
+  private async validateCourseProviderAccess(api: ComputorApiService): Promise<void> {
+    try {
+      const { CourseProviderValidationService } = await import('./services/CourseProviderValidationService');
+      const validationService = new CourseProviderValidationService(this.context, api);
+
+      // This runs in the background and prompts user only if needed
+      await validationService.validateAllCourseProviders();
+
+      console.log('[UnifiedController] Course provider validation complete');
+    } catch (error) {
+      console.warn('[UnifiedController] Failed to validate course provider access:', error);
     }
   }
 
@@ -741,7 +764,11 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       await context.secrets.store(secretKey, JSON.stringify(auth));
       await context.secrets.store(usernameKey, creds.username);
       await context.secrets.store(passwordKey, creds.password);
-      await settings.setAutoLoginEnabled(creds.enableAutoLogin);
+
+      // Only update auto-login setting if user was asked (i.e., if it was undefined before)
+      if (creds.enableAutoLogin !== undefined) {
+        await settings.setAutoLoginEnabled(creds.enableAutoLogin);
+      }
 
       if (extensionUpdateService) {
         extensionUpdateService.checkForUpdates().catch(err => {
