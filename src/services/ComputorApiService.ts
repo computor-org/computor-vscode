@@ -39,7 +39,6 @@ import {
   CourseMemberList,
   CourseMemberGet,
   CourseMemberUpdate,
-  CourseMemberProviderAccountUpdate,
   CourseMemberReadinessStatus,
   UserPassword,
   UserGet,
@@ -97,6 +96,8 @@ type MessageQueryParams = Partial<{
 }>;
 
 export class ComputorApiService {
+  private static instance?: ComputorApiService;
+
   public httpClient?: HttpClient;
   private settingsManager: ComputorSettingsManager;
 
@@ -107,6 +108,9 @@ export class ComputorApiService {
   constructor(context: vscode.ExtensionContext, httpClient?: HttpClient) {
     this.settingsManager = new ComputorSettingsManager(context);
     this.httpClient = httpClient;
+
+    // Store as singleton instance
+    ComputorApiService.instance = this;
 
     // Create batched versions of frequently called methods
     this.batchedGetCourseContents = requestBatchingService.createBatchedFunction(
@@ -120,6 +124,14 @@ export class ComputorApiService {
       (courseId) => `getCourseContentTypes-${courseId}`,
       { maxBatchSize: 5, batchDelay: 100 }
     );
+  }
+
+  /**
+   * Get the singleton instance of ComputorApiService
+   * Returns undefined if not yet initialized (user not logged in)
+   */
+  static getInstance(): ComputorApiService | undefined {
+    return ComputorApiService.instance;
   }
 
   private async getHttpClient(): Promise<HttpClient> {
@@ -1442,28 +1454,6 @@ export class ComputorApiService {
       const message = (error as any)?.response?.data?.detail || (error as Error)?.message;
       if (message && status !== 401) {
         vscode.window.showWarningMessage(`Course readiness check failed: ${message}`);
-      }
-      throw error;
-    }
-  }
-
-  async registerCourseProviderAccount(
-    courseId: string,
-    payload: CourseMemberProviderAccountUpdate
-  ): Promise<CourseMemberReadinessStatus> {
-    try {
-      const client = await this.getHttpClient();
-      const response = await client.post<CourseMemberReadinessStatus>(
-        `/user/courses/${courseId}/register`,
-        payload
-      );
-      return response.data;
-    } catch (error: any) {
-      console.error('Failed to register provider account for course:', error);
-      const detail = error?.response?.data?.detail || error?.message || 'Registration failed';
-      const status = error?.response?.status;
-      if (status !== 400 && status !== 401 && status !== 422) {
-        vscode.window.showErrorMessage(detail);
       }
       throw error;
     }

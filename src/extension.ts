@@ -287,18 +287,14 @@ class UnifiedController {
       throw new Error('No views available for your account.');
     }
 
-    // Initialize views based on what's available
-    // Each view will fetch its own courses
-    await this.initializeViews(api, null, availableViews);
-
     await GitEnvironmentService.getInstance().validateGitEnvironment();
 
-    // Refresh GitLab tokens in workspace repositories after login
-    await this.refreshWorkspaceGitLabTokens();
-
-    // Validate and register course provider accounts (GitLab access)
-    // This ensures the user has proper access to all course repositories
+    // Validate and register course provider accounts BEFORE initializing views
+    // This ensures tokens are ready before ANY git operations
     await this.validateCourseProviderAccess(api);
+
+    // NOW initialize views - git operations will work because tokens are validated
+    await this.initializeViews(api, null, availableViews);
 
     // Focus on the highest priority view: lecturer > tutor > student
     await this.focusHighestPriorityView(availableViews);
@@ -307,6 +303,7 @@ class UnifiedController {
   private async setupApi(client: ReturnType<typeof buildHttpClient>): Promise<ComputorApiService> {
     const api = new ComputorApiService(this.context, client);
     this.api = api;
+    // API service is now available via ComputorApiService.getInstance()
     return api;
   }
 
@@ -314,6 +311,16 @@ class UnifiedController {
     return await api.getUserViews();
   }
 
+  private async validateCourseProviderAccess(api: ComputorApiService): Promise<void> {
+    try {
+      const { CourseProviderValidationService } = await import('./services/CourseProviderValidationService');
+      const validationService = new CourseProviderValidationService(this.context, api);
+      await validationService.validateAllCourseProviders();
+      console.log('[UnifiedController] Course provider validation complete');
+    } catch (error) {
+      console.warn('[UnifiedController] Failed to validate course provider access:', error);
+    }
+  }
 
   private async initializeViews(api: ComputorApiService, courseId: string | null, views: string[]): Promise<void> {
     void courseId; // No longer used - views show all courses
@@ -373,41 +380,6 @@ class UnifiedController {
     }
   }
 
-  private async refreshWorkspaceGitLabTokens(): Promise<void> {
-    try {
-      const { GitLabTokenManager } = await import('./services/GitLabTokenManager');
-      const tokenManager = GitLabTokenManager.getInstance(this.context);
-
-      // Get all stored GitLab URLs that we have tokens for
-      const gitlabUrls = await tokenManager.getStoredGitLabUrls();
-
-      // Refresh tokens for each GitLab instance
-      for (const gitlabUrl of gitlabUrls) {
-        await tokenManager.refreshWorkspaceGitCredentials(gitlabUrl);
-      }
-
-      if (gitlabUrls.length > 0) {
-        console.log(`[UnifiedController] Refreshed GitLab tokens for ${gitlabUrls.length} GitLab instances`);
-      }
-    } catch (error) {
-      console.warn('[UnifiedController] Failed to refresh workspace GitLab tokens:', error);
-    }
-  }
-
-  private async validateCourseProviderAccess(api: ComputorApiService): Promise<void> {
-    try {
-      const { CourseProviderValidationService } = await import('./services/CourseProviderValidationService');
-      const validationService = new CourseProviderValidationService(this.context, api);
-
-      // This runs in the background and prompts user only if needed
-      await validationService.validateAllCourseProviders();
-
-      console.log('[UnifiedController] Course provider validation complete');
-    } catch (error) {
-      console.warn('[UnifiedController] Failed to validate course provider access:', error);
-    }
-  }
-
   private async initializeStudentView(api: ComputorApiService): Promise<void> {
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
@@ -434,11 +406,18 @@ class UnifiedController {
 
     // No course pre-selection - tree will show all courses
 
-    // Auto-setup repositories
-    // Auto-setup repositories for all courses
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing course repositories...', cancellable: false }, async (progress) => {
+    // Auto-setup repositories (tokens already validated before this runs)
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Preparing course repositories...',
+      cancellable: false
+    }, async (progress) => {
       progress.report({ message: 'Starting...' });
-      try { await repositoryManager.autoSetupRepositories(undefined, (msg) => progress.report({ message: msg })); } catch (e) { console.error(e); }
+      try {
+        await repositoryManager.autoSetupRepositories(undefined, (msg) => progress.report({ message: msg }));
+      } catch (e) {
+        console.error('[initializeStudentView] Repository auto-setup failed:', e);
+      }
       tree.refresh();
     });
 

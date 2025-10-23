@@ -202,20 +202,8 @@ export class CourseProviderValidationService {
         });
 
         try {
-          // First, validate the token for this course
-          let readiness = await this.api.validateCourseReadiness(course.courseId, token);
-
-          // If not ready, try to register
-          if (!readiness.is_ready) {
-            const accountId = readiness.provider_account_id || await this.getUserGitLabUsername(providerUrl, token);
-
-            if (accountId) {
-              readiness = await this.api.registerCourseProviderAccount(course.courseId, {
-                provider_account_id: accountId,
-                provider_access_token: token
-              });
-            }
-          }
+          // Validate the token for this course (backend handles registration automatically)
+          const readiness = await this.api.validateCourseReadiness(course.courseId, token);
 
           if (readiness.is_ready) {
             successCount++;
@@ -245,32 +233,6 @@ export class CourseProviderValidationService {
         );
       }
     });
-  }
-
-  /**
-   * Get the user's GitLab username from the GitLab API
-   */
-  private async getUserGitLabUsername(gitlabUrl: string, token: string): Promise<string | undefined> {
-    try {
-      const baseUrl = gitlabUrl.endsWith('/') ? gitlabUrl.slice(0, -1) : gitlabUrl;
-      const apiUrl = `${baseUrl}/api/v4/user`;
-
-      const response = await fetch(apiUrl, {
-        headers: {
-          'PRIVATE-TOKEN': token
-        }
-      });
-
-      if (!response.ok) {
-        return undefined;
-      }
-
-      const userData = await response.json();
-      return userData.username;
-    } catch (error) {
-      console.error('[CourseProviderValidationService] Failed to get GitLab username:', error);
-      return undefined;
-    }
   }
 
   /**
