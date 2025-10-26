@@ -575,12 +575,15 @@ async function performTokenRefresh(
   const usernameKey = 'computor.username';
   const passwordKey = 'computor.password';
 
+  const settings = new ComputorSettingsManager(context);
   const storedUsername = await context.secrets.get(usernameKey);
   const storedPassword = await context.secrets.get(passwordKey);
+  const currentAutoLogin = await settings.isAutoLoginEnabled();
   const creds = await promptCredentials(
     storedUsername || storedPassword
       ? { username: storedUsername, password: storedPassword }
-      : undefined
+      : undefined,
+    currentAutoLogin
   );
   if (!creds) { return; }
 
@@ -624,6 +627,11 @@ async function performTokenRefresh(
   await context.secrets.store(secretKey, JSON.stringify(auth));
   await context.secrets.store(usernameKey, creds.username);
   await context.secrets.store(passwordKey, creds.password);
+
+  // Only update auto-login setting if user was asked (i.e., if it was undefined before)
+  if (creds.enableAutoLogin !== undefined) {
+    await settings.setAutoLoginEnabled(creds.enableAutoLogin);
+  }
 
   vscode.window.showInformationMessage(`Re-authenticated successfully: ${baseUrl}`);
 }
@@ -1039,7 +1047,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.commands.registerCommand('computor.toggleAutoLogin', async () => {
     const settings = new ComputorSettingsManager(context);
     const currentValue = await settings.isAutoLoginEnabled();
-    const newValue = !currentValue;
+    const newValue = currentValue !== true;
     await settings.setAutoLoginEnabled(newValue);
     vscode.window.showInformationMessage(
       `Auto-login ${newValue ? 'enabled' : 'disabled'}. ${newValue ? 'You will be automatically logged in when opening Computor workspaces.' : 'You will be prompted to login when opening Computor workspaces.'}`
