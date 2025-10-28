@@ -896,6 +896,26 @@ export class StudentCommands {
               if (existingArtifactId) {
                 console.log(`[TestAssignment] Path: Reusing existing artifact (no changes)`);
                 submissionResponse = { artifacts: [existingArtifactId] };
+              } else {
+                // No existing artifact found - create a new one
+                console.log(`[TestAssignment] Path: No existing artifact found, creating new one (no changes)`);
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: `Preparing ${assignmentTitle}...`,
+                  cancellable: false
+                }, async (progress) => {
+                  progress.report({ message: 'Packaging submission archive...' });
+                  const archive = await this.createSubmissionArchive(submissionDirectory);
+                  console.log(`[TestAssignment] Archive created successfully`);
+
+                  progress.report({ message: 'Uploading submission package...' });
+                  submissionResponse = await this.apiService.createStudentSubmission({
+                    submission_group_id: submissionGroupId,
+                    version_identifier: commitHash,
+                    submit: false
+                  }, archive);
+                  console.log(`[TestAssignment] Created new submission:`, submissionResponse);
+                });
               }
             }
           }
