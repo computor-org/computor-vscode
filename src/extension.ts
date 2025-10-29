@@ -20,6 +20,7 @@ import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { LecturerFsCommands } from './commands/LecturerFsCommands';
 import { UserPasswordCommands } from './commands/UserPasswordCommands';
+import { LogoutCommands } from './commands/LogoutCommands';
 import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProvider';
 
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
@@ -520,6 +521,7 @@ class UnifiedController {
     new LecturerExampleCommands(this.context, api, exampleTree);
     new LecturerFsCommands(this.context, api).register();
     new UserPasswordCommands(this.context, api).register();
+    new LogoutCommands(this.context).registerCommands();
 
     // Initialize lecturer assignments repository manager and trigger a background sync
     try {

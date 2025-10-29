@@ -233,6 +233,18 @@
         "category": "Computor"
       },
       {
+        "command": "computor.logout",
+        "title": "Logout",
+        "icon": "$(sign-out)",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.clearAllData",
+        "title": "Clear All Data",
+        "icon": "$(trash)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.lecturer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
