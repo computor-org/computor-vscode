@@ -47,9 +47,9 @@ export class ComputorSettingsManager {
     await this.settingsStorage.save(settings);
   }
 
-  async isAutoLoginEnabled(): Promise<boolean | undefined> {
+  async isAutoLoginEnabled(): Promise<boolean> {
     const settings = await this.settingsStorage.load();
-    return settings.authentication.autoLogin ?? undefined;
+    return settings.authentication.autoLogin ?? true;
   }
 
   async setAutoLoginEnabled(enabled: boolean): Promise<void> {

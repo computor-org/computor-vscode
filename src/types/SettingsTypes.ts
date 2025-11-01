@@ -28,7 +28,7 @@ export const defaultSettings: ComputorSettings = {
   version: '1.0.0',
   authentication: {
     baseUrl: 'http://localhost:8000',
-    autoLogin: undefined
+    autoLogin: true
   },
   workspace: {
     repositoryDirectory: undefined,

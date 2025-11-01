@@ -890,57 +890,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       setTimeout(async () => {
         const settings = new ComputorSettingsManager(context);
         const autoLoginEnabled = await settings.isAutoLoginEnabled();
+        const storedUsername = await context.secrets.get('computor.username');
+        const storedPassword = await context.secrets.get('computor.password');
 
-        if (autoLoginEnabled) {
-          const storedUsername = await context.secrets.get('computor.username');
-          const storedPassword = await context.secrets.get('computor.password');
+        if (autoLoginEnabled && storedUsername && storedPassword) {
+          // Auto-login is enabled and credentials are stored - attempt silent login
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Auto-logging in to Computor...',
+            cancellable: false
+          }, async () => {
+            try {
+              const marker = await readMarker(computorMarkerPath);
+              const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
 
-          if (storedUsername && storedPassword) {
-            await vscode.window.withProgress({
-              location: vscode.ProgressLocation.Notification,
-              title: 'Auto-logging in to Computor...',
-              cancellable: false
-            }, async () => {
-              try {
-                const marker = await readMarker(computorMarkerPath);
-                const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
-
-                backendConnectionService.setBaseUrl(baseUrl);
-                const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-                if (!connectionStatus.isReachable) {
-                  await backendConnectionService.showConnectionError(connectionStatus);
-                  return;
-                }
-
-                const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
-                if (success) {
-                  vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
-                } else {
-                  throw new Error('Authentication failed');
-                }
-              } catch (error: any) {
-                console.warn('Auto-login failed:', error);
-                const action = await vscode.window.showWarningMessage(
-                  'Auto-login failed. Would you like to login manually?',
-                  'Login',
-                  'Not Now'
-                );
-                if (action === 'Login') {
-                  await unifiedLoginFlow(context);
-                }
+              backendConnectionService.setBaseUrl(baseUrl);
+              const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+              if (!connectionStatus.isReachable) {
+                await backendConnectionService.showConnectionError(connectionStatus);
+                return;
               }
-            });
-          } else {
-            const action = await vscode.window.showInformationMessage(
-              'Computor workspace detected. Would you like to login?',
-              'Login',
-              'Not Now'
-            );
-            if (action === 'Login') {
-              await unifiedLoginFlow(context);
+
+              const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
+              if (success) {
+                vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
+              } else {
+                throw new Error('Authentication failed');
+              }
+            } catch (error: any) {
+              console.warn('Auto-login failed:', error);
+              const action = await vscode.window.showWarningMessage(
+                'Auto-login failed. Would you like to login manually?',
+                'Login',
+                'Not Now'
+              );
+              if (action === 'Login') {
+                await unifiedLoginFlow(context);
+              }
             }
-          }
-        } else {
+          });
+        } else if (!autoLoginEnabled) {
+          // Auto-login is explicitly disabled - show prompt
           const action = await vscode.window.showInformationMessage(
             'Computor workspace detected. Would you like to login?',
             'Login',
@@ -950,6 +940,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await unifiedLoginFlow(context);
           }
         }
+        // If autoLogin is true but no credentials are stored, do nothing (silent)
       }, 1500);
     }
   }
@@ -979,57 +970,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           setTimeout(async () => {
             const settings = new ComputorSettingsManager(context);
             const autoLoginEnabled = await settings.isAutoLoginEnabled();
+            const storedUsername = await context.secrets.get('computor.username');
+            const storedPassword = await context.secrets.get('computor.password');
 
-            if (autoLoginEnabled) {
-              const storedUsername = await context.secrets.get('computor.username');
-              const storedPassword = await context.secrets.get('computor.password');
+            if (autoLoginEnabled && storedUsername && storedPassword) {
+              // Auto-login is enabled and credentials are stored - attempt silent login
+              await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Auto-logging in to Computor...',
+                cancellable: false
+              }, async () => {
+                try {
+                  const marker = await readMarker(computorMarkerPath);
+                  const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
 
-              if (storedUsername && storedPassword) {
-                await vscode.window.withProgress({
-                  location: vscode.ProgressLocation.Notification,
-                  title: 'Auto-logging in to Computor...',
-                  cancellable: false
-                }, async () => {
-                  try {
-                    const marker = await readMarker(computorMarkerPath);
-                    const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
-
-                    backendConnectionService.setBaseUrl(baseUrl);
-                    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-                    if (!connectionStatus.isReachable) {
-                      await backendConnectionService.showConnectionError(connectionStatus);
-                      return;
-                    }
-
-                    const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
-                    if (success) {
-                      vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
-                    } else {
-                      throw new Error('Authentication failed');
-                    }
-                  } catch (error: any) {
-                    console.warn('Auto-login failed:', error);
-                    const action = await vscode.window.showWarningMessage(
-                      'Auto-login failed. Would you like to login manually?',
-                      'Login',
-                      'Not Now'
-                    );
-                    if (action === 'Login') {
-                      await unifiedLoginFlow(context);
-                    }
+                  backendConnectionService.setBaseUrl(baseUrl);
+                  const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+                  if (!connectionStatus.isReachable) {
+                    await backendConnectionService.showConnectionError(connectionStatus);
+                    return;
                   }
-                });
-              } else {
-                const action = await vscode.window.showInformationMessage(
-                  'Computor workspace detected. Would you like to login?',
-                  'Login',
-                  'Not Now'
-                );
-                if (action === 'Login') {
-                  await unifiedLoginFlow(context);
+
+                  const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
+                  if (success) {
+                    vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
+                  } else {
+                    throw new Error('Authentication failed');
+                  }
+                } catch (error: any) {
+                  console.warn('Auto-login failed:', error);
+                  const action = await vscode.window.showWarningMessage(
+                    'Auto-login failed. Would you like to login manually?',
+                    'Login',
+                    'Not Now'
+                  );
+                  if (action === 'Login') {
+                    await unifiedLoginFlow(context);
+                  }
                 }
-              }
-            } else {
+              });
+            } else if (!autoLoginEnabled) {
+              // Auto-login is explicitly disabled - show prompt
               const action = await vscode.window.showInformationMessage(
                 'Computor workspace detected. Would you like to login?',
                 'Login',
@@ -1039,6 +1020,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 await unifiedLoginFlow(context);
               }
             }
+            // If autoLogin is true but no credentials are stored, do nothing (silent)
           }, 1500);
         }
       }
