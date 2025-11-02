@@ -48,6 +48,10 @@ export interface MessageGet {
   is_read?: boolean;
   /** True if the requesting user is the message author */
   is_author?: boolean;
+  /** True if the message has been soft-deleted */
+  is_deleted?: boolean;
+  /** Who deleted the message (author/moderator/admin) */
+  deleted_by?: string | null;
   user_id?: string | null;
   course_member_id?: string | null;
   submission_group_id?: string | null;
@@ -74,6 +78,10 @@ export interface MessageList {
   is_read?: boolean;
   /** True if the requesting user is the message author */
   is_author?: boolean;
+  /** True if the message has been soft-deleted */
+  is_deleted?: boolean;
+  /** Who deleted the message (author/moderator/admin) */
+  deleted_by?: string | null;
   user_id?: string | null;
   course_member_id?: string | null;
   submission_group_id?: string | null;

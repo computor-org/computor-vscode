@@ -40,6 +40,7 @@ import {
   CourseMemberGet,
   CourseMemberUpdate,
   CourseMemberReadinessStatus,
+  CourseMemberImportResponse,
   UserPassword,
   UserGet,
   UserUpdate,
@@ -2630,6 +2631,48 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to update student submission:', error);
+      throw error;
+    }
+  }
+
+  async uploadCourseMemberImport(
+    courseId: string,
+    file: Buffer,
+    options?: {
+      defaultRoleId?: string;
+      updateExisting?: boolean;
+      createMissingGroups?: boolean;
+    }
+  ): Promise<CourseMemberImportResponse | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const formData = new FormData();
+
+      formData.append('file', file, {
+        filename: 'course-members.xml',
+        contentType: 'application/xml'
+      });
+
+      if (options?.defaultRoleId) {
+        formData.append('default_role', options.defaultRoleId);
+      }
+
+      if (options?.updateExisting !== undefined) {
+        formData.append('update_existing', String(options.updateExisting));
+      }
+
+      if (options?.createMissingGroups !== undefined) {
+        formData.append('create_missing_groups', String(options.createMissingGroups));
+      }
+
+      const response = await client.post<CourseMemberImportResponse>(
+        `/course-member-import/upload/${courseId}`,
+        formData
+      );
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to upload course member import:', error);
       throw error;
     }
   }

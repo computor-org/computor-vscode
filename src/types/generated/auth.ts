@@ -200,3 +200,143 @@ export interface GradingAuthor {
   /** Author's family name */
   family_name?: string | null;
 }
+
+/**
+ * DTO for creating a new API token.
+ * 
+ * The actual token value is generated server-side and returned once.
+ * Store it securely - it cannot be retrieved later!
+ */
+export interface ApiTokenCreate {
+  /** Human-readable token name */
+  name: string;
+  /** Token description/purpose */
+  description?: string | null;
+  /** User ID that owns this token */
+  user_id: string;
+  /** Token scopes (e.g., ['read:courses', 'write:results']) */
+  scopes?: string[];
+  /** Token expiration date (null = never expires) */
+  expires_at?: string | null;
+  /** Additional properties */
+  properties?: Record<string, any> | null;
+}
+
+/**
+ * Admin-only DTO for creating API tokens with predefined values.
+ * 
+ * Used for initial deployment where tokens need to be known in advance.
+ * Regular users should use ApiTokenCreate instead.
+ */
+export interface ApiTokenAdminCreate {
+  /** Human-readable token name */
+  name: string;
+  /** Token description/purpose */
+  description?: string | null;
+  /** User ID that owns this token */
+  user_id: string;
+  /** Predefined token value (must start with 'ctp_') */
+  predefined_token: string;
+  /** Token scopes (e.g., ['read:courses', 'write:results']) */
+  scopes?: string[];
+  /** Token expiration date (null = never expires) */
+  expires_at?: string | null;
+  /** Additional properties */
+  properties?: Record<string, any> | null;
+}
+
+/**
+ * Response after creating an API token.
+ * 
+ * IMPORTANT: The token field contains the actual token value.
+ * This is the ONLY time it will be visible - store it securely!
+ */
+export interface ApiTokenCreateResponse {
+  /** Token ID */
+  id: string;
+  /** The actual token value (STORE SECURELY - shown only once!) */
+  token: string;
+  name: string;
+  description?: string | null;
+  user_id: string;
+  /** Token prefix for identification (e.g., 'ctp_a1b2c3d4') */
+  token_prefix: string;
+  scopes: string[];
+  expires_at?: string | null;
+  created_at: string;
+}
+
+/**
+ * DTO for updating an API token.
+ */
+export interface ApiTokenUpdate {
+  name?: string | null;
+  description?: string | null;
+  scopes?: string[] | null;
+  expires_at?: string | null;
+  properties?: Record<string, any> | null;
+}
+
+/**
+ * DTO for revoking an API token.
+ */
+export interface ApiTokenRevoke {
+  /** Reason for revocation */
+  revocation_reason?: string | null;
+}
+
+/**
+ * DTO for retrieving an API token.
+ * 
+ * Note: The actual token value is NEVER returned after creation.
+ * Only metadata and the prefix are available.
+ */
+export interface ApiTokenGet {
+  /** Creation timestamp */
+  created_at?: string | null;
+  /** Update timestamp */
+  updated_at?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  /** Token UUID */
+  id: string;
+  name: string;
+  description?: string | null;
+  user_id: string;
+  /** First 12 characters for identification */
+  token_prefix: string;
+  scopes: string[];
+  expires_at?: string | null;
+  last_used_at?: string | null;
+  /** Number of times this token has been used */
+  usage_count?: number;
+  revoked_at?: string | null;
+  revocation_reason?: string | null;
+}
+
+/**
+ * DTO for listing API tokens.
+ */
+export interface ApiTokenList {
+  /** Creation timestamp */
+  created_at?: string | null;
+  /** Update timestamp */
+  updated_at?: string | null;
+  items: ApiTokenGet[];
+}
+
+/**
+ * DTO for querying API tokens.
+ */
+export interface ApiTokenQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by user ID */
+  user_id?: string | null;
+  /** Filter by revoked status (null = all, true = revoked, false = active) */
+  revoked?: boolean | null;
+  /** Filter by expiration status */
+  expired?: boolean | null;
+  /** Filter by required scopes (token must have all) */
+  scopes?: string[] | null;
+}
