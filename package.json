@@ -1026,9 +1026,14 @@
           "group": "inline@2"
         },
         {
-          "command": "computor.student.offline.pullChanges",
+          "command": "computor.student.offline.showPreview",
           "when": "view == computor.student.offline.view && viewItem == offlineCourse",
           "group": "inline@1"
+        },
+        {
+          "command": "computor.student.offline.pullChanges",
+          "when": "view == computor.student.offline.view && viewItem == offlineCourse",
+          "group": "inline@2"
         },
         {
           "command": "computor.student.offline.openInTerminal",
