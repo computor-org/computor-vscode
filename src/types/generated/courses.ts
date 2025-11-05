@@ -44,12 +44,14 @@ export interface CourseContentLecturerGet {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
   is_submittable?: boolean;
   has_deployment?: boolean | null;
   deployment_status?: string | null;
   course_content_type?: CourseContentTypeGet | null;
   repository: CourseContentRepositoryLecturerGet;
+  /** Deployment information if requested via include=deployment */
+  deployment?: CourseContentDeploymentGet | null;
 }
 
 /**
@@ -66,12 +68,14 @@ export interface CourseContentLecturerList {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
   is_submittable?: boolean;
   has_deployment?: boolean | null;
   deployment_status?: string | null;
   course_content_type?: CourseContentTypeList | null;
   repository: CourseContentRepositoryLecturerGet;
+  /** Deployment information if requested via include=deployment */
+  deployment?: CourseContentDeploymentList | null;
 }
 
 /**
@@ -90,7 +94,7 @@ export interface CourseContentLecturerQuery {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
   /** Filter by whether content has a deployment */
   has_deployment?: boolean | null;
   directory?: string | null;
@@ -111,6 +115,112 @@ export interface CourseExecutionBackendConfig {
   version: string;
   /** Backend-specific settings */
   settings?: any | null;
+}
+
+/**
+ * Represents a single row from the import file.
+ */
+export interface CourseMemberImportRow {
+  /** Email address (required, used as identifier) */
+  email: string;
+  /** First name (Vorname) */
+  given_name?: string | null;
+  /** Last name (Familienname) */
+  family_name?: string | null;
+  /** Student ID (Matrikelnummer) */
+  student_id?: string | null;
+  /** Course group title (Gruppe) */
+  course_group_title?: string | null;
+  /** Course role ID (default: _student) */
+  course_role_id?: string;
+  /** Incoming student indicator */
+  incoming?: string | null;
+  /** Study program ID (Kennzahl) */
+  study_id?: string | null;
+  /** Study program name (Studium) */
+  study_name?: string | null;
+  /** Semester in study program */
+  semester?: number | null;
+  /** Registration date */
+  registration_date?: string | null;
+  /** Additional notes (Anmerkung) */
+  notes?: string | null;
+}
+
+/**
+ * Result of importing a single member.
+ */
+export interface CourseMemberImportResult {
+  /** Row number in the import file */
+  row_number: number;
+  /** Import status */
+  status: ImportStatus;
+  /** Email from the import */
+  email: string;
+  /** User ID if created/found */
+  user_id?: string | null;
+  /** Course member ID if created/updated */
+  course_member_id?: string | null;
+  /** Success or error message */
+  message?: string | null;
+  /** Non-fatal warnings */
+  warnings?: string[];
+}
+
+/**
+ * Request for bulk course member import.
+ */
+export interface CourseMemberImportRequest {
+  /** Course ID to import members into */
+  course_id: string;
+  /** List of members to import */
+  members: CourseMemberImportRow[];
+  /** Default role for imported members */
+  default_course_role_id?: string;
+  /** Update existing users if found */
+  update_existing?: boolean;
+  /** Auto-create missing course groups */
+  create_missing_groups?: boolean;
+  /** Organization ID for student profiles */
+  organization_id?: string | null;
+}
+
+/**
+ * Response from bulk course member import.
+ */
+export interface CourseMemberImportResponse {
+  /** Total number of records processed */
+  total: number;
+  /** Number of successful imports */
+  success: number;
+  /** Number of errors */
+  errors: number;
+  /** Number of skipped records */
+  skipped: number;
+  /** Number of updated records */
+  updated: number;
+  /** Detailed results for each record */
+  results: CourseMemberImportResult[];
+  /** Groups that were created automatically */
+  missing_groups?: string[];
+}
+
+/**
+ * Preview of import without executing it.
+ */
+export interface CourseMemberImportPreview {
+  /** Number of valid records */
+  valid_records: number;
+  /** Number of invalid records */
+  invalid_records: number;
+  /** Estimated new users to create */
+  new_users: number;
+  /** Estimated existing users to update */
+  existing_users: number;
+  /** Validation issues found */
+  issues?: string[];
+  /** Sample of parsed records */
+  sample_records: CourseMemberImportRow[];
 }
 
 export interface CourseContentKindCreate {
@@ -244,7 +354,7 @@ export interface CourseContentCreate {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
 }
 
 /**
@@ -270,7 +380,7 @@ export interface CourseContentGet {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
   is_submittable?: boolean;
   has_deployment?: boolean | null;
   deployment_status?: string | null;
@@ -295,7 +405,7 @@ export interface CourseContentList {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
   is_submittable?: boolean;
   course_content_type?: CourseContentTypeList | null;
   /** Whether this content has an example deployment */
@@ -319,7 +429,7 @@ export interface CourseContentUpdate {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
 }
 
 /**
@@ -339,7 +449,7 @@ export interface CourseContentQuery {
   max_group_size?: number | null;
   max_test_runs?: number | null;
   max_submissions?: number | null;
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
   /** DEPRECATED: Filter by example version ID */
   example_version_id?: string | null;
   /** Filter by whether content has a deployment */
@@ -487,13 +597,22 @@ export interface SubmissionGroupStudentGet {
 }
 
 export interface ResultStudentList {
-  execution_backend_id?: string | null;
+  testing_service_id?: string | null;
   test_system_id?: string | null;
   version_identifier?: string | null;
   status?: TaskStatus | null;
   result?: number | null;
-  result_json?: any | null;
   submit?: boolean | null;
+}
+
+export interface ResultStudentGet {
+  testing_service_id?: string | null;
+  test_system_id?: string | null;
+  version_identifier?: string | null;
+  status?: TaskStatus | null;
+  result?: number | null;
+  submit?: boolean | null;
+  result_json?: any | null;
 }
 
 export interface CourseContentStudentProperties {
@@ -523,7 +642,7 @@ export interface CourseContentStudentGet {
   submission_count: number;
   max_test_runs?: number | null;
   unread_message_count?: number;
-  result?: ResultStudentList | null;
+  result?: ResultStudentGet | null;
   directory?: string | null;
   color: string;
   submission_group?: SubmissionGroupStudentGet | null;
@@ -1000,36 +1119,6 @@ export interface TutorCourseMemberList {
   user: UserList;
 }
 
-export interface CourseExecutionBackendCreate {
-  execution_backend_id: string;
-  course_id: string;
-  properties?: any | null;
-}
 
-export interface CourseExecutionBackendGet {
-  /** Creation timestamp */
-  created_at?: string | null;
-  /** Update timestamp */
-  updated_at?: string | null;
-  created_by?: string | null;
-  updated_by?: string | null;
-  execution_backend_id: string;
-  course_id: string;
-  properties?: any | null;
-}
 
-export interface CourseExecutionBackendList {
-  execution_backend_id: string;
-  course_id: string;
-}
-
-export interface CourseExecutionBackendUpdate {
-  properties?: any | null;
-}
-
-export interface CourseExecutionBackendQuery {
-  skip?: number | null;
-  limit?: number | null;
-  execution_backend_id?: string | null;
-  course_id?: string | null;
-}
+export type ImportStatus = "success" | "error" | "skipped" | "updated";

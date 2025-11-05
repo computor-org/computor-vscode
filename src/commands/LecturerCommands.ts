@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
@@ -7,23 +6,24 @@ import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseConte
 import { CourseGroupCommands } from './lecturer/courseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
-import { CourseContentWebviewProvider } from '../ui/webviews/CourseContentWebviewProvider';
+import { CourseContentWebviewFactory } from '../ui/webviews/content/CourseContentWebviewFactory';
 import { OrganizationWebviewProvider } from '../ui/webviews/OrganizationWebviewProvider';
 import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewProvider';
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
+import { CourseMemberWebviewProvider } from '../ui/webviews/CourseMemberWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
+import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebviewProvider';
+import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { createSimpleGit } from '../git/simpleGitFactory';
-
-interface ExampleQuickPickItem extends vscode.QuickPickItem {
-  example: ExampleGet;
-}
+import JSZip from 'jszip';
+import * as yaml from 'js-yaml';
 
 interface ReleaseScope {
   label?: string;
@@ -33,45 +33,40 @@ interface ReleaseScope {
 }
 
 export class LecturerCommands {
-  private settingsManager: ComputorSettingsManager;
   private apiService: ComputorApiService;
   private courseWebviewProvider: CourseWebviewProvider;
-  private courseContentWebviewProvider: CourseContentWebviewProvider;
   private organizationWebviewProvider: OrganizationWebviewProvider;
   private courseFamilyWebviewProvider: CourseFamilyWebviewProvider;
   private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
   private courseGroupWebviewProvider: CourseGroupWebviewProvider;
+  private courseMemberWebviewProvider: CourseMemberWebviewProvider;
   private courseGroupCommands: CourseGroupCommands;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
+  private deploymentInfoWebviewProvider: DeploymentInfoWebviewProvider;
+  private releaseValidationWebviewProvider: ReleaseValidationWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
     private treeDataProvider: LecturerTreeDataProvider,
     apiService?: ComputorApiService
   ) {
-    this.settingsManager = new ComputorSettingsManager(context);
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.courseWebviewProvider = new CourseWebviewProvider(context, this.apiService, this.treeDataProvider);
-    this.courseContentWebviewProvider = new CourseContentWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.organizationWebviewProvider = new OrganizationWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseFamilyWebviewProvider = new CourseFamilyWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
+    this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
+    this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
   registerCommands(): void {
-    // Workspace directory selection
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.selectWorkspaceDirectory', async () => {
-        await this.selectWorkspaceDirectory();
-      })
-    );
-
     // Tree refresh - register both command names for compatibility
     const refreshHandler = async () => {
       console.log('=== LECTURER TREE REFRESH COMMAND TRIGGERED ===');
@@ -164,6 +159,13 @@ export class LecturerCommands {
       })
     );
 
+    // Course member import
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.importCourseMembers', async (item: CourseTreeItem | CourseFolderTreeItem) => {
+        await this.importCourseMembersFromFile(item);
+      })
+    );
+
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.editCourseContentType', async (item: CourseContentTypeTreeItem) => {
         await this.editCourseContentType(item);
@@ -204,6 +206,12 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.unassignExample', async (item: CourseContentTreeItem) => {
         await this.unassignExample(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.viewDeploymentInfo', async (item: CourseContentTreeItem) => {
+        await this.viewDeploymentInfo(item);
       })
     );
 
@@ -262,6 +270,12 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
         await this.showCourseGroupDetails(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showCourseMemberDetails', async (item: CourseMemberTreeItem) => {
+        await this.showCourseMemberDetails(item);
       })
     );
 
@@ -543,25 +557,6 @@ export class LecturerCommands {
     }
   }
 
-  private async selectWorkspaceDirectory(): Promise<void> {
-    const result = await vscode.window.showOpenDialog({
-      canSelectFolders: true,
-      canSelectFiles: false,
-      canSelectMany: false,
-      openLabel: 'Select Workspace Directory',
-      title: 'Select Workspace Directory'
-    });
-
-    if (result && result.length > 0 && result[0]) {
-      const directory = result[0].fsPath;
-      await this.settingsManager.setWorkspaceDirectory(directory);
-      vscode.window.showInformationMessage(`Workspace directory set to: ${directory}`);
-      
-      // Update file explorers to show new workspace
-      await vscode.commands.executeCommand('computor.fileExplorer.goToWorkspace');
-    }
-  }
-
   private async createCourseContent(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
     let parentPath: string | undefined;
     let folderItem: CourseFolderTreeItem;
@@ -585,13 +580,36 @@ export class LecturerCommands {
       return;
     }
 
+    // Sort content types alphabetically by title
+    const sortedContentTypes = [...contentTypes].sort((a, b) => {
+      const titleA = (a.title || a.slug || '').toLowerCase();
+      const titleB = (b.title || b.slug || '').toLowerCase();
+      return titleA.localeCompare(titleB);
+    });
+
+    // Fetch full content type info to get course_content_kind
+    const contentTypesWithKind = await Promise.all(sortedContentTypes.map(async (t) => {
+      try {
+        const fullType = await this.apiService.getCourseContentType(t.id);
+        return {
+          label: t.title || t.slug,
+          description: fullType?.course_content_kind?.title || fullType?.course_content_kind_id || '',
+          id: t.id,
+          contentType: fullType || t
+        };
+      } catch (error) {
+        console.warn(`Failed to fetch content type details for ${t.id}:`, error);
+        return {
+          label: t.title || t.slug,
+          description: t.course_content_kind_id || '',
+          id: t.id,
+          contentType: t
+        };
+      }
+    }));
+
     const selectedType = await vscode.window.showQuickPick(
-      contentTypes.map(t => ({
-        label: t.title || t.slug,
-        description: t.slug,
-        id: t.id,
-        contentType: t
-      })),
+      contentTypesWithKind,
       { placeHolder: 'Select content type' }
     );
 
@@ -608,12 +626,6 @@ export class LecturerCommands {
       return;
     }
 
-    const description = await vscode.window.showInputBox({
-      prompt: 'Description (optional)',
-      value: '',
-      ignoreFocusOut: true
-    });
-
     const initialSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
     const isAssignment = this.isContentTypeSubmittable(selectedType.contentType);
 
@@ -624,47 +636,27 @@ export class LecturerCommands {
         selectedType.id,
         parentPath,
         initialSlug,
-        description || undefined
+        undefined
       );
       return;
     }
 
-    const identifierInput = await vscode.window.showInputBox({
-      prompt: 'Assignment identifier (ltree, e.g. unit01.assignment1)',
-      placeHolder: 'unit01.assignment1',
-      validateInput: (value) => {
-        if (!value || !value.trim()) {
-          return 'Identifier is required';
-        }
-        const trimmed = value.trim();
-        if (trimmed.includes('..')) {
-          return 'Identifier must not contain ".." segments';
-        }
-        if (/[^a-zA-Z0-9_.\/-]/.test(trimmed)) {
-          return 'Only letters, numbers, dash, underscore, dot, and slash are allowed';
-        }
-        return undefined;
-      }
-    });
+    // For assignments, auto-generate the identifier from title
+    const autoSlug = title.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
 
-    if (!identifierInput) {
-      return;
-    }
+    // Build full identifier: <organization_path>.<course_family_path>.<course_path>.<slug>
+    const orgPath = folderItem.organization.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const familyPath = folderItem.courseFamily.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const coursePath = folderItem.course.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const fullIdentifier = `${orgPath}.${familyPath}.${coursePath}.${autoSlug}`;
 
-    const normalizedIdentifier = identifierInput.trim().replace(/\/+/g, '/').replace(/^\/+|\/+$/g, '');
-    const ltreeIdentifier = normalizedIdentifier
-      .split(/[/.]+/)
-      .filter(Boolean)
-      .join('.');
-
-    if (!ltreeIdentifier) {
-      vscode.window.showErrorMessage('Identifier is invalid.');
-      return;
-    }
+    const ltreeIdentifier = fullIdentifier;
 
     const versionTagInput = await vscode.window.showInputBox({
       prompt: 'Version tag for this assignment',
-      value: 'v1',
+      value: '0.0.1',
       ignoreFocusOut: true
     });
 
@@ -678,9 +670,8 @@ export class LecturerCommands {
       return;
     }
 
-    const segments = ltreeIdentifier.split('.');
-    const slugSegmentSource = segments[segments.length - 1] || ltreeIdentifier;
-    const slug = slugSegmentSource.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || initialSlug || 'assignment';
+    // Use the autoSlug for the course content path (not the full identifier)
+    const slug = autoSlug || initialSlug || 'assignment';
 
     try {
       const createdContent = await this.treeDataProvider.createCourseContent(
@@ -689,7 +680,7 @@ export class LecturerCommands {
         selectedType.id,
         parentPath,
         slug,
-        description || undefined
+        undefined
       );
 
       if (!createdContent) {
@@ -701,7 +692,7 @@ export class LecturerCommands {
           createdContent.id,
           ltreeIdentifier,
           versionTag,
-          description || undefined
+          undefined
         );
       } catch (error) {
         console.warn('Failed to assign example source to new assignment:', error);
@@ -709,7 +700,7 @@ export class LecturerCommands {
 
       this.treeDataProvider.rememberAssignmentIdentifier(createdContent.id, ltreeIdentifier);
 
-      await this.prepareAssignmentDirectory(course.id, normalizedIdentifier, ltreeIdentifier, versionTag, title, description || '', course);
+      await this.prepareAssignmentDirectory(course.id, ltreeIdentifier, ltreeIdentifier, versionTag, title, '', course);
 
       await this.treeDataProvider.forceRefreshCourse(course.id);
       vscode.window.showInformationMessage(`✅ Created assignment "${title}"`);
@@ -1244,168 +1235,674 @@ export class LecturerCommands {
     }
   }
 
+  /**
+   * Check local assignments repository for examples and upload them if they don't exist in the backend
+   * Uses course contents from API and checks corresponding directories for meta.yaml files
+   * @param course The course to check
+   * @param contentIds Optional list of content IDs to check (if not provided, checks all assignments)
+   */
+  private async checkAndUploadLocalExamples(course: CourseList, contentIds?: string[]): Promise<void> {
+    console.log('[AUTO-UPLOAD] ========================================');
+    console.log('[AUTO-UPLOAD] Checking for local examples to upload');
+    console.log('[AUTO-UPLOAD] Course:', course.title, '(', course.id, ')');
+    try {
+      const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+      const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
+      console.log('[AUTO-UPLOAD] Assignments root:', assignmentsRoot);
+
+      if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
+        console.log('[AUTO-UPLOAD] ❌ No assignments root found, skipping');
+        console.warn('[AUTO-UPLOAD] Expected assignments repository at:', assignmentsRoot || '(path not determined)');
+        console.warn('[AUTO-UPLOAD] Please clone the assignments repository first before releasing');
+        console.log('[AUTO-UPLOAD] ========================================');
+        return;
+      }
+
+      console.log('[AUTO-UPLOAD] ✓ Assignments repository found!');
+
+      // Step 1: Get course contents with deployment info
+      console.log('[AUTO-UPLOAD] Getting course contents with deployment info from API...');
+      const allContents = await this.apiService.getCourseContents(course.id, false, true);
+
+      if (!allContents || allContents.length === 0) {
+        console.log('[AUTO-UPLOAD] No course contents found in API');
+        return;
+      }
+
+      // Step 2: Filter to submittable contents and optionally by content IDs
+      let contentsToCheck = allContents.filter(content => content.is_submittable);
+
+      if (contentIds && contentIds.length > 0) {
+        console.log('[AUTO-UPLOAD] Filtering to specific content IDs:', contentIds);
+        contentsToCheck = contentsToCheck.filter(content =>
+          contentIds.includes(content.id)
+        );
+      }
+
+      console.log(`[AUTO-UPLOAD] Found ${contentsToCheck.length} submittable content(s) to check`);
+
+      // Step 3: For each content, use deployment.example_identifier as directory name
+      const metaDataList: Array<{
+        contentId: string;
+        exampleIdentifier: string;
+        dir: string;
+        metaPath: string;
+        meta: any
+      }> = [];
+
+      for (const content of contentsToCheck) {
+        const exampleIdentifier = content.deployment?.example_identifier;
+        if (!exampleIdentifier) {
+          console.warn(`[AUTO-UPLOAD] Content ${content.id} (${content.path}) has no example_identifier in deployment, skipping`);
+          continue;
+        }
+
+        const contentPath = path.join(assignmentsRoot, exampleIdentifier);
+        const metaPath = path.join(contentPath, 'meta.yaml');
+
+        console.log(`[AUTO-UPLOAD] Checking ${exampleIdentifier} for meta.yaml...`);
+
+        if (!fs.existsSync(metaPath)) {
+          console.log(`[AUTO-UPLOAD] No meta.yaml in ${exampleIdentifier}, skipping`);
+          continue;
+        }
+
+        try {
+          const metaContent = fs.readFileSync(metaPath, 'utf-8');
+          const meta = yaml.load(metaContent) as any;
+
+          if (!meta || !meta.slug || !meta.version) {
+            console.warn(`[AUTO-UPLOAD] Invalid meta.yaml in ${exampleIdentifier} (missing slug or version)`);
+            continue;
+          }
+
+          console.log(`[AUTO-UPLOAD] ✓ Found meta.yaml in ${exampleIdentifier}: slug="${meta.slug}", version="${meta.version}"`);
+          metaDataList.push({
+            contentId: content.id,
+            exampleIdentifier,
+            dir: contentPath,
+            metaPath,
+            meta
+          });
+        } catch (error) {
+          console.error(`[AUTO-UPLOAD] ❌ Failed to read meta.yaml in ${exampleIdentifier}:`, error);
+          continue;
+        }
+      }
+
+      if (metaDataList.length === 0) {
+        console.log('[AUTO-UPLOAD] No valid meta.yaml files found');
+        return;
+      }
+
+      // Step 3: Prepare batch validation request
+      const validationItems = metaDataList.map(item => ({
+        content_id: item.contentId,
+        example_identifier: item.meta.slug,
+        version_tag: item.meta.version
+      }));
+
+      console.log(`[AUTO-UPLOAD] Validating ${validationItems.length} items in batch...`);
+
+      // Step 4: Batch validate
+      const validationResult = await this.apiService.validateCourseContent(course.id, validationItems);
+
+      console.log('[AUTO-UPLOAD] Batch validation result:', {
+        valid: validationResult.valid,
+        total_validated: validationResult.total_validated,
+        total_issues: validationResult.total_issues
+      });
+
+      // Step 5: Determine what needs uploading based on validation results
+      const examplestoUpload: Array<{ dir: string; metaPath: string; meta: any }> = [];
+
+      validationResult.validation_results.forEach((result: any) => {
+        const metaItem = metaDataList.find(m => m.contentId === result.content_id);
+        if (!metaItem) {return;}
+
+        if (!result.valid) {
+          console.log(`[AUTO-UPLOAD] ⚠️  Will upload: ${metaItem.meta.slug} v${metaItem.meta.version} (${metaItem.exampleIdentifier})`);
+          console.log(`[AUTO-UPLOAD]     Reason: ${result.validation_message || 'Invalid'}`);
+          examplestoUpload.push({ dir: metaItem.dir, metaPath: metaItem.metaPath, meta: metaItem.meta });
+        } else {
+          console.log(`[AUTO-UPLOAD] ✓ Already exists: ${metaItem.meta.slug} v${metaItem.meta.version}`);
+        }
+      });
+
+      console.log('[AUTO-UPLOAD] ========================================');
+      console.log('[AUTO-UPLOAD] Summary: Found', examplestoUpload.length, 'example(s) to upload');
+      if (examplestoUpload.length > 0) {
+        console.log('[AUTO-UPLOAD] Examples to upload:');
+        examplestoUpload.forEach(ex => {
+          console.log(`[AUTO-UPLOAD]   - ${ex.meta.slug} v${ex.meta.version} from ${ex.dir}`);
+        });
+      }
+      console.log('[AUTO-UPLOAD] ========================================');
+
+      // Upload examples that don't exist in backend
+      if (examplestoUpload.length > 0) {
+        console.log('[AUTO-UPLOAD] Showing selection dialog for examples to upload...');
+
+        // Create QuickPick items for each example
+        const items = examplestoUpload.map(ex => ({
+          label: ex.meta.slug,
+          description: `v${ex.meta.version}`,
+          detail: ex.dir,
+          picked: true, // Pre-selected
+          example: ex
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+          canPickMany: true,
+          placeHolder: 'Select examples to upload (pre-selected)',
+          title: `Found ${examplestoUpload.length} example(s) to upload`
+        });
+
+        if (!selected) {
+          console.log('[AUTO-UPLOAD] User cancelled upload selection');
+          throw new Error('Upload cancelled by user');
+        }
+
+        if (selected.length === 0) {
+          console.log('[AUTO-UPLOAD] User deselected all examples - skipping upload');
+          vscode.window.showInformationMessage('No examples selected for upload');
+        } else {
+          console.log(`[AUTO-UPLOAD] User selected ${selected.length} example(s) to upload`);
+
+          // Get example repositories
+          console.log('[AUTO-UPLOAD] Fetching example repositories...');
+          const repositories = await this.apiService.getExampleRepositories();
+
+          if (!repositories || repositories.length === 0) {
+            vscode.window.showErrorMessage('No example repositories available. Cannot upload examples.');
+            throw new Error('No example repositories available');
+          }
+
+          // Show repository selection
+          const repositoryItems = repositories.map(repo => ({
+            label: repo.name,
+            description: repo.source_type,
+            detail: repo.description || repo.source_url,
+            repository: repo
+          }));
+
+          const selectedRepo = await vscode.window.showQuickPick(repositoryItems, {
+            placeHolder: 'Select target example repository',
+            title: 'Upload Examples To'
+          });
+
+          if (!selectedRepo) {
+            console.log('[AUTO-UPLOAD] User cancelled repository selection');
+            throw new Error('Repository selection cancelled by user');
+          }
+
+          console.log(`[AUTO-UPLOAD] User selected repository: ${selectedRepo.repository.name} (${selectedRepo.repository.id})`);
+          const selectedExamples = selected.map(item => item.example);
+          await this.uploadLocalExamples(selectedExamples, selectedRepo.repository.id);
+          console.log('[AUTO-UPLOAD] ✓ Upload process complete');
+        }
+      } else {
+        console.log('[AUTO-UPLOAD] No examples need uploading');
+      }
+    } catch (error) {
+      console.error('[AUTO-UPLOAD] ❌ ERROR in checkAndUploadLocalExamples:', error);
+      vscode.window.showErrorMessage(`Auto-upload failed: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Auto-assign examples to assignments based on local meta.yaml data
+   */
+  private async autoAssignExamplesFromLocal(courseId: string): Promise<void> {
+    console.log('[AUTO-ASSIGN] ========================================');
+    console.log('[AUTO-ASSIGN] Starting auto-assignment for course:', courseId);
+    try {
+      const course = await this.apiService.getCourse(courseId);
+      if (!course) {
+        console.log('[AUTO-ASSIGN] ❌ Course not found');
+        return;
+      }
+
+      const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+      const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
+      console.log('[AUTO-ASSIGN] Assignments root:', assignmentsRoot);
+
+      if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
+        console.log('[AUTO-ASSIGN] ❌ No assignments repository found, skipping');
+        return;
+      }
+
+      console.log('[AUTO-ASSIGN] ✓ Assignments repository found');
+
+      // Get all course contents
+      const contents = await this.apiService.getCourseContents(courseId, false, true);
+      if (!contents) {
+        return;
+      }
+
+      // Get content types to identify submittable content (assignments)
+      const contentTypes = await this.apiService.getCourseContentTypes(courseId);
+      const submittableTypeIds = new Set<string>();
+
+      for (const type of contentTypes) {
+        const fullType = await this.apiService.getCourseContentType(type.id);
+        if (fullType?.course_content_kind?.submittable) {
+          submittableTypeIds.add(type.id);
+        }
+      }
+
+      // Find assignments without examples and try to match them
+      const assignmentsToAssign: Array<{ contentId: string; exampleIdentifier: string; versionTag: string; title: string }> = [];
+
+      for (const content of contents) {
+        const isSubmittable = submittableTypeIds.has(content.course_content_type_id);
+        if (!isSubmittable) {
+          continue;
+        }
+
+        // Check if deployment has an actual example version assigned
+        const hasExampleVersion = content.deployment?.example_version_id;
+        if (hasExampleVersion) {
+          continue; // Already has example version assigned
+        }
+
+        // Try to find matching example in local repository
+        // Use deployment.example_identifier as directory name if available
+        const directoryName = content.deployment?.example_identifier || content.path;
+        const assignmentPath = path.join(assignmentsRoot, directoryName);
+
+        if (!fs.existsSync(assignmentPath)) {
+          continue;
+        }
+
+        // Look for meta.yaml in assignment directory
+        const metaPath = path.join(assignmentPath, 'meta.yaml');
+        if (!fs.existsSync(metaPath)) {
+          continue;
+        }
+
+        try {
+          const metaContent = fs.readFileSync(metaPath, 'utf-8');
+          const meta = yaml.load(metaContent) as any;
+
+          if (!meta || !meta.slug || !meta.version) {
+            continue;
+          }
+
+          // Query example by identifier (slug) using the new method
+          const example = await this.apiService.getExampleByIdentifier(meta.slug);
+          if (!example) {
+            console.warn(`Example ${meta.slug} not found in backend for assignment ${content.title}`);
+            continue;
+          }
+
+          // Check if version exists by querying with version_tag parameter
+          const versions = await this.apiService.getExampleVersions(example.id, meta.version);
+          const matchingVersion = versions && versions.length > 0 ? versions[0] : null;
+
+          if (!matchingVersion) {
+            console.warn(`Version ${meta.version} not found for example ${meta.slug}`);
+            continue;
+          }
+
+          assignmentsToAssign.push({
+            contentId: content.id,
+            exampleIdentifier: meta.slug,
+            versionTag: meta.version,
+            title: content.title || content.path
+          });
+        } catch (error) {
+          console.warn(`Failed to read meta.yaml for ${content.path}:`, error);
+          continue;
+        }
+      }
+
+      // Auto-assign if we found matches
+      if (assignmentsToAssign.length > 0) {
+        console.log(`[AUTO-ASSIGN] Auto-assigning ${assignmentsToAssign.length} assignment(s)...`);
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: `Auto-assigning ${assignmentsToAssign.length} assignment(s)...`,
+          cancellable: false
+        }, async (progress) => {
+            let successCount = 0;
+            const errors: string[] = [];
+
+            for (let i = 0; i < assignmentsToAssign.length; i++) {
+              const assignment = assignmentsToAssign[i];
+              if (!assignment) {
+                continue;
+              }
+
+              try {
+                progress.report({
+                  increment: (100 / assignmentsToAssign.length),
+                  message: `Assigning: ${assignment.title} (${i + 1}/${assignmentsToAssign.length})`
+                });
+
+                await this.apiService.lecturerAssignExample(
+                  assignment.contentId,
+                  {
+                    example_identifier: assignment.exampleIdentifier,
+                    version_tag: assignment.versionTag
+                  }
+                );
+
+                successCount++;
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                errors.push(`${assignment.title}: ${errorMsg}`);
+                console.error(`Failed to assign ${assignment.title}:`, error);
+              }
+            }
+
+            if (successCount > 0) {
+              vscode.window.showInformationMessage(
+                `✅ Auto-assigned ${successCount} assignment(s) successfully`
+              );
+            }
+
+            if (errors.length > 0) {
+              vscode.window.showWarningMessage(
+                `Failed to assign ${errors.length} assignment(s). Check console for details.`
+              );
+            }
+          });
+      }
+    } catch (error) {
+      console.error('[AUTO-ASSIGN] ERROR in autoAssignExamplesFromLocal:', error);
+      vscode.window.showErrorMessage(`Auto-assign failed: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload local examples to the backend
+   */
+  private async uploadLocalExamples(
+    examples: Array<{ dir: string; metaPath: string; meta: any }>,
+    repositoryId: string
+  ): Promise<void> {
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Uploading ${examples.length} example(s)...`,
+      cancellable: false
+    }, async (progress) => {
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < examples.length; i++) {
+        const item = examples[i];
+        if (!item) {
+          continue;
+        }
+        const { dir, meta } = item;
+        const exampleName = meta.title || meta.slug;
+
+        let uploadRequest: any = null;
+        try {
+          progress.report({
+            increment: (100 / examples.length),
+            message: `Uploading: ${exampleName} (${i + 1}/${examples.length})`
+          });
+
+          // Package as zip
+          const zipper = new JSZip();
+          const addToZip = (dirPath: string, basePath: string) => {
+            const entries = fs.readdirSync(dirPath);
+            for (const entry of entries) {
+              if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) {
+                continue;
+              }
+              const fullPath = path.join(dirPath, entry);
+              const stat = fs.statSync(fullPath);
+              const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+              if (stat.isFile()) {
+                const data = fs.readFileSync(fullPath);
+                zipper.file(relativePath, data);
+              } else if (stat.isDirectory()) {
+                addToZip(fullPath, basePath);
+              }
+            }
+          };
+
+          addToZip(dir, dir);
+          const base64Zip = await zipper.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+
+          // Upload via API
+          uploadRequest = {
+            repository_id: repositoryId,
+            directory: path.basename(dir),
+            files: { [`${path.basename(dir)}.zip`]: base64Zip }
+          };
+
+          console.log(`[AUTO-UPLOAD] Uploading ${exampleName} with request:`, {
+            repository_id: uploadRequest.repository_id,
+            directory: uploadRequest.directory,
+            files_keys: Object.keys(uploadRequest.files)
+          });
+          await this.apiService.uploadExample(uploadRequest);
+          successCount++;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          errors.push(`${exampleName}: ${errorMsg}`);
+          console.error(`Failed to upload ${exampleName}:`, error);
+          if (uploadRequest) {
+            console.error(`Upload request was:`, {
+              repository_id: uploadRequest.repository_id,
+              directory: uploadRequest.directory,
+              files_count: Object.keys(uploadRequest.files).length
+            });
+          }
+        }
+      }
+
+      if (errors.length > 0) {
+        const errorDetails = errors.join('\n');
+        console.error('[AUTO-UPLOAD] Upload errors:', errorDetails);
+        vscode.window.showErrorMessage(
+          `Failed to upload ${errors.length} example(s). Release cancelled.`
+        );
+        throw new Error(`Failed to upload ${errors.length} example(s): ${errorDetails}`);
+      }
+
+      if (successCount > 0) {
+        vscode.window.showInformationMessage(
+          `✅ Uploaded ${successCount} example(s) successfully`
+        );
+      }
+    });
+  }
+
   private async assignExample(item: CourseContentTreeItem): Promise<void> {
     try {
-      const searchQuery = await this.promptForExampleSearch();
-      const examples = await this.searchExamples(item.course.id, searchQuery);
-      
-      if (!examples || examples.length === 0) {
-        vscode.window.showWarningMessage('No examples found matching your search');
-        return;
-      }
+      // Step 1: Check local assignments repository for examples and auto-upload if needed
+      await this.checkAndUploadLocalExamples(item.course);
 
-      const selected = await this.selectExample(examples);
-      if (!selected) {
-        return;
-      }
-
-      await this.performExampleAssignment(item, selected.example);
-      
-      vscode.window.showInformationMessage(
-        `✅ Example "${selected.label}" assigned successfully!`
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to assign example: ${error}`);
-    }
-  }
-  
-  private async promptForExampleSearch(): Promise<string | undefined> {
-    return vscode.window.showInputBox({
-      prompt: 'Search for examples (optional)',
-      placeHolder: 'Enter search terms or leave empty to see all'
-    });
-  }
-  
-  private async searchExamples(courseId: string, searchQuery?: string): Promise<ExampleGet[]> {
-    void courseId; // courseId - parameter kept for compatibility
-    void searchQuery; // searchQuery - not used in current implementation
-    return this.apiService.getAvailableExamples() || [];
-  }
-  
-  private async selectExample(examples: ExampleGet[]): Promise<ExampleQuickPickItem | undefined> {
-    const quickPickItems: ExampleQuickPickItem[] = examples.map((example: ExampleGet) => ({
-      label: example.title,
-      description: [
-        example.identifier && `🔖 ${example.identifier}`,
-        example.repository && `📦 latest`
-      ].filter(Boolean).join(' • '),
-      detail: example.description || '',
-      example: example
-    }));
-
-    return vscode.window.showQuickPick(quickPickItems, {
-      placeHolder: `Select an example to assign (${examples.length} found)`,
-      matchOnDescription: true,
-      matchOnDetail: true
-    });
-  }
-  
-  private async performExampleAssignment(item: CourseContentTreeItem, example: ExampleGet): Promise<void> {
-    // First, get the example with versions if not already loaded
-    let exampleWithVersions = example;
-    if (!example.versions || example.versions.length === 0) {
-      const fullExample = await this.apiService.getExample(example.id);
-      if (!fullExample || !fullExample.versions || fullExample.versions.length === 0) {
-        throw new Error('Example has no versions available');
-      }
-      exampleWithVersions = fullExample;
-    }
-
-    // Select version - for now use the latest version
-    // TODO: In future, allow user to select specific version
-    const latestVersion = exampleWithVersions.versions!.reduce((latest, current) => 
-      current.version_number > latest.version_number ? current : latest
-    );
-
-    // Get the updated content from the API response using the new method
-    const updatedContent = await this.apiService.assignExampleVersionToCourseContent(
-      item.courseContent.id,
-      latestVersion.id
-    );
-    
-    console.log('Assignment API returned updated content:', {
-      id: updatedContent.id,
-      title: updatedContent.title,
-      hasExample: hasExampleAssigned(updatedContent),
-      versionId: getExampleVersionId(updatedContent),
-      deployment: updatedContent.deployment
-    });
-    
-    // Check deployment status if deployment is included
-    if (updatedContent.deployment) {
-      const deploymentStatus = updatedContent.deployment.deployment_status;
-      if (deploymentStatus !== 'pending' && deploymentStatus !== 'assigned') {
-        console.warn(`Unexpected deployment_status: ${deploymentStatus}. Expected 'pending' or 'assigned'.`);
-      }
-    }
-
-    // Trigger assignments sync so files are populated in assignments repo for this content
-    try {
-      await this.apiService.generateAssignments(item.course.id, {
-        course_content_ids: [item.courseContent.id],
-        overwrite_strategy: 'skip_if_exists',
-        commit_message: `Initialize assignment from example ${example.identifier || example.title}`
+      // Step 2: Get available examples
+      const examples = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Loading examples...',
+        cancellable: false
+      }, async () => {
+        return await this.apiService.getAvailableExamples();
       });
-    } catch (e) {
-      console.warn('Failed to trigger assignments generation after assigning example:', e);
-    }
 
-    console.log('Example assignment completed, refreshing tree...');
-    
-    // Clear cache and refresh the specific item
-    this.apiService.clearCourseCache(item.course.id);
-    
-    // Refresh the parent of the content item to properly update the display
-    // This ensures the item's visual state (icon, description) is updated
-    const parent = await this.treeDataProvider.getParent(item);
-    if (parent) {
-      console.log(`Refreshing parent node: ${parent.id}`);
-      (this.treeDataProvider as any).refreshNode(parent);
-    } else {
-      console.log('No parent found, refreshing the item itself');
-      (this.treeDataProvider as any).refreshNode(item);
+      if (!examples || examples.length === 0) {
+        const action = await vscode.window.showWarningMessage(
+          'No examples available. You need to upload examples before assigning them.',
+          'Upload Example',
+          'Cancel'
+        );
+
+        if (action === 'Upload Example') {
+          vscode.commands.executeCommand('computor.lecturer.examples.focus');
+          vscode.window.showInformationMessage(
+            'Navigate to the Examples view, right-click an example, and select "Upload Example"'
+          );
+        }
+        return;
+      }
+
+      // Step 2: Show example picker
+      const selectedExample = await vscode.window.showQuickPick(
+        examples.map((ex: ExampleGet) => ({
+          label: ex.title,
+          description: ex.identifier || 'No identifier',
+          detail: ex.description || '',
+          id: ex.id,
+          identifier: ex.identifier
+        })),
+        {
+          placeHolder: 'Select example to assign',
+          matchOnDescription: true,
+          matchOnDetail: true
+        }
+      );
+
+      if (!selectedExample) {
+        return;
+      }
+
+      // Step 3: Load versions for selected example
+      const versions = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Loading example versions...',
+        cancellable: false
+      }, async () => {
+        return await this.apiService.getExampleVersions(selectedExample.id);
+      });
+
+      if (!versions || versions.length === 0) {
+        vscode.window.showWarningMessage('No versions available for this example');
+        return;
+      }
+
+      // Step 4: Show version picker
+      const selectedVersion = await vscode.window.showQuickPick(
+        versions.map((v: any) => ({
+          label: v.version_tag,
+          description: `Created: ${new Date(v.created_at).toLocaleDateString()}`,
+          detail: v.description || '',
+          versionTag: v.version_tag
+        })),
+        {
+          placeHolder: 'Select version to assign'
+        }
+      );
+
+      if (!selectedVersion) {
+        return;
+      }
+
+      // Step 5: Confirm assignment
+      const confirm = await vscode.window.showInformationMessage(
+        `Assign "${selectedExample.label}" (v${selectedVersion.versionTag}) to this assignment?`,
+        'Assign',
+        'Cancel'
+      );
+
+      if (confirm !== 'Assign') {
+        return;
+      }
+
+      // Step 6: Perform assignment using new lecturer endpoint
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Assigning example...',
+        cancellable: false
+      }, async () => {
+        await this.apiService.lecturerAssignExample(
+          item.courseContent.id,
+          {
+            example_identifier: selectedExample.identifier,
+            version_tag: selectedVersion.versionTag
+          }
+        );
+      });
+
+      // Step 7: Success
+      vscode.window.showInformationMessage(
+        `✅ Example assigned successfully!`
+      );
+
+      // Step 8: Refresh tree
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+
+    } catch (error: any) {
+      console.error('Failed to assign example:', error);
+      const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to assign example: ${errorMessage}`);
     }
   }
 
   private async unassignExample(item: CourseContentTreeItem): Promise<void> {
-    const confirmation = await vscode.window.showWarningMessage(
-      `Remove example assignment from "${item.courseContent.title}"?`,
-      'Yes',
-      'No'
-    );
+    try {
+      // Step 1: Get current deployment info to check status
+      const deployment = await this.apiService.lecturerGetDeployment(item.courseContent.id);
 
-    if (confirmation === 'Yes') {
-      try {
-        // Get the updated content from the API response
-        const updatedContent = await this.apiService.unassignExampleFromCourseContent(
-          item.course.id,
-          item.courseContent.id
+      // Step 2: Check if unassignable
+      const deploymentStatus = deployment?.deployment_status || 'unassigned';
+      if (deploymentStatus === 'deployed' || deploymentStatus === 'deploying') {
+        vscode.window.showErrorMessage(
+          `Cannot unassign: Example is ${deploymentStatus}.\n\nUnassignment is only allowed for pending or failed deployments.`
         );
-        
-        console.log('Unassign API returned updated content:', {
-          id: updatedContent.id,
-          title: updatedContent.title,
-          hasExample: hasExampleAssigned(updatedContent),
-          deploymentStatus: getDeploymentStatus(updatedContent)
-        });
-        
-        // Clear cache and refresh the specific item
-        this.apiService.clearCourseCache(item.course.id);
-        
-        // Refresh the parent of the content item to properly update the display
-        const parent = await this.treeDataProvider.getParent(item);
-        if (parent) {
-          console.log(`Refreshing parent node after unassign: ${parent.id}`);
-          (this.treeDataProvider as any).refreshNode(parent);
-        } else {
-          console.log('No parent found, refreshing the item itself');
-          (this.treeDataProvider as any).refreshNode(item);
-        }
-        
-        vscode.window.showInformationMessage('Example unassigned successfully');
-      } catch (error) {
-        vscode.window.showErrorMessage(`Failed to unassign example: ${error}`);
+        return;
       }
+
+      // Step 3: Confirm unassignment
+      const confirmation = await vscode.window.showWarningMessage(
+        `Unassign example from "${item.courseContent.title}"?`,
+        { modal: true },
+        'Unassign',
+        'Cancel'
+      );
+
+      if (confirmation !== 'Unassign') {
+        return;
+      }
+
+      // Step 4: Perform unassignment using new lecturer endpoint
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Unassigning example...',
+        cancellable: false
+      }, async () => {
+        await this.apiService.lecturerUnassignExample(item.courseContent.id);
+      });
+
+      // Step 5: Success
+      vscode.window.showInformationMessage('✅ Example unassigned successfully');
+
+      // Step 6: Refresh tree
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+
+    } catch (error: any) {
+      console.error('Failed to unassign example:', error);
+
+      // Handle specific error cases
+      if (error?.response?.status === 400) {
+        const errorDetail = error.response.data?.detail || 'Cannot unassign example';
+        vscode.window.showErrorMessage(`❌ Cannot unassign: ${errorDetail}`);
+      } else {
+        const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
+        vscode.window.showErrorMessage(`❌ Unassignment failed: ${errorMessage}`);
+      }
+    }
+  }
+
+  private async viewDeploymentInfo(item: CourseContentTreeItem): Promise<void> {
+    try {
+      await this.deploymentInfoWebviewProvider.showDeploymentInfo(
+        item.courseContent.id,
+        item.courseContent.title || item.courseContent.path
+      );
+    } catch (error: any) {
+      console.error('Failed to view deployment info:', error);
+      vscode.window.showErrorMessage(`Failed to view deployment info: ${error.message}`);
     }
   }
 
@@ -1487,19 +1984,25 @@ export class LecturerCommands {
       return;
     }
 
-    const slug = await vscode.window.showInputBox({
-      prompt: 'Enter a unique slug for this content type',
-      placeHolder: 'e.g., lecture, assignment, exercise'
+    const title = await vscode.window.showInputBox({
+      prompt: 'Enter content type title',
+      placeHolder: 'e.g., Lecture, Assignment, Special Topics'
     });
 
-    if (!slug) {
+    if (!title) {
       return;
     }
 
-    const title = await vscode.window.showInputBox({
-      prompt: 'Enter content type title',
-      placeHolder: 'e.g., Lecture, Assignment'
-    });
+    // Auto-generate slug from title: lowercase, replace spaces with underscores, remove non-alphanumeric
+    const slug = title.toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+      .replace(/^_|_$/g, '');
+
+    if (!slug) {
+      vscode.window.showErrorMessage('Invalid title: cannot generate slug');
+      return;
+    }
 
     const color = await vscode.window.showInputBox({
       prompt: 'Enter color (optional)',
@@ -1510,15 +2013,15 @@ export class LecturerCommands {
     try {
       await this.apiService.createCourseContentType({
         slug,
-        title: title || slug,
+        title,
         color: color || 'green',
         course_id: item.course.id,
         course_content_kind_id: selectedKind.kindData.id
       });
-      
+
       // Clear cache and refresh
       this.treeDataProvider.refreshNode(item);
-      vscode.window.showInformationMessage(`Content type "${title || slug}" created successfully`);
+      vscode.window.showInformationMessage(`Content type "${title}" created successfully (slug: ${slug})`);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create content type: ${error}`);
     }
@@ -1575,13 +2078,21 @@ export class LecturerCommands {
   }
 
   private async releaseCourseContent(item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
+    console.log('============================================');
+    console.log('releaseCourseContent CALLED');
+    console.log('Item type:', item.constructor.name);
+    console.log('============================================');
     try {
       const scopeInfo = this.buildReleaseScopeFromTreeItem(item);
+      console.log('Scope info:', scopeInfo);
       if (!scopeInfo) {
+        console.log('❌ No scope info, returning');
         return;
       }
+      console.log('Calling startReleaseWorkflow with courseId:', scopeInfo.courseId);
       await this.startReleaseWorkflow(scopeInfo.courseId, scopeInfo.scope);
     } catch (error) {
+      console.error('❌ Error in releaseCourseContent:', error);
       vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
     }
   }
@@ -1645,6 +2156,83 @@ export class LecturerCommands {
   }
 
   private async startReleaseWorkflow(courseId: string, scope: ReleaseScope): Promise<void> {
+    console.log('[RELEASE] ========================================');
+    console.log('[RELEASE] Starting release workflow for course:', courseId);
+    console.log('[RELEASE] Scope:', JSON.stringify(scope));
+    console.log('[RELEASE] ========================================');
+
+    // Step 0: Get course and check for local examples that need uploading
+    const course = await this.apiService.getCourse(courseId);
+    console.log('[RELEASE] Course fetched:', course ? `${course.title} (${course.id})` : 'NOT FOUND');
+
+    if (course) {
+      console.log('[RELEASE] Found course, checking for pending content to determine which examples to check...');
+
+      // First, get the pending release contents to know which assignments we're actually releasing
+      const pendingContents = await this.getPendingReleaseContents(courseId, scope);
+      const pendingIds = pendingContents.map(c => c.id);
+
+      console.log('[RELEASE] Pending content IDs:', pendingIds.length > 0 ? pendingIds : 'None - will check all');
+
+      try {
+        // Check and upload local examples - only for the pending content IDs
+        console.log('[RELEASE] Calling checkAndUploadLocalExamples...');
+        await this.checkAndUploadLocalExamples(course, pendingIds.length > 0 ? pendingIds : undefined);
+        console.log('[RELEASE] ✓ Example check/upload complete');
+
+        // Auto-assign examples to assignments based on identifiers
+        console.log('[RELEASE] Calling autoAssignExamplesFromLocal...');
+        await this.autoAssignExamplesFromLocal(courseId);
+        console.log('[RELEASE] ✓ Auto-assignment complete');
+      } catch (error: any) {
+        console.error('[RELEASE] ❌ Error during auto-upload/assign:', error);
+        if (error.message === 'Upload cancelled by user' || error.message === 'Repository selection cancelled by user') {
+          vscode.window.showInformationMessage('Release cancelled');
+          return;
+        }
+        // If upload failed, stop the release process
+        if (error.message && error.message.includes('Failed to upload')) {
+          vscode.window.showErrorMessage(`Release cancelled: ${error.message}`);
+          return;
+        }
+        console.warn('[RELEASE] ⚠️  Failed to auto-upload/assign examples, continuing anyway...', error);
+        // Continue anyway - validation will catch missing examples
+      }
+    } else {
+      console.warn('[RELEASE] ⚠️  Course not found');
+    }
+
+    // Step 1: Pre-flight validation
+    const validationResult = await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Validating course for release...',
+      cancellable: false
+    }, async () => {
+      try {
+        return await this.apiService.validateCourseForRelease(courseId);
+      } catch (error: any) {
+        return {
+          valid: false,
+          error: 'Validation failed',
+          validation_errors: [],
+          total_issues: 0
+        };
+      }
+    });
+
+    // Step 2: If validation fails, show errors
+    if (!validationResult.valid) {
+      const course = await this.apiService.getCourse(courseId);
+      const courseTitle = course?.title || course?.path || 'Unknown Course';
+
+      await this.releaseValidationWebviewProvider.showValidationErrors(
+        validationResult,
+        courseTitle
+      );
+      return;
+    }
+
+    // Step 3: Continue with normal release flow
     let repoInfo: { repoRoot: string; head: string } | undefined;
     try {
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing assignments repository...' }, async (progress) => {
@@ -1883,7 +2471,7 @@ export class LecturerCommands {
   private async showCourseContentDetails(item: CourseContentTreeItem): Promise<void> {
     // Fetch full course content data from API (individual GET has all fields)
     const freshContent = await this.apiService.getCourseContent(item.courseContent.id, true) || item.courseContent;
-    
+
     // Fetch example info if the content has an example assigned
     let exampleInfo = item.exampleInfo;
     if (hasExampleAssigned(freshContent) && !exampleInfo) {
@@ -1900,13 +2488,38 @@ export class LecturerCommands {
         console.error(`Failed to fetch example info:`, error);
       }
     }
-    
-    await this.courseContentWebviewProvider.show(
-      `Content: ${freshContent.title || freshContent.path}`,
+
+    // Fetch content kind to determine appropriate webview provider
+    let contentKind;
+    try {
+      const kinds = await this.apiService.getCourseContentKinds();
+      contentKind = kinds.find(k => k.id === freshContent.course_content_kind_id);
+    } catch (error) {
+      console.error('Failed to get content kind:', error);
+    }
+
+    if (!contentKind) {
+      vscode.window.showErrorMessage('Unable to determine content kind for this item');
+      return;
+    }
+
+    // Create appropriate webview provider using factory
+    const webviewProvider = CourseContentWebviewFactory.create(
+      this.context,
+      this.apiService,
+      contentKind,
+      this.treeDataProvider
+    );
+
+    const providerType = CourseContentWebviewFactory.getProviderType(contentKind);
+
+    await webviewProvider.show(
+      `${providerType}: ${freshContent.title || freshContent.path}`,
       {
         courseContent: freshContent,
         course: item.course,
         contentType: item.contentType,
+        contentKind: contentKind,
         exampleInfo: exampleInfo,
         isSubmittable: item.isSubmittable
       }
@@ -1987,6 +2600,41 @@ export class LecturerCommands {
     }
   }
 
+  private async showCourseMemberDetails(item: CourseMemberTreeItem): Promise<void> {
+    // Fetch full course member data from API
+    const freshMember = await this.apiService.getCourseMember(item.member.id) || item.member;
+
+    // Fetch group info if member is in a group
+    let group = item.group;
+    if (freshMember.course_group_id && !group) {
+      try {
+        group = await this.apiService.getCourseGroup(freshMember.course_group_id);
+      } catch (error) {
+        console.error('Failed to fetch group:', error);
+      }
+    }
+
+    // Fetch available groups for the course
+    let availableGroups: any[] = [];
+    try {
+      availableGroups = await this.apiService.getCourseGroups(item.course.id);
+    } catch (error) {
+      console.error('Failed to fetch available groups:', error);
+    }
+
+    await this.courseMemberWebviewProvider.show(
+      `Member: ${freshMember.user?.username || freshMember.user?.email || 'Unknown'}`,
+      {
+        member: freshMember,
+        course: item.course,
+        group,
+        role: undefined,
+        availableGroups,
+        availableRoles: undefined
+      }
+    );
+  }
+
   private async renameCourseGroup(item: CourseGroupTreeItem): Promise<void> {
     const currentTitle = item.group.title || '';
     const newTitle = await vscode.window.showInputBox({
@@ -2032,5 +2680,230 @@ export class LecturerCommands {
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to delete group: ${error?.message || error}`);
     }
+  }
+
+  async importCourseMembersFromFile(item?: CourseTreeItem | CourseFolderTreeItem): Promise<void> {
+    try {
+      let courseId: string | undefined;
+
+      if (item instanceof CourseTreeItem) {
+        courseId = item.course.id;
+      } else if (item instanceof CourseFolderTreeItem && item.folderType === 'groups') {
+        courseId = item.course.id;
+      }
+
+      if (!courseId) {
+        vscode.window.showErrorMessage('Please select a course or groups folder to import members.');
+        return;
+      }
+
+      const fileUri = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: {
+          'Excel XML Files': ['xml'],
+          'All Files': ['*']
+        },
+        title: 'Select Excel XML file containing course members'
+      });
+
+      if (!fileUri || fileUri.length === 0) {
+        return;
+      }
+
+      const firstFile = fileUri[0];
+      if (!firstFile) {
+        return;
+      }
+
+      const filePath = firstFile.fsPath;
+      const fileName = path.basename(filePath);
+
+      if (!courseId) {
+        vscode.window.showErrorMessage('Course ID not found');
+        return;
+      }
+
+      const options = await this.promptImportOptions();
+      if (!options) {
+        return;
+      }
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Importing course members from ${fileName}...`,
+          cancellable: false
+        },
+        async (progress) => {
+          try {
+            progress.report({ increment: 0, message: 'Reading file...' });
+
+            const fileBuffer = await fs.promises.readFile(filePath);
+
+            progress.report({ increment: 30, message: 'Uploading...' });
+
+            const result = await this.apiService.uploadCourseMemberImport(
+              courseId!,
+              fileBuffer,
+              options
+            );
+
+            if (!result) {
+              throw new Error('No response from server');
+            }
+
+            progress.report({ increment: 100 });
+
+            const summary = [
+              `Total: ${result.total}`,
+              `Success: ${result.success}`,
+              `Errors: ${result.errors}`,
+              `Skipped: ${result.skipped}`,
+              `Updated: ${result.updated}`
+            ].join(' | ');
+
+            if (result.errors > 0) {
+              const viewDetails = await vscode.window.showWarningMessage(
+                `Import completed with errors. ${summary}`,
+                'View Details'
+              );
+
+              if (viewDetails === 'View Details') {
+                this.showImportResults(result, fileName);
+              }
+            } else {
+              vscode.window.showInformationMessage(
+                `Import successful! ${summary}`
+              );
+            }
+
+            if (result.missing_groups && result.missing_groups.length > 0) {
+              vscode.window.showInformationMessage(
+                `Created ${result.missing_groups.length} new groups: ${result.missing_groups.join(', ')}`
+              );
+            }
+
+            this.treeDataProvider.refresh();
+          } catch (error: any) {
+            console.error('Failed to import course members:', error);
+            vscode.window.showErrorMessage(
+              `Failed to import course members: ${error?.message || error}`
+            );
+          }
+        }
+      );
+    } catch (error: any) {
+      console.error('Failed to import course members:', error);
+      vscode.window.showErrorMessage(
+        `Failed to import course members: ${error?.message || error}`
+      );
+    }
+  }
+
+  private async promptImportOptions(): Promise<{
+    defaultRoleId?: string;
+    updateExisting?: boolean;
+    createMissingGroups?: boolean;
+  } | undefined> {
+    const defaultRole = await vscode.window.showQuickPick(
+      [
+        { label: '_student', description: 'Student role (default)' },
+        { label: '_tutor', description: 'Tutor role' },
+        { label: '_lecturer', description: 'Lecturer role' }
+      ],
+      {
+        title: 'Select default role for imported members',
+        placeHolder: '_student'
+      }
+    );
+
+    if (!defaultRole) {
+      return undefined;
+    }
+
+    const updateExisting = await vscode.window.showQuickPick(
+      [
+        { label: 'No', value: false, description: 'Skip existing users' },
+        { label: 'Yes', value: true, description: 'Update existing user information' }
+      ],
+      {
+        title: 'Update existing users?',
+        placeHolder: 'No'
+      }
+    );
+
+    if (!updateExisting) {
+      return undefined;
+    }
+
+    const createMissingGroups = await vscode.window.showQuickPick(
+      [
+        { label: 'Yes', value: true, description: 'Automatically create groups from import file' },
+        { label: 'No', value: false, description: 'Skip members with non-existent groups' }
+      ],
+      {
+        title: 'Create missing course groups?',
+        placeHolder: 'Yes'
+      }
+    );
+
+    if (!createMissingGroups) {
+      return undefined;
+    }
+
+    return {
+      defaultRoleId: defaultRole.label === '_student' ? undefined : defaultRole.label,
+      updateExisting: updateExisting.value,
+      createMissingGroups: createMissingGroups.value
+    };
+  }
+
+  private showImportResults(
+    result: { total: number; success: number; errors: number; skipped: number; updated: number; results: any[] },
+    fileName: string
+  ): void {
+    const errorResults = result.results.filter(r => r.status === 'error');
+    const warningResults = result.results.filter(r => r.warnings && r.warnings.length > 0);
+
+    const lines = [
+      `Import Results for ${fileName}`,
+      `${'='.repeat(60)}`,
+      '',
+      `Total Records: ${result.total}`,
+      `Successful: ${result.success}`,
+      `Errors: ${result.errors}`,
+      `Skipped: ${result.skipped}`,
+      `Updated: ${result.updated}`,
+      ''
+    ];
+
+    if (errorResults.length > 0) {
+      lines.push('Errors:', '');
+      errorResults.forEach(r => {
+        lines.push(`  Row ${r.row_number}: ${r.email}`);
+        lines.push(`    ${r.message || 'Unknown error'}`);
+        lines.push('');
+      });
+    }
+
+    if (warningResults.length > 0) {
+      lines.push('Warnings:', '');
+      warningResults.forEach(r => {
+        lines.push(`  Row ${r.row_number}: ${r.email}`);
+        r.warnings.forEach((w: string) => lines.push(`    - ${w}`));
+        lines.push('');
+      });
+    }
+
+    const document = vscode.workspace.openTextDocument({
+      content: lines.join('\n'),
+      language: 'plaintext'
+    });
+
+    document.then(doc => {
+      vscode.window.showTextDocument(doc, { preview: true });
+    });
   }
 }

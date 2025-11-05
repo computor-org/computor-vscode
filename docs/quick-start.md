@@ -79,10 +79,10 @@ Enter your GitLab origin and Personal Access Token.
 
 ### For Lecturers
 
-#### Create Course Content
+#### create content
 1. Open **Computor Lecturer** view
 2. Navigate to course → **Course Contents**
-3. Right-click → **Create Course Content**
+3. Right-click → **create content**
 4. Fill in details
 
 #### Upload Example

@@ -169,7 +169,7 @@ export class LecturerExampleCommands {
       })
     );
 
-    // Create course content from example
+    // create content from example
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.createCourseContentFromExample', async (item: ExampleTreeItem) => {
         await this.createCourseContentFromExample(item);
@@ -1261,7 +1261,7 @@ Explain how to use this example.
       vscode.commands.executeCommand('computor.lecturer.refresh');
       
     } catch (error) {
-      console.error('Failed to create course content from example:', error);
+      console.error('Failed to create content from example:', error);
       vscode.window.showErrorMessage(`Failed to create assignment: ${error}`);
     }
   }

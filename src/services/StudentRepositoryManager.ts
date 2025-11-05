@@ -259,6 +259,7 @@ export class StudentRepositoryManager {
     if (upstreamUrl) {
       console.log('[StudentRepositoryManager] Checking if fork needs update from upstream');
       report('Checking for upstream updates...');
+      // Automatically update fork without prompting
       const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, effectiveToken);
       
       if (updated) {
@@ -370,11 +371,11 @@ export class StudentRepositoryManager {
               if (fs.existsSync(fullPath)) {
                 content.directory = fullPath;
                 console.log(`[StudentRepositoryManager] Found existing directory for ${content.title}: ${fullPath}`);
+              } else {
+                console.log(`[StudentRepositoryManager] Assignment directory not found for ${content.title}: ${subdirectory}`);
               }
             } else {
-              // No subdirectory, use the repository root
-              content.directory = repoPath;
-              console.log(`[StudentRepositoryManager] Using repository root for ${content.title}: ${repoPath}`);
+              console.log(`[StudentRepositoryManager] No subdirectory defined for ${content.title} - assignment not deployed yet`);
             }
           }
         }
@@ -386,6 +387,7 @@ export class StudentRepositoryManager {
 
   /**
    * Sync fork with upstream repository
+   * Automatically updates the fork without prompting the user
    */
   private async syncForkWithUpstream(
     repoPath: string,
@@ -423,20 +425,14 @@ export class StudentRepositoryManager {
         return false;
       }
 
-      const choice = await vscode.window.showInformationMessage(
-        `Your repository fork is ${behindCount} commit(s) behind upstream/${defaultBranch}. Update now?`,
-        'Yes, Update',
-        'Skip'
-      );
-
-      if (choice !== 'Yes, Update') {
-        return false;
-      }
+      // Automatically update fork without prompting user
+      console.log(`[StudentRepositoryManager] Automatically updating fork (${behindCount} commit(s) behind upstream)`);
 
       const gitHelper = new CTGit(repoPath);
       const updateResult = await gitHelper.forkUpdate(authenticatedUpstreamUrl, {
         defaultBranch,
-        removeRemote: !remoteExisted
+        removeRemote: !remoteExisted,
+        autoResolveConflicts: true  // Automatically resolve conflicts without user prompts
       });
 
       if (updateResult.updated) {
@@ -448,6 +444,19 @@ export class StudentRepositoryManager {
     } catch (error) {
       console.error('[StudentRepositoryManager] Failed to sync fork:', error);
       await this.abortMergeIfPossible(repoPath);
+
+      // Notify user about the failure
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await vscode.window.showWarningMessage(
+        `Failed to automatically update your repository from upstream. You may be working with an older version. Error: ${errorMessage}`,
+        'View Git Output',
+        'Dismiss'
+      ).then(choice => {
+        if (choice === 'View Git Output') {
+          void vscode.commands.executeCommand('git.showOutput');
+        }
+      });
+
       return false;
     } finally {
       if (stashRef) {

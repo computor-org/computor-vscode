@@ -273,7 +273,7 @@ export class CTGit {
 
   async forkUpdate(
     remoteUrl: string,
-    options?: { defaultBranch?: string; removeRemote?: boolean }
+    options?: { defaultBranch?: string; removeRemote?: boolean; autoResolveConflicts?: boolean }
   ): Promise<{ updated: boolean; defaultBranch?: string; behindCount?: number }> {
     const remoteName = 'upstream';
     await this.ensureRemote(remoteName, remoteUrl);
@@ -364,19 +364,35 @@ export class CTGit {
         if (resolvedAutomatically) {
           mergeCompleted = true;
         } else {
-          const resolution = await this.promptForConflictResolution(conflicts);
-
-          if (resolution === 'ours') {
-            await this.resolveConflictsUsingOurs();
-            mergeCompleted = true;
-          } else if (resolution === 'theirs') {
-            await this.resolveConflictsUsingTheirs();
-            mergeCompleted = true;
-          } else if (resolution === 'editor') {
-            throw new Error('merge-editor');
+          // If auto-resolve is enabled, force resolution without prompting
+          if (options?.autoResolveConflicts) {
+            console.log('[CTGit] Auto-resolving conflicts without user prompt');
+            await this.forceResolveRemainingConflicts(conflicts);
+            const remainingAfterForce = await this.hasUnmergedPaths();
+            if (remainingAfterForce.length === 0) {
+              mergeCompleted = true;
+              void vscode.window.showInformationMessage(
+                'Fork updated successfully. Some conflicts were automatically resolved by keeping your local changes where possible.'
+              );
+            } else {
+              throw new Error(`merge-unresolved: ${remainingAfterForce.length} conflicts could not be resolved automatically`);
+            }
           } else {
-            await this.simpleGit.raw(['merge', '--abort']);
-            throw new Error('merge-abort');
+            // Interactive mode - prompt user
+            const resolution = await this.promptForConflictResolution(conflicts);
+
+            if (resolution === 'ours') {
+              await this.resolveConflictsUsingOurs();
+              mergeCompleted = true;
+            } else if (resolution === 'theirs') {
+              await this.resolveConflictsUsingTheirs();
+              mergeCompleted = true;
+            } else if (resolution === 'editor') {
+              throw new Error('merge-editor');
+            } else {
+              await this.simpleGit.raw(['merge', '--abort']);
+              throw new Error('merge-abort');
+            }
           }
         }
       }

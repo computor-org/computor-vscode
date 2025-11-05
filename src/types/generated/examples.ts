@@ -310,3 +310,17 @@ export interface BulkAssignExamplesRequest {
   /** List of assignments with course_content_id, example_id, and example_version */
   assignments: Record<string, string>[];
 }
+
+/**
+ * Validation result for example existence.
+ */
+export interface ExampleValidationResult {
+  /** Example identifier that was checked */
+  identifier: string;
+  /** Whether the example exists */
+  exists: boolean;
+  /** Example ID if exists */
+  example_id?: string | null;
+  /** Error message if not exists */
+  message?: string | null;
+}

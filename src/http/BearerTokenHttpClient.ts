@@ -7,7 +7,11 @@ export class BearerTokenHttpClient extends HttpClient {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
   private tokenExpiry: Date | null = null;
+  private tokenIssuedAt: Date | null = null;
   private userId: string | null = null;
+  private refreshPromise: Promise<void> | null = null;
+
+  private readonly REFRESH_THRESHOLD_PERCENTAGE = 0.1; // Refresh when <10% lifetime remains
 
   constructor(
     baseUrl: string,
@@ -76,13 +80,29 @@ export class BearerTokenHttpClient extends HttpClient {
   }
 
   public async refreshAuth(): Promise<void> {
+    // Prevent duplicate concurrent refresh calls
+    if (this.refreshPromise) {
+      console.log('[BearerTokenHttpClient] Refresh already in progress, waiting...');
+      return this.refreshPromise;
+    }
+
     if (!this.refreshToken) {
       throw new AuthenticationError('No refresh token available');
     }
 
+    this.refreshPromise = this.performRefresh();
+
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  private async performRefresh(): Promise<void> {
     try {
       const request: LocalTokenRefreshRequest = {
-        refresh_token: this.refreshToken
+        refresh_token: this.refreshToken!
       };
 
       const response = await fetch(`${this.baseUrl}/auth/refresh/local`, {
@@ -100,6 +120,7 @@ export class BearerTokenHttpClient extends HttpClient {
 
       const refreshResponse = await response.json() as LocalTokenRefreshResponse;
       this.updateTokensFromRefresh(refreshResponse);
+      console.log('[BearerTokenHttpClient] Token refreshed successfully');
     } catch (error) {
       this.clearTokens();
       if (error instanceof Error) {
@@ -115,8 +136,9 @@ export class BearerTokenHttpClient extends HttpClient {
     data?: any,
     params?: Record<string, any>
   ): Promise<import('../types/HttpTypes').HttpResponse<T>> {
-    // Proactive refresh: check if token is expired before making request
-    if (this.isTokenExpired() && this.refreshToken) {
+    // Proactive refresh: check if token needs refresh before making request
+    if (this.shouldRefreshToken() && this.refreshToken) {
+      console.log('[BearerTokenHttpClient] Token close to expiry, proactively refreshing');
       await this.refreshAuth();
     }
 
@@ -126,7 +148,7 @@ export class BearerTokenHttpClient extends HttpClient {
       return response;
     } catch (error: any) {
       // Reactive refresh: handle 401 Unauthorized by refreshing and retrying
-      if (error?.status === 401 && this.refreshToken && !this.isTokenExpired()) {
+      if (error?.status === 401 && this.refreshToken) {
         console.log('[BearerTokenHttpClient] Received 401, attempting token refresh and retry');
 
         try {
@@ -152,8 +174,11 @@ export class BearerTokenHttpClient extends HttpClient {
     this.refreshToken = loginResponse.refresh_token;
     this.userId = loginResponse.user_id;
 
+    const now = Date.now();
+    this.tokenIssuedAt = new Date(now);
+
     if (loginResponse.expires_in) {
-      this.tokenExpiry = new Date(Date.now() + loginResponse.expires_in * 1000);
+      this.tokenExpiry = new Date(now + loginResponse.expires_in * 1000);
     }
   }
 
@@ -164,8 +189,11 @@ export class BearerTokenHttpClient extends HttpClient {
       this.refreshToken = refreshResponse.refresh_token;
     }
 
+    const now = Date.now();
+    this.tokenIssuedAt = new Date(now);
+
     if (refreshResponse.expires_in) {
-      this.tokenExpiry = new Date(Date.now() + refreshResponse.expires_in * 1000);
+      this.tokenExpiry = new Date(now + refreshResponse.expires_in * 1000);
     }
   }
 
@@ -173,18 +201,52 @@ export class BearerTokenHttpClient extends HttpClient {
     this.accessToken = null;
     this.refreshToken = null;
     this.tokenExpiry = null;
+    this.tokenIssuedAt = null;
     this.userId = null;
   }
 
+  /**
+   * Check if token should be refreshed based on remaining lifetime.
+   * Returns true when less than 10% of token lifetime remains.
+   * This prevents excessive refreshing while ensuring tokens stay valid.
+   *
+   * Examples:
+   * - 30s token: refreshes when <3s remain
+   * - 15min token: refreshes when <90s remain
+   */
+  private shouldRefreshToken(): boolean {
+    if (!this.tokenExpiry || !this.tokenIssuedAt || !this.accessToken) {
+      return false;
+    }
+
+    const now = Date.now();
+    const expiryTime = this.tokenExpiry.getTime();
+    const issuedTime = this.tokenIssuedAt.getTime();
+
+    // Already expired
+    if (now >= expiryTime) {
+      return true;
+    }
+
+    // Calculate the total token lifetime and remaining time
+    const totalLifetimeMs = expiryTime - issuedTime;
+    const remainingMs = expiryTime - now;
+
+    // Refresh when less than 10% of the TOTAL lifetime remains
+    const thresholdMs = totalLifetimeMs * this.REFRESH_THRESHOLD_PERCENTAGE;
+
+    return remainingMs <= thresholdMs;
+  }
+
+  /**
+   * Check if token is actually expired (for backward compatibility)
+   */
   private isTokenExpired(): boolean {
     if (!this.tokenExpiry) {
       return false;
     }
 
-    const now = new Date();
-    // Refresh 1 hour (3600 seconds) before expiration as recommended by backend
-    const expiryWithBuffer = new Date(this.tokenExpiry.getTime() - 3600000);
-    return now >= expiryWithBuffer;
+    return Date.now() >= this.tokenExpiry.getTime();
   }
 
   public setTokens(accessToken: string, refreshToken?: string, expiresAt?: Date, userId?: string): void {
@@ -192,6 +254,14 @@ export class BearerTokenHttpClient extends HttpClient {
     this.refreshToken = refreshToken || null;
     this.tokenExpiry = expiresAt || null;
     this.userId = userId || null;
+
+    // When restoring tokens, we don't know the exact issue time
+    // Estimate it based on expiry time (assume it was just issued if we don't know better)
+    if (expiresAt && !this.tokenIssuedAt) {
+      // Assume a default lifetime for estimation purposes
+      // This is imperfect but better than nothing
+      this.tokenIssuedAt = new Date();
+    }
   }
 
   public getAccessToken(): string | null {
@@ -214,12 +284,33 @@ export class BearerTokenHttpClient extends HttpClient {
     this.clearTokens();
   }
 
-  public getTokenData(): { accessToken: string | null; refreshToken: string | null; expiresAt: Date | null; userId: string | null } {
+  public getTokenData(): {
+    accessToken: string | null;
+    refreshToken: string | null;
+    expiresAt: Date | null;
+    issuedAt: Date | null;
+    userId: string | null;
+  } {
     return {
       accessToken: this.accessToken,
       refreshToken: this.refreshToken,
       expiresAt: this.tokenExpiry,
+      issuedAt: this.tokenIssuedAt,
       userId: this.userId
     };
+  }
+
+  public setTokenData(data: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: Date;
+    issuedAt?: Date;
+    userId?: string;
+  }): void {
+    this.accessToken = data.accessToken;
+    this.refreshToken = data.refreshToken || null;
+    this.tokenExpiry = data.expiresAt || null;
+    this.tokenIssuedAt = data.issuedAt || null;
+    this.userId = data.userId || null;
   }
 }

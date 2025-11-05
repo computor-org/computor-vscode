@@ -97,6 +97,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       case 'updateMessage':
         await this.handleUpdateMessage(message.data);
         break;
+      case 'confirmDeleteMessage':
+        await this.handleConfirmDeleteMessage(message.data);
+        break;
       case 'deleteMessage':
         await this.handleDeleteMessage(message.data);
         break;
@@ -260,6 +263,23 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to update message: ${error?.message || error}`);
       this.postLoadingState(false);
+    }
+  }
+
+  private async handleConfirmDeleteMessage(data: { messageId: string; title?: string }): Promise<void> {
+    if (!data?.messageId) {
+      return;
+    }
+
+    const title = data.title || 'this message';
+    const confirmed = await vscode.window.showWarningMessage(
+      `Delete "${title}"?`,
+      { modal: true },
+      'Delete'
+    );
+
+    if (confirmed === 'Delete') {
+      await this.handleDeleteMessage(data);
     }
   }
 

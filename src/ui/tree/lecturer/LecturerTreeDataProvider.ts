@@ -655,9 +655,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         } else {
           // Show course content types with content kind titles
           const contentTypes = await this.getCourseContentTypes(element.course.id);
-          
+
+          // Sort content types alphabetically by title
+          const sortedContentTypes = [...contentTypes].sort((a, b) => {
+            const titleA = (a.title || a.slug || '').toLowerCase();
+            const titleB = (b.title || b.slug || '').toLowerCase();
+            return titleA.localeCompare(titleB);
+          });
+
           // Fetch content kind information for each type
-          const contentTypesWithKinds = await Promise.all(contentTypes.map(async (type) => {
+          const contentTypesWithKinds = await Promise.all(sortedContentTypes.map(async (type) => {
             try {
               const fullType = await this.apiService.getCourseContentType(type.id);
               const kindTitle = fullType?.course_content_kind?.title || undefined;
@@ -679,7 +686,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               );
             }
           }));
-          
+
           return contentTypesWithKinds;
         }
       }
@@ -1350,7 +1357,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
       return created;
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create course content: ${error}`);
+      vscode.window.showErrorMessage(`Failed to create content: ${error}`);
       return undefined;
     }
   }
@@ -1528,8 +1535,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   // Drag and drop implementation
   public async handleDrag(source: readonly TreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
-    // Support dragging course members
+    // Only support dragging course members - explicitly reject other item types
     const members = source.filter(item => item instanceof CourseMemberTreeItem) as CourseMemberTreeItem[];
+
+    if (members.length === 0) {
+      // No valid draggable items - don't set any data transfer
+      return;
+    }
 
     if (members.length > 0) {
       // Serialize member data for drag
@@ -1617,8 +1629,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     const memberData = dataTransfer.get('application/vnd.code.tree.lecturermember');
 
     if (memberData) {
-      await this.handleMemberDrop(target, memberData);
-      return;
+      // Validate that we actually have member data before processing
+      try {
+        const memberDataValue = await memberData.value;
+        if (memberDataValue && Array.isArray(memberDataValue) && memberDataValue.length > 0) {
+          await this.handleMemberDrop(target, memberData);
+          return;
+        }
+      } catch (error) {
+        console.log('Invalid member data, skipping member drop handler');
+      }
     }
 
     // Check if we have example data being dropped

@@ -91,7 +91,7 @@ const courses = await api.getCourses({
 // Get course content
 const content = await api.getCourseContent('content-456');
 
-// Create course content
+// create content
 const newContent = await api.createCourseContent({
   course_id: 'course-789',
   title: 'Week 1',

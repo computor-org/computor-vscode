@@ -7,11 +7,12 @@ export interface ComputorSettings {
 
 export interface AuthenticationSettings {
   baseUrl: string;
+  autoLogin?: boolean;
 }
 
 export interface WorkspaceSettings {
   repositoryDirectory?: string;
-  gitlabTokens: Record<string, string>; // Maps GitLab instance URL to token
+  gitlabUrls: string[]; // List of GitLab instance URLs that have tokens stored securely
 }
 
 export interface UISettings {
@@ -26,11 +27,12 @@ export interface UISettings {
 export const defaultSettings: ComputorSettings = {
   version: '1.0.0',
   authentication: {
-    baseUrl: 'http://localhost:8000'
+    baseUrl: 'http://localhost:8000',
+    autoLogin: true
   },
   workspace: {
     repositoryDirectory: undefined,
-    gitlabTokens: {}
+    gitlabUrls: []
   },
   ui: {
     lecturerTree: {

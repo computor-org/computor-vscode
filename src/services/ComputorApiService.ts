@@ -39,8 +39,8 @@ import {
   CourseMemberList,
   CourseMemberGet,
   CourseMemberUpdate,
-  CourseMemberProviderAccountUpdate,
   CourseMemberReadinessStatus,
+  CourseMemberImportResponse,
   UserPassword,
   UserGet,
   UserUpdate,
@@ -97,6 +97,8 @@ type MessageQueryParams = Partial<{
 }>;
 
 export class ComputorApiService {
+  private static instance?: ComputorApiService;
+
   public httpClient?: HttpClient;
   private settingsManager: ComputorSettingsManager;
 
@@ -107,6 +109,9 @@ export class ComputorApiService {
   constructor(context: vscode.ExtensionContext, httpClient?: HttpClient) {
     this.settingsManager = new ComputorSettingsManager(context);
     this.httpClient = httpClient;
+
+    // Store as singleton instance
+    ComputorApiService.instance = this;
 
     // Create batched versions of frequently called methods
     this.batchedGetCourseContents = requestBatchingService.createBatchedFunction(
@@ -120,6 +125,14 @@ export class ComputorApiService {
       (courseId) => `getCourseContentTypes-${courseId}`,
       { maxBatchSize: 5, batchDelay: 100 }
     );
+  }
+
+  /**
+   * Get the singleton instance of ComputorApiService
+   * Returns undefined if not yet initialized (user not logged in)
+   */
+  static getInstance(): ComputorApiService | undefined {
+    return ComputorApiService.instance;
   }
 
   private async getHttpClient(): Promise<HttpClient> {
@@ -727,7 +740,8 @@ export class ComputorApiService {
       const client = await this.getHttpClient();
       const response = await client.get<SubmissionArtifactList[]>(`/submissions/artifacts`, {
         submission_group_id: submissionGroupId,
-        with_latest_result: 'true'
+        with_latest_result: 'true',
+        submit: true
       });
       return response.data;
     } catch (error) {
@@ -927,15 +941,117 @@ export class ComputorApiService {
         `/course-contents/${contentId}/deploy`,
         { force }
       );
-      
+
       // Clear cache for this content
       multiTierCache.delete(`courseContent-${contentId}-true`);
       multiTierCache.delete(`courseContent-${contentId}-false`);
-      
+
       return response.data;
     } catch (error) {
       console.error('Failed to deploy content:', error);
       return undefined;
+    }
+  }
+
+  /**
+   * Lecturer: Assign example to course content
+   * Uses the new /lecturer/course-contents/{id}/assign-example endpoint
+   */
+  async lecturerAssignExample(
+    contentId: string,
+    request: { example_identifier: string; version_tag: string }
+  ): Promise<any> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.post(
+        `/course-contents/${contentId}/assign-example`,
+        request
+      );
+
+      // Clear cache for this content
+      multiTierCache.delete(`courseContent-${contentId}-true`);
+      multiTierCache.delete(`courseContent-${contentId}-false`);
+
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  /**
+   * Lecturer: Get deployment info for course content
+   */
+  async lecturerGetDeployment(contentId: string): Promise<any> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get(
+        `/lecturer/course-contents/${contentId}/deployment`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get lecturer deployment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Lecturer: Batch validate course content (checks if examples/versions exist)
+   */
+  async validateCourseContent(
+    courseId: string,
+    validations: Array<{ content_id: string; example_identifier: string; version_tag: string }>
+  ): Promise<any> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.post(
+        `/lecturers/courses/${courseId}/validate`,
+        { content_validations: validations }
+      );
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  /**
+   * Lecturer: Unassign example from course content
+   */
+  async lecturerUnassignExample(contentId: string): Promise<any> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const response = await client.delete(
+        `/lecturer/course-contents/${contentId}/deployment`
+      );
+
+      // Clear cache for this content
+      multiTierCache.delete(`courseContent-${contentId}-true`);
+      multiTierCache.delete(`courseContent-${contentId}-false`);
+
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
+  /**
+   * Get list of available example versions for an example
+   * @param exampleId The example ID
+   * @param versionTag Optional version tag to filter for a specific version
+   */
+  async getExampleVersions(exampleId: string, versionTag?: string): Promise<any[]> {
+    try {
+      const client = await this.getHttpClient();
+      const url = versionTag
+        ? `/examples/${exampleId}/versions?version_tag=${encodeURIComponent(versionTag)}`
+        : `/examples/${exampleId}/versions`;
+      const response = await client.get<any[]>(url);
+      return response.data || [];
+    } catch (error) {
+      console.error('Failed to get example versions:', error);
+      return [];
     }
   }
 
@@ -1007,6 +1123,65 @@ export class ComputorApiService {
     } catch (e) {
       console.warn('[API] getLecturerCourses failed:', e);
       return undefined;
+    }
+  }
+
+  /**
+   * Validate course for release (pre-flight check)
+   * Returns validation errors if any assignments are missing examples
+   */
+  async validateCourseForRelease(courseId: string): Promise<any> {
+    try {
+      // Get all course contents with deployment info
+      const contents = await this.getCourseContents(courseId, false, true);
+
+      // Get content types to identify submittable content
+      const contentTypes = await this.getCourseContentTypes(courseId);
+      const submittableTypeIds = new Set<string>();
+
+      for (const type of contentTypes) {
+        const fullType = await this.getCourseContentType(type.id);
+        if (fullType?.course_content_kind?.submittable) {
+          submittableTypeIds.add(type.id);
+        }
+      }
+
+      // Find assignments without examples
+      const validationErrors: any[] = [];
+
+      if (contents) {
+        for (const content of contents) {
+          const isSubmittable = submittableTypeIds.has(content.course_content_type_id);
+
+          if (isSubmittable) {
+            const hasDeployment = content.has_deployment;
+            const deploymentStatus = content.deployment_status;
+
+            if (!hasDeployment || deploymentStatus === 'unassigned') {
+              validationErrors.push({
+                course_content_id: content.id,
+                title: content.title || content.path,
+                path: content.path,
+                issue: 'No example assigned'
+              });
+            }
+          }
+        }
+      }
+
+      if (validationErrors.length > 0) {
+        return {
+          valid: false,
+          error: 'Cannot release: Some assignments are missing example assignments',
+          validation_errors: validationErrors,
+          total_issues: validationErrors.length
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.error('Failed to validate course for release:', error);
+      throw error;
     }
   }
 
@@ -1281,28 +1456,6 @@ export class ComputorApiService {
       const message = (error as any)?.response?.data?.detail || (error as Error)?.message;
       if (message && status !== 401) {
         vscode.window.showWarningMessage(`Course readiness check failed: ${message}`);
-      }
-      throw error;
-    }
-  }
-
-  async registerCourseProviderAccount(
-    courseId: string,
-    payload: CourseMemberProviderAccountUpdate
-  ): Promise<CourseMemberReadinessStatus> {
-    try {
-      const client = await this.getHttpClient();
-      const response = await client.post<CourseMemberReadinessStatus>(
-        `/user/courses/${courseId}/register`,
-        payload
-      );
-      return response.data;
-    } catch (error: any) {
-      console.error('Failed to register provider account for course:', error);
-      const detail = error?.response?.data?.detail || error?.message || 'Registration failed';
-      const status = error?.response?.status;
-      if (status !== 400 && status !== 401 && status !== 422) {
-        vscode.window.showErrorMessage(detail);
       }
       throw error;
     }
@@ -1695,13 +1848,13 @@ export class ComputorApiService {
   async getStudentCourseContent(
     contentId: string,
     options?: { force?: boolean }
-  ): Promise<CourseContentStudentList | undefined> {
+  ): Promise<CourseContentStudentGet | undefined> {
     const cacheKey = `studentCourseContent-${contentId}`;
 
     if (options?.force) {
       multiTierCache.delete(cacheKey);
     } else {
-      const cached = multiTierCache.get<CourseContentStudentList>(cacheKey);
+      const cached = multiTierCache.get<CourseContentStudentGet>(cacheKey);
       if (cached) {
         return cached;
       }
@@ -1710,7 +1863,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<CourseContentStudentList>(`/students/course-contents/${contentId}`);
+        const response = await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`);
         return response.data;
       }, {
         maxRetries: 2,
@@ -1910,18 +2063,18 @@ export class ComputorApiService {
   async getExamples(repositoryId?: string): Promise<ExampleList[]> {
     const query: ExampleQuery = repositoryId ? { repository_id: repositoryId } : {};
     const cacheKey = `examples-${JSON.stringify(query)}`;
-    
+
     // Check cache first
     const cached = multiTierCache.get<ExampleList[]>(cacheKey);
     if (cached) {
       return cached;
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
         const params = new URLSearchParams();
-        
+
         if (query.repository_id) {
           params.append('repository_id', query.repository_id);
         }
@@ -1943,7 +2096,7 @@ export class ComputorApiService {
         if (query.directory) {
           params.append('directory', query.directory);
         }
-        
+
         const url = params.toString() ? `/examples?${params.toString()}` : '/examples';
         const response = await client.get<ExampleList[]>(url);
         return response.data;
@@ -1951,13 +2104,42 @@ export class ComputorApiService {
         maxRetries: 2,
         exponentialBackoff: true
       });
-      
+
       // Cache in hot tier for frequently accessed queries
       multiTierCache.set(cacheKey, result, 'hot');
       return result || [];
     } catch (error) {
       console.error('Failed to get examples:', error);
       return [];
+    }
+  }
+
+  async getExampleByIdentifier(identifier: string): Promise<ExampleList | null> {
+    const cacheKey = `example-identifier-${identifier}`;
+
+    const cached = multiTierCache.get<ExampleList | null>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const params = new URLSearchParams();
+        params.append('identifier', identifier);
+
+        const response = await client.get<ExampleList[]>(`/examples?${params.toString()}`);
+        return response.data && response.data.length > 0 ? response.data[0] : null;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      multiTierCache.set(cacheKey, result ?? null, 'hot');
+      return result ?? null;
+    } catch (error) {
+      console.error(`Failed to get example by identifier "${identifier}":`, error);
+      return null;
     }
   }
 
@@ -2195,11 +2377,8 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to submit test:', error);
-      // Extract detailed error message and re-throw for upper layer to handle
-      const message = error?.response?.data?.detail || error?.message || 'Failed to submit test';
-      const detailedError = new Error(message);
-      (detailedError as any).originalError = error;
-      throw detailedError;
+      // Re-throw HttpError as-is to preserve error_code, severity, and other metadata
+      throw error;
     }
   }
 
@@ -2452,6 +2631,48 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to update student submission:', error);
+      throw error;
+    }
+  }
+
+  async uploadCourseMemberImport(
+    courseId: string,
+    file: Buffer,
+    options?: {
+      defaultRoleId?: string;
+      updateExisting?: boolean;
+      createMissingGroups?: boolean;
+    }
+  ): Promise<CourseMemberImportResponse | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const formData = new FormData();
+
+      formData.append('file', file, {
+        filename: 'course-members.xml',
+        contentType: 'application/xml'
+      });
+
+      if (options?.defaultRoleId) {
+        formData.append('default_role', options.defaultRoleId);
+      }
+
+      if (options?.updateExisting !== undefined) {
+        formData.append('update_existing', String(options.updateExisting));
+      }
+
+      if (options?.createMissingGroups !== undefined) {
+        formData.append('create_missing_groups', String(options.createMissingGroups));
+      }
+
+      const response = await client.post<CourseMemberImportResponse>(
+        `/course-member-import/upload/${courseId}`,
+        formData
+      );
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to upload course member import:', error);
       throw error;
     }
   }

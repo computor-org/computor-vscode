@@ -4,16 +4,14 @@ import * as fs from 'fs';
 // import * as os from 'os';
 import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { GitBranchManager } from '../services/GitBranchManager';
+import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel, CourseContentStudentGet } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
-import { execAsync } from '../utils/exec';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
-import { GitEnvironmentService } from '../services/GitEnvironmentService';
 import JSZip from 'jszip';
 
 // (Deprecated legacy types removed)
@@ -26,7 +24,7 @@ export class StudentCommands {
   private apiService: ComputorApiService; // Used for future API calls
   // private workspaceManager: WorkspaceManager;
   private repositoryManager?: StudentRepositoryManager;
-  private gitBranchManager: GitBranchManager;
+  private gitService: GitService;
   private testResultService: TestResultService;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private contentDetailsWebviewProvider: StudentCourseContentDetailsWebviewProvider;
@@ -43,7 +41,7 @@ export class StudentCommands {
     this.apiService = apiService || new ComputorApiService(context);
     // this.workspaceManager = WorkspaceManager.getInstance(context);
     this.repositoryManager = repositoryManager;
-    this.gitBranchManager = GitBranchManager.getInstance();
+    this.gitService = GitService.getInstance();
     this.testResultService = TestResultService.getInstance();
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
@@ -54,14 +52,14 @@ export class StudentCommands {
 
   private async pushWithAuthRetry(repoPath: string): Promise<void> {
     try {
-      await this.gitBranchManager.pushCurrentBranch(repoPath);
+      await this.gitService.pushCurrentBranch(repoPath);
     } catch (error) {
       const originalError = error;
       try {
         if (this.repositoryManager && this.repositoryManager.isAuthenticationError(error)) {
           const refreshed = await this.repositoryManager.refreshRepositoryAuth(repoPath);
           if (refreshed) {
-            await this.gitBranchManager.pushCurrentBranch(repoPath);
+            await this.gitService.pushCurrentBranch(repoPath);
             return;
           }
         }
@@ -119,7 +117,12 @@ export class StudentCommands {
 
       if (readmePath && fs.existsSync(readmePath)) {
         const readmeUri = vscode.Uri.file(readmePath);
-        await vscode.commands.executeCommand('markdown.showPreview', readmeUri, vscode.ViewColumn.Two, { sideBySide: true });
+        // Open beside active editor if one exists
+        if (vscode.window.activeTextEditor) {
+          await vscode.commands.executeCommand('markdown.showPreviewToSide', readmeUri);
+        } else {
+          await vscode.commands.executeCommand('markdown.showPreview', readmeUri);
+        }
         return true;
       }
 
@@ -154,12 +157,51 @@ export class StudentCommands {
     }
   }
 
+  private async saveAllFilesInDirectory(directory: string): Promise<void> {
+    const normalizedDir = path.normalize(directory);
+    const textDocuments = vscode.workspace.textDocuments;
+
+    const savePromises = textDocuments
+      .filter(doc => {
+        if (!doc.isDirty) {
+          return false;
+        }
+        const docPath = path.normalize(doc.uri.fsPath);
+        return docPath.startsWith(normalizedDir);
+      })
+      .map(doc => doc.save());
+
+    await Promise.all(savePromises);
+  }
+
 
   registerCommands(): void {
     // Refresh student view
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.student.refresh', () => {
-        this.treeDataProvider.refresh();
+      vscode.commands.registerCommand('computor.student.refresh', async () => {
+        // Show progress notification while refreshing
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: 'Refreshing student view...',
+          cancellable: false
+        }, async (progress) => {
+          // Update repositories (includes fork updates) if repository manager is available
+          if (this.repositoryManager) {
+            try {
+              await this.repositoryManager.autoSetupRepositories(
+                undefined, // All courses
+                (msg) => progress.report({ message: msg })
+              );
+            } catch (error) {
+              console.error('[StudentCommands] Failed during repository refresh:', error);
+              // Continue with tree refresh even if repository operations fail
+            }
+          }
+
+          // Refresh the tree view
+          progress.report({ message: 'Refreshing tree view...' });
+          this.treeDataProvider.refresh();
+        });
       })
     );
 
@@ -174,10 +216,28 @@ export class StudentCommands {
         try {
           let resultPayload: any | undefined;
 
-          const courseContent = item?.courseContent as any;
-          const result = courseContent?.result;
-          if (result) {
-            resultPayload = result.result_json ?? result;
+          // Get course content ID from the item
+          const courseContentId = item?.courseContent?.id;
+
+          if (courseContentId) {
+            // Fetch fresh data from API to get latest test results
+            const freshCourseContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
+            console.log('[showTestResults] Fresh course content:', JSON.stringify(freshCourseContent, null, 2));
+            const result = freshCourseContent?.result;
+            console.log('[showTestResults] Result object:', JSON.stringify(result, null, 2));
+            console.log('[showTestResults] Result keys:', result ? Object.keys(result) : 'no result');
+            if (result) {
+              resultPayload = result.result_json ?? result;
+              console.log('[showTestResults] Result payload:', JSON.stringify(resultPayload, null, 2));
+              console.log('[showTestResults] Has result_json?', !!result.result_json);
+            }
+          } else {
+            // Fallback to item data if no ID available
+            const courseContent = item?.courseContent as any;
+            const result = courseContent?.result;
+            if (result) {
+              resultPayload = result.result_json ?? result;
+            }
           }
 
           if (resultPayload) {
@@ -210,11 +270,17 @@ export class StudentCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.showPreview', async (item?: any) => {
         try {
-          // If item provided and has a directory, open README from there
-          const directoryFromItem: string | undefined = item?.courseContent ? (item.courseContent as any).directory : undefined;
-          if (directoryFromItem) {
-            await this.openReadmeIfExists(directoryFromItem);
-            return;
+          // If item provided, check if it has a directory
+          if (item?.courseContent) {
+            const directoryFromItem: string | undefined = (item.courseContent as any).directory;
+            if (directoryFromItem) {
+              await this.openReadmeIfExists(directoryFromItem);
+              return;
+            } else {
+              // Assignment directory not available (likely not released yet)
+              vscode.window.showWarningMessage('Assignment not available yet. README preview cannot be shown.');
+              return;
+            }
           }
 
           // Try to infer from active editor
@@ -431,6 +497,9 @@ export class StudentCommands {
             return;
           }
 
+          // Save all open files in the assignment directory
+          await this.saveAllFilesInDirectory(submissionDirectory);
+
           // Perform submission by ensuring latest work is committed and pushed
           let submissionOk = false;
           let submissionVersion: string | undefined;
@@ -446,42 +515,32 @@ export class StudentCommands {
               const commitLabel = assignmentTitle || assignmentPath || assignmentId;
 
               progress.report({ message: 'Staging changes...' });
-              await execAsync('git add -A', { cwd: repoPath });
+              await this.gitService.stageAll(repoPath);
 
-              const { stdout: stagedStdout } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
-              const stagedFiles = stagedStdout
-                .split(/\r?\n/g)
-                .map(line => line.trim())
-                .filter(line => line.length > 0);
+              const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
 
-              if (stagedFiles.length > 0) {
+              if (hasStagedFiles) {
                 const commitDate = new Date().toISOString();
                 const commitMessage = `Submit ${commitLabel} at ${commitDate}`;
                 progress.report({ message: 'Committing changes...' });
-                await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
+                await this.gitService.commitChanges(repoPath, commitMessage);
               } else {
                 progress.report({ message: 'No new changes detected; using latest commit.' });
               }
 
-              const { stdout: branchStdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
-              const currentBranch = branchStdout.trim();
+              const currentBranch = await this.gitService.getCurrentBranch(repoPath);
               if (!currentBranch) {
                 throw new Error('Could not determine current branch.');
               }
 
               progress.report({ message: `Pushing ${currentBranch}...` });
-              try {
-                await execAsync(`git push origin ${JSON.stringify(currentBranch)}`, { cwd: repoPath });
-              } catch (pushError) {
-                try {
-                  await execAsync(`git push -u origin ${JSON.stringify(currentBranch)}`, { cwd: repoPath });
-                } catch (secondaryPushError) {
-                  throw pushError instanceof Error ? pushError : secondaryPushError;
-                }
-              }
+              await this.pushWithAuthRetry(repoPath);
 
-              const { stdout: headStdout } = await execAsync('git rev-parse HEAD', { cwd: repoPath });
-              submissionVersion = headStdout.trim();
+              const commitHash = await this.gitService.getLatestCommitHash(repoPath);
+              if (!commitHash) {
+                throw new Error('Failed to get commit hash after push');
+              }
+              submissionVersion = commitHash;
 
               let existingArtifactId: string | undefined;
               let alreadySubmitted = false;
@@ -490,26 +549,51 @@ export class StudentCommands {
                   submission_group_id: submissionGroupId,
                   version_identifier: submissionVersion
                 });
-                if (existingSubmissions.length > 0 && existingSubmissions[0]?.id) {
-                  existingArtifactId = existingSubmissions[0].id;
-                  alreadySubmitted = existingSubmissions[0].submit === true;
+                console.log(`[submitAssignment] GET response: Found ${existingSubmissions.length} existing submissions for version ${submissionVersion}`);
+                console.log(`[submitAssignment] Full response:`, JSON.stringify(existingSubmissions, null, 2));
+
+                if (existingSubmissions.length > 0) {
+                  // Find submission artifact with matching version identifier
+                  const matchingArtifact = existingSubmissions.find(
+                    artifact => artifact.version_identifier === submissionVersion
+                  );
+
+                  if (matchingArtifact?.id) {
+                    existingArtifactId = matchingArtifact.id;
+                    alreadySubmitted = matchingArtifact.submit === true;
+                    console.log(`[submitAssignment] Found matching artifact ${existingArtifactId}:`);
+                    console.log(`  - submit field value: ${matchingArtifact.submit}`);
+                    console.log(`  - submit field type: ${typeof matchingArtifact.submit}`);
+                    console.log(`  - alreadySubmitted: ${alreadySubmitted}`);
+                    console.log(`  - Full artifact:`, JSON.stringify(matchingArtifact, null, 2));
+                  } else {
+                    console.log(`[submitAssignment] No artifact with matching version identifier found in response`);
+                  }
+                } else {
+                  console.log(`[submitAssignment] GET returned empty array - no existing artifacts`);
                 }
               } catch (listError) {
-                console.warn('[StudentCommands] Failed to check existing submissions:', listError);
+                console.warn('[submitAssignment] Failed to check existing submissions:', listError);
               }
 
               if (existingArtifactId && alreadySubmitted) {
+                // Case 1: Artifact exists AND submit=true → Do nothing
                 reusedExistingSubmission = true;
                 submissionOk = true;
                 progress.report({ message: 'Submission already exists for this version.' });
+                console.log('[submitAssignment] Case 1: Artifact already submitted (submit=true), doing nothing');
                 return;
               } else if (existingArtifactId && !alreadySubmitted) {
+                // Case 2: Artifact exists AND submit=false → PATCH to mark as submitted
+                console.log('[submitAssignment] Case 2: Artifact exists but submit=false, calling PATCH');
                 progress.report({ message: 'Marking existing artifact as submitted...' });
                 submissionResponse = await this.apiService.updateStudentSubmission(
                   existingArtifactId,
                   { submit: true }
                 );
               } else {
+                // Case 3: No existing artifact → POST to create new submission
+                console.log('[submitAssignment] Case 3: No existing artifact found, calling POST to create new submission');
                 progress.report({ message: 'Packaging submission archive...' });
                 const archive = await this.createSubmissionArchive(submissionDirectory);
 
@@ -529,6 +613,8 @@ export class StudentCommands {
           if (submissionOk) {
             try {
               if (courseContentId) {
+                // Clear the cache for this specific content to ensure fresh data
+                this.apiService.clearStudentCourseContentCache(courseContentId);
                 await this.treeDataProvider.refreshContentItem(courseContentId);
               } else {
                 this.treeDataProvider.refresh();
@@ -538,7 +624,7 @@ export class StudentCommands {
             }
 
             if (reusedExistingSubmission) {
-              vscode.window.showInformationMessage('A submission for this version already exists; skipped re-upload.');
+              vscode.window.showWarningMessage('This artifact has already been submitted. No action taken.');
             } else if (submissionResponse) {
               const successMessage = 'Assignment submitted successfully.';
 
@@ -588,8 +674,11 @@ export class StudentCommands {
         const assignmentTitle = item.courseContent.title || assignmentPath;
 
         try {
+          // Save all open files in the assignment directory
+          await this.saveAllFilesInDirectory(directory);
+
           // Check if there are any changes to commit
-          const hasChanges = await this.gitBranchManager.hasChanges(directory);
+          const hasChanges = await this.gitService.hasChanges(directory);
           if (!hasChanges) {
             vscode.window.showInformationMessage('No changes to commit in this assignment.');
             return;
@@ -616,30 +705,15 @@ export class StudentCommands {
 
             progress.report({ increment: 40, message: 'Committing changes...' });
             // Stage only the assignment directory
-            const relAssignmentPath = path.relative(repoPath, directory);
-            await execAsync(`git add ${JSON.stringify(relAssignmentPath)}`, { cwd: repoPath });
+            await this.gitService.stagePath(repoPath, directory);
 
             // Commit only if something is staged
-            const { stdout: staged } = await execAsync('git diff --cached --name-only', { cwd: repoPath });
-            if (staged.trim().length === 0) {
+            const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
+            if (!hasStagedFiles) {
               throw new Error('No changes to commit in the assignment folder');
             }
 
-            try {
-              await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
-            } catch (commitError: any) {
-              if (commitError.message?.includes('user.name') || commitError.message?.includes('user.email') || commitError.message?.includes('Author identity')) {
-                const gitEnv = GitEnvironmentService.getInstance();
-                const configured = await gitEnv.promptAndConfigureGit();
-                if (configured) {
-                  await execAsync(`git commit -m ${JSON.stringify(commitMessage)}`, { cwd: repoPath });
-                } else {
-                  throw new Error('Git configuration is required to commit. Please configure git user.name and user.email.');
-                }
-              } else {
-                throw commitError;
-              }
-            }
+            await this.gitService.commitChanges(repoPath, commitMessage);
 
             progress.report({ increment: 60, message: 'Pushing to remote...' });
             // Push to main branch, prompting for new token if required
@@ -647,6 +721,8 @@ export class StudentCommands {
 
             progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
           });
+
+          vscode.window.showInformationMessage(`Successfully committed and pushed ${assignmentTitle}`);
 
           // Optionally refresh the tree to update any status indicators
           this.treeDataProvider.refreshNode(item);
@@ -709,23 +785,28 @@ export class StudentCommands {
 
         let testSucceeded = false;
         try {
-          // Always show a single progress for the entire test flow
-          await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Testing ${assignmentTitle}...`,
-            cancellable: true
-          }, async (progress, token) => {
-            // Check if there are any changes to commit
-            const hasChanges = await this.gitBranchManager.hasChanges(submissionDirectory);
-            let commitHash: string | null = null;
+          // Save all open files in the assignment directory
+          await this.saveAllFilesInDirectory(submissionDirectory);
 
-            if (hasChanges) {
+          const hasChanges = await this.gitService.hasChanges(submissionDirectory);
+
+          let commitHash: string | null = null;
+          let submissionResponse: any = null;
+
+          // If there are changes, show progress for git operations AND artifact upload
+          if (hasChanges) {
+            await vscode.window.withProgress({
+              location: vscode.ProgressLocation.Notification,
+              title: `Preparing ${assignmentTitle}...`,
+              cancellable: true
+            }, async (progress, token) => {
+              // Git operations
               progress.report({ message: 'Committing changes...' });
-              await this.gitBranchManager.stageAll(submissionDirectory);
+              await this.gitService.stageAll(submissionDirectory);
               const now = new Date();
               const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
               const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
-              await this.gitBranchManager.commitChanges(submissionDirectory, commitMessage);
+              await this.gitService.commitChanges(submissionDirectory, commitMessage);
 
               progress.report({ message: 'Pushing to remote...' });
               try {
@@ -737,11 +818,60 @@ export class StudentCommands {
               }
 
               progress.report({ message: 'Getting commit hash...' });
-              commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
-            } else {
-              // No changes: get current commit hash
-              commitHash = await this.gitBranchManager.getLatestCommitHash(submissionDirectory);
-            }
+              commitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
+
+              // Handle artifact upload (inside same withProgress)
+              if (commitHash && courseContentId) {
+                let existingArtifactId: string | undefined;
+                try {
+                  const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
+                    submission_group_id: submissionGroupId,
+                    version_identifier: commitHash,
+                    submit: false
+                  });
+                  console.log(`[TestAssignment] Found ${existingSubmissions.length} existing artifacts for commit ${commitHash}`);
+
+                  const matchingArtifact = existingSubmissions.find(
+                    (artifact: any) => artifact.version_identifier === commitHash
+                  );
+
+                  if (matchingArtifact?.id) {
+                    existingArtifactId = matchingArtifact.id;
+                    console.log(`[TestAssignment] Reusing artifact ID: ${existingArtifactId} with matching version`);
+                  }
+                } catch (listError) {
+                  console.warn('[TestAssignment] Failed to check existing submissions:', listError);
+                }
+
+                if (existingArtifactId) {
+                  console.log(`[TestAssignment] Path: Reusing existing artifact`);
+                  submissionResponse = { artifacts: [existingArtifactId] };
+                } else {
+                  // Create new artifact
+                  console.log(`[TestAssignment] Path: Creating new artifact`);
+                  progress.report({ message: 'Packaging submission archive...' });
+
+                  const archive = await this.createSubmissionArchive(submissionDirectory);
+                  console.log(`[TestAssignment] Archive created successfully`);
+
+                  if (token?.isCancellationRequested) {
+                    console.log(`[TestAssignment] Cancelled before upload`);
+                    throw new Error('Upload cancelled');
+                  }
+
+                  progress.report({ message: 'Uploading submission package...' });
+                  submissionResponse = await this.apiService.createStudentSubmission({
+                    submission_group_id: submissionGroupId,
+                    version_identifier: commitHash,
+                    submit: false
+                  }, archive);
+                  console.log(`[TestAssignment] Created new submission:`, submissionResponse);
+                }
+              }
+            });
+          } else {
+            // No changes: get current commit hash and check for existing artifact
+            commitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
 
             if (commitHash && courseContentId) {
               let existingArtifactId: string | undefined;
@@ -753,7 +883,6 @@ export class StudentCommands {
                 });
                 console.log(`[TestAssignment] Found ${existingSubmissions.length} existing artifacts for commit ${commitHash}`);
 
-                // IMPORTANT: Backend currently doesn't filter by version_identifier, so we must validate client-side
                 const matchingArtifact = existingSubmissions.find(
                   (artifact: any) => artifact.version_identifier === commitHash
                 );
@@ -761,31 +890,25 @@ export class StudentCommands {
                 if (matchingArtifact?.id) {
                   existingArtifactId = matchingArtifact.id;
                   console.log(`[TestAssignment] Reusing artifact ID: ${existingArtifactId} with matching version`);
-                } else if (existingSubmissions.length > 0) {
-                  console.log(`[TestAssignment] Found ${existingSubmissions.length} artifacts but none match version ${commitHash}`);
                 }
               } catch (listError) {
                 console.warn('[TestAssignment] Failed to check existing submissions:', listError);
               }
 
-              let submissionResponse: any = null;
-
               if (existingArtifactId) {
-                console.log(`[TestAssignment] Path: Reusing existing artifact`);
-                progress.report({ message: 'Reusing existing test submission...' });
+                console.log(`[TestAssignment] Path: Reusing existing artifact (no changes)`);
                 submissionResponse = { artifacts: [existingArtifactId] };
               } else {
-                console.log(`[TestAssignment] Path: Creating new artifact`);
-                progress.report({ message: 'Packaging submission archive...' });
-
-                try {
+                // No existing artifact found - create a new one
+                console.log(`[TestAssignment] Path: No existing artifact found, creating new one (no changes)`);
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: `Preparing ${assignmentTitle}...`,
+                  cancellable: false
+                }, async (progress) => {
+                  progress.report({ message: 'Packaging submission archive...' });
                   const archive = await this.createSubmissionArchive(submissionDirectory);
                   console.log(`[TestAssignment] Archive created successfully`);
-
-                  if (token?.isCancellationRequested) {
-                    console.log(`[TestAssignment] Cancelled before upload`);
-                    return;
-                  }
 
                   progress.report({ message: 'Uploading submission package...' });
                   submissionResponse = await this.apiService.createStudentSubmission({
@@ -794,31 +917,28 @@ export class StudentCommands {
                     submit: false
                   }, archive);
                   console.log(`[TestAssignment] Created new submission:`, submissionResponse);
-                } catch (uploadError) {
-                  console.error(`[TestAssignment] Failed to create submission:`, uploadError);
-                  throw uploadError;
-                }
+                });
               }
-
-              // Submit test using artifact_id - artifact is now required
-              if (submissionResponse?.artifacts?.length > 0) {
-                const artifactId = submissionResponse.artifacts[0];
-                console.log(`[TestAssignment] Submitting test with artifact ID: ${artifactId}`);
-                await this.testResultService.submitTestByArtifactAndAwaitResults(
-                  artifactId,
-                  assignmentTitle,
-                  undefined,
-                  { progress, token, showProgress: false }
-                );
-              } else {
-                console.error('[TestAssignment] No artifact ID available, cannot submit test');
-                throw new Error('Failed to create or retrieve submission artifact');
-              }
-              testSucceeded = true;
-            } else {
-              vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
             }
-          });
+          }
+
+          // Submit test - TestResultService will handle its own progress if polling is needed
+          if (submissionResponse?.artifacts?.length > 0) {
+            const artifactId = submissionResponse.artifacts[0];
+            console.log(`[TestAssignment] Submitting test with artifact ID: ${artifactId}`);
+            await this.testResultService.submitTestByArtifactAndAwaitResults(
+              artifactId,
+              assignmentTitle,
+              undefined,
+              { courseContentId }
+            );
+            testSucceeded = true;
+          } else if (commitHash && courseContentId) {
+            console.error('[TestAssignment] No artifact ID available, cannot submit test');
+            throw new Error('Failed to create or retrieve submission artifact');
+          } else {
+            vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
+          }
 
           // Only refresh if test completed successfully
           if (testSucceeded) {
@@ -838,6 +958,47 @@ export class StudentCommands {
         }
       })
     );
+
+    // Help command
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.help', async (item?: any) => {
+        await this.showHelp(item);
+      })
+    );
+  }
+
+  private async showHelp(item?: any): Promise<void> {
+    try {
+      let helpFileName = 'student-course.md';
+
+      // Determine which help file to show based on context value
+      if (item?.contextValue) {
+        const contextValue = item.contextValue as string;
+
+        if (contextValue.startsWith('studentCourseContent')) {
+          // All course content items show assignment help
+          helpFileName = 'student-assignment.md';
+        } else if (contextValue === 'studentCourseUnit') {
+          helpFileName = 'student-unit.md';
+        } else if (contextValue === 'studentCourseRoot') {
+          helpFileName = 'student-course.md';
+        }
+      }
+
+      const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
+
+      if (!fs.existsSync(helpPath)) {
+        vscode.window.showWarningMessage(`Help file not found: ${helpFileName}`);
+        return;
+      }
+
+      const helpUri = vscode.Uri.file(helpPath);
+      await vscode.commands.executeCommand('markdown.showPreview', helpUri);
+
+    } catch (error) {
+      console.error('[showHelp] Failed to show help:', error);
+      vscode.window.showErrorMessage('Failed to open help documentation');
+    }
   }
 
   private async showMessages(item?: any): Promise<void> {
@@ -986,7 +1147,7 @@ export class StudentCommands {
       const courseInfo = courseSelection.getCurrentCourseInfo();
       const currentCourseId = courseSelection.getCurrentCourseId();
 
-      let courseContentSummary: CourseContentStudentList | undefined;
+      let courseContentSummary: CourseContentStudentList | CourseContentStudentGet | undefined;
       let submissionGroupSummary: SubmissionGroupStudentList | undefined;
       let contentType: CourseContentTypeList | undefined;
       let localPath: string | undefined;
@@ -1300,7 +1461,7 @@ export class StudentCommands {
 
 
   private resolveLocalRepositoryPath(
-    courseContent: CourseContentStudentList,
+    courseContent: CourseContentStudentList | CourseContentStudentGet,
     submissionGroup?: SubmissionGroupStudentList
   ): string | undefined {
     const directory = (courseContent as any)?.directory as string | undefined;

@@ -9,9 +9,9 @@
   },
   "workspace": {
     "repositoryDirectory": "/Users/dev/projects/computor",
-    "gitlabTokens": {
-      "https://gitlab.example.com": "***"
-    }
+    "gitlabUrls": [
+      "https://gitlab.example.com"
+    ]
   },
   "ui": {
     "lecturerTree": {

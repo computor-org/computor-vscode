@@ -17,94 +17,53 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
   protected async getWebviewContent(data?: {
     organization: OrganizationGet;
   }): Promise<string> {
+    if (!this.panel) {
+      return this.getBaseHtml('Organization', '<p>Loading…</p>');
+    }
+
     if (!data) {
       return this.getBaseHtml('Organization', '<p>No organization data available</p>');
     }
 
     const { organization } = data;
-    
+
     // Get course families count
-    let familiesCount = 0;
+    let courseFamiliesCount = 0;
     try {
       const families = await this.apiService.getCourseFamilies(organization.id);
-      familiesCount = families.length;
+      courseFamiliesCount = families.length;
     } catch (error) {
       console.error('Failed to get course families:', error);
     }
-    
-    const content = `
-      <h1>${organization.title || organization.path}</h1>
-      
-      <div class="info-section">
-        <h2>Organization Information</h2>
-        <p><strong>ID:</strong> ${organization.id}</p>
-        <p><strong>Path:</strong> ${organization.path}</p>
-        <p><strong>Course Families:</strong> ${familiesCount}</p>
-      </div>
 
-      <div class="form-section">
-        <h2>Edit Organization</h2>
-        <form id="editOrganizationForm">
-          <div class="form-group">
-            <label for="title">Title</label>
-            <input type="text" id="title" name="title" value="${organization.title || ''}" required />
-          </div>
-          
-          <div class="form-group">
-            <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4">${organization.description || ''}</textarea>
-          </div>
-          
-          <div class="actions">
-            <button type="submit" class="button">Save Changes</button>
-          </div>
-        </form>
-      </div>
+    const webview = this.panel.webview;
+    const nonce = this.getNonce();
+    const initialState = JSON.stringify({ organization, courseFamiliesCount });
+    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
+    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'organization-details.css');
+    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
+    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'organization-details.js');
 
-      <div class="actions-section">
-        <h2>Actions</h2>
-        <div class="actions">
-          <button class="button" onclick="createCourseFamily()">Create Course Family</button>
-          <button class="button secondary" onclick="showStatistics()">View Statistics</button>
-          <button class="button secondary" onclick="exportData()">Export Data</button>
-        </div>
-      </div>
-
-      <script nonce="{{NONCE}}">
-        const organizationData = ${JSON.stringify(data)};
-        
-        // Handle form submission
-        document.getElementById('editOrganizationForm').addEventListener('submit', (e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target);
-          sendMessage('updateOrganization', {
-            organizationId: organizationData.organization.id,
-            updates: {
-              title: formData.get('title'),
-              description: formData.get('description')
-            }
-          });
-        });
-        
-        function refreshView() {
-          sendMessage('refresh', { organizationId: organizationData.organization.id });
-        }
-        
-        function createCourseFamily() {
-          sendMessage('createCourseFamily', { organizationId: organizationData.organization.id });
-        }
-        
-        function showStatistics() {
-          sendMessage('showStatistics', { organizationId: organizationData.organization.id });
-        }
-        
-        function exportData() {
-          sendMessage('exportData', { organizationId: organizationData.organization.id });
-        }
+    return `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
+      <title>Organization Details</title>
+      <link rel="stylesheet" href="${componentsCssUri}">
+      <link rel="stylesheet" href="${stylesUri}">
+    </head>
+    <body>
+      <div id="app" class="view-root"></div>
+      <script nonce="${nonce}">
+        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
+        window.__INITIAL_STATE__ = ${initialState};
       </script>
-    `;
-
-    return this.getBaseHtml(`Organization: ${organization.title || organization.path}`, content);
+      <script nonce="${nonce}" src="${componentsJsUri}"></script>
+      <script nonce="${nonce}" src="${scriptUri}"></script>
+    </body>
+    </html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -126,35 +85,31 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        // Reload the webview with fresh data
         if (message.data.organizationId) {
           try {
             const organization = await this.apiService.getOrganization(message.data.organizationId);
             if (organization && this.currentData) {
-              // Update the current data and re-render the entire webview
               this.currentData.organization = organization;
-              const content = await this.getWebviewContent(this.currentData);
-              if (this.panel) {
-                this.panel.webview.html = content;
+
+              // Get updated course families count
+              let courseFamiliesCount = 0;
+              try {
+                const families = await this.apiService.getCourseFamilies(organization.id);
+                courseFamiliesCount = families.length;
+              } catch (error) {
+                console.error('Failed to get course families:', error);
               }
+
+              this.panel?.webview.postMessage({
+                command: 'updateState',
+                data: { organization, courseFamiliesCount }
+              });
               vscode.window.showInformationMessage('Organization refreshed');
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
           }
         }
-        break;
-
-      case 'createCourseFamily':
-        vscode.window.showInformationMessage('Course family creation coming soon!');
-        break;
-
-      case 'showStatistics':
-        vscode.window.showInformationMessage('Organization statistics coming soon!');
-        break;
-
-      case 'exportData':
-        vscode.window.showInformationMessage('Data export functionality coming soon!');
         break;
     }
   }

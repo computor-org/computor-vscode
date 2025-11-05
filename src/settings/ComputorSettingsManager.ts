@@ -46,7 +46,18 @@ export class ComputorSettingsManager {
     settings.authentication.baseUrl = url;
     await this.settingsStorage.save(settings);
   }
-  
+
+  async isAutoLoginEnabled(): Promise<boolean> {
+    const settings = await this.settingsStorage.load();
+    return settings.authentication.autoLogin ?? true;
+  }
+
+  async setAutoLoginEnabled(enabled: boolean): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    settings.authentication.autoLogin = enabled;
+    await this.settingsStorage.save(settings);
+  }
+
   async storeSecureToken(key: string, token: string): Promise<void> {
     await this.secureStorage.store(key, token);
   }
@@ -67,28 +78,38 @@ export class ComputorSettingsManager {
   async setWorkspaceDirectory(directory: string): Promise<void> {
     const settings = await this.settingsStorage.load();
     if (!settings.workspace) {
-      settings.workspace = { repositoryDirectory: directory, gitlabTokens: {} };
+      settings.workspace = { repositoryDirectory: directory, gitlabUrls: [] };
     } else {
       settings.workspace.repositoryDirectory = directory;
     }
     await this.settingsStorage.save(settings);
   }
-  
-  async getGitLabToken(instanceUrl: string): Promise<string | undefined> {
+
+  async getGitLabUrls(): Promise<string[]> {
     const settings = await this.settingsStorage.load();
-    return settings.workspace?.gitlabTokens?.[instanceUrl];
+    return settings.workspace?.gitlabUrls || [];
   }
-  
-  async setGitLabToken(instanceUrl: string, token: string): Promise<void> {
+
+  async addGitLabUrl(instanceUrl: string): Promise<void> {
     const settings = await this.settingsStorage.load();
     if (!settings.workspace) {
-      settings.workspace = { repositoryDirectory: undefined, gitlabTokens: {} };
+      settings.workspace = { repositoryDirectory: undefined, gitlabUrls: [] };
     }
-    if (!settings.workspace.gitlabTokens) {
-      settings.workspace.gitlabTokens = {};
+    if (!settings.workspace.gitlabUrls) {
+      settings.workspace.gitlabUrls = [];
     }
-    settings.workspace.gitlabTokens[instanceUrl] = token;
-    await this.settingsStorage.save(settings);
+    if (!settings.workspace.gitlabUrls.includes(instanceUrl)) {
+      settings.workspace.gitlabUrls.push(instanceUrl);
+      await this.settingsStorage.save(settings);
+    }
+  }
+
+  async removeGitLabUrl(instanceUrl: string): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    if (settings.workspace?.gitlabUrls) {
+      settings.workspace.gitlabUrls = settings.workspace.gitlabUrls.filter(url => url !== instanceUrl);
+      await this.settingsStorage.save(settings);
+    }
   }
 
   async getTreeExpandedStates(): Promise<Record<string, boolean>> {

@@ -225,7 +225,7 @@ Organization
 
 #### Creating Course Content
 
-1. Right-click on `Course Contents` → `Create Course Content`
+1. Right-click on `Course Contents` → `create content`
 2. Enter content details:
    - Title
    - Content type

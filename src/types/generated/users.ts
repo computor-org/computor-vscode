@@ -156,10 +156,6 @@ export interface UserCreate {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** User number/identifier */
-  number?: string | null;
-  /** Type of user account */
-  user_type?: UserTypeEnum | null;
   /** Unique username */
   username?: string | null;
   /** Additional user properties */
@@ -181,16 +177,14 @@ export interface UserGet {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** User number/identifier */
-  number?: string | null;
-  /** Type of user account */
-  user_type?: UserTypeEnum | null;
   /** Unique username */
   username?: string | null;
   /** Additional user properties */
   properties?: any | null;
   /** Timestamp when user was archived */
   archived_at?: string | null;
+  /** Whether this is a service account */
+  is_service: boolean;
   /** Associated student profiles */
   student_profiles?: StudentProfileGet[];
   /** User profile */
@@ -210,12 +204,12 @@ export interface UserList {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** Type of user account */
-  user_type?: UserTypeEnum | null;
   /** Unique username */
   username?: string | null;
   /** Archive timestamp */
   archived_at?: string | null;
+  /** Whether this is a service account */
+  is_service: boolean;
 }
 
 export interface UserUpdate {
@@ -225,8 +219,6 @@ export interface UserUpdate {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** User number/identifier */
-  number?: string | null;
   /** Unique username */
   username?: string | null;
   /** Additional user properties */
@@ -240,10 +232,9 @@ export interface UserQuery {
   given_name?: string | null;
   family_name?: string | null;
   email?: string | null;
-  number?: string | null;
-  user_type?: UserTypeEnum | null;
   archived?: boolean | null;
   username?: string | null;
+  is_service?: boolean | null;
 }
 
 /**
@@ -289,7 +280,3 @@ export interface UserRoleQuery {
   user_id?: string | null;
   role_id?: string | null;
 }
-
-
-
-export type UserTypeEnum = "user" | "token";

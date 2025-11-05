@@ -134,7 +134,7 @@ export class BackendConnectionService {
   /**
    * Start periodic backend health checks
    */
-  startHealthCheck(baseUrl: string, intervalMs: number = 30000): void {
+  startHealthCheck(baseUrl: string, intervalMs: number = 180000): void {
     this.stopHealthCheck();
     this.currentBaseUrl = baseUrl;
     

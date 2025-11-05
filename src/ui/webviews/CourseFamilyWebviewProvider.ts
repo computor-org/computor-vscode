@@ -18,12 +18,16 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
     courseFamily: CourseFamilyGet;
     organization: OrganizationList;
   }): Promise<string> {
+    if (!this.panel) {
+      return this.getBaseHtml('Course Family', '<p>Loading…</p>');
+    }
+
     if (!data) {
       return this.getBaseHtml('Course Family', '<p>No course family data available</p>');
     }
 
     const { courseFamily, organization } = data;
-    
+
     // Get courses count
     let coursesCount = 0;
     try {
@@ -32,92 +36,35 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
     } catch (error) {
       console.error('Failed to get courses:', error);
     }
-    
-    const content = `
-      <h1>${courseFamily.title || courseFamily.path}</h1>
-      
-      <div class="info-section">
-        <h2>Course Family Information</h2>
-        <p><strong>ID:</strong> ${courseFamily.id}</p>
-        <p><strong>Path:</strong> ${courseFamily.path}</p>
-        <p><strong>Organization:</strong> ${organization.title || organization.path}</p>
-        <p><strong>Courses:</strong> ${coursesCount}</p>
-      </div>
 
-      <div class="form-section">
-        <h2>Edit Course Family</h2>
-        <form id="editCourseFamilyForm">
-          <div class="form-group">
-            <label for="title">Title</label>
-            <input type="text" id="title" name="title" value="${courseFamily.title || ''}" required />
-          </div>
-          
-          <div class="form-group">
-            <label for="description">Description</label>
-            <textarea id="description" name="description" rows="4">${courseFamily.description || ''}</textarea>
-          </div>
-          
-          <div class="form-group">
-            <label for="path">Path</label>
-            <input type="text" id="path" name="path" value="${courseFamily.path}" required />
-          </div>
-          
-          <div class="actions">
-            <button type="submit" class="button">Save Changes</button>
-          </div>
-        </form>
-      </div>
+    const webview = this.panel.webview;
+    const nonce = this.getNonce();
+    const initialState = JSON.stringify({ courseFamily, organization, coursesCount });
+    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
+    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'course-family-details.css');
+    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
+    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'course-family-details.js');
 
-      <div class="actions-section">
-        <h2>Actions</h2>
-        <div class="actions">
-          <button class="button" onclick="createCourse()">Create Course</button>
-          <button class="button secondary" onclick="cloneFamily()">Clone Course Family</button>
-          <button class="button secondary" onclick="archiveFamily()">Archive Family</button>
-        </div>
-      </div>
-
-      <script nonce="{{NONCE}}">
-        const familyData = ${JSON.stringify(data)};
-        
-        // Handle form submission
-        document.getElementById('editCourseFamilyForm').addEventListener('submit', (e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target);
-          sendMessage('updateCourseFamily', {
-            familyId: familyData.courseFamily.id,
-            updates: {
-              title: formData.get('title'),
-              description: formData.get('description'),
-              path: formData.get('path')
-            }
-          });
-        });
-        
-        function refreshView() {
-          sendMessage('refresh', { familyId: familyData.courseFamily.id });
-        }
-        
-        function createCourse() {
-          sendMessage('createCourse', { 
-            familyId: familyData.courseFamily.id,
-            organizationId: familyData.organization.id 
-          });
-        }
-        
-        function cloneFamily() {
-          sendMessage('cloneFamily', { familyId: familyData.courseFamily.id });
-        }
-        
-        function archiveFamily() {
-          if (confirm('Are you sure you want to archive this course family?')) {
-            sendMessage('archiveFamily', { familyId: familyData.courseFamily.id });
-          }
-        }
+    return `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
+      <title>Course Family Details</title>
+      <link rel="stylesheet" href="${componentsCssUri}">
+      <link rel="stylesheet" href="${stylesUri}">
+    </head>
+    <body>
+      <div id="app" class="view-root"></div>
+      <script nonce="${nonce}">
+        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
+        window.__INITIAL_STATE__ = ${initialState};
       </script>
-    `;
-
-    return this.getBaseHtml(`Course Family: ${courseFamily.title || courseFamily.path}`, content);
+      <script nonce="${nonce}" src="${componentsJsUri}"></script>
+      <script nonce="${nonce}" src="${scriptUri}"></script>
+    </body>
+    </html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -139,35 +86,31 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        // Reload the webview with fresh data
         if (message.data.familyId) {
           try {
             const courseFamily = await this.apiService.getCourseFamily(message.data.familyId);
             if (courseFamily && this.currentData) {
-              // Update the current data and re-render the entire webview
               this.currentData.courseFamily = courseFamily;
-              const content = await this.getWebviewContent(this.currentData);
-              if (this.panel) {
-                this.panel.webview.html = content;
+
+              // Get updated courses count
+              let coursesCount = 0;
+              try {
+                const courses = await this.apiService.getCourses(courseFamily.id);
+                coursesCount = courses.length;
+              } catch (error) {
+                console.error('Failed to get courses:', error);
               }
+
+              this.panel?.webview.postMessage({
+                command: 'updateState',
+                data: { courseFamily, organization: this.currentData.organization, coursesCount }
+              });
               vscode.window.showInformationMessage('Course family refreshed');
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
           }
         }
-        break;
-
-      case 'createCourse':
-        vscode.window.showInformationMessage('Course creation coming soon!');
-        break;
-
-      case 'cloneFamily':
-        vscode.window.showInformationMessage('Course family cloning coming soon!');
-        break;
-
-      case 'archiveFamily':
-        vscode.window.showInformationMessage('Archive functionality coming soon!');
         break;
     }
   }
