@@ -90,6 +90,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.loginOffline",
+        "title": "Login (Offline Mode)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.toggleAutoLogin",
         "title": "Toggle Auto-Login",
         "category": "Computor"
@@ -129,6 +134,42 @@
         "title": "Help",
         "icon": "$(question)",
         "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.offline.saveAssignment",
+        "title": "Save Assignment",
+        "icon": "$(save)",
+        "category": "Computor Student (Offline Mode)"
+      },
+      {
+        "command": "computor.student.offline.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Student (Offline Mode)"
+      },
+      {
+        "command": "computor.student.offline.openInTerminal",
+        "title": "Open in Terminal",
+        "icon": "$(terminal)",
+        "category": "Computor Student (Offline Mode)"
+      },
+      {
+        "command": "computor.student.offline.openRepoInTerminal",
+        "title": "Open Repository in Terminal",
+        "icon": "$(terminal)",
+        "category": "Computor Student (Offline Mode)"
+      },
+      {
+        "command": "computor.student.offline.pullChanges",
+        "title": "Pull Changes",
+        "icon": "$(cloud-download)",
+        "category": "Computor Student (Offline Mode)"
+      },
+      {
+        "command": "computor.student.offline.showPreview",
+        "title": "Show Preview",
+        "icon": "$(open-preview)",
+        "category": "Computor Student (Offline Mode)"
       },
       {
         "command": "computor.lecturer.checkoutExample",
@@ -496,6 +537,12 @@
           "when": "computor.student.show"
         },
         {
+          "id": "computor-student-offline",
+          "title": "Computor Student (Offline Mode)",
+          "icon": "$(repo)",
+          "when": "computor.student.offline.show"
+        },
+        {
           "id": "computor-tutor",
           "title": "Computor Tutor",
           "icon": "$(person)",
@@ -524,6 +571,15 @@
           "icon": "$(book)",
           "contextualTitle": "Student Course Content",
           "when": "computor.student.show"
+        }
+      ],
+      "computor-student-offline": [
+        {
+          "id": "computor.student.offline.view",
+          "name": "Assignments",
+          "icon": "$(repo)",
+          "contextualTitle": "Student Offline Assignments",
+          "when": "computor.student.offline.show"
         }
       ],
       "computor-tutor": [
@@ -616,6 +672,16 @@
           "command": "computor.manageGitLabTokens",
           "when": "view == computor.student.courses",
           "group": "navigation@3"
+        },
+        {
+          "command": "computor.student.offline.refresh",
+          "when": "view == computor.student.offline.view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.manageGitLabTokens",
+          "when": "view == computor.student.offline.view",
+          "group": "navigation@2"
         },
         {
           "command": "computor.manageGitLabTokens",
@@ -948,6 +1014,36 @@
           "command": "computor.student.help",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
           "group": "3_help@1"
+        },
+        {
+          "command": "computor.student.offline.showPreview",
+          "when": "view == computor.student.offline.view && viewItem == offlineAssignment",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.student.offline.saveAssignment",
+          "when": "view == computor.student.offline.view && viewItem == offlineAssignment",
+          "group": "inline@2"
+        },
+        {
+          "command": "computor.student.offline.pullChanges",
+          "when": "view == computor.student.offline.view && viewItem == offlineCourse",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.student.offline.openInTerminal",
+          "when": "view == computor.student.offline.view && viewItem == offlineAssignment",
+          "group": "1_terminal@1"
+        },
+        {
+          "command": "computor.student.offline.openRepoInTerminal",
+          "when": "view == computor.student.offline.view && viewItem == offlineCourse",
+          "group": "1_terminal@1"
+        },
+        {
+          "command": "computor.student.offline.showPreview",
+          "when": "view == computor.student.offline.view && viewItem == offlineCourse",
+          "group": "2_preview@1"
         },
         {
           "command": "computor.lecturer.fs.rename",

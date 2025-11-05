@@ -563,10 +563,94 @@ interface UnifiedSession {
 }
 
 let activeSession: UnifiedSession | null = null;
+let offlineSession: OfflineSession | null = null;
 let isAuthenticating = false;
 let extensionUpdateService: ExtensionUpdateService | undefined;
 
 const backendConnectionService = BackendConnectionService.getInstance();
+
+/**
+ * Offline session interface
+ */
+interface OfflineSession {
+  deactivate: () => Promise<void>;
+}
+
+/**
+ * Initialize offline mode - works without API
+ */
+async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<void> {
+  if (offlineSession) {
+    vscode.window.showInformationMessage('Offline mode is already active');
+    return;
+  }
+
+  const workspaceRoot = getWorkspaceRoot();
+  if (!workspaceRoot) {
+    vscode.window.showErrorMessage('Please open a folder first');
+    return;
+  }
+
+  // Check if student/ directory exists
+  const studentPath = path.join(workspaceRoot, 'student');
+  if (!fs.existsSync(studentPath)) {
+    const action = await vscode.window.showWarningMessage(
+      'No "student" directory found in workspace. Offline mode requires a student/ directory with git repositories.',
+      'Create Directory',
+      'Cancel'
+    );
+
+    if (action === 'Create Directory') {
+      fs.mkdirSync(studentPath, { recursive: true });
+      vscode.window.showInformationMessage('Created student/ directory');
+    } else {
+      return;
+    }
+  }
+
+  try {
+    // Create .computor marker if it doesn't exist
+    const computorMarkerPath = path.join(workspaceRoot, computorMarker);
+    if (!fs.existsSync(computorMarkerPath)) {
+      fs.writeFileSync(computorMarkerPath, JSON.stringify({ offlineMode: true }, null, 2));
+    }
+
+    // Initialize offline view
+    const { StudentOfflineTreeProvider } = await import('./ui/tree/student/StudentOfflineTreeProvider');
+    const { StudentOfflineCommands } = await import('./commands/StudentOfflineCommands');
+
+    const offlineTree = new StudentOfflineTreeProvider(context);
+    const treeDisposable = vscode.window.registerTreeDataProvider('computor.student.offline.view', offlineTree);
+
+    const offlineTreeView = vscode.window.createTreeView('computor.student.offline.view', {
+      treeDataProvider: offlineTree,
+      showCollapseAll: true
+    });
+
+    // Register offline commands
+    const offlineCommands = new StudentOfflineCommands(context, offlineTree);
+    offlineCommands.registerCommands();
+
+    // Set context to show offline view
+    await vscode.commands.executeCommand('setContext', 'computor.student.offline.show', true);
+
+    // Focus on offline view
+    await vscode.commands.executeCommand('workbench.view.extension.computor-student-offline');
+
+    offlineSession = {
+      deactivate: async () => {
+        treeDisposable.dispose();
+        offlineTreeView.dispose();
+        await vscode.commands.executeCommand('setContext', 'computor.student.offline.show', false);
+      }
+    };
+
+    vscode.window.showInformationMessage('✓ Offline mode activated');
+  } catch (error: any) {
+    console.error('Failed to initialize offline mode:', error);
+    vscode.window.showErrorMessage(`Failed to initialize offline mode: ${error.message}`);
+  }
+}
 
 async function performTokenRefresh(
   context: vscode.ExtensionContext,
@@ -814,9 +898,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
   await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
   await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+  await vscode.commands.executeCommand('setContext', 'computor.student.offline.show', false);
 
   // Unified login command
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
+
+  // Offline mode login command
+  context.subscriptions.push(vscode.commands.registerCommand('computor.loginOffline', async () => {
+    await initializeOfflineMode(context);
+  }));
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.manageGitLabTokens', async () => {
     await manageGitLabTokens(context);
