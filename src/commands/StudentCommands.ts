@@ -613,6 +613,8 @@ export class StudentCommands {
           if (submissionOk) {
             try {
               if (courseContentId) {
+                // Clear the cache for this specific content to ensure fresh data
+                this.apiService.clearStudentCourseContentCache(courseContentId);
                 await this.treeDataProvider.refreshContentItem(courseContentId);
               } else {
                 this.treeDataProvider.refresh();
