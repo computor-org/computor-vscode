@@ -1831,9 +1831,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       );
 
       // Assign the example version to the course content
-      await this.apiService.assignExampleVersionToCourseContent(
+      await this.apiService.lecturerAssignExample(
         target.courseContent.id,
-        latestVersion.id
+        {
+          example_identifier: fullExample.identifier,
+          version_tag: latestVersion.version_tag
+        }
       );
 
       // Trigger assignments sync so files are populated in assignments repo
@@ -1960,9 +1963,12 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           );
 
           try {
-            await this.apiService.assignExampleVersionToCourseContent(
+            await this.apiService.lecturerAssignExample(
               createdContent.id,
-              latestVersion.id
+              {
+                example_identifier: fullExample.identifier,
+                version_tag: latestVersion.version_tag
+              }
             );
             // Trigger assignments sync for the newly created content
             try {

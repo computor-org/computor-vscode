@@ -1222,9 +1222,12 @@ Explain how to use this example.
           );
 
           try {
-            await this.apiService.assignExampleVersionToCourseContent(
+            await this.apiService.lecturerAssignExample(
               createdContent.id,
-              latestVersion.id
+              {
+                example_identifier: fullExample.identifier,
+                version_tag: latestVersion.version_tag
+              }
             );
             // Trigger assignments sync for this single content
             try {

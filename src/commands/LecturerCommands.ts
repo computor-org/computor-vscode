@@ -1453,10 +1453,14 @@ export class LecturerCommands {
 
   /**
    * Auto-assign examples to assignments based on local meta.yaml data
+   * @param forceReassign If true, will reassign even if an example version is already assigned
+   * @param contentIds Optional array of content IDs to limit assignment to specific content
    */
-  private async autoAssignExamplesFromLocal(courseId: string): Promise<void> {
+  private async autoAssignExamplesFromLocal(courseId: string, forceReassign: boolean = false, contentIds?: string[]): Promise<void> {
     console.log('[AUTO-ASSIGN] ========================================');
     console.log('[AUTO-ASSIGN] Starting auto-assignment for course:', courseId);
+    console.log('[AUTO-ASSIGN] Force reassign:', forceReassign);
+    console.log('[AUTO-ASSIGN] Content IDs filter:', contentIds?.length ? contentIds : 'All content');
     try {
       const course = await this.apiService.getCourse(courseId);
       if (!course) {
@@ -1481,30 +1485,21 @@ export class LecturerCommands {
         return;
       }
 
-      // Get content types to identify submittable content (assignments)
-      const contentTypes = await this.apiService.getCourseContentTypes(courseId);
-      const submittableTypeIds = new Set<string>();
-
-      for (const type of contentTypes) {
-        const fullType = await this.apiService.getCourseContentType(type.id);
-        if (fullType?.course_content_kind?.submittable) {
-          submittableTypeIds.add(type.id);
-        }
-      }
-
-      // Find assignments without examples and try to match them
+      // Find assignments and match them with local examples
       const assignmentsToAssign: Array<{ contentId: string; exampleIdentifier: string; versionTag: string; title: string }> = [];
 
       for (const content of contents) {
-        const isSubmittable = submittableTypeIds.has(content.course_content_type_id);
-        if (!isSubmittable) {
+        // Filter by content IDs if specified (these are already filtered to be submittable)
+        if (contentIds && contentIds.length > 0 && !contentIds.includes(content.id)) {
+          console.log(`[AUTO-ASSIGN] Skipping ${content.title}: not in content IDs filter`);
           continue;
         }
 
         // Check if deployment has an actual example version assigned
         const hasExampleVersion = content.deployment?.example_version_id;
-        if (hasExampleVersion) {
-          continue; // Already has example version assigned
+        if (hasExampleVersion && !forceReassign) {
+          console.log(`[AUTO-ASSIGN] Skipping ${content.title}: already has example version ${content.deployment?.example_version_id}`);
+          continue; // Already has example version assigned and we're not forcing reassignment
         }
 
         // Try to find matching example in local repository
@@ -2208,8 +2203,10 @@ export class LecturerCommands {
         console.log('[RELEASE] ✓ Example check/upload complete');
 
         // Auto-assign examples to assignments based on identifiers
-        console.log('[RELEASE] Calling autoAssignExamplesFromLocal...');
-        await this.autoAssignExamplesFromLocal(courseId);
+        // Force reassignment during release to ensure versions are updated even if already assigned
+        // Only assign for the pending content IDs to avoid assigning all examples in the course
+        console.log('[RELEASE] Calling autoAssignExamplesFromLocal with forceReassign=true and contentIds filter...');
+        await this.autoAssignExamplesFromLocal(courseId, true, pendingIds.length > 0 ? pendingIds : undefined);
         console.log('[RELEASE] ✓ Auto-assignment complete');
       } catch (error: any) {
         console.error('[RELEASE] ❌ Error during auto-upload/assign:', error);

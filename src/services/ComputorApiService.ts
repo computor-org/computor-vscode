@@ -806,56 +806,9 @@ export class ComputorApiService {
   }
 
   /**
-   * @deprecated Use assignExampleVersionToCourseContent instead
-   * This method is kept for backward compatibility but will be removed
+   * Assign example to course content (non-lecturer endpoint)
+   * Uses the /course-contents/{id}/assign-example endpoint
    */
-  async assignExampleToCourseContent(
-    courseId: string, 
-    contentId: string, 
-    exampleId: string, 
-    exampleVersion?: string
-  ): Promise<CourseContentGet> {
-    // Note: courseId is kept for API consistency but not used in the endpoint
-    void courseId;
-    void contentId;
-    void exampleId;
-    void exampleVersion;
-    
-    // This old method signature can't work with the new API
-    // The backend now requires example_version_id, not example_id + version tag
-    throw new Error('assignExampleToCourseContent is deprecated. Use assignExampleVersionToCourseContent with example_version_id instead.');
-  }
-
-  /**
-   * Assign an example version to course content using the new deployment model
-   */
-  async assignExampleVersionToCourseContent(
-    contentId: string,
-    exampleVersionId: string
-  ): Promise<CourseContentGet> {
-    return errorRecoveryService.executeWithRecovery(async () => {
-      const client = await this.getHttpClient();
-      
-      const requestData = {
-        example_version_id: exampleVersionId
-      };
-      
-      const response = await client.post<CourseContentGet>(
-        `/course-contents/${contentId}/assign-example`,
-        requestData
-      );
-      
-      // Clear cache for this content
-      multiTierCache.delete(`courseContent-${contentId}-true`);
-      multiTierCache.delete(`courseContent-${contentId}-false`);
-      
-      return response.data;
-    }, {
-      maxRetries: 2,
-      exponentialBackoff: true
-    });
-  }
-
   async assignExampleSourceToCourseContent(
     contentId: string,
     exampleIdentifier: string,
@@ -955,24 +908,51 @@ export class ComputorApiService {
 
   /**
    * Lecturer: Assign example to course content
-   * Uses the new /lecturer/course-contents/{id}/assign-example endpoint
+   * Uses the /lecturers/course-contents/{id}/assign-example endpoint
    */
   async lecturerAssignExample(
     contentId: string,
     request: { example_identifier: string; version_tag: string }
   ): Promise<any> {
+    const endpoint = `/lecturers/course-contents/${contentId}/assign-example`;
+    console.log('[lecturerAssignExample] Request:', {
+      endpoint,
+      contentId,
+      request
+    });
+
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
-      const response = await client.post(
-        `/course-contents/${contentId}/assign-example`,
-        request
-      );
 
-      // Clear cache for this content
-      multiTierCache.delete(`courseContent-${contentId}-true`);
-      multiTierCache.delete(`courseContent-${contentId}-false`);
+      try {
+        const response = await client.post(endpoint, request);
 
-      return response.data;
+        console.log('[lecturerAssignExample] Success response:', {
+          status: response.status,
+          data: response.data
+        });
+
+        // Clear cache for this content
+        multiTierCache.delete(`courseContent-${contentId}-true`);
+        multiTierCache.delete(`courseContent-${contentId}-false`);
+
+        return response.data;
+      } catch (error: any) {
+        console.error('[lecturerAssignExample] Error response:', {
+          endpoint,
+          contentId,
+          request,
+          error: {
+            message: error.message,
+            status: error.status,
+            statusText: error.statusText,
+            response: error.response,
+            errorCode: error.errorCode,
+            backendError: error.backendError
+          }
+        });
+        throw error;
+      }
     }, {
       maxRetries: 2,
       exponentialBackoff: true
@@ -986,7 +966,7 @@ export class ComputorApiService {
     try {
       const client = await this.getHttpClient();
       const response = await client.get(
-        `/lecturer/course-contents/${contentId}/deployment`
+        `/lecturers/course-contents/${contentId}/deployment`
       );
       return response.data;
     } catch (error) {
@@ -1022,7 +1002,7 @@ export class ComputorApiService {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
       const response = await client.delete(
-        `/lecturer/course-contents/${contentId}/deployment`
+        `/lecturers/course-contents/${contentId}/deployment`
       );
 
       // Clear cache for this content
