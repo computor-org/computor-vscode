@@ -1012,6 +1012,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         if (autoLoginEnabled && storedUsername && storedPassword) {
           // Auto-login is enabled and credentials are stored - attempt silent login
+          let loginFailed = false;
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: 'Auto-logging in to Computor...',
@@ -1036,16 +1037,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               }
             } catch (error: any) {
               console.warn('Auto-login failed:', error);
-              const action = await vscode.window.showWarningMessage(
-                'Auto-login failed. Would you like to login manually?',
-                'Login',
-                'Not Now'
-              );
-              if (action === 'Login') {
-                await unifiedLoginFlow(context);
-              }
+              loginFailed = true;
             }
           });
+
+          if (loginFailed) {
+            const action = await vscode.window.showWarningMessage(
+              'Auto-login failed. Would you like to login manually?',
+              'Login',
+              'Not Now'
+            );
+            if (action === 'Login') {
+              await unifiedLoginFlow(context);
+            }
+          }
         } else if (!autoLoginEnabled) {
           // Auto-login is explicitly disabled - show prompt
           const action = await vscode.window.showInformationMessage(
@@ -1092,6 +1097,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
             if (autoLoginEnabled && storedUsername && storedPassword) {
               // Auto-login is enabled and credentials are stored - attempt silent login
+              let loginFailed = false;
               await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: 'Auto-logging in to Computor...',
@@ -1116,16 +1122,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                   }
                 } catch (error: any) {
                   console.warn('Auto-login failed:', error);
-                  const action = await vscode.window.showWarningMessage(
-                    'Auto-login failed. Would you like to login manually?',
-                    'Login',
-                    'Not Now'
-                  );
-                  if (action === 'Login') {
-                    await unifiedLoginFlow(context);
-                  }
+                  loginFailed = true;
                 }
               });
+
+              if (loginFailed) {
+                const action = await vscode.window.showWarningMessage(
+                  'Auto-login failed. Would you like to login manually?',
+                  'Login',
+                  'Not Now'
+                );
+                if (action === 'Login') {
+                  await unifiedLoginFlow(context);
+                }
+              }
             } else if (!autoLoginEnabled) {
               // Auto-login is explicitly disabled - show prompt
               const action = await vscode.window.showInformationMessage(
