@@ -42,6 +42,7 @@
 | `adminSetPasswordPasswordAdminSetPost` | POST | `/password/admin/set` | `AdminSetPasswordRequest` | `PasswordOperationResponse` |
 | `adminGetUserPasswordStatusPasswordAdminStatusUsernameGet` | GET | `/password/admin/status/{username}` | — | `PasswordStatusResponse` |
 | `changePasswordPasswordChangePost` | POST | `/password/change` | `ChangePasswordRequest` | `PasswordOperationResponse` |
+| `userManagerResetPasswordPasswordResetPost` | POST | `/password/reset` | `UserManagerResetPasswordRequest` | `PasswordOperationResponse` |
 | `setInitialPasswordPasswordSetPost` | POST | `/password/set` | `SetPasswordRequest` | `PasswordOperationResponse` |
 | `getPasswordStatusPasswordStatusGet` | GET | `/password/status` | — | `PasswordStatusResponse` |
 
@@ -212,6 +213,14 @@
 | `publishExtensionVersionExtensionsExtensionIdentityVersionsPost` | POST | `/extensions/{extension_identity}/versions` | — | `ExtensionPublishResponse` |
 | `updateExtensionVersionExtensionsExtensionIdentityVersionsVersionPatch` | PATCH | `/extensions/{extension_identity}/versions/{version}` | `ExtensionVersionYankRequest` | `ExtensionVersionDetail` |
 
+## ExtensionsPublicClient
+- Base path: `/extensions-public`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `getPublicExtensionUrlExtensionsPublicGet` | GET | `/extensions-public` | — | `string` |
+
 ## GroupsClient
 - Base path: `/groups`
 - Note: custom operations discovered from OpenAPI schema
@@ -244,6 +253,7 @@
 | `assignExampleToCourseContentLecturersCourseContentsCourseContentIdAssignExamplePost` | POST | `/lecturers/course-contents/{course_content_id}/assign-example` | `computor_types__lecturer_deployments__AssignExampleRequest` | `AssignExampleResponse` |
 | `unassignExampleFromCourseContentLecturersCourseContentsCourseContentIdDeploymentDelete` | DELETE | `/lecturers/course-contents/{course_content_id}/deployment` | — | `UnassignExampleResponse` |
 | `getCourseContentDeploymentLecturersCourseContentsCourseContentIdDeploymentGet` | GET | `/lecturers/course-contents/{course_content_id}/deployment` | — | `DeploymentGet` |
+| `syncMemberGitlabPermissionsEndpointLecturersCourseMembersCourseMemberIdSyncGitlabPost` | POST | `/lecturers/course-members/{course_member_id}/sync-gitlab` | `GitLabSyncRequest` | `GitLabSyncResult` |
 | `lecturerListCoursesEndpointLecturersCoursesGet` | GET | `/lecturers/courses` | — | `CourseList[]` |
 | `lecturerGetCoursesEndpointLecturersCoursesCourseIdGet` | GET | `/lecturers/courses/{course_id}` | — | `CourseGet` |
 | `validateCourseContentBatchLecturersCoursesCourseIdValidatePost` | POST | `/lecturers/courses/{course_id}/validate` | `ContentValidationCreate` | `ContentValidationGet` |

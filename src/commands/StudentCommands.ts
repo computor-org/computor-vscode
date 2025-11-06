@@ -613,14 +613,34 @@ export class StudentCommands {
           if (submissionOk) {
             try {
               if (courseContentId) {
-                // Clear the cache for this specific content to ensure fresh data
-                this.apiService.clearStudentCourseContentCache(courseContentId);
-                await this.treeDataProvider.refreshContentItem(courseContentId);
+                // After PATCH, fetch fresh data from the API and update the tree
+                const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
+                console.log('[submitAssignment] Fetching fresh course contents after PATCH:', {
+                  courseId,
+                  courseContentId
+                });
+
+                if (courseId) {
+                  // Clear cache and fetch fresh data with course_id filter
+                  this.apiService.clearStudentCourseContentsCache(courseId);
+                  this.apiService.clearStudentCourseContentCache(courseContentId);
+
+                  // This will make: GET /students/course-contents?course_id=...
+                  await this.apiService.getStudentCourseContents(courseId, { force: true });
+
+                  // Now refresh the tree item with the fresh data
+                  await this.treeDataProvider.refreshContentItem(courseContentId);
+                  console.log('[submitAssignment] Tree refresh complete');
+                } else {
+                  console.warn('[submitAssignment] No courseId available, doing full refresh');
+                  this.treeDataProvider.refresh();
+                }
               } else {
+                console.log('[submitAssignment] No courseContentId, doing full refresh');
                 this.treeDataProvider.refresh();
               }
             } catch (refreshError) {
-              console.warn('[StudentCommands] Failed to refresh course content after submission:', refreshError);
+              console.error('[submitAssignment] Failed to refresh course content after submission:', refreshError);
             }
 
             if (reusedExistingSubmission) {

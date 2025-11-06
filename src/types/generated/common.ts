@@ -993,6 +993,8 @@ export interface ServiceTypeList {
   icon?: string | null;
   /** Hex color */
   color?: string | null;
+  /** Version number */
+  version: number;
 }
 
 /**
@@ -1390,6 +1392,30 @@ export interface SemanticVersion {
   patch: number;
   /** Optional prerelease identifier */
   prerelease?: any;
+}
+
+/**
+ * Request to sync GitLab permissions for a course member.
+ */
+export interface GitLabSyncRequest {
+  /** GitLab access token to check existing permissions before syncing (reduces API calls with organization token) */
+  access_token?: string | null;
+}
+
+/**
+ * Result of GitLab permission sync operation.
+ */
+export interface GitLabSyncResult {
+  course_member_id: string;
+  user_id: string;
+  username: string;
+  course_role_id: string;
+  sync_status: string;
+  message?: string | null;
+  permissions_granted?: string[];
+  permissions_updated?: string[];
+  api_calls_made?: number;
+  synced_at?: string | null;
 }
 
 /**
@@ -2475,14 +2501,14 @@ export interface CourseContentDeploymentGet {
   example_identifier?: string | null;
   version_tag?: string | null;
   deployment_status: string;
-  deployment_message: string | null;
+  deployment_message?: string | null;
   assigned_at: string;
-  deployed_at: string | null;
-  last_attempt_at: string | null;
-  deployment_path: string | null;
-  version_identifier: string | null;
-  deployment_metadata: Record<string, any> | null;
-  workflow_id: string | null;
+  deployed_at?: string | null;
+  last_attempt_at?: string | null;
+  deployment_path?: string | null;
+  version_identifier?: string | null;
+  deployment_metadata?: Record<string, any> | null;
+  workflow_id?: string | null;
   example_version?: any | null;
 }
 
