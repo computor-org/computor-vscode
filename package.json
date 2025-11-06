@@ -90,6 +90,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.signUp",
+        "title": "Sign Up (Set Initial Password)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.loginOffline",
         "title": "Login (Offline Mode)",
         "category": "Computor"
