@@ -343,6 +343,10 @@ class UnifiedController {
       await this.initializeLecturerView(api);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
     }
+    if (views.includes('user_manager')) {
+      await this.initializeUserManagerView(api);
+      await vscode.commands.executeCommand('setContext', 'computor.user_manager.show', true);
+    }
 
     // Set context keys for views that are NOT available to false
     if (!views.includes('student')) {
@@ -353,6 +357,9 @@ class UnifiedController {
     }
     if (!views.includes('lecturer')) {
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+    }
+    if (!views.includes('user_manager')) {
+      await vscode.commands.executeCommand('setContext', 'computor.user_manager.show', false);
     }
   }
 
@@ -537,6 +544,22 @@ class UnifiedController {
     }
   }
 
+  private async initializeUserManagerView(api: ComputorApiService): Promise<void> {
+    const { UserManagerTreeProvider } = await import('./ui/tree/user-manager/UserManagerTreeProvider');
+    const { UserManagerCommands } = await import('./commands/UserManagerCommands');
+
+    const tree = new UserManagerTreeProvider(api, this.context);
+    this.disposables.push(vscode.window.registerTreeDataProvider('computor.usermanager.users', tree));
+
+    const treeView = vscode.window.createTreeView('computor.usermanager.users', {
+      treeDataProvider: tree,
+      showCollapseAll: false
+    });
+    this.disposables.push(treeView);
+
+    const commands = new UserManagerCommands(this.context, tree, api);
+    commands.registerCommands();
+  }
 
   async dispose(): Promise<void> {
     for (const d of this.disposables) d.dispose();

@@ -94,6 +94,16 @@ export interface AccountQuery {
   user_id?: string | null;
 }
 
+/**
+ * User manager request to reset a user's password (sets to NULL).
+ */
+export interface UserManagerResetPasswordRequest {
+  /** Target user ID to reset */
+  user_id: string;
+  /** User manager's own password for verification */
+  manager_password: string;
+}
+
 export interface UserGroupCreate {
   /** User ID */
   user_id: string;
@@ -189,6 +199,8 @@ export interface UserGet {
   student_profiles?: StudentProfileGet[];
   /** User profile */
   profile?: ProfileGet | null;
+  /** User's global roles */
+  user_roles?: UserRoleGet[];
 }
 
 export interface UserList {

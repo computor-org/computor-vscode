@@ -279,6 +279,18 @@
         "category": "Computor"
       },
       {
+        "command": "computor.userManager.refresh",
+        "title": "Refresh Users",
+        "icon": "$(refresh)",
+        "category": "Computor User Manager"
+      },
+      {
+        "command": "computor.userManager.openUserDetails",
+        "title": "Open User Details",
+        "icon": "$(account)",
+        "category": "Computor User Manager"
+      },
+      {
         "command": "computor.logout",
         "title": "Logout",
         "icon": "$(sign-out)",
@@ -558,6 +570,12 @@
           "title": "Computor Lecturer",
           "icon": "$(mortar-board)",
           "when": "computor.lecturer.show"
+        },
+        {
+          "id": "computor-user-manager",
+          "title": "Computor User Manager",
+          "icon": "$(organization)",
+          "when": "computor.user_manager.show"
         }
       ],
       "panel": [
@@ -618,6 +636,15 @@
           "icon": "$(repo)",
           "contextualTitle": "Example Repository",
           "when": "computor.lecturer.show"
+        }
+      ],
+      "computor-user-manager": [
+        {
+          "id": "computor.usermanager.users",
+          "name": "Users",
+          "icon": "$(organization)",
+          "contextualTitle": "User Management",
+          "when": "computor.user_manager.show"
         }
       ],
       "computor-test-results": [
@@ -681,6 +708,11 @@
         {
           "command": "computor.student.offline.refresh",
           "when": "view == computor.student.offline.view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.userManager.refresh",
+          "when": "view == computor.usermanager.users",
           "group": "navigation@1"
         },
         {
@@ -1044,6 +1076,11 @@
           "command": "computor.student.offline.openInTerminal",
           "when": "view == computor.student.offline.view && viewItem == offlineAssignment",
           "group": "1_terminal@1"
+        },
+        {
+          "command": "computor.userManager.openUserDetails",
+          "when": "view == computor.usermanager.users && viewItem == user",
+          "group": "inline@1"
         },
         {
           "command": "computor.student.offline.openRepoInTerminal",

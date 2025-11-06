@@ -43,6 +43,7 @@ import {
   CourseMemberImportResponse,
   UserPassword,
   UserGet,
+  UserList,
   UserUpdate,
   CourseMemberValidationRequest,
   TaskResponse,
@@ -2244,6 +2245,95 @@ export class ComputorApiService {
   async updateUserPassword(payload: UserPassword): Promise<void> {
     const client = await this.getHttpClient();
     await client.post('/user/password', payload);
+  }
+
+  // User Management: List all users
+  async getUsers(options?: { force?: boolean }): Promise<UserList[]> {
+    const cacheKey = 'allUsers';
+
+    if (!options?.force) {
+      const cached = multiTierCache.get<UserList[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<UserList[]>('/users');
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result || [];
+    } catch (error) {
+      console.error('[getUsers] Failed to fetch users:', error);
+      throw error;
+    }
+  }
+
+  // User Management: Get a specific user by ID
+  async getUserById(userId: string, options?: { force?: boolean }): Promise<UserGet | undefined> {
+    const cacheKey = `user-${userId}`;
+
+    if (!options?.force) {
+      const cached = multiTierCache.get<UserGet>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<UserGet>(`/users/${userId}`);
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error(`[getUserById] Failed to fetch user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  // User Management: Update a user
+  async updateUser(userId: string, updates: UserUpdate): Promise<UserGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.patch<UserGet>(`/users/${userId}`, updates);
+
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+
+      return response.data;
+    } catch (error) {
+      console.error(`[updateUser] Failed to update user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  // User Management: Reset user password (placeholder - endpoint to be implemented)
+  async resetUserPassword(userId: string, managerPassword: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.post(`/users/${userId}/reset-password`, {
+        manager_password: managerPassword
+      });
+
+      multiTierCache.delete(`user-${userId}`);
+    } catch (error) {
+      console.error(`[resetUserPassword] Failed to reset password for user ${userId}:`, error);
+      throw error;
+    }
   }
 
   // Tutor: course contents for a specific member in a course
