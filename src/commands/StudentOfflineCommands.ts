@@ -2,17 +2,18 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { StudentOfflineTreeProvider } from '../ui/tree/student/StudentOfflineTreeProvider';
 import { GitService } from '../services/GitService';
-import { GitLabTokenManager } from '../services/GitLabTokenManager';
+import { OfflineRepositoryManager } from '../services/OfflineRepositoryManager';
 
 /**
  * Commands for the student offline mode
  * Provides git operations without API dependencies
+ * Does NOT use secret storage for tokens
  */
 export class StudentOfflineCommands {
     private context: vscode.ExtensionContext;
     private treeProvider: StudentOfflineTreeProvider;
     private gitService: GitService;
-    private gitLabTokenManager: GitLabTokenManager;
+    private offlineRepoManager: OfflineRepositoryManager;
 
     constructor(
         context: vscode.ExtensionContext,
@@ -21,10 +22,17 @@ export class StudentOfflineCommands {
         this.context = context;
         this.treeProvider = treeProvider;
         this.gitService = GitService.getInstance();
-        this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+        this.offlineRepoManager = new OfflineRepositoryManager();
     }
 
     registerCommands(): void {
+        // Add new course
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('computor.student.offline.addCourse', async () => {
+                await this.addCourse();
+            })
+        );
+
         // Refresh offline view
         this.context.subscriptions.push(
             vscode.commands.registerCommand('computor.student.offline.refresh', () => {
@@ -69,6 +77,20 @@ export class StudentOfflineCommands {
     }
 
     /**
+     * Add a new course repository
+     */
+    private async addCourse(): Promise<void> {
+        try {
+            await this.offlineRepoManager.addCourse();
+            // Refresh tree to show the new repository
+            this.treeProvider.refresh();
+        } catch (error: any) {
+            console.error('[StudentOfflineCommands] Failed to add course:', error);
+            vscode.window.showErrorMessage(`Failed to add course: ${error.message}`);
+        }
+    }
+
+    /**
      * Save assignment: add all changes, commit, and push
      * This is the main "Save" button for offline mode
      */
@@ -109,7 +131,7 @@ export class StudentOfflineCommands {
                 progress.report({ increment: 0, message: 'Preparing to save...' });
 
                 // Stage the assignment directory
-                progress.report({ increment: 30, message: 'Adding changes...' });
+                progress.report({ increment: 30, message: 'Staging changes...' });
                 await this.gitService.stagePath(repoPath, assignmentPath);
 
                 // Check if something is staged
@@ -122,9 +144,9 @@ export class StudentOfflineCommands {
                 progress.report({ increment: 50, message: 'Committing changes...' });
                 await this.gitService.commitChanges(repoPath, commitMessage);
 
-                // Push to remote with authentication
+                // Push to remote
                 progress.report({ increment: 70, message: 'Pushing to remote...' });
-                await this.pushWithAuth(repoPath);
+                await this.gitService.pushCurrentBranch(repoPath);
 
                 progress.report({ increment: 100, message: 'Successfully saved!' });
             });
@@ -140,7 +162,7 @@ export class StudentOfflineCommands {
     }
 
     /**
-     * Pull latest changes from remote repository
+     * Pull latest changes from remote repository and update fork from upstream
      */
     private async pullChanges(item: any): Promise<void> {
         console.log('[StudentOfflineCommands] Pull changes:', item);
@@ -165,24 +187,56 @@ export class StudentOfflineCommands {
         try {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: `Pulling changes for ${repoName}...`,
+                title: `Updating ${repoName}...`,
                 cancellable: false
             }, async (progress) => {
-                progress.report({ message: 'Fetching from remote...' });
+                progress.report({ increment: 0, message: 'Fetching from origin...' });
 
-                // Use git wrapper to pull
+                // Pull from origin
                 const { GitWrapper } = await import('../git/GitWrapper');
                 const gitWrapper = new GitWrapper();
                 await gitWrapper.pull(repoPath!);
+
+                progress.report({ increment: 50, message: 'Checking for upstream...' });
+
+                // Check if upstream remote exists
+                const remotes = await gitWrapper.getRemotes(repoPath!);
+                const hasUpstream = remotes.some(r => r.name === 'upstream');
+
+                if (hasUpstream) {
+                    progress.report({ increment: 60, message: 'Fetching from upstream (fork origin)...' });
+
+                    // Fetch and merge from upstream using pull (which includes fetch + merge)
+                    try {
+                        // Try to pull from upstream/main
+                        try {
+                            await gitWrapper.pull(repoPath!, 'upstream', 'main');
+                        } catch {
+                            // Fallback to upstream/master
+                            try {
+                                await gitWrapper.pull(repoPath!, 'upstream', 'master');
+                            } catch (mergeError: any) {
+                                console.warn('[StudentOfflineCommands] Could not pull from upstream:', mergeError);
+                                // Continue even if merge fails - user might need to resolve manually
+                            }
+                        }
+                    } catch (upstreamError: any) {
+                        console.warn('[StudentOfflineCommands] Failed to update from upstream:', upstreamError);
+                    }
+
+                    progress.report({ increment: 100, message: 'Done!' });
+                } else {
+                    progress.report({ increment: 100, message: 'Done! (no upstream configured)' });
+                }
             });
 
-            vscode.window.showInformationMessage(`✓ Successfully pulled changes for ${repoName}`);
+            vscode.window.showInformationMessage(`✓ Successfully updated ${repoName}`);
 
             // Refresh tree to update git status
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to pull changes:', error);
-            vscode.window.showErrorMessage(`Failed to pull changes: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to update: ${error.message}`);
         }
     }
 
@@ -220,110 +274,6 @@ export class StudentOfflineCommands {
         terminal.show();
     }
 
-    /**
-     * Push to remote with GitLab token authentication
-     */
-    private async pushWithAuth(repoPath: string): Promise<void> {
-        try {
-            // First, try to get the remote URL
-            const { GitWrapper } = await import('../git/GitWrapper');
-            const gitWrapper = new GitWrapper();
-            const remotes = await gitWrapper.getRemotes(repoPath);
-
-            if (remotes.length === 0) {
-                throw new Error('No remote repository configured');
-            }
-
-            const originRemote = remotes.find(r => r.name === 'origin') || remotes[0];
-            const remoteUrl = originRemote?.url;
-
-            if (!remoteUrl) {
-                throw new Error('Remote URL not found');
-            }
-
-            // Extract GitLab origin from URL
-            const gitlabOrigin = this.extractGitLabOrigin(remoteUrl);
-
-            if (!gitlabOrigin) {
-                // Not a GitLab URL, try pushing without token
-                await this.gitService.pushCurrentBranch(repoPath);
-                return;
-            }
-
-            // Check if we have a token for this GitLab instance
-            const token = await this.gitLabTokenManager.getToken(gitlabOrigin);
-
-            if (!token) {
-                // No token found, ask user to configure it
-                const action = await vscode.window.showWarningMessage(
-                    `No GitLab token found for ${gitlabOrigin}. Push may fail if authentication is required.`,
-                    'Configure Token',
-                    'Try Anyway'
-                );
-
-                if (action === 'Configure Token') {
-                    await vscode.commands.executeCommand('computor.manageGitLabTokens');
-                    return;
-                }
-            }
-
-            // Try to push
-            await this.gitService.pushCurrentBranch(repoPath);
-        } catch (error: any) {
-            // If push failed, check if it's an authentication error
-            if (this.isAuthenticationError(error)) {
-                const action = await vscode.window.showErrorMessage(
-                    'Push failed: Authentication required. Please configure your GitLab token.',
-                    'Configure Token'
-                );
-
-                if (action === 'Configure Token') {
-                    await vscode.commands.executeCommand('computor.manageGitLabTokens');
-                }
-            }
-
-            throw error;
-        }
-    }
-
-    /**
-     * Extract GitLab origin URL from a git remote URL
-     * Examples:
-     * - https://gitlab.example.com/user/repo.git -> https://gitlab.example.com
-     * - http://localhost:8084/user/repo.git -> http://localhost:8084
-     */
-    private extractGitLabOrigin(remoteUrl: string): string | null | undefined {
-        try {
-            // Handle HTTPS URLs
-            const httpsMatch = remoteUrl.match(/^(https?:\/\/[^\/]+)/);
-            if (httpsMatch) {
-                return httpsMatch[1];
-            }
-
-            // Handle SSH URLs (git@gitlab.example.com:user/repo.git)
-            const sshMatch = remoteUrl.match(/^git@([^:]+):/);
-            if (sshMatch) {
-                return `https://${sshMatch[1]}`;
-            }
-
-            return null;
-        } catch (error) {
-            console.error('[StudentOfflineCommands] Failed to extract GitLab origin:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Check if an error is an authentication error
-     */
-    private isAuthenticationError(error: any): boolean {
-        const errorString = String(error).toLowerCase();
-        return errorString.includes('authentication') ||
-               errorString.includes('credentials') ||
-               errorString.includes('unauthorized') ||
-               errorString.includes('403') ||
-               errorString.includes('401');
-    }
 
     /**
      * Show README preview for an assignment
@@ -357,9 +307,15 @@ export class StudentOfflineCommands {
                 return;
             }
 
-            // Open README in preview mode
-            await vscode.workspace.openTextDocument(readmePath);
-            await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(readmePath));
+            // Open README in preview mode beside active editor
+            const readmeUri = vscode.Uri.file(readmePath);
+            if (vscode.window.activeTextEditor) {
+                // Open beside the active editor
+                await vscode.commands.executeCommand('markdown.showPreviewToSide', readmeUri);
+            } else {
+                // No active editor, open in current column
+                await vscode.commands.executeCommand('markdown.showPreview', readmeUri);
+            }
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to show README preview:', error);
             vscode.window.showErrorMessage(`Failed to show README preview: ${error.message}`);

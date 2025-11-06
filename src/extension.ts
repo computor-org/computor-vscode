@@ -615,31 +615,20 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
     return;
   }
 
-  // Check if student/ directory exists
+  // Ensure student/ directory exists - create it automatically if not present
   const studentPath = path.join(workspaceRoot, 'student');
   if (!fs.existsSync(studentPath)) {
-    const action = await vscode.window.showWarningMessage(
-      'No "student" directory found in workspace. Offline mode requires a student/ directory with git repositories.',
-      'Create Directory',
-      'Cancel'
-    );
-
-    if (action === 'Create Directory') {
+    try {
       fs.mkdirSync(studentPath, { recursive: true });
-      vscode.window.showInformationMessage('Created student/ directory');
-    } else {
+      console.log('[initializeOfflineMode] Created student/ directory');
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to create student/ directory: ${error.message}`);
       return;
     }
   }
 
   try {
-    // Create .computor marker if it doesn't exist
-    const computorMarkerPath = path.join(workspaceRoot, computorMarker);
-    if (!fs.existsSync(computorMarkerPath)) {
-      fs.writeFileSync(computorMarkerPath, JSON.stringify({ offlineMode: true }, null, 2));
-    }
-
-    // Initialize offline view
+    // Initialize offline view (no .computor marker needed for offline mode)
     const { StudentOfflineTreeProvider } = await import('./ui/tree/student/StudentOfflineTreeProvider');
     const { StudentOfflineCommands } = await import('./commands/StudentOfflineCommands');
 
