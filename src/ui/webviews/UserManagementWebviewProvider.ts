@@ -36,6 +36,11 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
 
   async open(userId: string): Promise<void> {
     try {
+      if (this.currentUserId !== userId && this.panel) {
+        this.panel.dispose();
+        this.panel = undefined;
+      }
+
       this.currentUserId = userId;
       const state = await this.loadState(userId);
       const userDisplayName = this.getUserDisplayName(state.user);

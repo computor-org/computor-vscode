@@ -7,10 +7,13 @@ class UserTreeItem extends vscode.TreeItem {
     public readonly user: UserList,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState
   ) {
-    super(
-      `${user.family_name || ''}, ${user.given_name || ''}`.trim(),
-      collapsibleState
-    );
+    const familyName = user.family_name || '';
+    const givenName = user.given_name || '';
+    const displayName = familyName && givenName
+      ? `${familyName}, ${givenName}`
+      : familyName || givenName || user.username || user.email || user.id;
+
+    super(displayName, collapsibleState);
 
     this.contextValue = 'user';
     this.tooltip = this.buildTooltip();

@@ -2321,11 +2321,12 @@ export class ComputorApiService {
     }
   }
 
-  // User Management: Reset user password (placeholder - endpoint to be implemented)
+  // User Management: Reset user password
   async resetUserPassword(userId: string, managerPassword: string): Promise<void> {
     try {
       const client = await this.getHttpClient();
-      await client.post(`/users/${userId}/reset-password`, {
+      await client.post('/password/reset', {
+        user_id: userId,
         manager_password: managerPassword
       });
 
