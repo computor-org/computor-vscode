@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "generated_at": "2025-10-20T00:08:53.335077",
-  "error_count": 52,
+  "generated_at": "2025-11-05T23:30:23.566615",
+  "error_count": 61,
   "errors": {
     "AUTH_001": {
       "code": "AUTH_001",
@@ -341,6 +341,19 @@
       },
       "retry_after": null
     },
+    "VERSION_001": {
+      "code": "VERSION_001",
+      "http_status": 409,
+      "category": "conflict",
+      "severity": "warning",
+      "title": "Example Version Already Exists",
+      "message": {
+        "plain": "This version already exists for this example.",
+        "markdown": "**Example Version Already Exists**\n\nVersion `{version_tag}` already exists for this example. To update it, set `update_existing: true` in meta.yaml or use a different version tag.",
+        "html": "<strong>Example Version Already Exists</strong><p>Version <code>{version_tag}</code> already exists for this example. To update it, set <code>update_existing: true</code> in meta.yaml or use a different version tag.</p>"
+      },
+      "retry_after": null
+    },
     "DEPLOY_001": {
       "code": "DEPLOY_001",
       "http_status": 404,
@@ -546,6 +559,110 @@
         "plain": "You are not a member of this course.",
         "markdown": "**Course Membership Not Found**\n\nYou are not enrolled as a member of this course.",
         "html": "<strong>Course Membership Not Found</strong><p>You are not enrolled in this course.</p>"
+      },
+      "retry_after": null
+    },
+    "GITLAB_001": {
+      "code": "GITLAB_001",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "warning",
+      "title": "GitLab Not Configured",
+      "message": {
+        "plain": "GitLab integration is not configured for this course.",
+        "markdown": "**GitLab Not Configured**\n\nGitLab integration has not been set up for this course. Please contact your instructor.",
+        "html": "<strong>GitLab Not Configured</strong><p>GitLab integration has not been set up for this course. Please contact your instructor.</p>"
+      },
+      "retry_after": null
+    },
+    "GITLAB_002": {
+      "code": "GITLAB_002",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "info",
+      "title": "GitLab Account Not Registered",
+      "message": {
+        "plain": "You have not registered your GitLab account for this course.",
+        "markdown": "**GitLab Account Not Registered**\n\nYou need to register your GitLab account to access course repositories. Please register via `/user/courses/{course_id}/register`.",
+        "html": "<strong>GitLab Account Not Registered</strong><p>You need to register your GitLab account to access course repositories.</p>"
+      },
+      "retry_after": null
+    },
+    "GITLAB_003": {
+      "code": "GITLAB_003",
+      "http_status": 401,
+      "category": "authentication",
+      "severity": "warning",
+      "title": "GitLab Token Mismatch",
+      "message": {
+        "plain": "The GitLab access token does not match your registered account.",
+        "markdown": "**GitLab Token Mismatch**\n\nThe access token you provided belongs to GitLab user `{actual_username}`, but your registered account is `{expected_username}`.",
+        "html": "<strong>GitLab Token Mismatch</strong><p>The access token belongs to a different GitLab user than your registered account.</p>"
+      },
+      "retry_after": null
+    },
+    "GITLAB_004": {
+      "code": "GITLAB_004",
+      "http_status": 409,
+      "category": "conflict",
+      "severity": "warning",
+      "title": "GitLab Account Already Linked",
+      "message": {
+        "plain": "This GitLab username is already linked to another user.",
+        "markdown": "**GitLab Account Already Linked**\n\nThe GitLab username `{username}` is already linked to another user account in this course.",
+        "html": "<strong>GitLab Account Already Linked</strong><p>This GitLab username is already linked to another user account.</p>"
+      },
+      "retry_after": null
+    },
+    "GITLAB_005": {
+      "code": "GITLAB_005",
+      "http_status": 401,
+      "category": "authentication",
+      "severity": "warning",
+      "title": "GitLab Token Required",
+      "message": {
+        "plain": "A GitLab personal access token is required for this operation.",
+        "markdown": "**GitLab Token Required**\n\nPlease provide your GitLab personal access token to register or validate your account. The token must have `api` scope.",
+        "html": "<strong>GitLab Token Required</strong><p>Please provide your GitLab personal access token with <code>api</code> scope.</p>"
+      },
+      "retry_after": null
+    },
+    "GITLAB_006": {
+      "code": "GITLAB_006",
+      "http_status": 502,
+      "category": "external_service",
+      "severity": "error",
+      "title": "GitLab Token Invalid",
+      "message": {
+        "plain": "The GitLab access token is invalid or has been revoked.",
+        "markdown": "**GitLab Token Invalid**\n\nThe GitLab access token you provided is invalid, expired, or has been revoked. Please generate a new token with `api` scope.",
+        "html": "<strong>GitLab Token Invalid</strong><p>The GitLab access token is invalid, expired, or revoked. Please generate a new token.</p>"
+      },
+      "retry_after": null
+    },
+    "GITLAB_007": {
+      "code": "GITLAB_007",
+      "http_status": 503,
+      "category": "external_service",
+      "severity": "error",
+      "title": "GitLab API Unreachable",
+      "message": {
+        "plain": "Unable to connect to GitLab API. Please try again later.",
+        "markdown": "**GitLab API Unreachable**\n\nUnable to connect to the GitLab API to verify your account. Please try again later.",
+        "html": "<strong>GitLab API Unreachable</strong><p>Unable to connect to GitLab. Please try again later.</p>"
+      },
+      "retry_after": 60
+    },
+    "GITLAB_008": {
+      "code": "GITLAB_008",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "warning",
+      "title": "Invalid GitLab Username",
+      "message": {
+        "plain": "The GitLab username format is invalid.",
+        "markdown": "**Invalid GitLab Username**\n\nThe provided GitLab username is empty or has invalid format. Please provide a valid GitLab username.",
+        "html": "<strong>Invalid GitLab Username</strong><p>Please provide a valid GitLab username.</p>"
       },
       "retry_after": null
     },

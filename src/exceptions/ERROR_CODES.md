@@ -1,8 +1,8 @@
 # Error Code Reference
 
 **Auto-generated documentation**
-**Generated:** 2025-10-17 13:17:52
-**Total errors:** 51
+**Generated:** 2025-11-05 23:30:23
+**Total errors:** 61
 
 To regenerate: `bash generate_error_codes.sh`
 
@@ -137,6 +137,63 @@ Keycloak or other SSO provider authentication failed
 1. Retry authentication
 2. Check SSO provider status
 3. Contact administrator to verify SSO configuration
+
+---
+
+### GITLAB_003 - GitLab Token Mismatch
+
+**HTTP Status:** `401`  
+**Severity:** `warning`  
+**Category:** `authentication`  
+**Documentation:** [/docs/integrations/gitlab#tokens](/docs/integrations/gitlab#tokens)  
+
+**Description:**  
+GitLab /user endpoint returned different username than Account.provider_account_id
+
+**User Message:**  
+> The GitLab access token does not match your registered account.
+
+**Affected Functions:**
+- `validate_user_course`
+- `register_user_course_account`
+
+**Common Causes:**
+- Using wrong personal access token
+- Token belongs to different GitLab user
+- Multiple GitLab accounts
+
+**Resolution Steps:**
+1. Use token from your registered GitLab account
+2. Verify token username matches registered username
+3. Re-register with correct account if needed
+
+---
+
+### GITLAB_005 - GitLab Token Required
+
+**HTTP Status:** `401`  
+**Severity:** `warning`  
+**Category:** `authentication`  
+**Documentation:** [/docs/integrations/gitlab#tokens](/docs/integrations/gitlab#tokens)  
+
+**Description:**  
+GitLab access token missing from request when required
+
+**User Message:**  
+> A GitLab personal access token is required for this operation.
+
+**Affected Functions:**
+- `validate_user_course`
+- `register_user_course_account`
+
+**Common Causes:**
+- Token field empty or null
+- Request missing provider_access_token field
+
+**Resolution Steps:**
+1. Generate GitLab personal access token with api scope
+2. Include token in request payload
+3. Verify token is not expired
 
 ---
 
@@ -314,6 +371,63 @@ Optimistic locking failure - resource modified since read
 
 ---
 
+### VERSION_001 - Example Version Already Exists
+
+**HTTP Status:** `409`  
+**Severity:** `warning`  
+**Category:** `conflict`  
+**Documentation:** [/docs/api/examples#version-management](/docs/api/examples#version-management)  
+
+**Description:**  
+User attempted to create an example version that already exists without setting update_existing flag
+
+**User Message:**  
+> This version already exists for this example.
+
+**Affected Functions:**
+- `create_example_version`
+- `upload_example`
+
+**Common Causes:**
+- Version tag already used
+- Attempting to recreate existing version
+- Missing update_existing flag in meta.yaml
+
+**Resolution Steps:**
+1. Set 'update_existing: true' in meta.yaml to update the existing version
+2. Use a different version tag (e.g., increment version number)
+3. Check existing versions before creating new ones
+
+---
+
+### GITLAB_004 - GitLab Account Already Linked
+
+**HTTP Status:** `409`  
+**Severity:** `warning`  
+**Category:** `conflict`  
+**Documentation:** [/docs/integrations/gitlab#registration](/docs/integrations/gitlab#registration)  
+
+**Description:**  
+Account table constraint violation - provider_account_id already exists for different user
+
+**User Message:**  
+> This GitLab username is already linked to another user.
+
+**Affected Functions:**
+- `register_user_course_account`
+
+**Common Causes:**
+- GitLab username already registered by another student
+- Duplicate registration attempt
+- Shared GitLab account (not allowed)
+
+**Resolution Steps:**
+1. Use a different GitLab username
+2. Contact administrator if this is an error
+3. Ensure each student uses their own GitLab account
+
+---
+
 ## Database
 
 ### DB_001 - Database Connection Failed
@@ -405,6 +519,65 @@ Database commit failed, transaction rolled back
 ---
 
 ## External Service
+
+### GITLAB_006 - GitLab Token Invalid
+
+**HTTP Status:** `502`  
+**Severity:** `error`  
+**Category:** `external_service`  
+**Documentation:** [/docs/integrations/gitlab#tokens](/docs/integrations/gitlab#tokens)  
+
+**Description:**  
+GitLab API returned 401/403 when validating token via /user endpoint
+
+**User Message:**  
+> The GitLab access token is invalid or has been revoked.
+
+**Affected Functions:**
+- `_fetch_gitlab_user_profile`
+
+**Common Causes:**
+- Token expired
+- Token revoked or deleted
+- Token missing required scopes (api)
+- Token belongs to deleted GitLab user
+
+**Resolution Steps:**
+1. Generate new GitLab personal access token
+2. Ensure token has api scope
+3. Re-register with new token
+
+---
+
+### GITLAB_007 - GitLab API Unreachable
+
+**HTTP Status:** `503`  
+**Severity:** `error`  
+**Category:** `external_service`  
+**Retry After:** 60 seconds  
+**Documentation:** [/docs/integrations/gitlab](/docs/integrations/gitlab)  
+
+**Description:**  
+Network error or timeout when calling GitLab API
+
+**User Message:**  
+> Unable to connect to GitLab API. Please try again later.
+
+**Affected Functions:**
+- `_fetch_gitlab_user_profile`
+
+**Common Causes:**
+- GitLab server temporarily down
+- Network connectivity issues
+- DNS resolution failure
+- Firewall blocking request
+
+**Resolution Steps:**
+1. Wait and retry in a few moments
+2. Check GitLab service status
+3. Contact administrator if persists
+
+---
 
 ### EXT_001 - GitLab Service Unavailable
 
@@ -1107,6 +1280,36 @@ Username-specific login rate limiting triggered
 
 ---
 
+### RATE_003 - Test Request Rate Limit Exceeded
+
+**HTTP Status:** `429`  
+**Severity:** `warning`  
+**Category:** `rate_limit`  
+**Retry After:** 1 seconds  
+**Documentation:** [/docs/testing#rate-limits](/docs/testing#rate-limits)  
+
+**Description:**  
+User-specific test submission rate limiting triggered to prevent abuse
+
+**User Message:**  
+> Too many test requests. Please wait before submitting another test.
+
+**Affected Functions:**
+- `create_test_run`
+- `check_user_rate_limit`
+
+**Common Causes:**
+- Submitting tests too rapidly
+- Automated test submissions
+- Multiple concurrent test requests
+
+**Resolution Steps:**
+1. Wait 1 second between test requests
+2. Avoid rapid successive test submissions
+3. Ensure only one test is submitted at a time
+
+---
+
 ## Validation
 
 ### VAL_001 - Invalid Request Data
@@ -1493,6 +1696,87 @@ ExecutionBackend.type not recognized or supported
 **Resolution Steps:**
 1. Contact administrator
 2. Verify backend configuration
+
+---
+
+### GITLAB_001 - GitLab Not Configured
+
+**HTTP Status:** `400`  
+**Severity:** `warning`  
+**Category:** `validation`  
+**Documentation:** [/docs/integrations/gitlab](/docs/integrations/gitlab)  
+
+**Description:**  
+Course organization does not have GitLab provider configured
+
+**User Message:**  
+> GitLab integration is not configured for this course.
+
+**Affected Functions:**
+- `validate_user_course`
+- `register_user_course_account`
+
+**Common Causes:**
+- Organization missing GitLab URL
+- GitLab integration not enabled
+- Course not configured for GitLab
+
+**Resolution Steps:**
+1. Contact course administrator
+2. Verify course supports GitLab integration
+
+---
+
+### GITLAB_002 - GitLab Account Not Registered
+
+**HTTP Status:** `400`  
+**Severity:** `info`  
+**Category:** `validation`  
+**Documentation:** [/docs/integrations/gitlab#registration](/docs/integrations/gitlab#registration)  
+
+**Description:**  
+User has not linked GitLab account via Account table
+
+**User Message:**  
+> You have not registered your GitLab account for this course.
+
+**Affected Functions:**
+- `validate_user_course`
+
+**Common Causes:**
+- First time accessing course
+- Account not yet linked
+
+**Resolution Steps:**
+1. Register your GitLab username and access token
+2. Use POST /user/courses/{course_id}/register endpoint
+
+---
+
+### GITLAB_008 - Invalid GitLab Username
+
+**HTTP Status:** `400`  
+**Severity:** `warning`  
+**Category:** `validation`  
+**Documentation:** [/docs/integrations/gitlab#registration](/docs/integrations/gitlab#registration)  
+
+**Description:**  
+Provider account ID is empty or whitespace-only
+
+**User Message:**  
+> The GitLab username format is invalid.
+
+**Affected Functions:**
+- `register_user_course_account`
+
+**Common Causes:**
+- Empty username field
+- Whitespace-only username
+- Missing provider_account_id
+
+**Resolution Steps:**
+1. Provide your GitLab username
+2. Verify username is not empty
 
 ---
 

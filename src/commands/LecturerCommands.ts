@@ -1630,7 +1630,9 @@ export class LecturerCommands {
       cancellable: false
     }, async (progress) => {
       let successCount = 0;
+      let skippedCount = 0;
       const errors: string[] = [];
+      const skippedExamples: string[] = [];
 
       for (let i = 0; i < examples.length; i++) {
         const item = examples[i];
@@ -1686,14 +1688,33 @@ export class LecturerCommands {
           successCount++;
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
-          errors.push(`${exampleName}: ${errorMsg}`);
-          console.error(`Failed to upload ${exampleName}:`, error);
-          if (uploadRequest) {
-            console.error(`Upload request was:`, {
-              repository_id: uploadRequest.repository_id,
-              directory: uploadRequest.directory,
-              files_count: Object.keys(uploadRequest.files).length
-            });
+
+          // Check if this is a VERSION_001 error (version already exists)
+          const isVersionExistsError = (error: any): boolean => {
+            // Check if error is HttpError with errorCode VERSION_001
+            if (error && typeof error === 'object' && 'errorCode' in error) {
+              return error.errorCode === 'VERSION_001';
+            }
+            // Fallback: check error message for version exists pattern
+            return errorMsg.includes('already exists') && errorMsg.includes('version');
+          };
+
+          if (isVersionExistsError(error)) {
+            // This is not an error - the version already exists, which is fine
+            console.log(`[AUTO-UPLOAD] Version already exists for ${exampleName}, skipping`);
+            skippedExamples.push(exampleName);
+            skippedCount++;
+          } else {
+            // This is a real error
+            errors.push(`${exampleName}: ${errorMsg}`);
+            console.error(`Failed to upload ${exampleName}:`, error);
+            if (uploadRequest) {
+              console.error(`Upload request was:`, {
+                repository_id: uploadRequest.repository_id,
+                directory: uploadRequest.directory,
+                files_count: Object.keys(uploadRequest.files).length
+              });
+            }
           }
         }
       }
@@ -1707,10 +1728,16 @@ export class LecturerCommands {
         throw new Error(`Failed to upload ${errors.length} example(s): ${errorDetails}`);
       }
 
+      // Show results
+      const messages: string[] = [];
       if (successCount > 0) {
-        vscode.window.showInformationMessage(
-          `✅ Uploaded ${successCount} example(s) successfully`
-        );
+        messages.push(`Uploaded ${successCount} example(s) successfully`);
+      }
+      if (skippedCount > 0) {
+        messages.push(`${skippedCount} example(s) already exist: ${skippedExamples.join(', ')}`);
+      }
+      if (messages.length > 0) {
+        vscode.window.showInformationMessage(messages.join('. '));
       }
     });
   }
