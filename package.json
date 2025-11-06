@@ -141,6 +141,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.offline.addCourse",
+        "title": "Add Course",
+        "icon": "$(add)",
+        "category": "Computor Student (Offline Mode)"
+      },
+      {
         "command": "computor.student.offline.saveAssignment",
         "title": "Save Assignment",
         "icon": "$(save)",
@@ -706,6 +712,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "computor.student.offline.addCourse",
+          "when": "view == computor.student.offline.view",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.student.offline.refresh",
           "when": "view == computor.student.offline.view",
           "group": "navigation@1"
@@ -714,11 +725,6 @@
           "command": "computor.userManager.refresh",
           "when": "view == computor.usermanager.users",
           "group": "navigation@1"
-        },
-        {
-          "command": "computor.manageGitLabTokens",
-          "when": "view == computor.student.offline.view",
-          "group": "navigation@2"
         },
         {
           "command": "computor.manageGitLabTokens",
