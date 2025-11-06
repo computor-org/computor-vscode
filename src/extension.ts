@@ -20,6 +20,7 @@ import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { LecturerFsCommands } from './commands/LecturerFsCommands';
 import { UserPasswordCommands } from './commands/UserPasswordCommands';
+import { SignUpCommands } from './commands/SignUpCommands';
 import { LogoutCommands } from './commands/LogoutCommands';
 import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProvider';
 
@@ -902,6 +903,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Unified login command
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
+
+  // Sign-up command (for users without passwords)
+  new SignUpCommands(context).register();
 
   // Offline mode login command
   context.subscriptions.push(vscode.commands.registerCommand('computor.loginOffline', async () => {
