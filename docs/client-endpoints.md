@@ -32,6 +32,19 @@
 | `handleCallbackAuthProviderCallbackGet` | GET | `/auth/{provider}/callback` | — | `void` |
 | `initiateLoginAuthProviderLoginGet` | GET | `/auth/{provider}/login` | — | `void` |
 
+## AuthenticationClient
+- Base path: `/password`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `adminResetPasswordPasswordAdminResetPost` | POST | `/password/admin/reset` | `AdminResetPasswordRequest` | `PasswordOperationResponse` |
+| `adminSetPasswordPasswordAdminSetPost` | POST | `/password/admin/set` | `AdminSetPasswordRequest` | `PasswordOperationResponse` |
+| `adminGetUserPasswordStatusPasswordAdminStatusUsernameGet` | GET | `/password/admin/status/{username}` | — | `PasswordStatusResponse` |
+| `changePasswordPasswordChangePost` | POST | `/password/change` | `ChangePasswordRequest` | `PasswordOperationResponse` |
+| `setInitialPasswordPasswordSetPost` | POST | `/password/set` | `SetPasswordRequest` | `PasswordOperationResponse` |
+| `getPasswordStatusPasswordStatusGet` | GET | `/password/status` | — | `PasswordStatusResponse` |
+
 ## CourseContentKindsClient
 - Base path: `/course-content-kinds`
 - Note: custom operations discovered from OpenAPI schema
@@ -78,15 +91,6 @@
 | `updateCourseContentsCourseContentsIdPatch` | PATCH | `/course-contents/{id}` | `CourseContentUpdate` | `CourseContentGet` |
 | `routeCourseContentsCourseContentsIdArchivePatch` | PATCH | `/course-contents/{id}/archive` | — | `void` |
 
-## CourseExecutionBackendsClient
-- Base path: `/course-execution-backends`
-- Note: custom operations discovered from OpenAPI schema
-
-| TS Method | HTTP | Path | Request | Response |
-| --- | --- | --- | --- | --- |
-| `listCourseExecutionBackendCourseExecutionBackendsGet` | GET | `/course-execution-backends` | — | `CourseExecutionBackendList[]` |
-| `createCourseExecutionBackendCourseExecutionBackendsPost` | POST | `/course-execution-backends` | `CourseExecutionBackendCreate` | `CourseExecutionBackendGet` |
-
 ## CourseFamiliesClient
 - Base path: `/course-families`
 - Note: custom operations discovered from OpenAPI schema
@@ -122,6 +126,15 @@
 | `deleteCommentCourseMemberCommentsCourseMemberCommentIdDelete` | DELETE | `/course-member-comments/{course_member_comment_id}` | — | `CourseMemberCommentList[]` |
 | `updateCommentCourseMemberCommentsCourseMemberCommentIdPatch` | PATCH | `/course-member-comments/{course_member_comment_id}` | `CommentUpdate` | `CourseMemberCommentList[]` |
 
+## CourseMemberImportClient
+- Base path: `/course-member-import`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `importCourseMembersJsonCourseMemberImportImportCourseIdPost` | POST | `/course-member-import/import/{course_id}` | `CourseMemberImportRequest` | `CourseMemberImportResponse` |
+| `uploadCourseMemberFileCourseMemberImportUploadCourseIdPost` | POST | `/course-member-import/upload/{course_id}` | — | `CourseMemberImportResponse` |
+
 ## CourseMembersClient
 - Base path: `/course-members`
 - Note: custom operations discovered from OpenAPI schema
@@ -151,8 +164,6 @@
 | --- | --- | --- | --- | --- |
 | `listCoursesCoursesGet` | GET | `/courses` | — | `CourseList[]` |
 | `createCoursesCoursesPost` | POST | `/courses` | `CourseCreate` | `CourseGet` |
-| `deleteCourseExecutionBackendEndpointCoursesCourseIdExecutionBackendsExecutionBackendIdDelete` | DELETE | `/courses/{course_id}/execution-backends/{execution_backend_id}` | — | `Record<string, unknown> & Record<string, unknown>` |
-| `patchCourseExecutionBackendEndpointCoursesCourseIdExecutionBackendsExecutionBackendIdPatch` | PATCH | `/courses/{course_id}/execution-backends/{execution_backend_id}` | `Record<string, unknown> & Record<string, unknown>` | `CourseExecutionBackendGet` |
 | `deleteCoursesCoursesIdDelete` | DELETE | `/courses/{id}` | — | `void` |
 | `getCoursesCoursesIdGet` | GET | `/courses/{id}` | — | `CourseGet` |
 | `updateCoursesCoursesIdPatch` | PATCH | `/courses/{id}` | `CourseUpdate` | `CourseGet` |
@@ -187,18 +198,6 @@
 | `downloadExampleLatestExamplesExampleIdDownloadGet` | GET | `/examples/{example_id}/download` | — | `ExampleDownloadResponse` |
 | `listVersionsExamplesExampleIdVersionsGet` | GET | `/examples/{example_id}/versions` | — | `ExampleVersionList[]` |
 | `createVersionExamplesExampleIdVersionsPost` | POST | `/examples/{example_id}/versions` | `ExampleVersionCreate` | `ExampleVersionGet` |
-
-## ExecutionBackendsClient
-- Base path: `/execution-backends`
-- Note: custom operations discovered from OpenAPI schema
-
-| TS Method | HTTP | Path | Request | Response |
-| --- | --- | --- | --- | --- |
-| `listExecutionBackendsExecutionBackendsGet` | GET | `/execution-backends` | — | `ExecutionBackendList[]` |
-| `createExecutionBackendsExecutionBackendsPost` | POST | `/execution-backends` | `ExecutionBackendCreate` | `ExecutionBackendGet` |
-| `deleteExecutionBackendsExecutionBackendsIdDelete` | DELETE | `/execution-backends/{id}` | — | `void` |
-| `getExecutionBackendsExecutionBackendsIdGet` | GET | `/execution-backends/{id}` | — | `ExecutionBackendGet` |
-| `updateExecutionBackendsExecutionBackendsIdPatch` | PATCH | `/execution-backends/{id}` | `ExecutionBackendUpdate` | `ExecutionBackendGet` |
 
 ## ExtensionsClient
 - Base path: `/extensions`
@@ -260,6 +259,7 @@
 | `deleteMessageMessagesIdDelete` | DELETE | `/messages/{id}` | — | `void` |
 | `getMessageMessagesIdGet` | GET | `/messages/{id}` | — | `MessageGet` |
 | `updateMessageMessagesIdPatch` | PATCH | `/messages/{id}` | `MessageUpdate` | `MessageGet` |
+| `getMessageAuditMessagesIdAuditGet` | GET | `/messages/{id}/audit` | — | `void` |
 | `markMessageUnreadMessagesIdReadsDelete` | DELETE | `/messages/{id}/reads` | — | `void` |
 | `markMessageReadMessagesIdReadsPost` | POST | `/messages/{id}/reads` | — | `void` |
 
@@ -326,6 +326,30 @@
 | --- | --- | --- | --- | --- |
 | `listRolesRolesGet` | GET | `/roles` | — | `RoleList[]` |
 | `getRolesRolesIdGet` | GET | `/roles/{id}` | — | `RoleGet` |
+
+## ServiceTypesClient
+- Base path: `/service-types`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `listServiceTypesServiceTypesGet` | GET | `/service-types` | — | `ServiceTypeList[]` |
+| `createServiceTypeServiceTypesPost` | POST | `/service-types` | `ServiceTypeCreate` | `ServiceTypeGet` |
+| `getServiceTypeServiceTypesEntityIdGet` | GET | `/service-types/{entity_id}` | — | `ServiceTypeGet` |
+| `updateServiceTypeServiceTypesEntityIdPatch` | PATCH | `/service-types/{entity_id}` | `ServiceTypeUpdate` | `ServiceTypeGet` |
+
+## ServicesClient
+- Base path: `/service-accounts`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `listServicesEndpointServiceAccountsGet` | GET | `/service-accounts` | — | `ServiceGet[]` |
+| `createServiceEndpointServiceAccountsPost` | POST | `/service-accounts` | `ServiceCreate` | `ServiceGet` |
+| `deleteServiceEndpointServiceAccountsServiceIdDelete` | DELETE | `/service-accounts/{service_id}` | — | `void` |
+| `getServiceEndpointServiceAccountsServiceIdGet` | GET | `/service-accounts/{service_id}` | — | `ServiceGet` |
+| `updateServiceEndpointServiceAccountsServiceIdPatch` | PATCH | `/service-accounts/{service_id}` | `ServiceUpdate` | `ServiceGet` |
+| `serviceHeartbeatEndpointServiceAccountsServiceIdHeartbeatPut` | PUT | `/service-accounts/{service_id}/heartbeat` | — | `void` |
 
 ## SessionsClient
 - Base path: `/sessions`
@@ -443,6 +467,7 @@
 
 | TS Method | HTTP | Path | Request | Response |
 | --- | --- | --- | --- | --- |
+| `syncDocumentsRepositorySystemCourseFamiliesCourseFamilyIdSyncDocumentsPost` | POST | `/system/course-families/{course_family_id}/sync-documents` | — | `Record<string, unknown> & Record<string, unknown>` |
 | `generateAssignmentsSystemCoursesCourseIdGenerateAssignmentsPost` | POST | `/system/courses/{course_id}/generate-assignments` | `GenerateAssignmentsRequest` | `GenerateAssignmentsResponse` |
 | `generateStudentTemplateSystemCoursesCourseIdGenerateStudentTemplatePost` | POST | `/system/courses/{course_id}/generate-student-template` | `GenerateTemplateRequest` | `GenerateTemplateResponse` |
 | `getCourseGitlabStatusSystemCoursesCourseIdGitlabStatusGet` | GET | `/system/courses/{course_id}/gitlab-status` | — | `Record<string, unknown> & Record<string, unknown>` |
@@ -477,6 +502,19 @@
 | `createTestRunTestsPost` | POST | `/tests` | `TestCreate` | `ResultList` |
 | `getTestStatusTestsStatusResultIdGet` | GET | `/tests/status/{result_id}` | — | `void` |
 
+## TokensClient
+- Base path: `/api-tokens`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `listTokensEndpointApiTokensGet` | GET | `/api-tokens` | — | `ApiTokenGet[]` |
+| `createTokenEndpointApiTokensPost` | POST | `/api-tokens` | `ApiTokenCreate` | `ApiTokenCreateResponse` |
+| `createTokenAdminEndpointApiTokensAdminCreatePost` | POST | `/api-tokens/admin/create` | `ApiTokenAdminCreate` | `ApiTokenCreateResponse` |
+| `updateTokenAdminEndpointApiTokensAdminTokenIdPatch` | PATCH | `/api-tokens/admin/{token_id}` | `ApiTokenUpdate` | `ApiTokenGet` |
+| `revokeTokenEndpointApiTokensTokenIdDelete` | DELETE | `/api-tokens/{token_id}` | — | `void` |
+| `getTokenEndpointApiTokensTokenIdGet` | GET | `/api-tokens/{token_id}` | — | `ApiTokenGet` |
+
 ## TutorsClient
 - Base path: `/tutors`
 - Note: custom operations discovered from OpenAPI schema
@@ -505,6 +543,7 @@
 | `validateCurrentUserCourseUserCoursesCourseIdValidatePost` | POST | `/user/courses/{course_id}/validate` | `CourseMemberValidationRequest` | `CourseMemberReadinessStatus` |
 | `setUserPasswordEndpointUserPasswordPost` | POST | `/user/password` | `UserPassword` | `void` |
 | `getCourseViewsForCurrentUserUserViewsGet` | GET | `/user/views` | — | `string[]` |
+| `getCourseViewsForCurrentUserByCourseUserViewsCourseIdGet` | GET | `/user/views/{course_id}` | — | `string[]` |
 
 ## UserClient
 - Base path: `/user-roles`

@@ -8,6 +8,10 @@
 
 
 
+import type { GitLabPATCredentials } from './common';
+
+
+
 /**
  * Query parameters for updating organization token.
  */
@@ -199,6 +203,16 @@ export interface GradingAuthor {
   given_name?: string | null;
   /** Author's family name */
   family_name?: string | null;
+}
+
+/**
+ * Alternative authentication via external provider for password initialization.
+ */
+export interface ProviderAuthCredentials {
+  /** Authentication method */
+  method: "gitlab_pat";
+  /** Provider-specific credentials */
+  credentials: GitLabPATCredentials;
 }
 
 /**

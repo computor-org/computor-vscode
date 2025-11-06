@@ -2,7 +2,7 @@
  * Auto-generated error code definitions
  *
  * DO NOT EDIT MANUALLY
- * Generated at: 2025-11-02T16:22:34.389936
+ * Generated at: 2025-11-06T13:44:56.800665
  *
  * To regenerate: bash generate_error_codes.sh
  */
@@ -87,6 +87,7 @@ export const ErrorCodes = {
   CONTENT_003: "CONTENT_003", // Invalid Content Type Operation
   CONTENT_004: "CONTENT_004", // Example Not Found
   CONTENT_005: "CONTENT_005", // Example Version Not Found
+  VERSION_001: "VERSION_001", // Example Version Already Exists
   DEPLOY_001: "DEPLOY_001", // Assignment Not Released
   DEPLOY_002: "DEPLOY_002", // Deployment Not Found
   DEPLOY_003: "DEPLOY_003", // Repository Not Configured
@@ -508,6 +509,20 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     },
     retryAfter: undefined,
     documentationUrl: "/docs/api/examples#versions",
+  },
+  VERSION_001: {
+    code: "VERSION_001",
+    httpStatus: 409,
+    category: ErrorCategory.CONFLICT,
+    severity: ErrorSeverity.WARNING,
+    title: "Example Version Already Exists",
+    message: {
+      plain: "This version already exists for this example.",
+      markdown: "**Example Version Already Exists**\n\nVersion `{version_tag}` already exists for this example. To update it, set `update_existing: true` in meta.yaml or use a different version tag.",
+      html: "<strong>Example Version Already Exists</strong><p>Version <code>{version_tag}</code> already exists for this example. To update it, set <code>update_existing: true</code> in meta.yaml or use a different version tag.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: "/docs/api/examples#version-management",
   },
   DEPLOY_001: {
     code: "DEPLOY_001",

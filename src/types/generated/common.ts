@@ -8,6 +8,8 @@
 
 
 
+import type { ProviderAuthCredentials } from './auth';
+
 import type { CourseContentTypeList, CourseExecutionBackendConfig, GradedByCourseMember, ResultStudentList, SubmissionGroupStudentList } from './courses';
 
 import type { ExampleValidationResult, ExampleVersionList } from './examples';
@@ -3062,13 +3064,29 @@ export interface GitCommit {
 }
 
 /**
+ * Credentials for GitLab Personal Access Token authentication.
+ */
+export interface GitLabPATCredentials {
+  /** GitLab Personal Access Token (glpat-...) */
+  access_token: string;
+  /** GitLab instance URL (e.g., https://gitlab.com) */
+  gitlab_url: string;
+}
+
+/**
  * Request to set password for first time or after reset.
+ * 
+ * Can authenticate either via:
+ * 1. Bearer token (user already authenticated)
+ * 2. Provider credentials (e.g., GitLab PAT for users without password)
  */
 export interface SetPasswordRequest {
   /** New password (min 12 chars) */
   new_password: string;
   /** Confirm new password */
   confirm_password: string;
+  /** Alternative authentication via external provider (for users without password) */
+  provider_auth?: ProviderAuthCredentials | null;
 }
 
 /**
@@ -3685,4 +3703,4 @@ export type ErrorCategory = "authentication" | "authorization" | "validation" | 
 
 export type GradingStatus = 0 | 1 | 2 | 3;
 
-export type ErrorCode = "AUTH_001" | "AUTH_002" | "AUTH_003" | "AUTH_004" | "AUTHZ_001" | "AUTHZ_002" | "AUTHZ_003" | "AUTHZ_004" | "VAL_001" | "VAL_002" | "VAL_003" | "VAL_004" | "NF_001" | "NF_002" | "NF_003" | "NF_004" | "CONFLICT_001" | "CONFLICT_002" | "RATE_001" | "RATE_002" | "RATE_003" | "CONTENT_001" | "CONTENT_002" | "CONTENT_003" | "CONTENT_004" | "CONTENT_005" | "DEPLOY_001" | "DEPLOY_002" | "DEPLOY_003" | "DEPLOY_004" | "SUBMIT_001" | "SUBMIT_002" | "SUBMIT_003" | "SUBMIT_004" | "SUBMIT_005" | "SUBMIT_006" | "SUBMIT_007" | "SUBMIT_008" | "TASK_001" | "TASK_002" | "TASK_003" | "TASK_004" | "GITLAB_001" | "GITLAB_002" | "GITLAB_003" | "GITLAB_004" | "GITLAB_005" | "GITLAB_006" | "GITLAB_007" | "GITLAB_008" | "EXT_001" | "EXT_002" | "EXT_003" | "EXT_004" | "DB_001" | "DB_002" | "DB_003" | "INT_001" | "INT_002" | "NIMPL_001";
+export type ErrorCode = "AUTH_001" | "AUTH_002" | "AUTH_003" | "AUTH_004" | "AUTHZ_001" | "AUTHZ_002" | "AUTHZ_003" | "AUTHZ_004" | "VAL_001" | "VAL_002" | "VAL_003" | "VAL_004" | "NF_001" | "NF_002" | "NF_003" | "NF_004" | "CONFLICT_001" | "CONFLICT_002" | "RATE_001" | "RATE_002" | "RATE_003" | "CONTENT_001" | "CONTENT_002" | "CONTENT_003" | "CONTENT_004" | "CONTENT_005" | "VERSION_001" | "DEPLOY_001" | "DEPLOY_002" | "DEPLOY_003" | "DEPLOY_004" | "SUBMIT_001" | "SUBMIT_002" | "SUBMIT_003" | "SUBMIT_004" | "SUBMIT_005" | "SUBMIT_006" | "SUBMIT_007" | "SUBMIT_008" | "TASK_001" | "TASK_002" | "TASK_003" | "TASK_004" | "GITLAB_001" | "GITLAB_002" | "GITLAB_003" | "GITLAB_004" | "GITLAB_005" | "GITLAB_006" | "GITLAB_007" | "GITLAB_008" | "EXT_001" | "EXT_002" | "EXT_003" | "EXT_004" | "DB_001" | "DB_002" | "DB_003" | "INT_001" | "INT_002" | "NIMPL_001";

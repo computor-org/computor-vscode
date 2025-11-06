@@ -181,8 +181,12 @@ export interface CourseMemberImportRequest {
   update_existing?: boolean;
   /** Auto-create missing course groups */
   create_missing_groups?: boolean;
-  /** Organization ID for student profiles */
-  organization_id?: string | null;
+  /** Username generation strategy: 'name' (from given/family name) or 'email' (from email prefix) */
+  username_strategy?: string;
+  /** Number of members to process per batch for GitLab operations (to avoid rate limits) */
+  batch_size?: number;
+  /** Delay in seconds between batches to respect GitLab API rate limits */
+  batch_delay_seconds?: number;
 }
 
 /**
