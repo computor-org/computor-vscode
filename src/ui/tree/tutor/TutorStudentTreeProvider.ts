@@ -513,7 +513,7 @@ class TutorContentItem extends vscode.TreeItem {
     const kindId = ct?.course_content_kind_id;
     const shape = kindId === 'assignment' ? 'square' : 'circle';
     const unread = ((this.content as any).unread_message_count ?? 0) + (this.content.submission_group?.unread_message_count ?? 0);
-    let badge: 'success' | 'failure' | 'none' = 'none';
+    let badge: 'success' | 'failure' | 'submitted' | 'none' = 'none';
     let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
     const submission: SubmissionGroupStudentList = this.content.submission_group!;
     const status = submission?.status?.toLowerCase?.();
@@ -522,8 +522,12 @@ class TutorContentItem extends vscode.TreeItem {
     else if (status === 'correction_necessary') corner = 'correction_necessary';
     else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
     const result = this.content.result?.result as number | undefined;
+    const submitted = this.content.submitted;
     if (typeof result === 'number') {
         badge = (result === 1) ? 'success' : 'failure';
+    } else if (submitted === true) {
+        // Submitted but not tested yet
+        badge = 'submitted';
     }
     this.iconPath = (badge === 'none' && corner === 'none')
       ? IconGenerator.getColoredIcon(color, shape)

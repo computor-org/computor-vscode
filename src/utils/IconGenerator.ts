@@ -47,7 +47,7 @@ export class IconGenerator {
   static getColoredIconWithBadge(
     color: string,
     shape: 'circle' | 'square' = 'circle',
-    badge: 'success' | 'failure' | 'none' = 'none',
+    badge: 'success' | 'failure' | 'submitted' | 'none' = 'none',
     corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
   ): vscode.Uri | vscode.ThemeIcon {
     const normalizedColor = this.normalizeColor(color);
@@ -72,7 +72,7 @@ export class IconGenerator {
   private static generateSvg(
     color: string,
     shape: 'circle' | 'square',
-    badge: 'success' | 'failure' | 'none' = 'none',
+    badge: 'success' | 'failure' | 'submitted' | 'none' = 'none',
     corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
   ): string {
     const size = 16;
@@ -102,6 +102,11 @@ export class IconGenerator {
         <path d="M11 5 L5 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
         <path d="M5 5 L11 11" stroke="#ff3f3fff" stroke-width="2" stroke-linecap="round"/>
         <path d="M11 5 L5 11" stroke="#ff3f3fff" stroke-width="2" stroke-linecap="round"/>
+      `;
+    } else if (badge === 'submitted') {
+      badgeElement = `
+        <path d="M4 8.5 L7 11 L12 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 8.5 L7 11 L12 6" stroke="#a855f7ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       `;
     }
 
