@@ -900,9 +900,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         this.setupDescription();
         this.setupTooltip();
         this.setupContextValue();
-        
-        // Don't add commands to assignments since they are now expandable to show filesystem
-        // Commands will be shown as child items when expanded
+        this.setupCommand();
+    }
+
+    private setupCommand(): void {
+        // Add click command to show test results for assignments
+        if (this.isAssignment() && this.courseContent?.result) {
+            this.command = {
+                command: 'computor.showTestResults',
+                title: 'Show Test Results',
+                arguments: [this]
+            };
+        }
     }
 
     // Update this item's data from a fresh course content object
@@ -931,6 +940,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         this.setupDescription();
         this.setupTooltip();
         this.setupContextValue();
+        this.setupCommand();
     }
     
     private setupIcon(): void {
