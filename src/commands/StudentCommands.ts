@@ -545,20 +545,19 @@ export class StudentCommands {
             throw new Error('Failed to get current commit hash');
           }
 
-          // Check if the current commit has been tested (has artifact with submit=false)
+          // Check if the current commit has been tested (has any artifact - test or submission)
           let testedArtifact: any = null;
           let currentCommitHasTestedArtifact = false;
 
           try {
-            // Check if current commit has been tested
+            // Check if current commit has ANY artifact (tested or submitted)
             const currentCommitArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
-              submit: false,
               version_identifier: currentCommitHash
             });
             currentCommitHasTestedArtifact = currentCommitArtifacts.length > 0;
 
-            // Get the most recent tested artifact using the latest flag
+            // Get the most recent tested artifact (submit=false) using the latest flag
             const latestTestedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
               submit: false,
@@ -611,30 +610,24 @@ export class StudentCommands {
               let existingArtifactId: string | undefined;
               let alreadySubmitted = false;
               try {
+                // Get the LATEST artifact for this version using the latest flag
                 const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
-                  version_identifier: submissionVersion
+                  version_identifier: submissionVersion,
+                  latest: true
                 });
-                console.log(`[submitAssignment] GET response: Found ${existingSubmissions.length} existing submissions for version ${submissionVersion}`);
+                console.log(`[submitAssignment] GET response: Found ${existingSubmissions.length} artifacts for version ${submissionVersion}`);
                 console.log(`[submitAssignment] Full response:`, JSON.stringify(existingSubmissions, null, 2));
 
                 if (existingSubmissions.length > 0) {
-                  // Find submission artifact with matching version identifier
-                  const matchingArtifact = existingSubmissions.find(
-                    artifact => artifact.version_identifier === submissionVersion
-                  );
-
-                  if (matchingArtifact?.id) {
-                    existingArtifactId = matchingArtifact.id;
-                    alreadySubmitted = matchingArtifact.submit === true;
-                    console.log(`[submitAssignment] Found matching artifact ${existingArtifactId}:`);
-                    console.log(`  - submit field value: ${matchingArtifact.submit}`);
-                    console.log(`  - submit field type: ${typeof matchingArtifact.submit}`);
-                    console.log(`  - alreadySubmitted: ${alreadySubmitted}`);
-                    console.log(`  - Full artifact:`, JSON.stringify(matchingArtifact, null, 2));
-                  } else {
-                    console.log(`[submitAssignment] No artifact with matching version identifier found in response`);
-                  }
+                  const matchingArtifact = existingSubmissions[0];
+                  existingArtifactId = matchingArtifact!.id;
+                  alreadySubmitted = matchingArtifact!.submit === true;
+                  console.log(`[submitAssignment] Found latest artifact ${existingArtifactId}:`);
+                  console.log(`  - submit field value: ${matchingArtifact!.submit}`);
+                  console.log(`  - submit field type: ${typeof matchingArtifact!.submit}`);
+                  console.log(`  - alreadySubmitted: ${alreadySubmitted}`);
+                  console.log(`  - Full artifact:`, JSON.stringify(matchingArtifact, null, 2));
                 } else {
                   console.log(`[submitAssignment] GET returned empty array - no existing artifacts`);
                 }
@@ -877,12 +870,13 @@ export class StudentCommands {
           const hasChanges = await this.gitService.hasChanges(submissionDirectory);
           const currentCommitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
 
-          // Get the latest submission artifact with its result info
+          // Get the latest SUBMITTED artifact (submit=true) with its result info
           let latestSubmission: any = null;
 
           try {
             const latestArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
+              submit: true,
               latest: true,
               with_latest_result: true
             });
