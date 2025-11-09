@@ -550,24 +550,23 @@ export class StudentCommands {
           let currentCommitHasTestedArtifact = false;
 
           try {
-            const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+            // Check if current commit has been tested
+            const currentCommitArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
-              submit: false
+              submit: false,
+              version_identifier: currentCommitHash
+            });
+            currentCommitHasTestedArtifact = currentCommitArtifacts.length > 0;
+
+            // Get the most recent tested artifact using the latest flag
+            const latestTestedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+              submission_group_id: submissionGroupId,
+              submit: false,
+              latest: true
             });
 
-            // Find tested artifact for current commit
-            currentCommitHasTestedArtifact = existingArtifacts.some(
-              artifact => artifact.version_identifier === currentCommitHash
-            );
-
-            // Find the most recent tested artifact (regardless of commit)
-            if (existingArtifacts.length > 0) {
-              const sortedArtifacts = [...existingArtifacts].sort((a, b) => {
-                const aTime = Date.parse(a.created_at ?? '') || 0;
-                const bTime = Date.parse(b.created_at ?? '') || 0;
-                return bTime - aTime;
-              });
-              testedArtifact = sortedArtifacts[0];
+            if (latestTestedArtifacts.length > 0) {
+              testedArtifact = latestTestedArtifacts[0];
             }
           } catch (listError) {
             console.warn('[submitAssignment] Failed to check tested artifacts:', listError);
@@ -876,12 +875,64 @@ export class StudentCommands {
           await this.saveAllFilesInDirectory(submissionDirectory);
 
           const hasChanges = await this.gitService.hasChanges(submissionDirectory);
+          const currentCommitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
 
-          let commitHash: string | null = null;
+          // Get the latest submission artifact with its result info
+          let latestSubmission: any = null;
+
+          try {
+            const latestArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+              submission_group_id: submissionGroupId,
+              latest: true,
+              with_latest_result: true
+            });
+
+            if (latestArtifacts.length > 0) {
+              latestSubmission = latestArtifacts[0];
+            }
+          } catch (listError) {
+            console.warn('[testAssignment] Failed to check latest submission:', listError);
+          }
+
+          // Determine which version to test
+          let versionToTest: string | null = currentCommitHash;
+
+          // If there's a latest submission and it differs from current commit, ask user
+          if (latestSubmission && latestSubmission.version_identifier && currentCommitHash) {
+            const latestVersion = latestSubmission.version_identifier;
+
+            // If current commit differs from latest submission (either has changes or different commit)
+            if (hasChanges || latestVersion !== currentCommitHash) {
+              const currentCommitShort = currentCommitHash.substring(0, 8);
+              const latestCommitShort = latestVersion.substring(0, 8);
+
+              const choice = await vscode.window.showWarningMessage(
+                hasChanges
+                  ? `You have uncommitted changes. Your last submission was commit ${latestCommitShort}.`
+                  : `The current commit (${currentCommitShort}) differs from your last submission (${latestCommitShort}).`,
+                { modal: true },
+                'Test Last Submission',
+                'Test Current Version',
+                'Cancel'
+              );
+
+              if (choice === 'Cancel' || !choice) {
+                return; // User cancelled
+              } else if (choice === 'Test Last Submission') {
+                versionToTest = latestVersion;
+                console.log(`[testAssignment] User chose to test latest submission: ${versionToTest}`);
+              } else if (choice === 'Test Current Version') {
+                versionToTest = currentCommitHash;
+                console.log(`[testAssignment] User chose to test current version: ${versionToTest}`);
+              }
+            }
+          }
+
+          let commitHash: string | null = versionToTest;
           let submissionResponse: any = null;
 
-          // If there are changes, show progress for git operations AND artifact upload
-          if (hasChanges) {
+          // If testing current version and there are changes, commit and push them first
+          if (versionToTest === currentCommitHash && hasChanges) {
             await vscode.window.withProgress({
               location: vscode.ProgressLocation.Notification,
               title: `Preparing ${assignmentTitle}...`,
@@ -957,37 +1008,32 @@ export class StudentCommands {
               }
             });
           } else {
-            // No changes: get current commit hash and check for existing artifact
-            commitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
-
+            // Testing either: current commit (no changes) OR submitted version (different commit)
+            // In both cases, look for existing artifact with the target version
             if (commitHash && courseContentId) {
               let existingArtifactId: string | undefined;
               try {
-                const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
+                // Look for any artifact (submit=true or submit=false) with this version
+                const allArtifacts = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
-                  version_identifier: commitHash,
-                  submit: false
+                  version_identifier: commitHash
                 });
-                console.log(`[TestAssignment] Found ${existingSubmissions.length} existing artifacts for commit ${commitHash}`);
+                console.log(`[TestAssignment] Found ${allArtifacts.length} existing artifacts for version ${commitHash}`);
 
-                const matchingArtifact = existingSubmissions.find(
-                  (artifact: any) => artifact.version_identifier === commitHash
-                );
-
-                if (matchingArtifact?.id) {
-                  existingArtifactId = matchingArtifact.id;
-                  console.log(`[TestAssignment] Reusing artifact ID: ${existingArtifactId} with matching version`);
+                if (allArtifacts.length > 0) {
+                  existingArtifactId = allArtifacts[0]!.id;
+                  console.log(`[TestAssignment] Reusing artifact ID: ${existingArtifactId}`);
                 }
               } catch (listError) {
                 console.warn('[TestAssignment] Failed to check existing submissions:', listError);
               }
 
               if (existingArtifactId) {
-                console.log(`[TestAssignment] Path: Reusing existing artifact (no changes)`);
+                console.log(`[TestAssignment] Path: Reusing existing artifact for version ${commitHash}`);
                 submissionResponse = { artifacts: [existingArtifactId] };
-              } else {
-                // No existing artifact found - create a new one
-                console.log(`[TestAssignment] Path: No existing artifact found, creating new one (no changes)`);
+              } else if (commitHash === currentCommitHash) {
+                // Only create new artifact if testing current commit (can't create for old commits)
+                console.log(`[TestAssignment] Path: No existing artifact found, creating new one for current commit`);
                 await vscode.window.withProgress({
                   location: vscode.ProgressLocation.Notification,
                   title: `Preparing ${assignmentTitle}...`,
@@ -1005,6 +1051,9 @@ export class StudentCommands {
                   }, archive);
                   console.log(`[TestAssignment] Created new submission:`, submissionResponse);
                 });
+              } else {
+                // Testing submitted version but no artifact exists - this shouldn't happen
+                throw new Error(`No artifact found for submitted version ${commitHash?.substring(0, 8)}. Cannot test this version.`);
               }
             }
           }

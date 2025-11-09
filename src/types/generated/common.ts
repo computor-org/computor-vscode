@@ -1834,6 +1834,8 @@ export interface SubmissionQuery {
   version_identifier?: string | null;
   reference_version_identifier?: string | null;
   status?: TaskStatus | null;
+  latest?: boolean | null;
+  with_latest_result?: boolean | null;
 }
 
 export interface SessionCreate {
