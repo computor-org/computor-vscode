@@ -1407,15 +1407,8 @@ export interface GitLabSyncRequest {
  */
 export interface GitLabSyncResult {
   course_member_id: string;
-  user_id: string;
-  username: string;
-  course_role_id: string;
   sync_status: string;
   message?: string | null;
-  permissions_granted?: string[];
-  permissions_updated?: string[];
-  api_calls_made?: number;
-  synced_at?: string | null;
 }
 
 /**

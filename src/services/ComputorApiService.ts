@@ -72,7 +72,7 @@ import {
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList } from '../types/generated/common';
+import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult } from '../types/generated/common';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -1411,6 +1411,37 @@ export class ComputorApiService {
     this.invalidateCachePattern('courseMembers-');
 
     return response.data;
+  }
+
+  /**
+   * Lecturer: Sync GitLab permissions for a course member
+   */
+  async syncMemberGitlabPermissions(
+    courseMemberId: string,
+    request: GitLabSyncRequest
+  ): Promise<GitLabSyncResult> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const endpoint = `/lecturers/course-members/${courseMemberId}/sync-gitlab`;
+
+      console.log('[syncMemberGitlabPermissions] Request:', {
+        endpoint,
+        courseMemberId,
+        hasAccessToken: !!request.access_token
+      });
+
+      const response = await client.post<GitLabSyncResult>(endpoint, request);
+
+      console.log('[syncMemberGitlabPermissions] Success:', {
+        status: response.status,
+        data: response.data
+      });
+
+      return response.data;
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
   }
 
   async validateCourseReadiness(

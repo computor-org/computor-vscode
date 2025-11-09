@@ -350,7 +350,7 @@ export class CTGit {
       }
 
       try {
-        await this.simpleGit.raw(['merge', '--no-edit', upstreamRef]);
+        await this.simpleGit.raw(['merge', '--no-edit', '--allow-unrelated-histories', upstreamRef]);
         mergeCompleted = true;
       } catch (mergeError) {
         console.warn('[CTGit] Merge from upstream failed:', mergeError);

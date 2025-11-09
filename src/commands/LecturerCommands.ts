@@ -139,6 +139,13 @@ export class LecturerCommands {
       })
     );
 
+    // Deactivated: Sync GitLab Permissions command
+    // this.context.subscriptions.push(
+    //   vscode.commands.registerCommand('computor.lecturer.syncMemberGitlabPermissions', async (item: CourseMemberTreeItem) => {
+    //     await this.syncMemberGitlabPermissions(item);
+    //   })
+    // );
+
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.changeCourseContentType', async (item: CourseContentTreeItem) => {
         await this.changeCourseContentType(item);
@@ -1160,6 +1167,65 @@ export class LecturerCommands {
       await this.commentsWebviewProvider.showComments(item.member.id, title);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
+    }
+  }
+
+  // Deactivated - kept for future use
+  // @ts-ignore - TS6133: Method intentionally unused
+  private async syncMemberGitlabPermissions(item: CourseMemberTreeItem): Promise<void> {
+    try {
+      const given = item.member.user?.given_name;
+      const family = item.member.user?.family_name;
+      const fullName = [given, family].filter(Boolean).join(' ').trim();
+      const displayName = fullName
+        || item.member.user?.username
+        || item.member.user?.email
+        || `Member ${item.member.id.slice(0, 8)}`;
+
+      // Get the course's GitLab token (GLPAT)
+      const gitlabToken = await this.treeDataProvider.getGitLabTokenForCourse(item.course);
+
+      if (!gitlabToken) {
+        vscode.window.showErrorMessage(
+          'No GitLab token configured for this course. Please configure the GitLab token first.'
+        );
+        return;
+      }
+
+      // Show progress notification
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Syncing GitLab permissions for ${displayName}`,
+          cancellable: false
+        },
+        async (progress) => {
+          progress.report({ increment: 0, message: 'Contacting server...' });
+
+          const result = await this.apiService.syncMemberGitlabPermissions(
+            item.member.id,
+            { access_token: gitlabToken }
+          );
+
+          progress.report({ increment: 100, message: 'Done' });
+
+          // Show success message with the result
+          const message = result.message || 'GitLab permissions synced successfully';
+          const status = result.sync_status || 'completed';
+
+          if (status === 'success' || status === 'completed') {
+            vscode.window.showInformationMessage(`✅ ${displayName}: ${message}`);
+          } else if (status === 'warning') {
+            vscode.window.showWarningMessage(`⚠️ ${displayName}: ${message}`);
+          } else {
+            vscode.window.showErrorMessage(`❌ ${displayName}: ${message}`);
+          }
+        }
+      );
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      vscode.window.showErrorMessage(`Failed to sync GitLab permissions: ${errorMessage}`);
+      console.error('Error syncing GitLab permissions:', error);
     }
   }
 

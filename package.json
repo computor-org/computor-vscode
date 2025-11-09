@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "2025.10.0",
+  "version": "2025.10.1",
   "publisher": "itpcp-tugraz",
   "engines": {
     "vscode": "^1.74.0"
@@ -408,6 +408,12 @@
         "command": "computor.lecturer.showCourseMemberComments",
         "title": "Show Comments",
         "icon": "$(note)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.syncMemberGitlabPermissions",
+        "title": "Sync GitLab Permissions",
+        "icon": "$(sync)",
         "category": "Computor Lecturer"
       },
       {
@@ -847,6 +853,11 @@
           "command": "computor.lecturer.showCourseMemberComments",
           "when": "view == computor.lecturer.courses && viewItem == course.member",
           "group": "2_discussion@2"
+        },
+        {
+          "command": "computor.lecturer.syncMemberGitlabPermissions",
+          "when": "view == computor.lecturer.courses && viewItem == course.member",
+          "group": "3_gitlab@1"
         },
         {
           "command": "computor.lecturer.assignExample",
