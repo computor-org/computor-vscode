@@ -954,22 +954,27 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             const shape = derivedContentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
 
             // Determine success/failure badge for assignments with grading info
-            let badge: 'success' | 'failure' | 'submitted' | 'none' = 'none';
+            let badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none';
             let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
             if (shape === 'square') {
-                // const grade = this.submissionGroup?.grading as number | undefined;
-                // if (typeof grade === 'number') {
-                //     badge = (grade === 1) ? 'success' : 'failure';
-                // }
                 const result = this.courseContent?.result?.result as number | undefined;
                 const submitted = this.courseContent?.submitted;
+
                 if (typeof result === 'number') {
-                    badge = (result === 1) ? 'success' : 'failure';
+                    // Has test result
+                    if (result === 1) {
+                        // Test passed
+                        badge = submitted === true ? 'success-submitted' : 'success';
+                    } else {
+                        // Test failed
+                        badge = submitted === true ? 'failure-submitted' : 'failure';
+                    }
                 } else if (submitted === true) {
                     // Submitted but not tested yet
                     badge = 'submitted';
                 }
-        const status = (this.submissionGroup?.status)?.toLowerCase();
+
+                const status = (this.submissionGroup?.status)?.toLowerCase();
                 if (status === 'corrected') corner = 'corrected';
                 else if (status === 'correction_necessary') corner = 'correction_necessary';
                 else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';

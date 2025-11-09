@@ -47,7 +47,7 @@ export class IconGenerator {
   static getColoredIconWithBadge(
     color: string,
     shape: 'circle' | 'square' = 'circle',
-    badge: 'success' | 'failure' | 'submitted' | 'none' = 'none',
+    badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none',
     corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
   ): vscode.Uri | vscode.ThemeIcon {
     const normalizedColor = this.normalizeColor(color);
@@ -72,7 +72,7 @@ export class IconGenerator {
   private static generateSvg(
     color: string,
     shape: 'circle' | 'square',
-    badge: 'success' | 'failure' | 'submitted' | 'none' = 'none',
+    badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none',
     corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
   ): string {
     const size = 16;
@@ -92,11 +92,27 @@ export class IconGenerator {
     // Main badge overlay (with black outline for contrast)
     let badgeElement = '';
     if (badge === 'success') {
+      // Single checkmark - passed test, not submitted
       badgeElement = `
         <path d="M4 8.5 L7 11 L12 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M4 8.5 L7 11 L12 6" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       `;
+    } else if (badge === 'success-submitted') {
+      // Double checkmark - passed test AND submitted
+      badgeElement = `
+        <path d="M2 8.5 L4.5 11 L8 7.5" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 8.5 L4.5 11 L8 7.5" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M6.5 8.5 L9 11 L14 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M6.5 8.5 L9 11 L14 6" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      `;
     } else if (badge === 'failure') {
+      // Backslash - failed test, not submitted
+      badgeElement = `
+        <path d="M5 5 L11 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+        <path d="M5 5 L11 11" stroke="#ff3f3fff" stroke-width="2" stroke-linecap="round"/>
+      `;
+    } else if (badge === 'failure-submitted') {
+      // X (cross) - failed test AND submitted
       badgeElement = `
         <path d="M5 5 L11 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
         <path d="M11 5 L5 11" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
@@ -104,6 +120,7 @@ export class IconGenerator {
         <path d="M11 5 L5 11" stroke="#ff3f3fff" stroke-width="2" stroke-linecap="round"/>
       `;
     } else if (badge === 'submitted') {
+      // Purple checkmark - submitted but not tested
       badgeElement = `
         <path d="M4 8.5 L7 11 L12 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M4 8.5 L7 11 L12 6" stroke="#c084fcff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
