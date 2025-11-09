@@ -505,27 +505,29 @@ export class StudentCommands {
           let submissionVersion: string | undefined;
           let submissionResponse: SubmissionUploadResponseModel | undefined;
           let reusedExistingSubmission = false;
-          await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Submitting ${assignmentTitle}...`,
-            cancellable: false
-          }, async (progress) => {
-            try {
-              const assignmentId = String(itemOrSubmissionGroup?.courseContent?.id || submissionGroup?.id || assignmentPath);
-              const commitLabel = assignmentTitle || assignmentPath || assignmentId;
 
+          // First, check current commit and whether it has been tested
+          const currentCommitBeforeStaging = await this.gitService.getLatestCommitHash(repoPath);
+          const hasUncommittedChanges = await this.gitService.hasChanges(repoPath);
+
+          if (hasUncommittedChanges || !currentCommitBeforeStaging) {
+            // If there are uncommitted changes, we need to commit them first
+            const commitLabel = assignmentTitle || assignmentPath || courseContentId || 'Assignment';
+
+            await vscode.window.withProgress({
+              location: vscode.ProgressLocation.Notification,
+              title: 'Preparing submission...',
+              cancellable: false
+            }, async (progress) => {
               progress.report({ message: 'Staging changes...' });
               await this.gitService.stageAll(repoPath);
 
               const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
-
               if (hasStagedFiles) {
                 const commitDate = new Date().toISOString();
                 const commitMessage = `Submit ${commitLabel} at ${commitDate}`;
                 progress.report({ message: 'Committing changes...' });
                 await this.gitService.commitChanges(repoPath, commitMessage);
-              } else {
-                progress.report({ message: 'No new changes detected; using latest commit.' });
               }
 
               const currentBranch = await this.gitService.getCurrentBranch(repoPath);
@@ -535,12 +537,77 @@ export class StudentCommands {
 
               progress.report({ message: `Pushing ${currentBranch}...` });
               await this.pushWithAuthRetry(repoPath);
+            });
+          }
 
-              const commitHash = await this.gitService.getLatestCommitHash(repoPath);
-              if (!commitHash) {
-                throw new Error('Failed to get commit hash after push');
-              }
-              submissionVersion = commitHash;
+          const currentCommitHash = await this.gitService.getLatestCommitHash(repoPath);
+          if (!currentCommitHash) {
+            throw new Error('Failed to get current commit hash');
+          }
+
+          // Check if the current commit has been tested (has artifact with submit=false)
+          let testedArtifact: any = null;
+          let currentCommitHasTestedArtifact = false;
+
+          try {
+            const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+              submission_group_id: submissionGroupId,
+              submit: false
+            });
+
+            // Find tested artifact for current commit
+            currentCommitHasTestedArtifact = existingArtifacts.some(
+              artifact => artifact.version_identifier === currentCommitHash
+            );
+
+            // Find the most recent tested artifact (regardless of commit)
+            if (existingArtifacts.length > 0) {
+              const sortedArtifacts = [...existingArtifacts].sort((a, b) => {
+                const aTime = Date.parse(a.created_at ?? '') || 0;
+                const bTime = Date.parse(b.created_at ?? '') || 0;
+                return bTime - aTime;
+              });
+              testedArtifact = sortedArtifacts[0];
+            }
+          } catch (listError) {
+            console.warn('[submitAssignment] Failed to check tested artifacts:', listError);
+          }
+
+          // If current commit hasn't been tested but a different commit has been tested, ask user
+          if (!currentCommitHasTestedArtifact && testedArtifact && testedArtifact.version_identifier !== currentCommitHash) {
+            const currentCommitShort = currentCommitHash.substring(0, 8);
+            const testedCommitShort = testedArtifact.version_identifier?.substring(0, 8) || 'unknown';
+
+            const choice = await vscode.window.showWarningMessage(
+              `The current commit (${currentCommitShort}) hasn't been tested yet. You last tested commit ${testedCommitShort}.`,
+              { modal: true },
+              'Submit Tested Version',
+              'Submit Current (Untested)',
+              'Cancel'
+            );
+
+            if (choice === 'Cancel' || !choice) {
+              return; // User cancelled
+            } else if (choice === 'Submit Tested Version') {
+              // Use the tested artifact's version
+              submissionVersion = testedArtifact.version_identifier;
+              console.log(`[submitAssignment] User chose to submit tested version: ${submissionVersion}`);
+            } else if (choice === 'Submit Current (Untested)') {
+              // Use current commit
+              submissionVersion = currentCommitHash;
+              console.log(`[submitAssignment] User chose to submit current untested version: ${submissionVersion}`);
+            }
+          } else {
+            // Either current commit has been tested, or no tests have been run at all
+            submissionVersion = currentCommitHash;
+          }
+
+          await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Submitting ${assignmentTitle}...`,
+            cancellable: false
+          }, async (progress) => {
+            try {
 
               let existingArtifactId: string | undefined;
               let alreadySubmitted = false;
