@@ -44,7 +44,7 @@ export class TutorCommands {
   registerCommands(): void {
     // Refresh tutor view: clear caches for current member to force API reload
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.refresh', () => {
+      vscode.commands.registerCommand('computor.tutor.refresh', async () => {
         try {
           const sel = TutorSelectionService.getInstance();
           const memberId = sel.getCurrentMemberId();
@@ -58,7 +58,17 @@ export class TutorCommands {
           }
           // Also clear content kinds to be safe
           this.apiService.clearCourseContentKindsCache();
-        } catch {}
+
+          // Proactively fetch fresh data to trigger API calls
+          if (courseId) {
+            await this.apiService.getTutorCourseMembers(courseId, groupId || undefined);
+          }
+          if (courseId && memberId) {
+            await this.apiService.getTutorCourseContents(courseId, memberId);
+          }
+        } catch (error) {
+          console.error('[TutorCommands] Error refreshing tutor data:', error);
+        }
         this.treeDataProvider.refresh();
         this.filterProvider?.refreshFilters();
       })
