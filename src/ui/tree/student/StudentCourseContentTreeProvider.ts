@@ -954,7 +954,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             const shape = derivedContentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
 
             // Determine success/failure badge for assignments with grading info
-            let badge: 'success' | 'failure' | 'none' = 'none';
+            let badge: 'success' | 'failure' | 'submitted' | 'none' = 'none';
             let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
             if (shape === 'square') {
                 // const grade = this.submissionGroup?.grading as number | undefined;
@@ -962,8 +962,12 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                 //     badge = (grade === 1) ? 'success' : 'failure';
                 // }
                 const result = this.courseContent?.result?.result as number | undefined;
+                const submitted = this.courseContent?.submitted;
                 if (typeof result === 'number') {
                     badge = (result === 1) ? 'success' : 'failure';
+                } else if (submitted === true) {
+                    // Submitted but not tested yet
+                    badge = 'submitted';
                 }
         const status = (this.submissionGroup?.status)?.toLowerCase();
                 if (status === 'corrected') corner = 'corrected';

@@ -106,7 +106,7 @@ export class IconGenerator {
     } else if (badge === 'submitted') {
       badgeElement = `
         <path d="M4 8.5 L7 11 L12 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M4 8.5 L7 11 L12 6" stroke="#a855f7ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 8.5 L7 11 L12 6" stroke="#c084fcff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       `;
     }
 
