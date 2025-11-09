@@ -98,12 +98,12 @@ export class IconGenerator {
         <path d="M4 8.5 L7 11 L12 6" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       `;
     } else if (badge === 'success-submitted') {
-      // Double checkmark - passed test AND submitted
+      // Double checkmark - passed test AND submitted (diagonally aligned)
       badgeElement = `
-        <path d="M2 8.5 L4.5 11 L8 7.5" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M2 8.5 L4.5 11 L8 7.5" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M6.5 8.5 L9 11 L14 6" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M6.5 8.5 L9 11 L14 6" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 6.5 L4.5 9 L8 5.5" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 6.5 L4.5 9 L8 5.5" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M6.5 9.5 L9 12 L14 7" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M6.5 9.5 L9 12 L14 7" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       `;
     } else if (badge === 'failure') {
       // Backslash - failed test, not submitted
