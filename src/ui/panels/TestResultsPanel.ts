@@ -324,47 +324,63 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
 
     private formatTestResults(results: any): string {
         let html = '<div class="test-results">';
-        
+
         // Summary section
         if (results.summary) {
             html += '<div class="summary">';
             html += '<h3>Summary</h3>';
             html += '<ul>';
             for (const [key, value] of Object.entries(results.summary)) {
-                html += `<li><strong>${key}:</strong> ${value}</li>`;
+                html += `<li><strong>${this.escapeHtml(String(key))}:</strong> ${this.escapeHtml(String(value))}</li>`;
             }
             html += '</ul>';
             html += '</div>';
         }
-        
+
         // Test details
         if (results.tests && Array.isArray(results.tests)) {
             html += '<div class="tests">';
             html += '<h3>Test Results</h3>';
             html += '<ul class="test-list">';
-            
+
             for (const test of results.tests) {
                 const passed = test.result === 'PASSED';
                 const icon = passed ? '✅' : '❌';
                 const className = passed ? 'passed' : 'failed';
-                
+
                 html += `<li class="test-item ${className}">`;
                 html += `<span class="test-icon">${icon}</span>`;
-                html += `<span class="test-name">${test.name || 'Unnamed Test'}</span>`;
-                
+                html += `<span class="test-name">${this.escapeHtml(test.name || 'Unnamed Test')}</span>`;
+
                 if (test.resultMessage) {
-                    html += `<div class="test-message">${test.resultMessage}</div>`;
+                    html += `<div class="test-message">${this.formatMessage(test.resultMessage)}</div>`;
                 }
-                
+
                 html += '</li>';
             }
-            
+
             html += '</ul>';
             html += '</div>';
         }
-        
+
         html += '</div>';
         return html;
+    }
+
+    private escapeHtml(text: string): string {
+        const div = { textContent: text } as any;
+        const escaped = div.textContent
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        return escaped;
+    }
+
+    private formatMessage(message: string): string {
+        // Escape HTML and convert newlines to <br> tags
+        return this.escapeHtml(message).replace(/\n/g, '<br>');
     }
 
     public resolveWebviewView(
@@ -480,7 +496,8 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
                     margin-left: 24px;
                     font-size: 12px;
                     opacity: 0.8;
-                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                    overflow-wrap: break-word;
                 }
                 
                 pre {
