@@ -163,6 +163,7 @@ export class StudentOfflineCommands {
 
     /**
      * Pull latest changes from remote repository and update fork from upstream
+     * Uses robust CTGit.forkUpdate() for proper conflict resolution and merge handling
      */
     private async pullChanges(item: any): Promise<void> {
         console.log('[StudentOfflineCommands] Pull changes:', item);
@@ -190,43 +191,73 @@ export class StudentOfflineCommands {
                 title: `Updating ${repoName}...`,
                 cancellable: false
             }, async (progress) => {
-                progress.report({ increment: 0, message: 'Fetching from origin...' });
+                progress.report({ message: 'Fetching from origin...' });
 
-                // Pull from origin
+                // Pull from origin first
                 const { GitWrapper } = await import('../git/GitWrapper');
                 const gitWrapper = new GitWrapper();
                 await gitWrapper.pull(repoPath!);
 
-                progress.report({ increment: 50, message: 'Checking for upstream...' });
+                progress.report({ message: 'Checking for upstream...' });
 
                 // Check if upstream remote exists
                 const remotes = await gitWrapper.getRemotes(repoPath!);
-                const hasUpstream = remotes.some(r => r.name === 'upstream');
+                const upstreamRemote = remotes.find(r => r.name === 'upstream');
 
-                if (hasUpstream) {
-                    progress.report({ increment: 60, message: 'Fetching from upstream (fork origin)...' });
+                if (upstreamRemote) {
+                    progress.report({ message: 'Syncing fork with upstream...' });
 
-                    // Fetch and merge from upstream using pull (which includes fetch + merge)
+                    // Use CTGit.forkUpdate() for robust fork syncing
+                    // This matches the implementation in StudentRepositoryManager.syncForkWithUpstream()
+                    const { CTGit } = await import('../git/CTGit');
+                    const ctGit = new CTGit(repoPath!);
+
                     try {
-                        // Try to pull from upstream/main
-                        try {
-                            await gitWrapper.pull(repoPath!, 'upstream', 'main');
-                        } catch {
-                            // Fallback to upstream/master
+                        // Use the same robust fork update logic as online mode
+                        // autoResolveConflicts: true enables automatic conflict resolution
+                        const result = await ctGit.forkUpdate(upstreamRemote.url, {
+                            autoResolveConflicts: true
+                        });
+
+                        if (result.updated) {
+                            progress.report({ message: 'Pushing merged changes to origin...' });
                             try {
-                                await gitWrapper.pull(repoPath!, 'upstream', 'master');
-                            } catch (mergeError: any) {
-                                console.warn('[StudentOfflineCommands] Could not pull from upstream:', mergeError);
-                                // Continue even if merge fails - user might need to resolve manually
+                                await gitWrapper.push(repoPath!, 'origin');
+                                console.log('[StudentOfflineCommands] Successfully pushed fork update to origin');
+                            } catch (pushError) {
+                                console.warn('[StudentOfflineCommands] Failed to push fork update to origin:', pushError);
+                                vscode.window.showWarningMessage(
+                                    'Fork updated locally, but failed to push to origin. You may need to push manually.'
+                                );
                             }
+                        } else {
+                            console.log('[StudentOfflineCommands] Fork is already up-to-date with upstream');
                         }
-                    } catch (upstreamError: any) {
-                        console.warn('[StudentOfflineCommands] Failed to update from upstream:', upstreamError);
+                    } catch (forkUpdateError: any) {
+                        console.error('[StudentOfflineCommands] Fork update failed:', forkUpdateError);
+
+                        // Provide helpful error messages based on error type
+                        const errorMessage = forkUpdateError.message || String(forkUpdateError);
+                        if (errorMessage.includes('merge-unresolved')) {
+                            vscode.window.showErrorMessage(
+                                'Fork update failed due to conflicts that could not be resolved automatically. ' +
+                                'Please resolve conflicts manually using your Git client.'
+                            );
+                        } else if (errorMessage.includes('merge-abort')) {
+                            vscode.window.showInformationMessage('Fork update was cancelled.');
+                        } else if (errorMessage.includes('merge-editor')) {
+                            vscode.window.showInformationMessage(
+                                'Please resolve conflicts in the merge editor, then commit and push manually.'
+                            );
+                        } else {
+                            throw forkUpdateError;
+                        }
+                        return;
                     }
 
-                    progress.report({ increment: 100, message: 'Done!' });
+                    progress.report({ message: 'Done!' });
                 } else {
-                    progress.report({ increment: 100, message: 'Done! (no upstream configured)' });
+                    progress.report({ message: 'Done! (no upstream configured)' });
                 }
             });
 
