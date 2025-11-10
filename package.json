@@ -436,7 +436,7 @@
       },
       {
         "command": "computor.lecturer.importCourseMembers",
-        "title": "Import Course Members from Excel XML",
+        "title": "Import Course Members File",
         "icon": "$(cloud-upload)",
         "category": "Computor Lecturer"
       },
