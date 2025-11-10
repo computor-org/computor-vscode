@@ -551,6 +551,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.configureGit",
+        "title": "Configure Git",
+        "icon": "$(person)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.lecturer.releaseCourseContent",
         "title": "Release Content",
         "icon": "$(rocket)",
