@@ -557,6 +557,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.gettingStarted",
+        "title": "Getting Started",
+        "icon": "$(book)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.lecturer.releaseCourseContent",
         "title": "Release Content",
         "icon": "$(rocket)",

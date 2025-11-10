@@ -36,6 +36,7 @@ import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/pane
 import { TestResultService } from './services/TestResultService';
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 import { configureGit } from './commands/configureGit';
+import { showGettingStarted } from './commands/showGettingStarted';
 
 interface StoredAuth {
   accessToken: string;
@@ -931,6 +932,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.configureGit', async () => {
     await configureGit();
+  }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('computor.gettingStarted', async () => {
+    await showGettingStarted(context);
   }));
 
   // Check backend connection command
