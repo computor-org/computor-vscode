@@ -4,7 +4,7 @@ import * as path from 'path';
 export async function showGettingStarted(context: vscode.ExtensionContext): Promise<void> {
   try {
     // Get the extension path and construct the markdown file path
-    const gettingStartedPath = path.join(context.extensionPath, 'docs', 'help', 'getting-started.md');
+    const gettingStartedPath = path.join(context.extensionPath, 'README.md');
     const gettingStartedUri = vscode.Uri.file(gettingStartedPath);
 
     // Open the markdown preview
