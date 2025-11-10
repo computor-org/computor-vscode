@@ -70,11 +70,18 @@ export class NetworkErrorStrategy implements ErrorRecoveryStrategy {
 
 export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
   canRecover(error: Error): boolean {
+    // Check for HttpError with 401 status
+    if (error instanceof HttpError) {
+      return error.status === 401;
+    }
+    // Fallback to message parsing for backward compatibility
     return error.message.includes('401') ||
            error.message.includes('Unauthorized');
   }
 
   async recover(error: Error): Promise<void> {
+    // Note: 401 errors are typically handled by BearerTokenHttpClient's token refresh mechanism.
+    // This recovery strategy is a fallback for when token refresh fails.
     const action = await vscode.window.showErrorMessage(
       'Authentication failed. Your session may have expired. Please reload the window to refresh your session.',
       'Reload Window',
@@ -141,22 +148,43 @@ export class ErrorRecoveryService {
   ];
   
   /**
-   * Check if error is a non-retryable HTTP client error (4xx except 401, 408, 429)
+   * Check if error is a non-retryable HTTP client error (4xx except 408, 429)
+   *
+   * Retryable 4xx errors:
+   * - 408 (Request Timeout)
+   * - 429 (Rate Limit)
+   *
+   * Non-retryable 4xx errors:
+   * - 400 (Bad Request) - invalid input
+   * - 401 (Unauthorized) - handled separately by BearerTokenHttpClient
+   * - 403 (Forbidden) - no permission
+   * - 404 (Not Found) - resource doesn't exist
+   * - 405, 406, 409, 410, etc. - all other client errors
    */
   private isNonRetryableClientError(error: Error): boolean {
-    const message = error.message;
+    // Check if this is an HttpError with a status code
+    if (error instanceof HttpError) {
+      const statusCode = error.status;
 
-    // Check for HTTP 4xx errors in the message
+      // Don't retry client errors (400-499) except:
+      // - 408 (Request Timeout - can retry)
+      // - 429 (Rate Limit - handled by RateLimitErrorStrategy)
+      if (statusCode >= 400 && statusCode < 500) {
+        return statusCode !== 408 && statusCode !== 429;
+      }
+    }
+
+    // Fallback: parse status code from error message
+    const message = error.message;
     const httpErrorMatch = message.match(/HTTP (\d{3})/);
     if (httpErrorMatch && httpErrorMatch[1]) {
       const statusCode = parseInt(httpErrorMatch[1], 10);
 
       // Don't retry client errors (400-499) except:
-      // - 401 (handled by AuthenticationErrorStrategy)
       // - 408 (Request Timeout - can retry)
       // - 429 (Rate Limit - handled by RateLimitErrorStrategy)
       if (statusCode >= 400 && statusCode < 500) {
-        return statusCode !== 401 && statusCode !== 408 && statusCode !== 429;
+        return statusCode !== 408 && statusCode !== 429;
       }
     }
 
@@ -177,6 +205,8 @@ export class ErrorRecoveryService {
       onRetry
     } = options;
 
+    const startTime = Date.now();
+    const maxTotalRetryTime = 30000; // 30 seconds maximum total retry time
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -184,6 +214,12 @@ export class ErrorRecoveryService {
         return await fn();
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Check if we've exceeded maximum total retry time
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime >= maxTotalRetryTime) {
+          throw new Error(`Operation failed after ${Math.round(elapsedTime / 1000)}s (max retry time exceeded): ${lastError.message}`);
+        }
 
         // Don't retry non-retryable client errors (like 403, 404, etc.)
         if (this.isNonRetryableClientError(lastError)) {

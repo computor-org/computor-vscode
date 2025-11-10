@@ -81,26 +81,29 @@ export abstract class HttpClient {
     params?: Record<string, any>
   ): Promise<HttpResponse<T>> {
     const config = await this.buildRequestConfig(method, endpoint, data, params);
-    
+
     // Check cache for GET requests
     if (this.cacheEnabled && method === 'GET') {
       const cacheKey = this.createCacheKey(config);
       const cachedEntry = await this.cache.get<T>(cacheKey);
-      
+
       if (cachedEntry && !this.cache.isExpired(cachedEntry)) {
         return cachedEntry.data as HttpResponse<T>;
       }
     }
-    
+
+    const startTime = Date.now();
+    const maxTotalRetryTime = 30000; // 30 seconds maximum total retry time
+
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const response = await this.executeRequest<T>(config);
-        
+
         // Cache successful GET responses (200-299 range, but typically 200 for GET)
         if (this.cacheEnabled && method === 'GET' && response.status >= 200 && response.status < 300) {
           const cacheKey = this.createCacheKey(config);
           const ttl = this.getCacheTTL(response.headers);
-          
+
           await this.cache.set(cacheKey, {
             data: response,
             timestamp: Date.now(),
@@ -109,16 +112,22 @@ export abstract class HttpClient {
             lastModified: response.headers['last-modified'],
           });
         }
-        
+
         return response;
       } catch (error) {
+        // Check if we've exceeded maximum total retry time
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime >= maxTotalRetryTime) {
+          throw new Error(`Request failed after ${Math.round(elapsedTime / 1000)}s (max retry time exceeded): ${error instanceof Error ? error.message : String(error)}`);
+        }
+
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           throw error;
         }
         await this.delay(this.retryDelay * Math.pow(2, attempt));
       }
     }
-    
+
     throw new Error('Max retries exceeded');
   }
 
@@ -308,7 +317,32 @@ export abstract class HttpClient {
     }
 
     if (error instanceof HttpError) {
-      return error.status >= 500 || error.status === 429;
+      const status = error.status;
+
+      // Retry rate limiting (429)
+      if (status === 429) {
+        return true;
+      }
+
+      // Retry request timeout (408)
+      if (status === 408) {
+        return true;
+      }
+
+      // Don't retry server errors (5xx) - they indicate backend problems
+      // that won't be fixed by immediate retries
+      if (status >= 500) {
+        return false;
+      }
+
+      // Don't retry client errors (4xx) except those explicitly handled above
+      // Common non-retryable errors: 400, 401, 403, 404, etc.
+      if (status >= 400 && status < 500) {
+        return false;
+      }
+
+      // For other status codes, don't retry
+      return false;
     }
 
     return false;
