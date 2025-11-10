@@ -292,10 +292,10 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     private buildMessage(value: any): { label: string; message: string } {
         let message = "No test results available";
         let label = "Test Results";
-        
+
         if (value !== undefined) {
             if ('message' in value) {
-                message = value.message;
+                message = this.escapeHtml(value.message);
             } else if (value.result_json) {
                 // Parse the test results
                 try {
@@ -379,8 +379,8 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private formatMessage(message: string): string {
-        // Escape HTML and convert newlines to <br> tags
-        return this.escapeHtml(message).replace(/\n/g, '<br>');
+        // Escape HTML - newlines will be preserved by CSS white-space: pre
+        return this.escapeHtml(message);
     }
 
     public resolveWebviewView(
@@ -441,6 +441,10 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
                 
                 .content {
                     padding: 8px 0;
+                    white-space: pre-wrap;
+                    font-family: var(--vscode-editor-font-family);
+                    word-wrap: break-word;
+                    overflow-wrap: break-word;
                 }
                 
                 .test-results {
@@ -498,6 +502,8 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
                     opacity: 0.8;
                     word-wrap: break-word;
                     overflow-wrap: break-word;
+                    white-space: pre;
+                    font-family: var(--vscode-editor-font-family);
                 }
                 
                 pre {
