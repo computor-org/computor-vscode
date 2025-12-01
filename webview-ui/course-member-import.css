@@ -173,6 +173,27 @@ body {
   white-space: nowrap;
 }
 
+.import-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.import-table th.sortable:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.sort-icon {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.5;
+  display: inline-block;
+}
+
+.sort-icon.active {
+  opacity: 1;
+  color: var(--vscode-charts-blue);
+}
+
 .import-table tbody tr {
   border-bottom: 1px solid var(--vscode-panel-border);
 }

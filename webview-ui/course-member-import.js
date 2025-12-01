@@ -8,6 +8,8 @@
   let availableGroups = [];
   let courseId = '';
   let isImporting = false;
+  let sortColumn = null;
+  let sortDirection = 'asc';
 
   function init() {
     if (!state.members || !state.availableRoles) {
@@ -112,12 +114,24 @@
               <th class="checkbox-cell">
                 <input type="checkbox" id="headerCheckbox" ${isImporting ? 'disabled' : ''} ${allVisibleSelected ? 'checked' : ''}>
               </th>
-              <th class="status-cell">Status</th>
-              <th class="email-cell">Email</th>
-              <th class="given-name-cell">Given Name</th>
-              <th class="family-name-cell">Family Name</th>
-              <th class="group-cell">Group</th>
-              <th class="role-cell">Course Role</th>
+              <th class="status-cell sortable" data-sort="status">
+                Status ${renderSortIcon('status')}
+              </th>
+              <th class="email-cell sortable" data-sort="email">
+                Email ${renderSortIcon('email')}
+              </th>
+              <th class="given-name-cell sortable" data-sort="given_name">
+                Given Name ${renderSortIcon('given_name')}
+              </th>
+              <th class="family-name-cell sortable" data-sort="family_name">
+                Family Name ${renderSortIcon('family_name')}
+              </th>
+              <th class="group-cell sortable" data-sort="course_group_title">
+                Group ${renderSortIcon('course_group_title')}
+              </th>
+              <th class="role-cell sortable" data-sort="selectedRoleId">
+                Course Role ${renderSortIcon('selectedRoleId')}
+              </th>
               <th class="result-cell">Result</th>
             </tr>
           </thead>
@@ -134,11 +148,40 @@
     `;
   }
 
+  function renderSortIcon(column) {
+    if (sortColumn !== column) {
+      return '<span class="sort-icon">⇅</span>';
+    }
+    return sortDirection === 'asc'
+      ? '<span class="sort-icon active">▲</span>'
+      : '<span class="sort-icon active">▼</span>';
+  }
+
+  function sortMembers(membersToSort) {
+    if (!sortColumn) return membersToSort;
+
+    return [...membersToSort].sort((a, b) => {
+      let aVal = a[sortColumn] || '';
+      let bVal = b[sortColumn] || '';
+
+      // Convert to lowercase for string comparison
+      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
   function renderTableRows() {
-    const visibleMembers = members.filter(m => {
+    let visibleMembers = members.filter(m => {
       if (currentFilter === 'all') return true;
       return m.status === currentFilter;
     });
+
+    // Apply sorting
+    visibleMembers = sortMembers(visibleMembers);
 
     if (visibleMembers.length === 0) {
       return `
@@ -256,6 +299,23 @@
   }
 
   function attachEventListeners() {
+    // Sortable column headers
+    document.querySelectorAll('.sortable').forEach(header => {
+      header.addEventListener('click', () => {
+        const column = header.dataset.sort;
+        if (sortColumn === column) {
+          // Toggle direction
+          sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          // New column, default to ascending
+          sortColumn = column;
+          sortDirection = 'asc';
+        }
+        render();
+        attachEventListeners();
+      });
+    });
+
     // Filter buttons
     document.querySelectorAll('.filter-button').forEach(btn => {
       btn.addEventListener('click', () => {
