@@ -42,6 +42,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
         this.apiService.getCourseRoles(),
         this.apiService.getCourseGroups(courseId)
       ]);
+      console.log(`Fetched ${this.availableGroups.length} course groups:`, this.availableGroups);
     } catch (error) {
       console.error('Failed to fetch course data:', error);
       vscode.window.showErrorMessage(`Failed to fetch course data: ${error}`);
@@ -51,6 +52,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
         { id: '_tutor', title: 'Tutor' },
         { id: '_lecturer', title: 'Lecturer' }
       ] as CourseRoleList[];
+      this.availableGroups = [];
     }
 
     // Convert existing members to display format
@@ -448,17 +450,33 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     });
 
     if (groupTitle) {
+      const trimmedTitle = groupTitle.trim();
       const member = this.members.find(m => m.rowNumber === data.rowNumber);
       if (member) {
-        member.course_group_title = groupTitle.trim();
+        member.course_group_title = trimmedTitle;
       }
 
-      // Send back to webview
+      // Add to availableGroups if not already present
+      const groupExists = this.availableGroups.find(g =>
+        (g.title || g.id) === trimmedTitle
+      );
+
+      if (!groupExists) {
+        // Add as a temporary group (no ID yet, will be created on import)
+        this.availableGroups.push({
+          id: `temp_${Date.now()}`,
+          title: trimmedTitle,
+          course_id: this.courseId || ''
+        });
+      }
+
+      // Send back to webview with updated groups list
       this.panel?.webview.postMessage({
         command: 'customGroupEntered',
         data: {
           rowNumber: data.rowNumber,
-          groupTitle: groupTitle.trim()
+          groupTitle: trimmedTitle,
+          availableGroups: this.availableGroups
         }
       });
     }

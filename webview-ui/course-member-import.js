@@ -25,6 +25,8 @@
     availableRoles = state.availableRoles;
     availableGroups = state.availableGroups || [];
 
+    console.log('Initialized with', availableGroups.length, 'available groups:', availableGroups);
+
     render();
     attachEventListeners();
   }
@@ -649,13 +651,19 @@
         break;
 
       case 'customGroupEntered':
-        // Update member with custom group name
+        // Update member with custom group name and available groups list
         const member = members.find(m => m.rowNumber === message.data.rowNumber);
         if (member && message.data.groupTitle) {
           member.course_group_title = message.data.groupTitle;
-          render();
-          attachEventListeners();
         }
+
+        // Update available groups if provided
+        if (message.data.availableGroups) {
+          availableGroups = message.data.availableGroups;
+        }
+
+        render();
+        attachEventListeners();
         break;
     }
   });
