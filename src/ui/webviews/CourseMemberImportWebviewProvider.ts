@@ -3,6 +3,8 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseMemberImportRow, CourseRoleList, CourseMemberList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
+import { CourseMemberParserFactory } from '../../utils/parsers/CourseMemberParserFactory';
+import * as path from 'path';
 
 interface ImportMemberRow extends CourseMemberImportRow {
   rowNumber: number;
@@ -218,15 +220,16 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
   }
 
   private async handleSelectImportFile(): Promise<void> {
+    const supportedExtensions = CourseMemberParserFactory.getSupportedExtensions();
     const fileUri = await vscode.window.showOpenDialog({
       canSelectFiles: true,
       canSelectFolders: false,
       canSelectMany: false,
       filters: {
-        'Excel XML Files': ['xml'],
+        'Course Member Files': supportedExtensions,
         'All Files': ['*']
       },
-      title: 'Select Excel XML file containing course members'
+      title: 'Select file containing course members'
     });
 
     if (!fileUri || fileUri.length === 0) {
@@ -239,51 +242,30 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     }
 
     const filePath = firstFile.fsPath;
+    const fileExtension = path.extname(filePath).substring(1);
 
     try {
       const fs = await import('fs');
       const fileBuffer = await fs.promises.readFile(filePath);
       const fileContent = fileBuffer.toString('utf-8');
 
-      // TODO: Implement proper XML parsing
-      // For now, create mock data
-      const mockMembers = this.parseMockXMLData(fileContent);
+      // Parse file using factory
+      const members = CourseMemberParserFactory.parse(fileContent, fileExtension);
 
-      await this.loadImportData(mockMembers);
+      if (members.length === 0) {
+        vscode.window.showWarningMessage('No valid course members found in file');
+        return;
+      }
 
-      vscode.window.showInformationMessage('Import file loaded successfully');
+      await this.loadImportData(members);
+
+      vscode.window.showInformationMessage(
+        `Import file loaded successfully: ${members.length} member(s) found`
+      );
     } catch (error: any) {
       console.error('Failed to load import file:', error);
       vscode.window.showErrorMessage(`Failed to load import file: ${error?.message || error}`);
     }
-  }
-
-  private parseMockXMLData(xmlContent: string): CourseMemberImportRow[] {
-    void xmlContent;
-    // TODO: Implement proper XML parsing
-    return [
-      {
-        email: 'john.doe@example.com',
-        given_name: 'John',
-        family_name: 'Doe',
-        course_group_title: 'Group A',
-        course_role_id: '_student'
-      },
-      {
-        email: 'jane.smith@example.com',
-        given_name: 'Jane',
-        family_name: 'Smith',
-        course_group_title: 'Group B',
-        course_role_id: '_student'
-      },
-      {
-        email: 'bob.johnson@example.com',
-        given_name: 'Bob',
-        family_name: 'Johnson',
-        course_group_title: 'Group A',
-        course_role_id: '_student'
-      }
-    ];
   }
 
   private async handleImportSelected(data: {
