@@ -435,12 +435,6 @@
         "category": "Computor Lecturer"
       },
       {
-        "command": "computor.lecturer.importCourseMembers",
-        "title": "Import Course Members File",
-        "icon": "$(cloud-upload)",
-        "category": "Computor Lecturer"
-      },
-      {
         "command": "computor.lecturer.importCourseMembersPreview",
         "title": "Show Members",
         "icon": "$(account)",
@@ -843,14 +837,9 @@
           "group": "1_content@1"
         },
         {
-          "command": "computor.lecturer.importCourseMembers",
-          "when": "view == computor.lecturer.courses && viewItem == course.groups",
-          "group": "1_content@2"
-        },
-        {
           "command": "computor.lecturer.importCourseMembersPreview",
           "when": "view == computor.lecturer.courses && viewItem == course.groups",
-          "group": "1_content@3"
+          "group": "1_content@2"
         },
         {
           "command": "computor.lecturer.renameCourseContent",

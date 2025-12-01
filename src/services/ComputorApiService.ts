@@ -2846,7 +2846,7 @@ export class ComputorApiService {
         course_member?: any;
         created_group?: any;
       }>(
-        `/course-member-import/import-single/${courseId}`,
+        `/course-member-import/${courseId}`,
         requestBody
       );
 
