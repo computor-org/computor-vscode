@@ -174,7 +174,7 @@
       const canDelete = member.status === 'missing' && !isImporting;
 
       return `
-        <tr class="${rowClass}" data-row="${member.rowNumber}" ${canDelete ? 'oncontextmenu="return showContextMenu(event, ' + member.rowNumber + ')"' : ''}>
+        <tr class="${rowClass}" data-row="${member.rowNumber}" ${canDelete ? 'data-can-delete="true"' : ''}>
           <td class="checkbox-cell">
             <input
               type="checkbox"
@@ -317,6 +317,15 @@
           e.preventDefault();
           e.target.blur();
         }
+      });
+    });
+
+    // Context menu for rows
+    document.querySelectorAll('tr[data-can-delete="true"]').forEach(row => {
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const rowNumber = parseInt(row.dataset.row);
+        showContextMenu(e, rowNumber);
       });
     });
   }
@@ -468,7 +477,7 @@
   }
 
   // Context menu for rows
-  window.showContextMenu = function(event, rowNumber) {
+  function showContextMenu(event, rowNumber) {
     event.preventDefault();
 
     // Remove any existing context menu
@@ -490,12 +499,15 @@
     menu.style.left = event.clientX + 'px';
     menu.style.top = event.clientY + 'px';
 
-    menu.innerHTML = `
-      <div class="context-menu-item" onclick="handleRemoveMember(${rowNumber})">
-        🗑️ Remove Row
-      </div>
-    `;
+    const menuItem = document.createElement('div');
+    menuItem.className = 'context-menu-item';
+    menuItem.textContent = '🗑️ Remove Row';
+    menuItem.addEventListener('click', () => {
+      handleRemoveMember(rowNumber);
+      menu.remove();
+    });
 
+    menu.appendChild(menuItem);
     document.body.appendChild(menu);
 
     // Close menu when clicking outside
@@ -511,9 +523,7 @@
     }, 10);
 
     return false;
-  };
-
-  window.handleRemoveMember = handleRemoveMember;
+  }
 
   // Handle messages from extension
   window.addEventListener('message', event => {
