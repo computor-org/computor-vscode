@@ -338,16 +338,21 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
           });
 
           try {
-            // TODO: Implement when import-single endpoint is available
-            // const result = await this.apiService.importSingleCourseMember(
-            //   this.courseId!,
-            //   row.memberData,
-            //   row.selectedRoleId,
-            //   data.options
-            // );
-
-            // Mock success for now
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Call the real API endpoint
+            const result = await this.apiService.importSingleCourseMember(
+              this.courseId!,
+              {
+                email: row.memberData.email,
+                given_name: row.memberData.given_name,
+                family_name: row.memberData.family_name,
+                course_group_title: row.memberData.course_group_title,
+                course_role_id: row.selectedRoleId
+              },
+              {
+                createMissingGroup: data.options.createMissingGroups,
+                updateIfExists: data.options.updateIfExists
+              }
+            );
 
             this.panel?.webview.postMessage({
               command: 'importProgress',
@@ -355,7 +360,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
                 rowNumber: row.rowNumber,
                 result: {
                   status: 'success',
-                  message: 'Member imported successfully (mock)'
+                  message: result.message || 'Member imported successfully'
                 }
               }
             });

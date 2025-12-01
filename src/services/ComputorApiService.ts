@@ -2808,4 +2808,56 @@ export class ComputorApiService {
     }
   }
 
+  async importSingleCourseMember(
+    courseId: string,
+    memberData: {
+      email: string;
+      given_name?: string | null;
+      family_name?: string | null;
+      course_group_title?: string | null;
+      course_role_id: string;
+    },
+    options?: {
+      createMissingGroup?: boolean;
+      updateIfExists?: boolean;
+    }
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    course_member?: any;
+    created_group?: any;
+  }> {
+    try {
+      const client = await this.getHttpClient();
+
+      const requestBody = {
+        email: memberData.email,
+        given_name: memberData.given_name,
+        family_name: memberData.family_name,
+        course_group_title: memberData.course_group_title,
+        course_role_id: memberData.course_role_id,
+        create_missing_group: options?.createMissingGroup ?? true,
+        update_if_exists: options?.updateIfExists ?? true
+      };
+
+      const response = await client.post<{
+        success: boolean;
+        message?: string;
+        course_member?: any;
+        created_group?: any;
+      }>(
+        `/course-member-import/import-single/${courseId}`,
+        requestBody
+      );
+
+      // Invalidate course member cache
+      this.invalidateCachePattern('courseMembers-');
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to import single course member:', error);
+      throw error;
+    }
+  }
+
 }
