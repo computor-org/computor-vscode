@@ -40,6 +40,14 @@
       modified: members.filter(m => m.status === 'modified').length
     };
 
+    // Calculate header checkbox state based on visible members
+    const visibleMembers = members.filter(m => {
+      if (currentFilter === 'all') return true;
+      return m.status === currentFilter;
+    });
+    const visibleSelectedCount = visibleMembers.filter(m => m.isSelected).length;
+    const allVisibleSelected = visibleMembers.length > 0 && visibleSelectedCount === visibleMembers.length;
+
     app.innerHTML = `
       <div class="header">
         <h1>Course Member Import Preview</h1>
@@ -98,7 +106,7 @@
           <thead>
             <tr>
               <th class="checkbox-cell">
-                <input type="checkbox" id="headerCheckbox" ${isImporting ? 'disabled' : ''}>
+                <input type="checkbox" id="headerCheckbox" ${isImporting ? 'disabled' : ''} ${allVisibleSelected ? 'checked' : ''}>
               </th>
               <th class="status-cell">Status</th>
               <th>Email</th>
