@@ -12,6 +12,7 @@ import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewP
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
 import { CourseMemberWebviewProvider } from '../ui/webviews/CourseMemberWebviewProvider';
+import { CourseMemberImportWebviewProvider } from '../ui/webviews/CourseMemberImportWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebviewProvider';
@@ -40,6 +41,7 @@ export class LecturerCommands {
   private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
   private courseGroupWebviewProvider: CourseGroupWebviewProvider;
   private courseMemberWebviewProvider: CourseMemberWebviewProvider;
+  private courseMemberImportWebviewProvider: CourseMemberImportWebviewProvider;
   private courseGroupCommands: CourseGroupCommands;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
@@ -59,6 +61,7 @@ export class LecturerCommands {
     this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseMemberImportWebviewProvider = new CourseMemberImportWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
@@ -170,6 +173,13 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.importCourseMembers', async (item: CourseTreeItem | CourseFolderTreeItem) => {
         await this.importCourseMembersFromFile(item);
+      })
+    );
+
+    // Course member import with preview
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.importCourseMembersPreview', async (item: CourseTreeItem | CourseFolderTreeItem) => {
+        await this.importCourseMembersWithPreview(item);
       })
     );
 
@@ -2995,5 +3005,80 @@ export class LecturerCommands {
     document.then(doc => {
       vscode.window.showTextDocument(doc, { preview: true });
     });
+  }
+
+  async importCourseMembersWithPreview(item?: CourseTreeItem | CourseFolderTreeItem): Promise<void> {
+    try {
+      let courseId: string | undefined;
+
+      if (item instanceof CourseTreeItem) {
+        courseId = item.course.id;
+      } else if (item instanceof CourseFolderTreeItem && item.folderType === 'groups') {
+        courseId = item.course.id;
+      }
+
+      if (!courseId) {
+        vscode.window.showErrorMessage('Please select a course or groups folder to show members.');
+        return;
+      }
+
+      // Show webview with existing members first
+      await this.courseMemberImportWebviewProvider.showMembers(courseId);
+    } catch (error: any) {
+      console.error('Failed to show course members:', error);
+      vscode.window.showErrorMessage(
+        `Failed to show course members: ${error?.message || error}`
+      );
+    }
+  }
+
+  async loadImportFile(courseId: string, filePath: string): Promise<void> {
+    try {
+      const fileBuffer = await fs.promises.readFile(filePath);
+      const fileContent = fileBuffer.toString('utf-8');
+
+      // TODO: Implement proper XML parsing
+      // For now, create mock data for demonstration
+      const mockMembers = this.parseMockXMLData(fileContent);
+
+      await this.courseMemberImportWebviewProvider.loadImportData(mockMembers);
+    } catch (error: any) {
+      console.error('Failed to load import file:', error);
+      throw error;
+    }
+  }
+
+  private parseMockXMLData(xmlContent: string): any[] {
+    // TODO: Implement proper XML parsing
+    // This is a placeholder that creates mock data for demonstration
+    // In production, this should parse the actual XML file
+
+    // For now, return some mock data to demonstrate the webview
+    return [
+      {
+        email: 'john.doe@example.com',
+        given_name: 'John',
+        family_name: 'Doe',
+        student_id: '12345',
+        course_group_title: 'Group A',
+        course_role_id: '_student'
+      },
+      {
+        email: 'jane.smith@example.com',
+        given_name: 'Jane',
+        family_name: 'Smith',
+        student_id: '12346',
+        course_group_title: 'Group B',
+        course_role_id: '_student'
+      },
+      {
+        email: 'bob.johnson@example.com',
+        given_name: 'Bob',
+        family_name: 'Johnson',
+        student_id: '12347',
+        course_group_title: 'Group A',
+        course_role_id: '_student'
+      }
+    ];
   }
 }

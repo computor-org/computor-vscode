@@ -36,6 +36,7 @@ import {
   CourseGroupList,
   CourseGroupGet,
   CourseGroupUpdate,
+  CourseRoleList,
   CourseMemberList,
   CourseMemberGet,
   CourseMemberUpdate,
@@ -260,13 +261,13 @@ export class ComputorApiService {
 
   async getCourse(courseId: string): Promise<CourseGet | undefined> {
     const cacheKey = `course-${courseId}`;
-    
+
     // Check cache first
     const cached = multiTierCache.get<CourseGet>(cacheKey);
     if (cached) {
       return cached;
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
@@ -276,13 +277,41 @@ export class ComputorApiService {
         maxRetries: 2,
         exponentialBackoff: true
       });
-      
+
       // Cache in warm tier
       multiTierCache.set(cacheKey, result, 'warm');
       return result;
     } catch (error) {
       console.error('Failed to get course:', error);
       return undefined;
+    }
+  }
+
+  async getCourseRoles(): Promise<CourseRoleList[]> {
+    const cacheKey = 'course-roles';
+
+    // Check cache first
+    const cached = multiTierCache.get<CourseRoleList[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseRoleList[]>('/course-roles');
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      // Cache in hot tier (roles don't change often)
+      multiTierCache.set(cacheKey, result, 'hot');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course roles:', error);
+      throw error;
     }
   }
 
