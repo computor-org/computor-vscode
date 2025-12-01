@@ -67,6 +67,9 @@
           <button class="btn btn-secondary" id="loadFileBtn" ${isImporting ? 'disabled' : ''}>
             📁 Load Import File
           </button>
+          <button class="btn btn-secondary" id="addMemberBtn" ${isImporting ? 'disabled' : ''}>
+            ➕ Add New Member
+          </button>
           <button class="btn btn-secondary" id="selectAllBtn" ${isImporting ? 'disabled' : ''}>
             Select All
           </button>
@@ -159,8 +162,11 @@
                       (member.importResult?.status === 'success' ? 'row-success' :
                        member.importResult?.status === 'error' ? 'row-error' : '');
 
+      const canEdit = member.status === 'missing' && !isImporting;
+      const canDelete = member.status === 'missing' && !isImporting;
+
       return `
-        <tr class="${rowClass}" data-row="${member.rowNumber}">
+        <tr class="${rowClass}" data-row="${member.rowNumber}" ${canDelete ? 'oncontextmenu="return showContextMenu(event, ' + member.rowNumber + ')"' : ''}>
           <td class="checkbox-cell">
             <input
               type="checkbox"
@@ -173,10 +179,10 @@
           <td class="status-cell">
             <span class="status-badge ${statusClass}">${statusLabel}</span>
           </td>
-          <td>${escapeHtml(member.email || '')}</td>
-          <td>${escapeHtml(member.given_name || '')}</td>
-          <td>${escapeHtml(member.family_name || '')}</td>
-          <td>${escapeHtml(member.course_group_title || '')}</td>
+          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="email">${escapeHtml(member.email || '')}</td>
+          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="given_name">${escapeHtml(member.given_name || '')}</td>
+          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="family_name">${escapeHtml(member.family_name || '')}</td>
+          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="course_group_title">${escapeHtml(member.course_group_title || '')}</td>
           <td class="role-cell">
             <select
               class="role-select"
@@ -272,11 +278,39 @@
       });
     }
 
+    // Add member button
+    const addMemberBtn = document.getElementById('addMemberBtn');
+    if (addMemberBtn) {
+      addMemberBtn.addEventListener('click', handleAddMember);
+    }
+
     // Import button
     const importBtn = document.getElementById('importBtn');
     if (importBtn) {
       importBtn.addEventListener('click', handleImport);
     }
+
+    // Editable cells
+    document.querySelectorAll('.editable-cell').forEach(cell => {
+      cell.addEventListener('blur', (e) => {
+        const rowNumber = parseInt(e.target.dataset.row);
+        const field = e.target.dataset.field;
+        const value = e.target.textContent.trim();
+
+        const member = members.find(m => m.rowNumber === rowNumber);
+        if (member) {
+          member[field] = value;
+        }
+      });
+
+      // Prevent line breaks in contenteditable cells
+      cell.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.target.blur();
+        }
+      });
+    });
   }
 
   function selectAll(selected) {
@@ -375,6 +409,43 @@
     attachEventListeners();
   }
 
+  function handleAddMember() {
+    const newMember = {
+      email: '',
+      given_name: '',
+      family_name: '',
+      course_group_title: '',
+      course_role_id: '_student',
+      rowNumber: members.length > 0 ? Math.max(...members.map(m => m.rowNumber)) + 1 : 1,
+      status: 'missing',
+      selectedRoleId: '_student',
+      isSelected: true,
+      importResult: null,
+      isImporting: false
+    };
+
+    members.unshift(newMember); // Add to beginning instead of end
+    render();
+    attachEventListeners();
+
+    // Focus on the first editable cell (email) of the new row
+    setTimeout(() => {
+      const firstEditableCell = document.querySelector(`[data-row="${newMember.rowNumber}"][data-field="email"]`);
+      if (firstEditableCell) {
+        firstEditableCell.focus();
+      }
+    }, 50);
+  }
+
+  function handleRemoveMember(rowNumber) {
+    const index = members.findIndex(m => m.rowNumber === rowNumber);
+    if (index !== -1) {
+      members.splice(index, 1);
+      render();
+      attachEventListeners();
+    }
+  }
+
   function showError(message) {
     const app = document.getElementById('app');
     if (app) {
@@ -387,6 +458,54 @@
     div.textContent = text;
     return div.innerHTML;
   }
+
+  // Context menu for rows
+  window.showContextMenu = function(event, rowNumber) {
+    event.preventDefault();
+
+    // Remove any existing context menu
+    const existingMenu = document.getElementById('contextMenu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+
+    const member = members.find(m => m.rowNumber === rowNumber);
+    if (!member || member.status !== 'missing') {
+      return false;
+    }
+
+    // Create context menu
+    const menu = document.createElement('div');
+    menu.id = 'contextMenu';
+    menu.className = 'context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = event.clientX + 'px';
+    menu.style.top = event.clientY + 'px';
+
+    menu.innerHTML = `
+      <div class="context-menu-item" onclick="handleRemoveMember(${rowNumber})">
+        🗑️ Remove Row
+      </div>
+    `;
+
+    document.body.appendChild(menu);
+
+    // Close menu when clicking outside
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+
+    setTimeout(() => {
+      document.addEventListener('click', closeMenu);
+    }, 10);
+
+    return false;
+  };
+
+  window.handleRemoveMember = handleRemoveMember;
 
   // Handle messages from extension
   window.addEventListener('message', event => {

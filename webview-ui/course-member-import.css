@@ -364,3 +364,53 @@ body {
   padding: 40px;
   color: var(--vscode-errorForeground);
 }
+
+/* Editable cells */
+.editable-cell[contenteditable="true"] {
+  cursor: text;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  padding: 4px;
+  min-width: 50px;
+}
+
+.editable-cell[contenteditable="true"]:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--vscode-inputBorder);
+}
+
+.editable-cell[contenteditable="true"]:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  background-color: var(--vscode-input-background);
+  border-color: var(--vscode-focusBorder);
+}
+
+.editable-cell:empty:before {
+  content: attr(data-placeholder);
+  color: var(--vscode-input-placeholderForeground);
+}
+
+/* Context menu */
+.context-menu {
+  background-color: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-menu-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  padding: 4px 0;
+  z-index: 1000;
+  min-width: 150px;
+}
+
+.context-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--vscode-menu-foreground);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-menu-item:hover {
+  background-color: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
