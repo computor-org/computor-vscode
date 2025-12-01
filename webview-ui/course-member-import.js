@@ -5,6 +5,7 @@
   let currentFilter = 'all';
   let members = [];
   let availableRoles = [];
+  let availableGroups = [];
   let courseId = '';
   let isImporting = false;
 
@@ -22,6 +23,7 @@
       isImporting: false
     }));
     availableRoles = state.availableRoles;
+    availableGroups = state.availableGroups || [];
 
     render();
     attachEventListeners();
@@ -109,10 +111,10 @@
                 <input type="checkbox" id="headerCheckbox" ${isImporting ? 'disabled' : ''} ${allVisibleSelected ? 'checked' : ''}>
               </th>
               <th class="status-cell">Status</th>
-              <th>Email</th>
-              <th>Given Name</th>
-              <th>Family Name</th>
-              <th>Group</th>
+              <th class="email-cell">Email</th>
+              <th class="given-name-cell">Given Name</th>
+              <th class="family-name-cell">Family Name</th>
+              <th class="group-cell">Group</th>
               <th class="role-cell">Course Role</th>
               <th class="result-cell">Result</th>
             </tr>
@@ -187,10 +189,18 @@
           <td class="status-cell">
             <span class="status-badge ${statusClass}">${statusLabel}</span>
           </td>
-          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="email">${escapeHtml(member.email || '')}</td>
-          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="given_name">${escapeHtml(member.given_name || '')}</td>
-          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="family_name">${escapeHtml(member.family_name || '')}</td>
-          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell" data-row="${member.rowNumber}" data-field="course_group_title">${escapeHtml(member.course_group_title || '')}</td>
+          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell email-cell" data-row="${member.rowNumber}" data-field="email">${escapeHtml(member.email || '')}</td>
+          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell given-name-cell" data-row="${member.rowNumber}" data-field="given_name">${escapeHtml(member.given_name || '')}</td>
+          <td ${canEdit ? 'contenteditable="true"' : ''} class="editable-cell family-name-cell" data-row="${member.rowNumber}" data-field="family_name">${escapeHtml(member.family_name || '')}</td>
+          <td class="group-cell">
+            <select
+              class="group-select"
+              data-row="${member.rowNumber}"
+              ${!member.isSelected || isImporting ? 'disabled' : ''}
+            >
+              ${renderGroupOptionsWithCustom(member.course_group_title)}
+            </select>
+          </td>
           <td class="role-cell">
             <select
               class="role-select"
@@ -214,6 +224,33 @@
       const title = role.title || role.id;
       return `<option value="${escapeHtml(role.id)}" ${selected}>${escapeHtml(title)}</option>`;
     }).join('');
+  }
+
+  function renderGroupOptionsWithCustom(currentValue) {
+    let options = '<option value="">(No Group)</option>';
+
+    // Add existing groups
+    availableGroups.forEach(group => {
+      const title = group.title || group.id;
+      const selected = title === currentValue ? 'selected' : '';
+      options += `<option value="${escapeHtml(title)}" ${selected}>${escapeHtml(title)}</option>`;
+    });
+
+    // Add "Custom..." option
+    options += '<option value="__CUSTOM__">+ New Group...</option>';
+
+    // If current value is not in the list and not empty, add it as selected custom option
+    if (currentValue && !availableGroups.find(g => (g.title || g.id) === currentValue)) {
+      options = '<option value="">(No Group)</option>';
+      availableGroups.forEach(group => {
+        const title = group.title || group.id;
+        options += `<option value="${escapeHtml(title)}">${escapeHtml(title)}</option>`;
+      });
+      options += `<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)}</option>`;
+      options += '<option value="__CUSTOM__">+ New Group...</option>';
+    }
+
+    return options;
   }
 
   function attachEventListeners() {
@@ -273,6 +310,29 @@
           vscode.postMessage({
             command: 'roleChanged',
             data: { rowNumber, roleId }
+          });
+        }
+      });
+    });
+
+    // Group selects
+    document.querySelectorAll('.group-select').forEach(select => {
+      select.addEventListener('change', async (e) => {
+        const rowNumber = parseInt(e.target.dataset.row);
+        const selectedValue = e.target.value;
+        const member = members.find(m => m.rowNumber === rowNumber);
+
+        if (selectedValue === '__CUSTOM__') {
+          // Prompt for custom group name
+          vscode.postMessage({
+            command: 'promptCustomGroup',
+            data: { rowNumber }
+          });
+        } else if (member) {
+          member.course_group_title = selectedValue;
+          vscode.postMessage({
+            command: 'groupChanged',
+            data: { rowNumber, groupTitle: selectedValue }
           });
         }
       });
@@ -543,6 +603,10 @@
             availableRoles = message.data.availableRoles;
           }
 
+          if (message.data.availableGroups) {
+            availableGroups = message.data.availableGroups;
+          }
+
           render();
           attachEventListeners();
         }
@@ -582,6 +646,16 @@
         });
         render();
         attachEventListeners();
+        break;
+
+      case 'customGroupEntered':
+        // Update member with custom group name
+        const member = members.find(m => m.rowNumber === message.data.rowNumber);
+        if (member && message.data.groupTitle) {
+          member.course_group_title = message.data.groupTitle;
+          render();
+          attachEventListeners();
+        }
         break;
     }
   });

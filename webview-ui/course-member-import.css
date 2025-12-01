@@ -152,8 +152,10 @@ body {
 
 .import-table {
   width: 100%;
+  min-width: 1000px;
   border-collapse: collapse;
   font-size: 13px;
+  table-layout: fixed;
 }
 
 .import-table thead {
@@ -200,21 +202,61 @@ body {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
+.import-table th.checkbox-cell,
 .import-table td.checkbox-cell {
-  width: 40px;
+  width: 35px;
   text-align: center;
+  padding: 4px 2px;
 }
 
+.import-table th.status-cell,
 .import-table td.status-cell {
-  width: 100px;
+  width: 55px;
+  padding: 4px 2px;
 }
 
+.import-table th.email-cell,
+.import-table td.email-cell {
+  min-width: 180px;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-table th.given-name-cell,
+.import-table td.given-name-cell {
+  min-width: 100px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-table th.family-name-cell,
+.import-table td.family-name-cell {
+  min-width: 100px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-table th.group-cell,
+.import-table td.group-cell {
+  width: 150px;
+  padding: 2px;
+}
+
+.import-table th.role-cell,
 .import-table td.role-cell {
-  width: 140px;
+  width: 130px;
+  padding: 2px;
 }
 
+.import-table th.result-cell,
 .import-table td.result-cell {
-  width: 120px;
+  width: 110px;
 }
 
 .checkbox-cell input[type="checkbox"] {
@@ -245,6 +287,7 @@ body {
   color: rgb(255, 200, 0);
 }
 
+.group-select,
 .role-select {
   width: 100%;
   padding: 4px 8px;
@@ -254,13 +297,16 @@ body {
   border-radius: 2px;
   font-size: 13px;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
+.group-select:disabled,
 .role-select:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
+.group-select:focus,
 .role-select:focus {
   outline: 1px solid var(--vscode-focusBorder);
 }

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseMemberImportRow, CourseRoleList, CourseMemberList } from '../../types/generated';
+import { CourseMemberImportRow, CourseRoleList, CourseMemberList, CourseGroupList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { CourseMemberParserFactory } from '../../utils/parsers/CourseMemberParserFactory';
@@ -19,6 +19,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
   private courseId?: string;
   private members: ImportMemberRow[] = [];
   private availableRoles: CourseRoleList[] = [];
+  private availableGroups: CourseGroupList[] = [];
 
   constructor(
     context: vscode.ExtensionContext,
@@ -33,12 +34,13 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
   async showMembers(courseId: string): Promise<void> {
     this.courseId = courseId;
 
-    // Fetch existing course members and available roles
+    // Fetch existing course members, available roles, and course groups
     let existingMembers: CourseMemberList[] = [];
     try {
-      [existingMembers, this.availableRoles] = await Promise.all([
+      [existingMembers, this.availableRoles, this.availableGroups] = await Promise.all([
         this.apiService.getCourseMembers(courseId),
-        this.apiService.getCourseRoles()
+        this.apiService.getCourseRoles(),
+        this.apiService.getCourseGroups(courseId)
       ]);
     } catch (error) {
       console.error('Failed to fetch course data:', error);
@@ -52,22 +54,32 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     }
 
     // Convert existing members to display format
-    this.members = existingMembers.map((em, index) => ({
-      email: em.user.email || '',
-      given_name: em.user.given_name || '',
-      family_name: em.user.family_name || '',
-      course_group_title: '', // TODO: Map group ID to title
-      course_role_id: em.course_role_id,
-      rowNumber: index + 1,
-      status: 'existing' as const,
-      selectedRoleId: em.course_role_id,
-      isSelected: false
-    }));
+    this.members = existingMembers.map((em, index) => {
+      // Map group ID to title
+      let groupTitle = '';
+      if (em.course_group_id) {
+        const group = this.availableGroups.find(g => g.id === em.course_group_id);
+        groupTitle = group?.title || '';
+      }
+
+      return {
+        email: em.user.email || '',
+        given_name: em.user.given_name || '',
+        family_name: em.user.family_name || '',
+        course_group_title: groupTitle,
+        course_role_id: em.course_role_id,
+        rowNumber: index + 1,
+        status: 'existing' as const,
+        selectedRoleId: em.course_role_id,
+        isSelected: false
+      };
+    });
 
     await this.show('Course Members', {
       courseId,
       members: this.members,
-      availableRoles: this.availableRoles
+      availableRoles: this.availableRoles,
+      availableGroups: this.availableGroups
     });
   }
 
@@ -124,11 +136,18 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       );
 
       if (!inImport) {
+        // Map group ID to title
+        let groupTitle = '';
+        if (em.course_group_id) {
+          const group = this.availableGroups.find(g => g.id === em.course_group_id);
+          groupTitle = group?.title || '';
+        }
+
         mergedMembers.push({
           email: em.user.email || '',
           given_name: em.user.given_name || '',
           family_name: em.user.family_name || '',
-          course_group_title: '',
+          course_group_title: groupTitle,
           course_role_id: em.course_role_id,
           rowNumber: rowNumber++,
           status: 'existing',
@@ -145,7 +164,8 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       command: 'updateMembers',
       data: {
         members: this.members,
-        availableRoles: this.availableRoles
+        availableRoles: this.availableRoles,
+        availableGroups: this.availableGroups
       }
     });
   }
@@ -154,6 +174,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     courseId: string;
     members: ImportMemberRow[];
     availableRoles: CourseRoleList[];
+    availableGroups: CourseGroupList[];
   }): Promise<string> {
     if (!this.panel) {
       return this.getBaseHtml('Course Member Import', '<p>Loading…</p>');
@@ -207,6 +228,14 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
 
       case 'roleChanged':
         this.handleRoleChanged(message.data);
+        break;
+
+      case 'groupChanged':
+        this.handleGroupChanged(message.data);
+        break;
+
+      case 'promptCustomGroup':
+        await this.handlePromptCustomGroup(message.data);
         break;
 
       case 'bulkRoleChange':
@@ -391,6 +420,47 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     const member = this.members.find(m => m.rowNumber === data.rowNumber);
     if (member) {
       member.selectedRoleId = data.roleId;
+    }
+  }
+
+  private handleGroupChanged(data: {
+    rowNumber: number;
+    groupTitle: string;
+  }): void {
+    const member = this.members.find(m => m.rowNumber === data.rowNumber);
+    if (member) {
+      member.course_group_title = data.groupTitle;
+    }
+  }
+
+  private async handlePromptCustomGroup(data: {
+    rowNumber: number;
+  }): Promise<void> {
+    const groupTitle = await vscode.window.showInputBox({
+      prompt: 'Enter new group name',
+      placeHolder: 'Group name',
+      validateInput: (value) => {
+        if (!value || value.trim().length === 0) {
+          return 'Group name cannot be empty';
+        }
+        return null;
+      }
+    });
+
+    if (groupTitle) {
+      const member = this.members.find(m => m.rowNumber === data.rowNumber);
+      if (member) {
+        member.course_group_title = groupTitle.trim();
+      }
+
+      // Send back to webview
+      this.panel?.webview.postMessage({
+        command: 'customGroupEntered',
+        data: {
+          rowNumber: data.rowNumber,
+          groupTitle: groupTitle.trim()
+        }
+      });
     }
   }
 
