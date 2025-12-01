@@ -50,8 +50,8 @@
 
     app.innerHTML = `
       <div class="header">
-        <h1>Course Member Import Preview</h1>
-        <p>${members.length} member(s) parsed from file</p>
+        <h1>Course Members</h1>
+        <p>${members.length} member(s)</p>
       </div>
 
       <div class="controls">
