@@ -215,6 +215,11 @@
         const status = member.importResult.status;
         let resultClass, resultIcon, displayStatus;
 
+        // TaskStatus: "queued" | "started" | "finished" | "failed" | "deferred" | "cancelled"
+        // Running statuses - show spinner (including 'pending' which is the initial state before polling starts)
+        const runningStatuses = ['pending', 'queued', 'started'];
+        const isRunning = runningStatuses.includes(status);
+
         if (status === 'success') {
           resultClass = 'result-success';
           resultIcon = '✓';
@@ -223,21 +228,20 @@
           resultClass = 'result-error';
           resultIcon = '✗';
           displayStatus = 'error';
-        } else if (status === 'pending' || status === 'running' || status === 'queued') {
+        } else if (isRunning) {
           resultClass = 'result-pending';
           resultIcon = '';
           displayStatus = status;
         } else {
+          // Unknown status
           resultClass = 'result-pending';
           resultIcon = '';
           displayStatus = status;
         }
 
-        const showSpinner = ['pending', 'running', 'queued'].includes(status);
-
         resultHtml = `
           <span class="result-badge ${resultClass}">
-            ${showSpinner ? '<span class="spinner"></span>' : resultIcon} ${displayStatus}
+            ${isRunning ? '<span class="spinner"></span>' : resultIcon} ${displayStatus}
           </span>
           ${member.importResult.message ? `<div class="result-message">${escapeHtml(member.importResult.message)}</div>` : ''}
         `;
@@ -587,16 +591,15 @@
     const member = members.find(m => m.rowNumber === data.rowNumber);
     if (!member) return;
 
-    // Update the import result with workflow status
-    member.importResult = {
-      ...member.importResult,
-      status: data.status,
-      workflowId: data.workflowId
-    };
+    // TaskStatus from backend: "queued" | "started" | "finished" | "failed" | "deferred" | "cancelled"
+    const status = data.status;
 
-    // Check if workflow is complete (success or failure)
-    const completedStatuses = ['completed', 'success', 'failed', 'error'];
-    if (completedStatuses.includes(data.status.toLowerCase())) {
+    // Statuses that mean workflow is complete - stop polling
+    const completedStatuses = ['finished', 'failed', 'deferred', 'cancelled'];
+    // Statuses that mean workflow is still running - keep polling, show spinner
+    const runningStatuses = ['queued', 'started'];
+
+    if (completedStatuses.includes(status)) {
       // Stop polling
       if (workflowPollingIntervals[data.rowNumber]) {
         clearInterval(workflowPollingIntervals[data.rowNumber]);
@@ -605,14 +608,33 @@
 
       member.isImporting = false;
 
-      // Update result message based on final status
-      if (data.status.toLowerCase() === 'completed' || data.status.toLowerCase() === 'success') {
-        member.importResult.status = 'success';
-        member.importResult.message = data.result?.message || 'Import completed successfully';
+      // Update result based on final status
+      if (status === 'finished') {
+        member.importResult = {
+          status: 'success',
+          message: data.result?.message || 'Import completed successfully'
+        };
       } else {
-        member.importResult.status = 'error';
-        member.importResult.message = data.error || data.result?.error || 'Import failed';
+        // failed, deferred, cancelled
+        member.importResult = {
+          status: 'error',
+          message: data.error || data.result?.error || `Import ${status}`
+        };
       }
+    } else if (runningStatuses.includes(status)) {
+      // Still running - update status but keep polling
+      member.importResult = {
+        ...member.importResult,
+        status: status,
+        workflowId: data.workflowId
+      };
+    } else {
+      // Unknown status - treat as still running
+      member.importResult = {
+        ...member.importResult,
+        status: status,
+        workflowId: data.workflowId
+      };
     }
 
     render();
