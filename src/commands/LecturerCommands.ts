@@ -12,6 +12,7 @@ import { CourseFamilyWebviewProvider } from '../ui/webviews/CourseFamilyWebviewP
 import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTypeWebviewProvider';
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
 import { CourseMemberWebviewProvider } from '../ui/webviews/CourseMemberWebviewProvider';
+import { CourseMemberImportWebviewProvider } from '../ui/webviews/CourseMemberImportWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebviewProvider';
@@ -40,6 +41,7 @@ export class LecturerCommands {
   private courseContentTypeWebviewProvider: CourseContentTypeWebviewProvider;
   private courseGroupWebviewProvider: CourseGroupWebviewProvider;
   private courseMemberWebviewProvider: CourseMemberWebviewProvider;
+  private courseMemberImportWebviewProvider: CourseMemberImportWebviewProvider;
   private courseGroupCommands: CourseGroupCommands;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
@@ -59,6 +61,7 @@ export class LecturerCommands {
     this.courseContentTypeWebviewProvider = new CourseContentTypeWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.courseMemberImportWebviewProvider = new CourseMemberImportWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
@@ -166,10 +169,10 @@ export class LecturerCommands {
       })
     );
 
-    // Course member import
+    // Course member import with preview
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.importCourseMembers', async (item: CourseTreeItem | CourseFolderTreeItem) => {
-        await this.importCourseMembersFromFile(item);
+      vscode.commands.registerCommand('computor.lecturer.importCourseMembersPreview', async (item: CourseTreeItem | CourseFolderTreeItem) => {
+        await this.importCourseMembersWithPreview(item);
       })
     );
 
@@ -2704,13 +2707,20 @@ export class LecturerCommands {
       }
     }
 
-    // Fetch available groups for the course
+    // Fetch available groups and roles for the course
     let availableGroups: any[] = [];
+    let availableRoles: any[] = [];
     try {
-      availableGroups = await this.apiService.getCourseGroups(item.course.id);
+      [availableGroups, availableRoles] = await Promise.all([
+        this.apiService.getCourseGroups(item.course.id),
+        this.apiService.getCourseRoles()
+      ]);
     } catch (error) {
-      console.error('Failed to fetch available groups:', error);
+      console.error('Failed to fetch available groups/roles:', error);
     }
+
+    // Find the current role
+    const role = availableRoles.find(r => r.id === freshMember.course_role_id);
 
     await this.courseMemberWebviewProvider.show(
       `Member: ${freshMember.user?.username || freshMember.user?.email || 'Unknown'}`,
@@ -2718,9 +2728,9 @@ export class LecturerCommands {
         member: freshMember,
         course: item.course,
         group,
-        role: undefined,
+        role,
         availableGroups,
-        availableRoles: undefined
+        availableRoles
       }
     );
   }
@@ -2772,7 +2782,7 @@ export class LecturerCommands {
     }
   }
 
-  async importCourseMembersFromFile(item?: CourseTreeItem | CourseFolderTreeItem): Promise<void> {
+  async importCourseMembersWithPreview(item?: CourseTreeItem | CourseFolderTreeItem): Promise<void> {
     try {
       let courseId: string | undefined;
 
@@ -2783,217 +2793,67 @@ export class LecturerCommands {
       }
 
       if (!courseId) {
-        vscode.window.showErrorMessage('Please select a course or groups folder to import members.');
+        vscode.window.showErrorMessage('Please select a course or groups folder to show members.');
         return;
       }
 
-      const fileUri = await vscode.window.showOpenDialog({
-        canSelectFiles: true,
-        canSelectFolders: false,
-        canSelectMany: false,
-        filters: {
-          'Excel XML Files': ['xml'],
-          'All Files': ['*']
-        },
-        title: 'Select Excel XML file containing course members'
-      });
-
-      if (!fileUri || fileUri.length === 0) {
-        return;
-      }
-
-      const firstFile = fileUri[0];
-      if (!firstFile) {
-        return;
-      }
-
-      const filePath = firstFile.fsPath;
-      const fileName = path.basename(filePath);
-
-      if (!courseId) {
-        vscode.window.showErrorMessage('Course ID not found');
-        return;
-      }
-
-      const options = await this.promptImportOptions();
-      if (!options) {
-        return;
-      }
-
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Importing course members from ${fileName}...`,
-          cancellable: false
-        },
-        async (progress) => {
-          try {
-            progress.report({ increment: 0, message: 'Reading file...' });
-
-            const fileBuffer = await fs.promises.readFile(filePath);
-
-            progress.report({ increment: 30, message: 'Uploading...' });
-
-            const result = await this.apiService.uploadCourseMemberImport(
-              courseId!,
-              fileBuffer,
-              options
-            );
-
-            if (!result) {
-              throw new Error('No response from server');
-            }
-
-            progress.report({ increment: 100 });
-
-            const summary = [
-              `Total: ${result.total}`,
-              `Success: ${result.success}`,
-              `Errors: ${result.errors}`,
-              `Skipped: ${result.skipped}`,
-              `Updated: ${result.updated}`
-            ].join(' | ');
-
-            if (result.errors > 0) {
-              const viewDetails = await vscode.window.showWarningMessage(
-                `Import completed with errors. ${summary}`,
-                'View Details'
-              );
-
-              if (viewDetails === 'View Details') {
-                this.showImportResults(result, fileName);
-              }
-            } else {
-              vscode.window.showInformationMessage(
-                `Import successful! ${summary}`
-              );
-            }
-
-            if (result.missing_groups && result.missing_groups.length > 0) {
-              vscode.window.showInformationMessage(
-                `Created ${result.missing_groups.length} new groups: ${result.missing_groups.join(', ')}`
-              );
-            }
-
-            this.treeDataProvider.refresh();
-          } catch (error: any) {
-            console.error('Failed to import course members:', error);
-            vscode.window.showErrorMessage(
-              `Failed to import course members: ${error?.message || error}`
-            );
-          }
-        }
-      );
+      // Show webview with existing members first
+      await this.courseMemberImportWebviewProvider.showMembers(courseId);
     } catch (error: any) {
-      console.error('Failed to import course members:', error);
+      console.error('Failed to show course members:', error);
       vscode.window.showErrorMessage(
-        `Failed to import course members: ${error?.message || error}`
+        `Failed to show course members: ${error?.message || error}`
       );
     }
   }
 
-  private async promptImportOptions(): Promise<{
-    defaultRoleId?: string;
-    updateExisting?: boolean;
-    createMissingGroups?: boolean;
-  } | undefined> {
-    const defaultRole = await vscode.window.showQuickPick(
-      [
-        { label: '_student', description: 'Student role (default)' },
-        { label: '_tutor', description: 'Tutor role' },
-        { label: '_lecturer', description: 'Lecturer role' }
-      ],
-      {
-        title: 'Select default role for imported members',
-        placeHolder: '_student'
-      }
-    );
+  async loadImportFile(courseId: string, filePath: string): Promise<void> {
+    try {
+      const fileBuffer = await fs.promises.readFile(filePath);
+      const fileContent = fileBuffer.toString('utf-8');
 
-    if (!defaultRole) {
-      return undefined;
+      // TODO: Implement proper XML parsing
+      // For now, create mock data for demonstration
+      const mockMembers = this.parseMockXMLData(fileContent);
+
+      await this.courseMemberImportWebviewProvider.loadImportData(mockMembers);
+    } catch (error: any) {
+      console.error('Failed to load import file:', error);
+      throw error;
     }
-
-    const updateExisting = await vscode.window.showQuickPick(
-      [
-        { label: 'No', value: false, description: 'Skip existing users' },
-        { label: 'Yes', value: true, description: 'Update existing user information' }
-      ],
-      {
-        title: 'Update existing users?',
-        placeHolder: 'No'
-      }
-    );
-
-    if (!updateExisting) {
-      return undefined;
-    }
-
-    const createMissingGroups = await vscode.window.showQuickPick(
-      [
-        { label: 'Yes', value: true, description: 'Automatically create groups from import file' },
-        { label: 'No', value: false, description: 'Skip members with non-existent groups' }
-      ],
-      {
-        title: 'Create missing course groups?',
-        placeHolder: 'Yes'
-      }
-    );
-
-    if (!createMissingGroups) {
-      return undefined;
-    }
-
-    return {
-      defaultRoleId: defaultRole.label === '_student' ? undefined : defaultRole.label,
-      updateExisting: updateExisting.value,
-      createMissingGroups: createMissingGroups.value
-    };
   }
 
-  private showImportResults(
-    result: { total: number; success: number; errors: number; skipped: number; updated: number; results: any[] },
-    fileName: string
-  ): void {
-    const errorResults = result.results.filter(r => r.status === 'error');
-    const warningResults = result.results.filter(r => r.warnings && r.warnings.length > 0);
+  private parseMockXMLData(xmlContent: string): any[] {
+    // TODO: Implement proper XML parsing
+    // This is a placeholder that creates mock data for demonstration
+    // In production, this should parse the actual XML file
 
-    const lines = [
-      `Import Results for ${fileName}`,
-      `${'='.repeat(60)}`,
-      '',
-      `Total Records: ${result.total}`,
-      `Successful: ${result.success}`,
-      `Errors: ${result.errors}`,
-      `Skipped: ${result.skipped}`,
-      `Updated: ${result.updated}`,
-      ''
+    // For now, return some mock data to demonstrate the webview
+    return [
+      {
+        email: 'john.doe@example.com',
+        given_name: 'John',
+        family_name: 'Doe',
+        student_id: '12345',
+        course_group_title: 'Group A',
+        course_role_id: '_student'
+      },
+      {
+        email: 'jane.smith@example.com',
+        given_name: 'Jane',
+        family_name: 'Smith',
+        student_id: '12346',
+        course_group_title: 'Group B',
+        course_role_id: '_student'
+      },
+      {
+        email: 'bob.johnson@example.com',
+        given_name: 'Bob',
+        family_name: 'Johnson',
+        student_id: '12347',
+        course_group_title: 'Group A',
+        course_role_id: '_student'
+      }
     ];
-
-    if (errorResults.length > 0) {
-      lines.push('Errors:', '');
-      errorResults.forEach(r => {
-        lines.push(`  Row ${r.row_number}: ${r.email}`);
-        lines.push(`    ${r.message || 'Unknown error'}`);
-        lines.push('');
-      });
-    }
-
-    if (warningResults.length > 0) {
-      lines.push('Warnings:', '');
-      warningResults.forEach(r => {
-        lines.push(`  Row ${r.row_number}: ${r.email}`);
-        r.warnings.forEach((w: string) => lines.push(`    - ${w}`));
-        lines.push('');
-      });
-    }
-
-    const document = vscode.workspace.openTextDocument({
-      content: lines.join('\n'),
-      language: 'plaintext'
-    });
-
-    document.then(doc => {
-      vscode.window.showTextDocument(doc, { preview: true });
-    });
   }
 }

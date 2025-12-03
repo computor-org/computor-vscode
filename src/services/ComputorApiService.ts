@@ -36,6 +36,7 @@ import {
   CourseGroupList,
   CourseGroupGet,
   CourseGroupUpdate,
+  CourseRoleList,
   CourseMemberList,
   CourseMemberGet,
   CourseMemberUpdate,
@@ -260,13 +261,13 @@ export class ComputorApiService {
 
   async getCourse(courseId: string): Promise<CourseGet | undefined> {
     const cacheKey = `course-${courseId}`;
-    
+
     // Check cache first
     const cached = multiTierCache.get<CourseGet>(cacheKey);
     if (cached) {
       return cached;
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
@@ -276,13 +277,41 @@ export class ComputorApiService {
         maxRetries: 2,
         exponentialBackoff: true
       });
-      
+
       // Cache in warm tier
       multiTierCache.set(cacheKey, result, 'warm');
       return result;
     } catch (error) {
       console.error('Failed to get course:', error);
       return undefined;
+    }
+  }
+
+  async getCourseRoles(): Promise<CourseRoleList[]> {
+    const cacheKey = 'course-roles';
+
+    // Check cache first
+    const cached = multiTierCache.get<CourseRoleList[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<CourseRoleList[]>('/course-roles');
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      // Cache in hot tier (roles don't change often)
+      multiTierCache.set(cacheKey, result, 'hot');
+      return result;
+    } catch (error) {
+      console.error('Failed to get course roles:', error);
+      throw error;
     }
   }
 
@@ -2775,6 +2804,80 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to upload course member import:', error);
+      throw error;
+    }
+  }
+
+  async importSingleCourseMember(
+    courseId: string,
+    memberData: {
+      email: string;
+      given_name?: string | null;
+      family_name?: string | null;
+      course_group_title?: string | null;
+      course_role_id: string;
+    },
+    options?: {
+      createMissingGroup?: boolean;
+      updateIfExists?: boolean;
+    }
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    workflow_id: string | null;
+    course_member?: any;
+    created_group?: any;
+  }> {
+    try {
+      const client = await this.getHttpClient();
+
+      const requestBody = {
+        email: memberData.email,
+        given_name: memberData.given_name,
+        family_name: memberData.family_name,
+        course_group_title: memberData.course_group_title,
+        course_role_id: memberData.course_role_id,
+        create_missing_group: options?.createMissingGroup ?? true,
+        update_if_exists: options?.updateIfExists ?? true
+      };
+
+      const response = await client.post<{
+        success: boolean;
+        message?: string;
+        workflow_id: string | null;
+        course_member?: any;
+        created_group?: any;
+      }>(
+        `/course-member-import/${courseId}`,
+        requestBody
+      );
+
+      // Invalidate course member cache
+      this.invalidateCachePattern('courseMembers-');
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to import single course member:', error);
+      throw error;
+    }
+  }
+
+  async getWorkflowStatus(workflowId: string): Promise<{
+    status: string;
+    result?: any;
+    error?: string;
+  }> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<{
+        status: string;
+        result?: any;
+        error?: string;
+      }>(`/tasks/${workflowId}/status`);
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to get workflow status:', error);
       throw error;
     }
   }
