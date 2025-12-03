@@ -247,6 +247,42 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       case 'filterChanged':
         // Filtering is handled client-side in the webview
         break;
+
+      case 'pollWorkflowStatus':
+        console.log('Received pollWorkflowStatus message:', message.data);
+        await this.handlePollWorkflowStatus(message.data);
+        break;
+    }
+  }
+
+  private async handlePollWorkflowStatus(data: {
+    rowNumber: number;
+    workflowId: string;
+  }): Promise<void> {
+    console.log('Polling workflow status:', data.workflowId);
+    try {
+      const status = await this.apiService.getWorkflowStatus(data.workflowId);
+
+      this.panel?.webview.postMessage({
+        command: 'workflowStatusUpdate',
+        data: {
+          rowNumber: data.rowNumber,
+          workflowId: data.workflowId,
+          status: status.status,
+          result: status.result,
+          error: status.error
+        }
+      });
+    } catch (error: any) {
+      this.panel?.webview.postMessage({
+        command: 'workflowStatusUpdate',
+        data: {
+          rowNumber: data.rowNumber,
+          workflowId: data.workflowId,
+          status: 'error',
+          error: error?.message || 'Failed to get workflow status'
+        }
+      });
     }
   }
 
@@ -354,18 +390,42 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
               }
             );
 
-            this.panel?.webview.postMessage({
-              command: 'importProgress',
-              data: {
-                rowNumber: row.rowNumber,
-                result: {
-                  status: 'success',
-                  message: result.message || 'Member imported successfully'
-                }
-              }
-            });
+            // Send result to webview
+            console.log('Import API result:', result);
 
-            successCount++;
+            if (result.workflow_id) {
+              // Async workflow started - webview will poll for status
+              console.log('Sending importProgress with workflowId:', result.workflow_id);
+              this.panel?.webview.postMessage({
+                command: 'importProgress',
+                data: {
+                  rowNumber: row.rowNumber,
+                  result: {
+                    status: 'pending',
+                    workflowId: result.workflow_id
+                  }
+                }
+              });
+            } else {
+              // No workflow - operation completed immediately
+              const status = result.success ? 'success' : 'error';
+              this.panel?.webview.postMessage({
+                command: 'importProgress',
+                data: {
+                  rowNumber: row.rowNumber,
+                  result: {
+                    status,
+                    message: result.message || (result.success ? 'Member imported successfully' : 'Import failed')
+                  }
+                }
+              });
+
+              if (result.success) {
+                successCount++;
+              } else {
+                errorCount++;
+              }
+            }
           } catch (error: any) {
             this.panel?.webview.postMessage({
               command: 'importProgress',

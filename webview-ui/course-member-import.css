@@ -357,6 +357,11 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+.result-pending {
+  background-color: rgba(100, 150, 255, 0.2);
+  color: rgb(70, 130, 180);
+}
+
 .result-message {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);

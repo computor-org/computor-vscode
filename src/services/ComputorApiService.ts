@@ -2824,6 +2824,7 @@ export class ComputorApiService {
   ): Promise<{
     success: boolean;
     message?: string;
+    workflow_id: string | null;
     course_member?: any;
     created_group?: any;
   }> {
@@ -2843,6 +2844,7 @@ export class ComputorApiService {
       const response = await client.post<{
         success: boolean;
         message?: string;
+        workflow_id: string | null;
         course_member?: any;
         created_group?: any;
       }>(
@@ -2856,6 +2858,26 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to import single course member:', error);
+      throw error;
+    }
+  }
+
+  async getWorkflowStatus(workflowId: string): Promise<{
+    status: string;
+    result?: any;
+    error?: string;
+  }> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<{
+        status: string;
+        result?: any;
+        error?: string;
+      }>(`/tasks/${workflowId}/status`);
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to get workflow status:', error);
       throw error;
     }
   }

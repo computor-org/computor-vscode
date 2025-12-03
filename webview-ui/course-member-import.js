@@ -10,6 +10,7 @@
   let isImporting = false;
   let sortColumn = null;
   let sortDirection = 'asc';
+  let workflowPollingIntervals = {};
 
   function init() {
     if (!state.members || !state.availableRoles) {
@@ -205,10 +206,33 @@
       if (member.isImporting) {
         resultHtml = '<span class="result-badge result-importing"><span class="spinner"></span> Importing...</span>';
       } else if (member.importResult) {
-        const resultClass = member.importResult.status === 'success' ? 'result-success' : 'result-error';
-        const resultIcon = member.importResult.status === 'success' ? '✓' : '✗';
+        const status = member.importResult.status;
+        let resultClass, resultIcon, displayStatus;
+
+        if (status === 'success') {
+          resultClass = 'result-success';
+          resultIcon = '✓';
+          displayStatus = 'success';
+        } else if (status === 'error') {
+          resultClass = 'result-error';
+          resultIcon = '✗';
+          displayStatus = 'error';
+        } else if (status === 'pending' || status === 'running' || status === 'queued') {
+          resultClass = 'result-pending';
+          resultIcon = '';
+          displayStatus = status;
+        } else {
+          resultClass = 'result-pending';
+          resultIcon = '';
+          displayStatus = status;
+        }
+
+        const showSpinner = ['pending', 'running', 'queued'].includes(status);
+
         resultHtml = `
-          <span class="result-badge ${resultClass}">${resultIcon} ${member.importResult.status}</span>
+          <span class="result-badge ${resultClass}">
+            ${showSpinner ? '<span class="spinner"></span>' : resultIcon} ${displayStatus}
+          </span>
           ${member.importResult.message ? `<div class="result-message">${escapeHtml(member.importResult.message)}</div>` : ''}
         `;
       }
@@ -511,13 +535,82 @@
   }
 
   function handleImportProgress(data) {
+    console.log('handleImportProgress received:', data);
     const member = members.find(m => m.rowNumber === data.rowNumber);
     if (member) {
-      member.isImporting = false;
       member.importResult = data.result;
+
+      // If we got a workflow_id, start polling for status
+      if (data.result.workflowId) {
+        console.log('Got workflowId:', data.result.workflowId);
+        member.workflowId = data.result.workflowId;
+        startWorkflowPolling(data.rowNumber, data.result.workflowId);
+      } else {
+        member.isImporting = false;
+      }
+
       render();
       attachEventListeners();
     }
+  }
+
+  function startWorkflowPolling(rowNumber, workflowId) {
+    console.log('Starting workflow polling for row', rowNumber, 'workflowId:', workflowId);
+
+    // Clear any existing polling for this row
+    if (workflowPollingIntervals[rowNumber]) {
+      clearInterval(workflowPollingIntervals[rowNumber]);
+    }
+
+    // Poll immediately
+    vscode.postMessage({
+      command: 'pollWorkflowStatus',
+      data: { rowNumber, workflowId }
+    });
+
+    // Then poll every 3 seconds
+    workflowPollingIntervals[rowNumber] = setInterval(() => {
+      vscode.postMessage({
+        command: 'pollWorkflowStatus',
+        data: { rowNumber, workflowId }
+      });
+    }, 3000);
+  }
+
+  function handleWorkflowStatusUpdate(data) {
+    const member = members.find(m => m.rowNumber === data.rowNumber);
+    if (!member) return;
+
+    // Update the import result with workflow status
+    member.importResult = {
+      ...member.importResult,
+      status: data.status,
+      workflowId: data.workflowId
+    };
+
+    // Check if workflow is complete (success or failure)
+    const completedStatuses = ['completed', 'success', 'failed', 'error'];
+    if (completedStatuses.includes(data.status.toLowerCase())) {
+      // Stop polling
+      if (workflowPollingIntervals[data.rowNumber]) {
+        clearInterval(workflowPollingIntervals[data.rowNumber]);
+        delete workflowPollingIntervals[data.rowNumber];
+      }
+
+      member.isImporting = false;
+
+      // Update result message based on final status
+      if (data.status.toLowerCase() === 'completed' || data.status.toLowerCase() === 'success') {
+        member.importResult.status = 'success';
+        member.importResult.message = data.result?.message || 'Import completed successfully';
+      } else {
+        member.importResult.status = 'error';
+        member.importResult.message = data.error || data.result?.error || 'Import failed';
+      }
+    }
+
+    render();
+    attachEventListeners();
   }
 
   function handleImportComplete(data) {
@@ -724,6 +817,10 @@
 
         render();
         attachEventListeners();
+        break;
+
+      case 'workflowStatusUpdate':
+        handleWorkflowStatusUpdate(message.data);
         break;
     }
   });
