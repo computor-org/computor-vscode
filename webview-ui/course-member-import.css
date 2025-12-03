@@ -294,8 +294,8 @@ body {
 }
 
 .status-missing {
-  background-color: rgba(0, 200, 0, 0.2);
-  color: rgb(0, 255, 0);
+  background-color: rgba(0, 128, 0, 0.2);
+  color: rgb(0, 128, 0);
 }
 
 .status-existing {
@@ -304,8 +304,8 @@ body {
 }
 
 .status-modified {
-  background-color: rgba(255, 165, 0, 0.2);
-  color: rgb(255, 200, 0);
+  background-color: rgba(200, 120, 0, 0.2);
+  color: rgb(180, 100, 0);
 }
 
 .group-select,
@@ -343,8 +343,8 @@ body {
 }
 
 .result-success {
-  background-color: rgba(0, 200, 0, 0.2);
-  color: rgb(0, 255, 0);
+  background-color: rgba(0, 128, 0, 0.2);
+  color: rgb(0, 128, 0);
 }
 
 .result-error {
