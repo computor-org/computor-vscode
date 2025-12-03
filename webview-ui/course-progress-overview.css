@@ -1,0 +1,234 @@
+/**
+ * Course Progress Overview Webview Styles
+ */
+
+.course-progress-overview {
+  padding: 0;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.course-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.course-progress-header__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.course-progress-header__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.course-progress-header__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Charts row */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-card {
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.chart-card__title {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.chart-card__canvas {
+  position: relative;
+  height: 220px;
+}
+
+/* Student table section */
+.students-section {
+  margin-top: 24px;
+}
+
+.students-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.students-section__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.students-section__count {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+  margin-left: 8px;
+}
+
+/* Table customizations */
+.student-name {
+  font-weight: 500;
+}
+
+.student-username {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.progress-cell {
+  min-width: 120px;
+}
+
+.content-type-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.content-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-type-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  min-width: 70px;
+}
+
+.content-type-bar {
+  flex: 1;
+  height: 6px;
+  background-color: var(--vscode-progressBar-background, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.content-type-bar__fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.content-type-value {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Activity status */
+.activity-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.activity-status--active .activity-dot {
+  background-color: var(--vscode-debugIcon-continueForeground, #89d185);
+}
+
+.activity-status--warning .activity-dot {
+  background-color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.activity-status--inactive .activity-dot {
+  background-color: var(--vscode-editorError-foreground, #f14c4c);
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loading-overlay--hidden {
+  display: none;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--vscode-progressBar-background);
+  border-top-color: var(--vscode-button-background);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-state__icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin-bottom: 8px;
+}
+
+.empty-state__description {
+  font-size: 13px;
+  max-width: 300px;
+}

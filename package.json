@@ -453,6 +453,18 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.showCourseProgressOverview",
+        "title": "Show Progress Overview",
+        "icon": "$(graph)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.showCourseMemberProgress",
+        "title": "Show Progress",
+        "icon": "$(graph-line)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.renameCourseGroup",
         "title": "Rename",
         "category": "Computor Lecturer"
@@ -892,6 +904,11 @@
           "group": "5_details@1"
         },
         {
+          "command": "computor.lecturer.showCourseProgressOverview",
+          "when": "view == computor.lecturer.courses && viewItem == course",
+          "group": "5_details@2"
+        },
+        {
           "command": "computor.lecturer.showCourseContentDetails",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "5_details@1"
@@ -920,6 +937,11 @@
           "command": "computor.lecturer.showCourseMemberDetails",
           "when": "view == computor.lecturer.courses && viewItem == course.member",
           "group": "5_details@1"
+        },
+        {
+          "command": "computor.lecturer.showCourseMemberProgress",
+          "when": "view == computor.lecturer.courses && viewItem == course.member",
+          "group": "5_details@2"
         },
         {
           "command": "computor.lecturer.renameCourseGroup",
