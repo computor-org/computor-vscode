@@ -143,11 +143,22 @@ body {
   cursor: pointer;
 }
 
-.import-table-container {
-  overflow-x: auto;
+.import-table-wrapper {
   border: 1px solid var(--vscode-panel-border);
   border-radius: 4px;
   background-color: var(--vscode-editor-background);
+  display: flex;
+  flex-direction: column;
+}
+
+.import-table-header {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.import-table-body {
+  overflow: auto;
+  max-height: 50vh;
 }
 
 .import-table {
@@ -160,9 +171,10 @@ body {
 
 .import-table thead {
   background-color: var(--vscode-editor-inactiveSelectionBackground);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+}
+
+.import-table thead th {
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
 }
 
 .import-table th {

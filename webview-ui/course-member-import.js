@@ -108,38 +108,44 @@
         </div>
       </div>
 
-      <div class="import-table-container">
-        <table class="import-table">
-          <thead>
-            <tr>
-              <th class="checkbox-cell">
-                <input type="checkbox" id="headerCheckbox" ${isImporting ? 'disabled' : ''} ${allVisibleSelected ? 'checked' : ''}>
-              </th>
-              <th class="status-cell sortable" data-sort="status">
-                Status ${renderSortIcon('status')}
-              </th>
-              <th class="email-cell sortable" data-sort="email">
-                Email ${renderSortIcon('email')}
-              </th>
-              <th class="given-name-cell sortable" data-sort="given_name">
-                Given Name ${renderSortIcon('given_name')}
-              </th>
-              <th class="family-name-cell sortable" data-sort="family_name">
-                Family Name ${renderSortIcon('family_name')}
-              </th>
-              <th class="group-cell sortable" data-sort="course_group_title">
-                Group ${renderSortIcon('course_group_title')}
-              </th>
-              <th class="role-cell sortable" data-sort="selectedRoleId">
-                Course Role ${renderSortIcon('selectedRoleId')}
-              </th>
-              <th class="result-cell">Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${renderTableRows()}
-          </tbody>
-        </table>
+      <div class="import-table-wrapper">
+        <div class="import-table-header">
+          <table class="import-table">
+            <thead>
+              <tr>
+                <th class="checkbox-cell">
+                  <input type="checkbox" id="headerCheckbox" ${isImporting ? 'disabled' : ''} ${allVisibleSelected ? 'checked' : ''}>
+                </th>
+                <th class="status-cell sortable" data-sort="status">
+                  Status ${renderSortIcon('status')}
+                </th>
+                <th class="email-cell sortable" data-sort="email">
+                  Email ${renderSortIcon('email')}
+                </th>
+                <th class="given-name-cell sortable" data-sort="given_name">
+                  Given Name ${renderSortIcon('given_name')}
+                </th>
+                <th class="family-name-cell sortable" data-sort="family_name">
+                  Family Name ${renderSortIcon('family_name')}
+                </th>
+                <th class="group-cell sortable" data-sort="course_group_title">
+                  Group ${renderSortIcon('course_group_title')}
+                </th>
+                <th class="role-cell sortable" data-sort="selectedRoleId">
+                  Course Role ${renderSortIcon('selectedRoleId')}
+                </th>
+                <th class="result-cell">Result</th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <div class="import-table-body">
+          <table class="import-table">
+            <tbody>
+              ${renderTableRows()}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="summary" id="importSummary">
