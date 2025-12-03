@@ -40,6 +40,10 @@
       return;
     }
 
+    // Preserve scroll position
+    const tableBody = document.querySelector('.import-table-body');
+    const scrollTop = tableBody ? tableBody.scrollTop : 0;
+
     const selectedCount = members.filter(m => m.isSelected).length;
     const statusCounts = {
       missing: members.filter(m => m.status === 'missing').length,
@@ -153,6 +157,12 @@
         <div class="summary-stats" id="summaryStats"></div>
       </div>
     `;
+
+    // Restore scroll position
+    const newTableBody = document.querySelector('.import-table-body');
+    if (newTableBody && scrollTop > 0) {
+      newTableBody.scrollTop = scrollTop;
+    }
   }
 
   function renderSortIcon(column) {
