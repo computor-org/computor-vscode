@@ -138,10 +138,8 @@
             Students
             <span class="students-section__count">(${state.students?.length || 0})</span>
           </h2>
-          <div class="computor-filter-bar" style="margin: 0; padding: 8px 12px;">
-            <div class="computor-filter-bar__search">
-              <input type="text" id="studentSearch" placeholder="Search students..." oninput="handleSearch(this.value)">
-            </div>
+          <div class="students-search">
+            <input type="text" id="studentSearch" placeholder="Search students..." oninput="handleSearch(this.value)">
           </div>
         </div>
         <div id="studentTableContainer"></div>
@@ -409,29 +407,9 @@
   };
 
   window.handleSearch = function(query) {
-    if (!studentTable) return;
-
-    const students = state.students || [];
-    const lowerQuery = (query || '').toLowerCase().trim();
-
-    if (!lowerQuery) {
-      studentTable.updateData(students.map(s => ({
-        ...s,
-        name: [s.given_name, s.family_name].filter(Boolean).join(' ') || s.username || 'Unknown'
-      })));
-      return;
+    if (studentTable && studentTable.filter) {
+      studentTable.filter(query);
     }
-
-    const filtered = students.filter(s => {
-      const name = [s.given_name, s.family_name].filter(Boolean).join(' ').toLowerCase();
-      const username = (s.username || '').toLowerCase();
-      return name.includes(lowerQuery) || username.includes(lowerQuery);
-    });
-
-    studentTable.updateData(filtered.map(s => ({
-      ...s,
-      name: [s.given_name, s.family_name].filter(Boolean).join(' ') || s.username || 'Unknown'
-    })));
   };
 
   // Initialize when DOM is ready

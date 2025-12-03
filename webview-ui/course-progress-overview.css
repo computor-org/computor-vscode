@@ -3,9 +3,10 @@
  */
 
 .course-progress-overview {
-  padding: 0;
+  padding: 20px 0 0;
   max-width: 1400px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 /* Header */
@@ -92,6 +93,29 @@
   font-size: 13px;
   color: var(--vscode-descriptionForeground);
   margin-left: 8px;
+}
+
+.students-search {
+  flex-shrink: 0;
+}
+
+.students-search input {
+  width: 200px;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border-radius: 4px;
+  outline: none;
+}
+
+.students-search input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.students-search input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
 }
 
 /* Table customizations */

@@ -450,7 +450,8 @@
 
 .computor-filter-bar__search {
   flex: 1;
-  min-width: 200px;
+  min-width: 0;
+  max-width: 300px;
 }
 
 .computor-filter-bar__search input {
@@ -462,6 +463,7 @@
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   outline: none;
+  box-sizing: border-box;
 }
 
 .computor-filter-bar__search input:focus {
