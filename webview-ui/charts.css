@@ -262,7 +262,7 @@
 }
 
 .computor-table__clickable:hover {
-  background-color: var(--vscode-list-activeSelectionBackground) !important;
+  background-color: var(--vscode-list-hoverBackground) !important;
 }
 
 .computor-table__empty {
