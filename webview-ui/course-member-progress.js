@@ -300,9 +300,20 @@
 
     if (contentTypes.length === 0) return;
 
+    const totalMax = gradings.total_max_assignments || 0;
+    const totalSubmitted = gradings.total_submitted_assignments || 0;
+    const remaining = totalMax - totalSubmitted;
+
     const labels = contentTypes.map(ct => ct.course_content_type_title || ct.course_content_type_slug);
     const values = contentTypes.map(ct => ct.submitted_assignments || 0);
     const colors = contentTypes.map(ct => ct.course_content_type_color || ComputorCharts.DEFAULT_PALETTE[0]);
+
+    // Add "Remaining" segment if there are incomplete assignments
+    if (remaining > 0) {
+      labels.push('Remaining');
+      values.push(remaining);
+      colors.push('rgba(100, 149, 237, 0.2)'); // Light blue to match unfilled progress bars
+    }
 
     donutChart = ComputorCharts.createDonutChart('donutChart', {
       labels,
