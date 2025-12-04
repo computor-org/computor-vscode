@@ -41,11 +41,13 @@ export interface CourseMemberGradingsList {
 export interface CourseMemberGradingNode {
   course_content_id: string;
   path: string;
+  position: number;
   title?: string | null;
   course_content_type_id: string;
   course_content_type_slug: string;
   course_content_type_title?: string | null;
   course_content_type_color?: string | null;
+  course_content_kind_id: string;
   is_submittable: boolean;
   max_assignments: number;
   submitted_assignments: number;

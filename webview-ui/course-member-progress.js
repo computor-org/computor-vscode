@@ -92,11 +92,6 @@
     const submitted = gradings.total_submitted_assignments || 0;
     const total = gradings.total_max_assignments || 0;
 
-    let fillColor = ComputorCharts.ThemeColors.primary;
-    if (percentage >= 80) fillColor = ComputorCharts.ThemeColors.success;
-    else if (percentage >= 50) fillColor = ComputorCharts.ThemeColors.warning;
-    else if (percentage < 25) fillColor = ComputorCharts.ThemeColors.error;
-
     return `
       <div class="overall-progress-card">
         <div class="overall-progress-card__header">
@@ -104,7 +99,7 @@
           <div class="overall-progress-card__percentage">${percentage}%</div>
         </div>
         <div class="overall-progress-card__bar">
-          <div class="overall-progress-card__fill" style="width: ${percentage}%; background-color: ${fillColor}"></div>
+          <div class="overall-progress-card__fill" style="width: ${percentage}%;"></div>
         </div>
         <div class="overall-progress-card__stats">
           <div class="overall-progress-card__stat">
@@ -163,7 +158,7 @@
             <span class="content-type-item__stats">${submitted} / ${total} (${percentage}%)</span>
           </div>
           <div class="content-type-item__bar">
-            <div class="content-type-item__fill" style="width: ${percentage}%; background-color: ${color}"></div>
+            <div class="content-type-item__fill" style="width: ${percentage}%;"></div>
           </div>
         </div>
       `;
@@ -177,6 +172,15 @@
       return '';
     }
 
+    // Build color map from by_content_type (which has the correct colors)
+    const colorMap = new Map();
+    (gradings.by_content_type || []).forEach(ct => {
+      if (ct.course_content_type_color) {
+        colorMap.set(ct.course_content_type_id, ct.course_content_type_color);
+        colorMap.set(ct.course_content_type_slug, ct.course_content_type_color);
+      }
+    });
+
     // Build hierarchy from flat nodes
     const tree = buildTreeFromNodes(nodes);
 
@@ -186,7 +190,7 @@
           <h2 class="content-tree-section__title">Course Content Progress</h2>
         </div>
         <div class="content-tree">
-          ${renderTreeNodes(tree, 0)}
+          ${renderTreeNodes(tree, 0, colorMap)}
         </div>
       </section>
     `;
@@ -197,7 +201,7 @@
     const nodeMap = new Map();
     const roots = [];
 
-    // Sort by path
+    // Sort by path first to ensure parents come before children
     const sorted = [...nodes].sort((a, b) => a.path.localeCompare(b.path));
 
     sorted.forEach(node => {
@@ -224,41 +228,66 @@
       }
     });
 
+    // Sort all children arrays by position
+    function sortByPosition(nodeList) {
+      nodeList.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+      nodeList.forEach(n => {
+        if (n.children && n.children.length > 0) {
+          sortByPosition(n.children);
+        }
+      });
+    }
+
+    sortByPosition(roots);
     return roots;
   }
 
-  function renderTreeNodes(nodes, depth) {
+  function renderTreeNodes(nodes, depth, colorMap) {
     return nodes.map((node, index) => {
       const hasChildren = node.children && node.children.length > 0;
-      const color = node.course_content_type_color || ComputorCharts.ThemeColors.primary;
+      // Look up color from colorMap using type ID or slug, fallback to node's color, then default
+      const color = colorMap.get(node.course_content_type_id)
+        || colorMap.get(node.course_content_type_slug)
+        || node.course_content_type_color
+        || ComputorCharts.ThemeColors.primary;
       const percentage = node.progress_percentage || 0;
       const nodeId = `node-${node.path.replace(/\./g, '-')}`;
-      const isSubmittable = node.is_submittable;
+      const isSubmittable = node.is_submittable === true;
       const isSubmitted = node.submitted_assignments > 0;
+
+      // Assignments (submittable): show status badge only, no progress bar
+      // Units (not submittable): show progress bar with percentage
+      const progressHtml = isSubmittable
+        ? `<span class="content-tree-node__status" style="background-color: ${color}20; color: ${color}; border: 1px solid ${color}40;">
+             ${isSubmitted ? 'Submitted' : 'Pending'}
+           </span>`
+        : `<div class="content-tree-node__progress">
+             <div class="content-tree-node__bar">
+               <div class="content-tree-node__fill" style="width: ${percentage}%;"></div>
+             </div>
+             <span class="content-tree-node__percentage">${percentage}%</span>
+           </div>`;
+
+      // Icon styling: filled for submitted/completed, outline for pending
+      const iconStyle = isSubmittable
+        ? (isSubmitted
+            ? `background-color: ${color};`
+            : `background-color: transparent; border: 2px solid ${color};`)
+        : `background-color: ${color};`;
 
       return `
         <div class="content-tree-node" id="${nodeId}">
           <div class="content-tree-node__row content-tree-node__row--depth-${Math.min(depth, 3)}">
             <span class="content-tree-node__toggle ${hasChildren ? '' : 'content-tree-node__toggle--empty'}"
                   onclick="toggleNode('${nodeId}')">${hasChildren ? (node.expanded !== false ? '▼' : '▶') : ''}</span>
-            <span class="content-tree-node__icon" style="background-color: ${color}"></span>
+            <span class="content-tree-node__icon" style="${iconStyle}"></span>
             <span class="content-tree-node__title">${escapeHtml(node.title || node.path)}</span>
-            <div class="content-tree-node__progress">
-              <div class="content-tree-node__bar">
-                <div class="content-tree-node__fill" style="width: ${percentage}%; background-color: ${color}"></div>
-              </div>
-              <span class="content-tree-node__percentage">${percentage}%</span>
-            </div>
-            ${isSubmittable ? `
-              <span class="content-tree-node__status ${isSubmitted ? 'content-tree-node__status--submitted' : 'content-tree-node__status--pending'}">
-                ${isSubmitted ? 'Submitted' : 'Pending'}
-              </span>
-            ` : ''}
+            ${progressHtml}
           </div>
           ${hasChildren ? `
             <div class="content-tree-node__children ${node.expanded !== false ? '' : 'content-tree-node__children--collapsed'}"
                  id="${nodeId}-children">
-              ${renderTreeNodes(node.children, depth + 1)}
+              ${renderTreeNodes(node.children, depth + 1, colorMap)}
             </div>
           ` : ''}
         </div>

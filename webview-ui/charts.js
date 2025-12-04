@@ -548,20 +548,8 @@
     }
     fill.style.width = `${Math.min(100, Math.max(0, percentage))}%`;
 
-    if (options.color) {
-      fill.style.backgroundColor = options.color;
-    } else {
-      // Auto color based on percentage
-      if (percentage >= 80) {
-        fill.style.backgroundColor = ThemeColors.success;
-      } else if (percentage >= 50) {
-        fill.style.backgroundColor = ThemeColors.warning;
-      } else if (percentage >= 25) {
-        fill.style.backgroundColor = ThemeColors.primary;
-      } else {
-        fill.style.backgroundColor = ThemeColors.error;
-      }
-    }
+    // Always use dark blue for filled portion
+    fill.style.backgroundColor = options.color || '#1e90ff';
 
     bar.appendChild(fill);
     wrapper.appendChild(bar);

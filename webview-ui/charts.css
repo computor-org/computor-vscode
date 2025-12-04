@@ -140,7 +140,7 @@
 .computor-progress__bar {
   flex: 1;
   height: 8px;
-  background-color: var(--vscode-progressBar-background, rgba(255, 255, 255, 0.1));
+  background-color: rgba(100, 149, 237, 0.2); /* Light blue for unfilled */
   border-radius: 4px;
   overflow: hidden;
 }
@@ -149,7 +149,7 @@
   height: 100%;
   border-radius: 4px;
   transition: width 0.3s ease;
-  background-color: var(--vscode-button-background);
+  background-color: #1e90ff; /* Dark blue for filled */
 }
 
 .computor-progress__fill--animated {

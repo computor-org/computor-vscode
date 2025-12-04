@@ -329,7 +329,6 @@
     }
 
     return contentTypes.map(ct => {
-      const color = ct.course_content_type_color || ComputorCharts.ThemeColors.primary;
       const label = ct.course_content_type_title || ct.course_content_type_slug;
       const percentage = ct.progress_percentage || 0;
 
@@ -337,7 +336,7 @@
         <div class="content-type-row">
           <span class="content-type-label">${escapeHtml(label)}</span>
           <div class="content-type-bar">
-            <div class="content-type-bar__fill" style="width: ${percentage}%; background-color: ${color}"></div>
+            <div class="content-type-bar__fill" style="width: ${percentage}%;"></div>
           </div>
           <span class="content-type-value">${percentage}%</span>
         </div>
