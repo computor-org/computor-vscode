@@ -48,7 +48,7 @@ export interface CourseMemberGradingNode {
   course_content_type_title?: string | null;
   course_content_type_color?: string | null;
   course_content_kind_id: string;
-  is_submittable: boolean;
+  submittable: boolean;
   max_assignments: number;
   submitted_assignments: number;
   progress_percentage: number;

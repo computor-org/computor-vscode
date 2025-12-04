@@ -252,14 +252,14 @@
         || ComputorCharts.ThemeColors.primary;
       const percentage = node.progress_percentage || 0;
       const nodeId = `node-${node.path.replace(/\./g, '-')}`;
-      const isSubmittable = node.is_submittable === true;
+      const isSubmittable = node.submittable === true;
       const isSubmitted = node.submitted_assignments > 0;
 
-      // Assignments (submittable): show status badge only, no progress bar
+      // Assignments (submittable): show checkmark or pending indicator
       // Units (not submittable): show progress bar with percentage
       const progressHtml = isSubmittable
-        ? `<span class="content-tree-node__status" style="background-color: ${color}20; color: ${color}; border: 1px solid ${color}40;">
-             ${isSubmitted ? 'Submitted' : 'Pending'}
+        ? `<span class="content-tree-node__check ${isSubmitted ? 'content-tree-node__check--done' : 'content-tree-node__check--pending'}">
+             ${isSubmitted ? '✓' : '○'}
            </span>`
         : `<div class="content-tree-node__progress">
              <div class="content-tree-node__bar">
@@ -268,12 +268,8 @@
              <span class="content-tree-node__percentage">${percentage}%</span>
            </div>`;
 
-      // Icon styling: filled for submitted/completed, outline for pending
-      const iconStyle = isSubmittable
-        ? (isSubmitted
-            ? `background-color: ${color};`
-            : `background-color: transparent; border: 2px solid ${color};`)
-        : `background-color: ${color};`;
+      // Icon styling: always filled with content type color
+      const iconStyle = `background-color: ${color};`;
 
       return `
         <div class="content-tree-node" id="${nodeId}">

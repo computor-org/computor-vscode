@@ -326,6 +326,22 @@
   font-weight: 500;
 }
 
+.content-tree-node__check {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 24px;
+  text-align: center;
+  text-shadow: 0 0 2px currentColor;
+}
+
+.content-tree-node__check--done {
+  color: #2e7d32; /* Darker green for submitted */
+}
+
+.content-tree-node__check--pending {
+  color: #c62828; /* Darker red for not submitted */
+}
+
 .content-tree-node__children {
   display: block;
 }
