@@ -75,11 +75,6 @@
           <h1 class="course-progress-header__title">${escapeHtml(course.title || course.path)}</h1>
           <p class="course-progress-header__subtitle">Student Progress Overview</p>
         </div>
-        <div class="course-progress-header__actions">
-          <button class="vscode-button vscode-button--secondary vscode-button--sm" onclick="handleRefresh()">
-            Refresh
-          </button>
-        </div>
       </header>
     `;
   }

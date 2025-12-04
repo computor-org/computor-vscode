@@ -78,11 +78,6 @@
           ${gradings.username ? `<p class="member-progress-header__username">@${escapeHtml(gradings.username)}</p>` : ''}
           <p class="member-progress-header__subtitle">Last active: ${escapeHtml(lastActive)}</p>
         </div>
-        <div class="member-progress-header__actions">
-          <button class="vscode-button vscode-button--secondary vscode-button--sm" onclick="handleRefresh()">
-            Refresh
-          </button>
-        </div>
       </header>
     `;
   }
