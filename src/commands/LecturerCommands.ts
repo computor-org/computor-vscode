@@ -17,6 +17,8 @@ import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/Me
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebviewProvider';
 import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
+import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
+import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMemberProgressWebviewProvider';
 import { ExampleGet } from '../types/generated/examples';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
@@ -47,6 +49,8 @@ export class LecturerCommands {
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
   private deploymentInfoWebviewProvider: DeploymentInfoWebviewProvider;
   private releaseValidationWebviewProvider: ReleaseValidationWebviewProvider;
+  private courseProgressOverviewWebviewProvider: CourseProgressOverviewWebviewProvider;
+  private courseMemberProgressWebviewProvider: CourseMemberProgressWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -66,6 +70,8 @@ export class LecturerCommands {
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
     this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
+    this.courseProgressOverviewWebviewProvider = new CourseProgressOverviewWebviewProvider(context, this.apiService);
+    this.courseMemberProgressWebviewProvider = new CourseMemberProgressWebviewProvider(context, this.apiService);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
@@ -286,6 +292,32 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.showCourseMemberDetails', async (item: CourseMemberTreeItem) => {
         await this.showCourseMemberDetails(item);
+      })
+    );
+
+    // Course progress overview - shows all students' progress for a course
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showCourseProgressOverview', async (itemOrId: CourseTreeItem | string) => {
+        if (typeof itemOrId === 'string') {
+          // Called with course ID directly (from tutor view)
+          await this.showCourseProgressOverviewById(itemOrId);
+        } else {
+          // Called with tree item
+          await this.showCourseProgressOverview(itemOrId);
+        }
+      })
+    );
+
+    // Course member progress - shows detailed progress for a single student
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showCourseMemberProgress', async (itemOrId: CourseMemberTreeItem | string, memberName?: string) => {
+        if (typeof itemOrId === 'string') {
+          // Called with course member ID directly (from overview webview)
+          await this.courseMemberProgressWebviewProvider.showMemberProgress(itemOrId, memberName);
+        } else {
+          // Called with tree item
+          await this.showCourseMemberProgress(itemOrId);
+        }
       })
     );
 
@@ -2855,5 +2887,42 @@ export class LecturerCommands {
         course_role_id: '_student'
       }
     ];
+  }
+
+  private async showCourseProgressOverview(item: CourseTreeItem): Promise<void> {
+    try {
+      const course = await this.apiService.getCourse(item.course.id);
+      if (!course) {
+        vscode.window.showErrorMessage('Failed to load course details');
+        return;
+      }
+      await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+    }
+  }
+
+  private async showCourseProgressOverviewById(courseId: string): Promise<void> {
+    try {
+      const course = await this.apiService.getCourse(courseId);
+      if (!course) {
+        vscode.window.showErrorMessage('Failed to load course details');
+        return;
+      }
+      await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+    }
+  }
+
+  private async showCourseMemberProgress(item: CourseMemberTreeItem): Promise<void> {
+    try {
+      const memberName = item.member.user
+        ? [item.member.user.given_name, item.member.user.family_name].filter(Boolean).join(' ') || item.member.user.username || undefined
+        : undefined;
+      await this.courseMemberProgressWebviewProvider.showMemberProgress(item.member.id, memberName);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to show member progress: ${error}`);
+    }
   }
 }

@@ -1,0 +1,411 @@
+/**
+ * Course Member Progress Webview Styles
+ */
+
+.course-member-progress {
+  padding: 20px 0;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Header */
+.member-progress-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.member-progress-header__info {
+  flex: 1;
+}
+
+.member-progress-header__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.member-progress-header__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.member-progress-header__username {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.member-progress-header__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Overall progress card */
+.overall-progress-card {
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.overall-progress-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.overall-progress-card__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.overall-progress-card__percentage {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--vscode-foreground);
+}
+
+.overall-progress-card__bar {
+  height: 12px;
+  background-color: rgba(100, 149, 237, 0.2); /* Light blue for unfilled */
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.overall-progress-card__fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+  background-color: #1e90ff; /* Dark blue for filled */
+}
+
+.overall-progress-card__stats {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.overall-progress-card__stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overall-progress-card__stat-value {
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+/* Charts row */
+.member-charts-row {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 800px) {
+  .member-charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-card {
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.chart-card__title {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.chart-card__canvas {
+  position: relative;
+  height: 200px;
+}
+
+/* Content type breakdown */
+.content-type-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.content-type-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.content-type-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.content-type-item__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+.content-type-item__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.content-type-item__stats {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.content-type-item__bar {
+  height: 8px;
+  background-color: rgba(100, 149, 237, 0.2); /* Light blue for unfilled */
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.content-type-item__fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  background-color: #1e90ff; /* Dark blue for filled */
+}
+
+/* Content tree */
+.content-tree-section {
+  margin-top: 24px;
+}
+
+.content-tree-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.content-tree-section__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.content-tree {
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.content-tree-node {
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.content-tree-node:last-child {
+  border-bottom: none;
+}
+
+.content-tree-node__row {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: default;
+  transition: background-color 0.15s ease;
+}
+
+.content-tree-node__row:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.content-tree-node__row--depth-0 {
+  background-color: var(--vscode-sideBar-background);
+  font-weight: 500;
+}
+
+.content-tree-node__row--depth-1 {
+  padding-left: 32px;
+}
+
+.content-tree-node__row--depth-2 {
+  padding-left: 48px;
+}
+
+.content-tree-node__row--depth-3 {
+  padding-left: 64px;
+}
+
+.content-tree-node__toggle {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+}
+
+.content-tree-node__toggle--empty {
+  visibility: hidden;
+}
+
+.content-tree-node__icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.content-tree-node__title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-tree-node__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.content-tree-node__bar {
+  flex: 1;
+  height: 6px;
+  background-color: rgba(100, 149, 237, 0.2); /* Light blue for unfilled */
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.content-tree-node__fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  background-color: #1e90ff; /* Dark blue for filled */
+}
+
+.content-tree-node__percentage {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  min-width: 40px;
+  text-align: right;
+}
+
+.content-tree-node__status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.content-tree-node__check {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 24px;
+  text-align: center;
+  text-shadow: 0 0 2px currentColor;
+}
+
+.content-tree-node__check--done {
+  color: #2e7d32; /* Darker green for submitted */
+}
+
+.content-tree-node__check--pending {
+  color: #c62828; /* Darker red for not submitted */
+}
+
+.content-tree-node__children {
+  display: block;
+}
+
+.content-tree-node__children--collapsed {
+  display: none;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loading-overlay--hidden {
+  display: none;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--vscode-progressBar-background);
+  border-top-color: var(--vscode-button-background);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-state__icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin-bottom: 8px;
+}
+
+.empty-state__description {
+  font-size: 13px;
+  max-width: 300px;
+}

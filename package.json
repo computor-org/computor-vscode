@@ -40,6 +40,18 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.showCourseProgress",
+        "title": "Show Course Progress",
+        "icon": "$(graph)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.showMemberProgress",
+        "title": "Show Member Progress",
+        "icon": "$(graph-line)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.downloadReference",
         "title": "Download Reference",
         "icon": "$(cloud-download)",
@@ -453,6 +465,18 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.showCourseProgressOverview",
+        "title": "Show Progress Overview",
+        "icon": "$(graph)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.showCourseMemberProgress",
+        "title": "Show Progress",
+        "icon": "$(graph-line)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.renameCourseGroup",
         "title": "Rename",
         "category": "Computor Lecturer"
@@ -725,6 +749,16 @@
           "group": "navigation@1"
         },
         {
+          "command": "computor.tutor.showCourseProgress",
+          "when": "view == computor.tutor.filters",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.tutor.showMemberProgress",
+          "when": "view == computor.tutor.filters",
+          "group": "navigation@2"
+        },
+        {
           "command": "computor.manageGitLabTokens",
           "when": "view == computor.student.courses",
           "group": "navigation@3"
@@ -892,6 +926,11 @@
           "group": "5_details@1"
         },
         {
+          "command": "computor.lecturer.showCourseProgressOverview",
+          "when": "view == computor.lecturer.courses && viewItem == course",
+          "group": "5_details@2"
+        },
+        {
           "command": "computor.lecturer.showCourseContentDetails",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "5_details@1"
@@ -920,6 +959,11 @@
           "command": "computor.lecturer.showCourseMemberDetails",
           "when": "view == computor.lecturer.courses && viewItem == course.member",
           "group": "5_details@1"
+        },
+        {
+          "command": "computor.lecturer.showCourseMemberProgress",
+          "when": "view == computor.lecturer.courses && viewItem == course.member",
+          "group": "5_details@2"
         },
         {
           "command": "computor.lecturer.renameCourseGroup",

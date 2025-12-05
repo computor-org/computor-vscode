@@ -74,6 +74,7 @@ import {
   SubmissionArtifactUpdate
 } from '../types/generated';
 import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult } from '../types/generated/common';
+import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/course-member-gradings';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -2879,6 +2880,43 @@ export class ComputorApiService {
     } catch (error: any) {
       console.error('Failed to get workflow status:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get course member gradings list for a course (progress overview)
+   * @param courseId The course ID to get gradings for
+   * @returns List of course member gradings with progress data
+   */
+  async getCourseMemberGradings(courseId: string): Promise<CourseMemberGradingsList[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseMemberGradingsList[]>(
+        '/course-member-gradings',
+        { course_id: courseId }
+      );
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      console.error('Failed to get course member gradings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get detailed gradings for a single course member
+   * @param courseMemberId The course member ID to get detailed gradings for
+   * @returns Detailed course member grading with hierarchical nodes
+   */
+  async getCourseMemberGradingsDetail(courseMemberId: string): Promise<CourseMemberGradingsGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseMemberGradingsGet>(
+        `/course-member-gradings/${courseMemberId}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to get course member grading details:', error);
+      return undefined;
     }
   }
 
