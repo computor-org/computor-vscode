@@ -710,15 +710,39 @@
     // Initial render
     sortAndRender();
 
+    // Store original data for filtering
+    const originalData = [...config.data];
+    let filterQuery = '';
+
+    function filterData(query) {
+      if (!query) {
+        return [...originalData];
+      }
+      const q = query.toLowerCase();
+      return originalData.filter(row => {
+        // Search in name field specifically
+        const name = [row.given_name, row.family_name, row.username].filter(Boolean).join(' ').toLowerCase();
+        return name.includes(q);
+      });
+    }
+
     // Return container with update method
     container.updateData = (newData) => {
-      currentData = [...newData];
+      originalData.length = 0;
+      originalData.push(...newData);
+      currentData = filterData(filterQuery);
       sortAndRender();
     };
 
     container.setSort = (key, direction) => {
       sortKey = key;
       sortDirection = direction || 'asc';
+      sortAndRender();
+    };
+
+    container.filter = (query) => {
+      filterQuery = (query || '').trim();
+      currentData = filterData(filterQuery);
       sortAndRender();
     };
 

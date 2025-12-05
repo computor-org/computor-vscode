@@ -133,9 +133,6 @@
             Students
             <span class="students-section__count">(${state.students?.length || 0})</span>
           </h2>
-          <div class="students-search">
-            <input type="text" id="studentSearch" placeholder="Search students..." oninput="handleSearch(this.value)">
-          </div>
         </div>
         <div id="studentTableContainer"></div>
       </section>
@@ -401,7 +398,7 @@
   };
 
   window.handleSearch = function(query) {
-    if (studentTable && studentTable.filter) {
+    if (studentTable && typeof studentTable.filter === 'function') {
       studentTable.filter(query);
     }
   };
