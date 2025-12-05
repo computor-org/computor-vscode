@@ -74,6 +74,33 @@ export class TutorCommands {
       })
     );
 
+    // Show Course Progress (uses current selected course from filters)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showCourseProgress', async () => {
+        const sel = TutorSelectionService.getInstance();
+        const courseId = sel.getCurrentCourseId();
+        if (!courseId) {
+          vscode.window.showWarningMessage('Please select a course first.');
+          return;
+        }
+        await vscode.commands.executeCommand('computor.lecturer.showCourseProgressOverview', courseId);
+      })
+    );
+
+    // Show Member Progress (uses current selected member from filters)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showMemberProgress', async () => {
+        const sel = TutorSelectionService.getInstance();
+        const memberId = sel.getCurrentMemberId();
+        const memberName = sel.getCurrentMemberLabel();
+        if (!memberId) {
+          vscode.window.showWarningMessage('Please select a member first.');
+          return;
+        }
+        await vscode.commands.executeCommand('computor.lecturer.showCourseMemberProgress', memberId, memberName);
+      })
+    );
+
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.tutor.showCourseMemberComments', async () => {
         await this.showCourseMemberComments();

@@ -297,8 +297,14 @@ export class LecturerCommands {
 
     // Course progress overview - shows all students' progress for a course
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseProgressOverview', async (item: CourseTreeItem) => {
-        await this.showCourseProgressOverview(item);
+      vscode.commands.registerCommand('computor.lecturer.showCourseProgressOverview', async (itemOrId: CourseTreeItem | string) => {
+        if (typeof itemOrId === 'string') {
+          // Called with course ID directly (from tutor view)
+          await this.showCourseProgressOverviewById(itemOrId);
+        } else {
+          // Called with tree item
+          await this.showCourseProgressOverview(itemOrId);
+        }
       })
     );
 
@@ -2886,6 +2892,19 @@ export class LecturerCommands {
   private async showCourseProgressOverview(item: CourseTreeItem): Promise<void> {
     try {
       const course = await this.apiService.getCourse(item.course.id);
+      if (!course) {
+        vscode.window.showErrorMessage('Failed to load course details');
+        return;
+      }
+      await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+    }
+  }
+
+  private async showCourseProgressOverviewById(courseId: string): Promise<void> {
+    try {
+      const course = await this.apiService.getCourse(courseId);
       if (!course) {
         vscode.window.showErrorMessage('Failed to load course details');
         return;

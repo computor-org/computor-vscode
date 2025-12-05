@@ -40,6 +40,18 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.showCourseProgress",
+        "title": "Show Course Progress",
+        "icon": "$(graph)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.showMemberProgress",
+        "title": "Show Member Progress",
+        "icon": "$(graph-line)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.downloadReference",
         "title": "Download Reference",
         "icon": "$(cloud-download)",
@@ -735,6 +747,16 @@
           "command": "computor.tutor.refresh",
           "when": "view == computor.tutor.courses",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.tutor.showCourseProgress",
+          "when": "view == computor.tutor.filters",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.tutor.showMemberProgress",
+          "when": "view == computor.tutor.filters",
+          "group": "navigation@2"
         },
         {
           "command": "computor.manageGitLabTokens",
