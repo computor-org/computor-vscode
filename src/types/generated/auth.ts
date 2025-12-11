@@ -191,11 +191,28 @@ export interface TokenRefreshResponse {
   refresh_token?: string | null;
 }
 
+/**
+ * Author information for a message.
+ */
 export interface MessageAuthor {
+  /** User ID of the author */
+  id: string;
   /** Author's given name */
   given_name?: string | null;
   /** Author's family name */
   family_name?: string | null;
+}
+
+/**
+ * Course member context for the message author (when message is in a course context).
+ */
+export interface MessageAuthorCourseMember {
+  /** Course member ID */
+  id: string;
+  /** Role of the author in the course (e.g., '_student', '_tutor', '_lecturer') */
+  course_role_id: string;
+  /** Course ID */
+  course_id: string;
 }
 
 export interface GradingAuthor {

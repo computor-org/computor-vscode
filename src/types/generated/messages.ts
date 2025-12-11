@@ -8,7 +8,7 @@
 
 
 
-import type { MessageAuthor } from './auth';
+import type { MessageAuthor, MessageAuthorCourseMember } from './auth';
 
 
 
@@ -17,12 +17,22 @@ export interface MessageCreate {
   level?: number;
   title: string;
   content: string;
-  user_id?: string | null;
-  course_member_id?: string | null;
-  submission_group_id?: string | null;
-  course_group_id?: string | null;
-  course_content_id?: string | null;
+  /** Organization-level message */
+  organization_id?: string | null;
+  /** Course family-level message */
+  course_family_id?: string | null;
+  /** Course-level message */
   course_id?: string | null;
+  /** Course content-level message */
+  course_content_id?: string | null;
+  /** Course group-level message */
+  course_group_id?: string | null;
+  /** Submission group-level message */
+  submission_group_id?: string | null;
+  /** Direct message to a course member */
+  course_member_id?: string | null;
+  /** Direct message to a user (outside course context) */
+  user_id?: string | null;
 }
 
 export interface MessageUpdate {
@@ -43,8 +53,10 @@ export interface MessageGet {
   level: number;
   parent_id?: string | null;
   author_id: string;
-  /** Author details */
+  /** Author details (user info) */
   author?: MessageAuthor | null;
+  /** Author's course member context (only for course-scoped messages) */
+  author_course_member?: MessageAuthorCourseMember | null;
   is_read?: boolean;
   /** True if the requesting user is the message author */
   is_author?: boolean;
@@ -52,14 +64,16 @@ export interface MessageGet {
   is_deleted?: boolean;
   /** Who deleted the message (author/moderator/admin) */
   deleted_by?: string | null;
-  user_id?: string | null;
-  course_member_id?: string | null;
-  submission_group_id?: string | null;
-  course_group_id?: string | null;
-  course_content_id?: string | null;
+  organization_id?: string | null;
+  course_family_id?: string | null;
   course_id?: string | null;
-  /** Determine message scope based on target fields (priority order) */
-  scope: "user" | "course_member" | "submission_group" | "course_group" | "course_content" | "course";
+  course_content_id?: string | null;
+  course_group_id?: string | null;
+  submission_group_id?: string | null;
+  course_member_id?: string | null;
+  user_id?: string | null;
+  /** Determine message scope based on target fields (priority order: most specific first) */
+  scope: "global" | "organization" | "course_family" | "course" | "course_content" | "course_group" | "submission_group" | "course_member" | "user";
 }
 
 export interface MessageList {
@@ -73,8 +87,10 @@ export interface MessageList {
   level: number;
   parent_id?: string | null;
   author_id: string;
-  /** Author details */
+  /** Author details (user info) */
   author?: MessageAuthor | null;
+  /** Author's course member context (only for course-scoped messages) */
+  author_course_member?: MessageAuthorCourseMember | null;
   is_read?: boolean;
   /** True if the requesting user is the message author */
   is_author?: boolean;
@@ -82,14 +98,16 @@ export interface MessageList {
   is_deleted?: boolean;
   /** Who deleted the message (author/moderator/admin) */
   deleted_by?: string | null;
-  user_id?: string | null;
-  course_member_id?: string | null;
-  submission_group_id?: string | null;
-  course_group_id?: string | null;
-  course_content_id?: string | null;
+  organization_id?: string | null;
+  course_family_id?: string | null;
   course_id?: string | null;
-  /** Determine message scope based on target fields (priority order) */
-  scope: "user" | "course_member" | "submission_group" | "course_group" | "course_content" | "course";
+  course_content_id?: string | null;
+  course_group_id?: string | null;
+  submission_group_id?: string | null;
+  course_member_id?: string | null;
+  user_id?: string | null;
+  /** Determine message scope based on target fields (priority order: most specific first) */
+  scope: "global" | "organization" | "course_family" | "course" | "course_content" | "course_group" | "submission_group" | "course_member" | "user";
 }
 
 export interface MessageQuery {
@@ -98,14 +116,28 @@ export interface MessageQuery {
   id?: string | null;
   parent_id?: string | null;
   author_id?: string | null;
-  user_id?: string | null;
-  course_member_id?: string | null;
-  submission_group_id?: string | null;
-  course_group_id?: string | null;
-  course_content_id?: string | null;
+  organization_id?: string | null;
+  course_family_id?: string | null;
   course_id?: string | null;
+  course_content_id?: string | null;
+  course_group_id?: string | null;
+  submission_group_id?: string | null;
+  course_member_id?: string | null;
+  user_id?: string | null;
   course_id_all_messages?: boolean | null;
-  scope?: "user" | "course_member" | "submission_group" | "course_group" | "course_content" | "course" | null;
+  scope?: "global" | "organization" | "course_family" | "course" | "course_content" | "course_group" | "submission_group" | "course_member" | "user" | null;
+  /** Filter messages created at or after this datetime (inclusive) */
+  created_after?: string | null;
+  /** Filter messages created at or before this datetime (inclusive) */
+  created_before?: string | null;
+  /** Filter by read status: True = unread only, False = read only, None = all */
+  unread?: boolean | null;
+  /** Filter by tags in title (e.g., ['ai::request', 'priority::high']) */
+  tags?: string[] | null;
+  /** True = must match ALL tags (AND), False = match ANY tag (OR) */
+  tags_match_all?: boolean | null;
+  /** Filter by tag scope prefix (e.g., 'ai' matches any #ai::* tag) */
+  tag_scope?: string | null;
 }
 
 /**

@@ -118,113 +118,37 @@ export interface CourseExecutionBackendConfig {
 }
 
 /**
- * Represents a single row from the import file.
- */
-export interface CourseMemberImportRow {
-  /** Email address (required, used as identifier) */
-  email: string;
-  /** First name (Vorname) */
-  given_name?: string | null;
-  /** Last name (Familienname) */
-  family_name?: string | null;
-  /** Student ID (Matrikelnummer) */
-  student_id?: string | null;
-  /** Course group title (Gruppe) */
-  course_group_title?: string | null;
-  /** Course role ID (default: _student) */
-  course_role_id?: string;
-  /** Incoming student indicator */
-  incoming?: string | null;
-  /** Study program ID (Kennzahl) */
-  study_id?: string | null;
-  /** Study program name (Studium) */
-  study_name?: string | null;
-  /** Semester in study program */
-  semester?: number | null;
-  /** Registration date */
-  registration_date?: string | null;
-  /** Additional notes (Anmerkung) */
-  notes?: string | null;
-}
-
-/**
- * Result of importing a single member.
- */
-export interface CourseMemberImportResult {
-  /** Row number in the import file */
-  row_number: number;
-  /** Import status */
-  status: ImportStatus;
-  /** Email from the import */
-  email: string;
-  /** User ID if created/found */
-  user_id?: string | null;
-  /** Course member ID if created/updated */
-  course_member_id?: string | null;
-  /** Success or error message */
-  message?: string | null;
-  /** Non-fatal warnings */
-  warnings?: string[];
-}
-
-/**
- * Request for bulk course member import.
+ * Request for importing a course member.
  */
 export interface CourseMemberImportRequest {
-  /** Course ID to import members into */
-  course_id: string;
-  /** List of members to import */
-  members: CourseMemberImportRow[];
-  /** Default role for imported members */
-  default_course_role_id?: string;
-  /** Update existing users if found */
-  update_existing?: boolean;
-  /** Auto-create missing course groups */
-  create_missing_groups?: boolean;
-  /** Username generation strategy: 'name' (from given/family name) or 'email' (from email prefix) */
-  username_strategy?: string;
-  /** Number of members to process per batch for GitLab operations (to avoid rate limits) */
-  batch_size?: number;
-  /** Delay in seconds between batches to respect GitLab API rate limits */
-  batch_delay_seconds?: number;
+  /** Email address (required) */
+  email: string;
+  /** First name */
+  given_name?: string | null;
+  /** Last name */
+  family_name?: string | null;
+  /** Course group name */
+  course_group_title?: string | null;
+  /** Course role ID (e.g., _student) */
+  course_role_id?: string;
+  /** Auto-create missing course group */
+  create_missing_group?: boolean;
 }
 
 /**
- * Response from bulk course member import.
+ * Response from course member import.
  */
 export interface CourseMemberImportResponse {
-  /** Total number of records processed */
-  total: number;
-  /** Number of successful imports */
-  success: number;
-  /** Number of errors */
-  errors: number;
-  /** Number of skipped records */
-  skipped: number;
-  /** Number of updated records */
-  updated: number;
-  /** Detailed results for each record */
-  results: CourseMemberImportResult[];
-  /** Groups that were created automatically */
-  missing_groups?: string[];
-}
-
-/**
- * Preview of import without executing it.
- */
-export interface CourseMemberImportPreview {
-  /** Number of valid records */
-  valid_records: number;
-  /** Number of invalid records */
-  invalid_records: number;
-  /** Estimated new users to create */
-  new_users: number;
-  /** Estimated existing users to update */
-  existing_users: number;
-  /** Validation issues found */
-  issues?: string[];
-  /** Sample of parsed records */
-  sample_records: CourseMemberImportRow[];
+  /** Whether the import was successful */
+  success: boolean;
+  /** Success or error message */
+  message?: string | null;
+  /** Created/updated course member */
+  course_member?: any | null;
+  /** Created course group if new */
+  created_group?: any | null;
+  /** Workflow ID for repository creation task (use GET /tasks/{workflow_id}/status to check progress) */
+  workflow_id?: string | null;
 }
 
 export interface CourseContentKindCreate {
@@ -699,6 +623,113 @@ export interface CourseContentStudentQuery {
   ascendants?: string | null;
 }
 
+/**
+ * Grading statistics for a specific course_content_type.
+ */
+export interface ContentTypeGradingStats {
+  course_content_type_id: string;
+  /** Slug of the content type (e.g., 'mandatory', 'optional') */
+  course_content_type_slug: string;
+  course_content_type_title?: string | null;
+  course_content_type_color?: string | null;
+  /** Total number of submittable course_contents of this type */
+  max_assignments: number;
+  /** Number of course_contents with at least one SubmissionArtifact.submit=True */
+  submitted_assignments: number;
+  /** Progress percentage (submitted/max * 100) */
+  progress_percentage: number;
+  /** Most recent SubmissionArtifact.created_at with submit=True for this type */
+  latest_submission_at?: string | null;
+}
+
+/**
+ * Aggregated grading data for one ltree path layer.
+ * 
+ * Represents a node in the course content hierarchy (e.g., a module, unit, etc.)
+ * with aggregated submission statistics for all submittable content at or below
+ * this path level.
+ */
+export interface CourseMemberGradingNode {
+  /** The ltree path (e.g., 'module1', 'module1.unit1') */
+  path: string;
+  /** CourseContent title if a course_content exists at this exact path */
+  title?: string | null;
+  /** Whether this node itself is submittable (True for assignments, False for units) */
+  submittable?: boolean | null;
+  /** Position/order of this content within its parent */
+  position?: number | null;
+  /** Color of the course content type (hex) */
+  course_content_type_color?: string | null;
+  /** Breakdown of statistics by course_content_type */
+  by_content_type?: ContentTypeGradingStats[];
+  /** Total submittable course_contents at or under this path */
+  max_assignments: number;
+  /** Course_contents with at least one SubmissionArtifact.submit=True */
+  submitted_assignments: number;
+  /** Progress percentage (submitted/max * 100) */
+  progress_percentage: number;
+  /** Most recent SubmissionArtifact.created_at with submit=True under this path */
+  latest_submission_at?: string | null;
+}
+
+/**
+ * Full response for course member gradings.
+ * 
+ * Contains overall course-level statistics, breakdown by content type,
+ * and hierarchical breakdown by ltree path.
+ */
+export interface CourseMemberGradingsGet {
+  course_member_id: string;
+  course_id: string;
+  /** Total number of submittable course_contents in the course */
+  total_max_assignments: number;
+  /** Total course_contents with at least one submitted artifact */
+  total_submitted_assignments: number;
+  /** Overall progress percentage for the course */
+  overall_progress_percentage: number;
+  /** Most recent submission across all content */
+  latest_submission_at?: string | null;
+  /** Course-level breakdown by content type */
+  by_content_type?: ContentTypeGradingStats[];
+  /** Hierarchical breakdown by ltree path levels */
+  nodes?: CourseMemberGradingNode[];
+}
+
+/**
+ * List item for course member gradings (without hierarchical nodes for efficiency).
+ * 
+ * Used when listing all course members' gradings for a course.
+ * Contains only course-level totals, not the full hierarchical breakdown.
+ */
+export interface CourseMemberGradingsList {
+  course_member_id: string;
+  course_id: string;
+  user_id?: string | null;
+  username?: string | null;
+  given_name?: string | null;
+  family_name?: string | null;
+  /** Total number of submittable course_contents in the course */
+  total_max_assignments: number;
+  /** Total course_contents with at least one submitted artifact */
+  total_submitted_assignments: number;
+  /** Overall progress percentage for the course */
+  overall_progress_percentage: number;
+  /** Most recent submission across all content */
+  latest_submission_at?: string | null;
+  /** Course-level breakdown by content type */
+  by_content_type?: ContentTypeGradingStats[];
+}
+
+/**
+ * Query parameters for course member gradings endpoint.
+ */
+export interface CourseMemberGradingsQuery {
+  skip?: number | null;
+  limit?: number | null;
+  /** Filter by course ID (required for list endpoint) */
+  course_id?: string | null;
+}
+
 export interface CourseFamilyProperties {
   gitlab?: GitLabConfig | null;
 }
@@ -1122,7 +1153,3 @@ export interface TutorCourseMemberList {
   ungraded_submissions_count?: number | null;
   user: UserList;
 }
-
-
-
-export type ImportStatus = "success" | "error" | "skipped" | "updated";

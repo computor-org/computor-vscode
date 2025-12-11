@@ -2,7 +2,7 @@
  * Auto-generated error code definitions
  *
  * DO NOT EDIT MANUALLY
- * Generated at: 2025-11-06T19:52:37.278374
+ * Generated at: 2025-12-10T13:31:27.009610
  *
  * To regenerate: bash generate_error_codes.sh
  */
@@ -69,6 +69,7 @@ export const ErrorCodes = {
   AUTHZ_002: "AUTHZ_002", // Admin Access Required
   AUTHZ_003: "AUTHZ_003", // Course Access Denied
   AUTHZ_004: "AUTHZ_004", // Insufficient Course Role
+  AUTHZ_005: "AUTHZ_005", // Role Escalation Denied
   VAL_001: "VAL_001", // Invalid Request Data
   VAL_002: "VAL_002", // Missing Required Field
   VAL_003: "VAL_003", // Invalid Field Format
@@ -257,6 +258,20 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     },
     retryAfter: undefined,
     documentationUrl: "/docs/permissions#course-roles",
+  },
+  AUTHZ_005: {
+    code: "AUTHZ_005",
+    httpStatus: 403,
+    category: ErrorCategory.AUTHORIZATION,
+    severity: ErrorSeverity.ERROR,
+    title: "Role Escalation Denied",
+    message: {
+      plain: "You cannot assign a role higher than your own.",
+      markdown: "**Role Escalation Denied**\n\nYou cannot assign the role '{target_role}'. Your role '{user_role}' can only assign roles at or below your privilege level.",
+      html: "<strong>Role Escalation Denied</strong><p>You cannot assign the role <code>{target_role}</code>. Your role <code>{user_role}</code> can only assign roles at or below your privilege level.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: "/docs/permissions#role-assignment",
   },
   VAL_001: {
     code: "VAL_001",
