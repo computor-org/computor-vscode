@@ -545,13 +545,12 @@ export class StudentCommands {
             throw new Error('Failed to get current commit hash');
           }
 
-          // Get the most recent tested artifact (submit=false) using the latest flag
+          // Get the most recent tested artifact (submit=false)
           let latestTestedArtifact: any = null;
           try {
             const latestTestedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
-              submit: false,
-              latest: true
+              submit: false
             });
 
             if (latestTestedArtifacts.length > 0) {
@@ -583,11 +582,10 @@ export class StudentCommands {
               let existingArtifactId: string | undefined;
               let alreadySubmitted = false;
               try {
-                // Get the LATEST artifact for this version using the latest flag
+                // Get artifact for this version
                 const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
-                  version_identifier: submissionVersion,
-                  latest: true
+                  version_identifier: submissionVersion
                 });
                 console.log(`[submitAssignment] GET response: Found ${existingSubmissions.length} artifacts for version ${submissionVersion}`);
                 console.log(`[submitAssignment] Full response:`, JSON.stringify(existingSubmissions, null, 2));
@@ -878,9 +876,7 @@ export class StudentCommands {
             try {
               const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
                 submission_group_id: submissionGroupId,
-                version_identifier: currentCommitHash,
-                latest: true,
-                with_latest_result: true
+                version_identifier: currentCommitHash
               });
 
               if (existingArtifacts.length > 0) {

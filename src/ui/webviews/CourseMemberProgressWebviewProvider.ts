@@ -23,10 +23,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
       return;
     }
 
-    const displayName = memberName ||
-      [memberGradings.given_name, memberGradings.family_name].filter(Boolean).join(' ') ||
-      memberGradings.username ||
-      'Student';
+    const displayName = memberName || 'Student';
 
     const payload: CourseMemberProgressData = { memberGradings, fallbackName: memberName };
     await this.show(`Progress: ${displayName}`, payload);

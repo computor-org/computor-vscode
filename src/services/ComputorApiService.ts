@@ -761,7 +761,6 @@ export class ComputorApiService {
       const client = await this.getHttpClient();
       const response = await client.get<SubmissionArtifactList[]>(`/submissions/artifacts`, {
         submission_group_id: submissionGroupId,
-        with_latest_result: 'true',
         submit: true
       });
       return response.data;

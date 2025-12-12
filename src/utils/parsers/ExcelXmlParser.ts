@@ -1,6 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
-import { CourseMemberImportRow } from '../../types/generated';
-import { ICourseMemberParser } from './ICourseMemberParser';
+import { ICourseMemberParser, CourseMemberImportRow } from './ICourseMemberParser';
 
 /**
  * Parser for Excel XML format (exported from Excel as XML Spreadsheet 2003)

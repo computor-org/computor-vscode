@@ -1,5 +1,4 @@
-import { CourseMemberImportRow } from '../../types/generated';
-import { ICourseMemberParser } from './ICourseMemberParser';
+import { ICourseMemberParser, CourseMemberImportRow } from './ICourseMemberParser';
 import { ExcelXmlParser } from './ExcelXmlParser';
 
 /**
