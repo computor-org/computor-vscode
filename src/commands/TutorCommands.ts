@@ -482,26 +482,24 @@ export class TutorCommands {
       if (content) {
         const contentTitle = content.title || content.path || 'Course content';
 
-        // Query should NOT include course_id or course_member_id
-        // - course_id would return ALL messages in the course (due to OR filter in backend)
-        // - course_member_id would filter to specific member, but tutors want to see all messages
-        const query: Record<string, string> = {
-          course_content_id: content.id
-        };
-
-        // For writing messages, we need to use submission_group_id or course_content_id
-        // course_member_id is not supported for writing
+        let query: Record<string, string>;
         let createPayload: Partial<MessageCreate>;
 
         if (submissionGroup?.id) {
-          // Assignment with submission group - tutors can write to submission_group_id
-          query.submission_group_id = submissionGroup.id;
+          // Assignment with submission group - tutors only need submission_group messages
+          // (not course_content announcements which are for all students)
+          query = {
+            submission_group_id: submissionGroup.id
+          };
           createPayload = {
             submission_group_id: submissionGroup.id
           };
         } else {
-          // Unit content without submission group - tutors can only read (lecturer+ for writing)
-          // Trying to write will fail with ForbiddenException
+          // Unit content without submission group - show course_content messages
+          // Tutors can only read (lecturer+ for writing)
+          query = {
+            course_content_id: content.id
+          };
           createPayload = {
             course_content_id: content.id  // Lecturer+ only
           };

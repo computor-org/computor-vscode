@@ -1041,25 +1041,23 @@ export class StudentCommands {
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
         const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
 
-        // Query should NOT include course_id when viewing content-specific messages
-        // Including course_id would return ALL messages in the course (due to OR filter in backend)
-        const query: Record<string, string> = {
-          course_content_id: content.id
-        };
-
-        // Students can only write to submission_group_id, not course_content_id
-        // course_content_id is for lecturers+ only
+        let query: Record<string, string>;
         let createPayload: Partial<MessageCreate>;
 
         if (submissionGroup?.id) {
-          // Assignment with submission group - students can write to submission_group_id
-          query.submission_group_id = submissionGroup.id;
+          // Assignment with submission group - students only need submission_group messages
+          query = {
+            submission_group_id: submissionGroup.id
+          };
           createPayload = {
             submission_group_id: submissionGroup.id
           };
         } else {
-          // Unit content without submission group - students can only read course_content messages
-          // Trying to write will fail with ForbiddenException (lecturer+ only)
+          // Unit content without submission group - show course_content messages
+          // Students can only read (lecturer+ for writing)
+          query = {
+            course_content_id: content.id
+          };
           createPayload = {
             course_content_id: content.id  // This will fail with ForbiddenException, but allows reading
           };

@@ -2528,12 +2528,24 @@ export class ComputorApiService {
       // If both course_content_id and submission_group_id are present,
       // make two separate calls and merge results (backend does AND, we want OR)
       if (params.course_content_id && params.submission_group_id) {
+        // Extract filter params (everything except the target IDs and scope)
+        const { course_content_id, submission_group_id, scope, ...filterParams } = params;
+        void scope; // scope is intentionally excluded - we set it explicitly below
+        const cleanFilters = Object.fromEntries(
+          Object.entries(filterParams).filter(([, value]) => value !== undefined && value !== null)
+        );
+
         const [contentMessages, submissionMessages] = await Promise.all([
+          // For course_content_id, restrict to 'course_content' scope to avoid
+          // fetching all child submission_group messages
           client.get<MessageList[]>('/messages', {
-            course_content_id: params.course_content_id
+            course_content_id,
+            scope: 'course_content',
+            ...cleanFilters
           }).then(r => r.data),
           client.get<MessageList[]>('/messages', {
-            submission_group_id: params.submission_group_id
+            submission_group_id,
+            ...cleanFilters
           }).then(r => r.data)
         ]);
 
