@@ -123,8 +123,15 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
               name = (user?.full_name) || (user?.username) || member.id;
             }
 
+            const badges = [];
             if (member.ungraded_submissions_count && member.ungraded_submissions_count > 0) {
-              return name + ' (📝 ' + member.ungraded_submissions_count + ')';
+              badges.push('📝 ' + member.ungraded_submissions_count);
+            }
+            if (member.unread_message_count && member.unread_message_count > 0) {
+              badges.push('🔔 ' + member.unread_message_count);
+            }
+            if (badges.length > 0) {
+              return name + ' (' + badges.join(' · ') + ')';
             }
             return name;
           };

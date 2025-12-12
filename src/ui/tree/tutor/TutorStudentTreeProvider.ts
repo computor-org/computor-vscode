@@ -105,15 +105,13 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
           // Leaf: attach course content and kind info
           const ct: any = (c as any).course_content_type;
           const ck = ct ? kindMap.get(ct.course_content_kind_id) : undefined;
-          const groupUnread = c.submission_group?.unread_message_count ?? 0;
-          const contentUnread = (c as any).unread_message_count ?? 0;
           node.courseContent = c;
           (node as any).submissionGroup = c.submission_group;
           node.contentKind = ck;
           node.isUnit = ck ? !!ck.has_descendants : false;
           // Ensure the displayed name uses the course content title when available
           node.name = ((c.title as string | undefined) ?? node.name ?? seg) as string;
-          node.unreadMessageCount = contentUnread + groupUnread;
+          node.unreadMessageCount = (c as any).unread_message_count ?? 0;
         }
         parentNode = node;
       }
@@ -124,7 +122,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   private aggregateUnreadCounts(node: ContentNode): number {
-    const ownUnread = (node.courseContent?.unread_message_count ?? 0) + ((node as any).submissionGroup?.unread_message_count ?? 0);
+    const ownUnread = (node.courseContent as any)?.unread_message_count ?? 0;
     let total = ownUnread;
 
     node.children.forEach((child) => {
@@ -512,7 +510,7 @@ class TutorContentItem extends vscode.TreeItem {
     const color = ct?.color || 'grey';
     const kindId = ct?.course_content_kind_id;
     const shape = kindId === 'assignment' ? 'square' : 'circle';
-    const unread = ((this.content as any).unread_message_count ?? 0) + (this.content.submission_group?.unread_message_count ?? 0);
+    const unread = (this.content as any).unread_message_count ?? 0;
     let badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none';
     let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
     const submission: SubmissionGroupStudentList = this.content.submission_group!;
