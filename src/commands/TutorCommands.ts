@@ -488,8 +488,10 @@ export class TutorCommands {
         if (submissionGroup?.id) {
           // Assignment with submission group - tutors only need submission_group messages
           // (not course_content announcements which are for all students)
+          // Include course_member_id for cache invalidation (not sent to API)
           query = {
-            submission_group_id: submissionGroup.id
+            submission_group_id: submissionGroup.id,
+            course_member_id: memberId
           };
           createPayload = {
             submission_group_id: submissionGroup.id
@@ -497,8 +499,10 @@ export class TutorCommands {
         } else {
           // Unit content without submission group - show course_content messages
           // Tutors can only read (lecturer+ for writing)
+          // Include course_member_id for cache invalidation (not sent to API)
           query = {
-            course_content_id: content.id
+            course_content_id: content.id,
+            course_member_id: memberId
           };
           createPayload = {
             course_content_id: content.id  // Lecturer+ only

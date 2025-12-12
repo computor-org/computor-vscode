@@ -2528,9 +2528,10 @@ export class ComputorApiService {
       // If both course_content_id and submission_group_id are present,
       // make two separate calls and merge results (backend does AND, we want OR)
       if (params.course_content_id && params.submission_group_id) {
-        // Extract filter params (everything except the target IDs and scope)
-        const { course_content_id, submission_group_id, scope, ...filterParams } = params;
+        // Extract filter params (everything except the target IDs, scope, and course_member_id)
+        const { course_content_id, submission_group_id, scope, course_member_id, ...filterParams } = params;
         void scope; // scope is intentionally excluded - we set it explicitly below
+        void course_member_id; // only used for cache invalidation, not API queries
         const cleanFilters = Object.fromEntries(
           Object.entries(filterParams).filter(([, value]) => value !== undefined && value !== null)
         );
@@ -2558,8 +2559,11 @@ export class ComputorApiService {
       }
 
       // Otherwise, make a single call with all params
+      // Exclude course_member_id as it's only used for cache invalidation, not API queries
       const query = Object.fromEntries(
-        Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
+        Object.entries(params).filter(([key, value]) =>
+          value !== undefined && value !== null && key !== 'course_member_id'
+        )
       );
       const response = await client.get<MessageList[]>('/messages', query);
       return response.data;
