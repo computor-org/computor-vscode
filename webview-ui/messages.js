@@ -10,6 +10,15 @@
     replyTo: undefined,
     editingMessage: undefined,
     identity: undefined,
+    filtersExpanded: false,
+    filters: {
+      unread: null,
+      datePreset: null,
+      created_after: null,
+      created_before: null,
+      tags: null,
+      tags_match_all: false
+    },
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -136,14 +145,102 @@
 
   function getScopeLabel(scope) {
     const labels = {
-      'submission_group': 'Submission',
-      'course_content': 'Content',
+      'global': 'Global',
+      'organization': 'Organization',
+      'course_family': 'Course Family',
       'course': 'Course',
+      'course_content': 'Content',
       'course_group': 'Group',
+      'submission_group': 'Submission',
       'course_member': 'Member',
       'user': 'Direct'
     };
     return labels[scope] || scope;
+  }
+
+  function getAuthorRoleLabel(courseRoleId) {
+    if (!courseRoleId) return null;
+    const roleLabels = {
+      '_student': 'Student',
+      '_tutor': 'Tutor',
+      '_lecturer': 'Lecturer',
+      '_admin': 'Admin'
+    };
+    return roleLabels[courseRoleId] || null;
+  }
+
+  function getDatePresetRange(preset) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (preset) {
+      case 'today':
+        return { created_after: today.toISOString(), created_before: null };
+      case 'week': {
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return { created_after: weekAgo.toISOString(), created_before: null };
+      }
+      case 'month': {
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        return { created_after: monthAgo.toISOString(), created_before: null };
+      }
+      default:
+        return { created_after: null, created_before: null };
+    }
+  }
+
+  function applyFilters() {
+    const filterData = {};
+
+    if (state.filters.unread === true) {
+      filterData.unread = true;
+    } else if (state.filters.unread === false) {
+      filterData.unread = false;
+    }
+
+    if (state.filters.datePreset) {
+      const range = getDatePresetRange(state.filters.datePreset);
+      if (range.created_after) filterData.created_after = range.created_after;
+      if (range.created_before) filterData.created_before = range.created_before;
+    } else {
+      if (state.filters.created_after) filterData.created_after = state.filters.created_after;
+      if (state.filters.created_before) filterData.created_before = state.filters.created_before;
+    }
+
+    if (state.filters.tags && state.filters.tags.length > 0) {
+      filterData.tags = state.filters.tags;
+      filterData.tags_match_all = state.filters.tags_match_all;
+    }
+
+    setState({ loading: true });
+    vscode.postMessage({ command: 'applyFilters', data: filterData });
+  }
+
+  function clearFilters() {
+    setState({
+      filters: {
+        unread: null,
+        datePreset: null,
+        created_after: null,
+        created_before: null,
+        tags: null,
+        tags_match_all: false
+      }
+    });
+    setState({ loading: true });
+    vscode.postMessage({ command: 'applyFilters', data: {} });
+  }
+
+  function hasActiveFilters() {
+    return (
+      state.filters.unread !== null ||
+      state.filters.datePreset !== null ||
+      state.filters.created_after !== null ||
+      state.filters.created_before !== null ||
+      (state.filters.tags && state.filters.tags.length > 0)
+    );
   }
 
   function renderMessageNode(message, depth = 0) {
@@ -156,6 +253,18 @@
     const metaLeftChildren = [
       createElement('span', { textContent: getAuthorDisplay(message) })
     ];
+
+    // Add author role badge if available (from author_course_member)
+    const authorRole = message.author_course_member?.course_role_id;
+    const roleLabel = getAuthorRoleLabel(authorRole);
+    if (roleLabel) {
+      const roleClass = authorRole ? authorRole.replace('_', '') : '';
+      const roleBadge = createElement('span', {
+        className: `author-role-badge role-${roleClass}`,
+        textContent: roleLabel
+      });
+      metaLeftChildren.push(roleBadge);
+    }
 
     // Add scope tag if available
     if (message.scope) {
@@ -410,6 +519,198 @@
     formWrapper.appendChild(actions);
   }
 
+  function renderFilterBar() {
+    const filterBar = createElement('div', { className: 'filter-bar' });
+
+    // Quick filter buttons row
+    const quickFilters = createElement('div', { className: 'quick-filters' });
+
+    if (createButton) {
+      // Unread filter buttons
+      const allBtn = createButton({
+        text: 'All',
+        size: 'xs',
+        variant: state.filters.unread === null ? 'primary' : 'secondary',
+        onClick: () => {
+          state.filters.unread = null;
+          applyFilters();
+        }
+      });
+      quickFilters.appendChild(allBtn.render());
+
+      const unreadBtn = createButton({
+        text: 'Unread',
+        size: 'xs',
+        variant: state.filters.unread === true ? 'primary' : 'secondary',
+        onClick: () => {
+          state.filters.unread = true;
+          applyFilters();
+        }
+      });
+      quickFilters.appendChild(unreadBtn.render());
+
+      // Date preset buttons
+      const todayBtn = createButton({
+        text: 'Today',
+        size: 'xs',
+        variant: state.filters.datePreset === 'today' ? 'primary' : 'secondary',
+        onClick: () => {
+          state.filters.datePreset = state.filters.datePreset === 'today' ? null : 'today';
+          applyFilters();
+        }
+      });
+      quickFilters.appendChild(todayBtn.render());
+
+      const weekBtn = createButton({
+        text: 'This Week',
+        size: 'xs',
+        variant: state.filters.datePreset === 'week' ? 'primary' : 'secondary',
+        onClick: () => {
+          state.filters.datePreset = state.filters.datePreset === 'week' ? null : 'week';
+          applyFilters();
+        }
+      });
+      quickFilters.appendChild(weekBtn.render());
+
+      const monthBtn = createButton({
+        text: 'This Month',
+        size: 'xs',
+        variant: state.filters.datePreset === 'month' ? 'primary' : 'secondary',
+        onClick: () => {
+          state.filters.datePreset = state.filters.datePreset === 'month' ? null : 'month';
+          applyFilters();
+        }
+      });
+      quickFilters.appendChild(monthBtn.render());
+
+      // Clear filters button (only show if filters are active)
+      if (hasActiveFilters()) {
+        const clearBtn = createButton({
+          text: 'Clear Filters',
+          size: 'xs',
+          variant: 'tertiary',
+          onClick: clearFilters
+        });
+        const clearEl = clearBtn.render();
+        clearEl.classList.add('clear-filters-btn');
+        quickFilters.appendChild(clearEl);
+      }
+    }
+
+    filterBar.appendChild(quickFilters);
+
+    // Advanced filters toggle
+    if (createButton) {
+      const toggleBtn = createButton({
+        text: state.filtersExpanded ? '▼ Advanced Filters' : '▶ Advanced Filters',
+        size: 'xs',
+        variant: 'tertiary',
+        onClick: () => setState({ filtersExpanded: !state.filtersExpanded })
+      });
+      const toggleEl = toggleBtn.render();
+      toggleEl.classList.add('advanced-toggle');
+      filterBar.appendChild(toggleEl);
+    }
+
+    // Advanced filters panel (collapsible)
+    if (state.filtersExpanded) {
+      const advancedPanel = createElement('div', { className: 'advanced-filters' });
+
+      // Tags filter row
+      const tagsRow = createElement('div', { className: 'filter-row' });
+      tagsRow.appendChild(createElement('label', { textContent: 'Tags (comma-separated):' }));
+
+      const tagsInput = createElement('input', {
+        className: 'vscode-input filter-input',
+        attributes: {
+          type: 'text',
+          placeholder: 'e.g., ai::request, priority::high'
+        }
+      });
+      tagsInput.value = state.filters.tags ? state.filters.tags.join(', ') : '';
+      tagsRow.appendChild(tagsInput);
+
+      // Tags match all checkbox
+      const matchAllLabel = createElement('label', { className: 'checkbox-label' });
+      const matchAllCheckbox = createElement('input', {
+        attributes: { type: 'checkbox' }
+      });
+      matchAllCheckbox.checked = state.filters.tags_match_all;
+      matchAllCheckbox.addEventListener('change', () => {
+        state.filters.tags_match_all = matchAllCheckbox.checked;
+      });
+      matchAllLabel.appendChild(matchAllCheckbox);
+      matchAllLabel.appendChild(document.createTextNode(' Match all tags'));
+      tagsRow.appendChild(matchAllLabel);
+
+      advancedPanel.appendChild(tagsRow);
+
+      // Custom date range row
+      const dateRow = createElement('div', { className: 'filter-row' });
+      dateRow.appendChild(createElement('label', { textContent: 'Custom date range:' }));
+
+      const fromInput = createElement('input', {
+        className: 'vscode-input filter-input date-input',
+        attributes: {
+          type: 'date',
+          placeholder: 'From'
+        }
+      });
+      if (state.filters.created_after && !state.filters.datePreset) {
+        fromInput.value = state.filters.created_after.split('T')[0];
+      }
+      fromInput.addEventListener('change', () => {
+        state.filters.datePreset = null;
+        state.filters.created_after = fromInput.value ? new Date(fromInput.value).toISOString() : null;
+      });
+      dateRow.appendChild(fromInput);
+
+      dateRow.appendChild(createElement('span', { textContent: ' to ', className: 'date-separator' }));
+
+      const toInput = createElement('input', {
+        className: 'vscode-input filter-input date-input',
+        attributes: {
+          type: 'date',
+          placeholder: 'To'
+        }
+      });
+      if (state.filters.created_before && !state.filters.datePreset) {
+        toInput.value = state.filters.created_before.split('T')[0];
+      }
+      toInput.addEventListener('change', () => {
+        state.filters.datePreset = null;
+        state.filters.created_before = toInput.value ? new Date(toInput.value + 'T23:59:59').toISOString() : null;
+      });
+      dateRow.appendChild(toInput);
+
+      advancedPanel.appendChild(dateRow);
+
+      // Apply button for advanced filters
+      if (createButton) {
+        const applyRow = createElement('div', { className: 'filter-row filter-actions' });
+        const applyBtn = createButton({
+          text: 'Apply Filters',
+          size: 'sm',
+          variant: 'primary',
+          onClick: () => {
+            // Parse tags from input
+            const tagsValue = tagsInput.value.trim();
+            state.filters.tags = tagsValue
+              ? tagsValue.split(',').map(t => t.trim()).filter(t => t.length > 0)
+              : null;
+            applyFilters();
+          }
+        });
+        applyRow.appendChild(applyBtn.render());
+        advancedPanel.appendChild(applyRow);
+      }
+
+      filterBar.appendChild(advancedPanel);
+    }
+
+    return filterBar;
+  }
+
   function render() {
     const mount = root();
     if (!mount) {
@@ -450,6 +751,9 @@
       );
     }
 
+    // Add filter bar after header
+    const filterBar = renderFilterBar();
+
     const messagesContainer = createElement('div', { className: 'messages-container' });
     renderMessagesSection(messagesContainer);
 
@@ -462,6 +766,7 @@
     renderForm(formCard);
 
     view.appendChild(header);
+    view.appendChild(filterBar);
     view.appendChild(messagesContainer);
     view.appendChild(formCard);
 

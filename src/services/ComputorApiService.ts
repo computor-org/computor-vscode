@@ -64,6 +64,7 @@ import {
   MessageGet,
   MessageCreate,
   MessageUpdate,
+  MessageQuery,
   CourseMemberCommentList,
   CourseContentStudentGet,
   ResultWithGrading,
@@ -74,7 +75,7 @@ import {
   SubmissionArtifactUpdate
 } from '../types/generated';
 import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult } from '../types/generated/common';
-import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/course-member-gradings';
+import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -87,17 +88,6 @@ interface ExampleQuery {
   directory?: string;
 }
 
-type MessageQueryParams = Partial<{
-  id: string;
-  parent_id: string;
-  author_id: string;
-  user_id: string;
-  course_member_id: string;
-  submission_group_id: string;
-  course_group_id: string;
-  course_content_id: string;
-  course_id: string;
-}>;
 
 export class ComputorApiService {
   private static instance?: ComputorApiService;
@@ -2532,7 +2522,7 @@ export class ComputorApiService {
     }
   }
 
-  async listMessages(params: MessageQueryParams = {}): Promise<MessageList[]> {
+  async listMessages(params: MessageQuery = {}): Promise<MessageList[]> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
 
