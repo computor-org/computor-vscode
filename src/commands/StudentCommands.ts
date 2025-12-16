@@ -1449,9 +1449,9 @@ export class StudentCommands {
     }
     const map: Record<string, string> = {
       '0': 'pending',
-      '1': 'correction_necessary',
-      '2': 'improvement_possible',
-      '3': 'corrected'
+      '1': 'corrected',
+      '2': 'correction_necessary',
+      '3': 'improvement_possible'
     };
     const key = String(value);
     return map[key] || key;

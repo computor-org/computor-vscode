@@ -80,6 +80,13 @@ export class TutorSelectionService {
     this.emitter.fire();
   }
 
+  async clearMember(): Promise<void> {
+    this.memberId = null;
+    this.memberLabel = null;
+    await this.persist();
+    this.emitter.fire();
+  }
+
   private async persist(): Promise<void> {
     try {
       await this.context.globalState.update('computor.tutor.selection', {

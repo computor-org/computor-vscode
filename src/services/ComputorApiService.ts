@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
+import { HttpError } from '../http/errors/HttpError';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
@@ -2401,7 +2402,21 @@ export class ComputorApiService {
       multiTierCache.set(cacheKey, result, 'warm');
       return (result || []).filter((c: any) => !courseId || c.course_id === courseId);
     } catch (e) {
-      console.error('Failed to get tutor member course contents:', e);
+      // Check if this is an authorization error due to stale/invalid member ID
+      if (e instanceof HttpError && e.status === 403) {
+        console.warn(`[getTutorCourseContents] Authorization failed for member ${memberId} - clearing stale selection`);
+        // Dynamically import to avoid circular dependency
+        const { TutorSelectionService } = await import('./TutorSelectionService');
+        try {
+          const selectionService = TutorSelectionService.getInstance();
+          await selectionService.clearMember();
+          vscode.window.showWarningMessage('The selected student is no longer available. Please select a student again.');
+        } catch (selectionError) {
+          console.warn('[getTutorCourseContents] Could not clear stale member selection:', selectionError);
+        }
+      } else {
+        console.error('Failed to get tutor member course contents:', e);
+      }
       return [];
     }
   }
