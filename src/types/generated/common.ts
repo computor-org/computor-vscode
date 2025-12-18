@@ -3311,6 +3311,7 @@ export interface TutorGradeResponse {
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  testing_service_id?: string | null;
   directory?: string | null;
   color: string;
   result?: ResultStudentList | null;
@@ -3664,7 +3665,6 @@ export interface SubmissionGroupMemberGet {
   updated_by?: string | null;
   id: string;
   course_id: string;
-  course_content_id: string;
   course_member_id: string;
   submission_group_id: string;
   grading?: number | null;
@@ -3675,7 +3675,6 @@ export interface SubmissionGroupMemberGet {
 export interface SubmissionGroupMemberList {
   id: string;
   course_id: string;
-  course_content_id: string;
   course_member_id: string;
   submission_group_id: string;
   grading?: number | null;

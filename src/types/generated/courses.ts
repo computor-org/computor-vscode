@@ -569,6 +569,7 @@ export interface CourseContentStudentGet {
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  testing_service_id?: string | null;
   unread_message_count?: number;
   result?: ResultStudentGet | null;
   directory?: string | null;
@@ -592,6 +593,7 @@ export interface CourseContentStudentList {
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  testing_service_id?: string | null;
   directory?: string | null;
   color: string;
   result?: ResultStudentList | null;
@@ -1151,5 +1153,6 @@ export interface TutorCourseMemberList {
   course_role_id: string;
   unreviewed?: boolean | null;
   ungraded_submissions_count?: number | null;
+  unread_message_count?: number | null;
   user: UserList;
 }
