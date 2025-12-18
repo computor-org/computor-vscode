@@ -916,14 +916,26 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 
     // Update this item's data from a fresh course content object
     public applyUpdate(updatedContent: CourseContentStudentList): void {
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const newContentType = (updatedContent as any).course_content_type || (updatedContent as any).course_content_types;
+
+        console.log('[CourseContentItem.applyUpdate] Applying update:', {
+            contentId: updatedContent.id,
+            hasCourseContentType: !!(updatedContent as any).course_content_type,
+            hasCourseContentTypes: !!(updatedContent as any).course_content_types,
+            newContentTypeColor: newContentType?.color,
+            newContentTypeKind: newContentType?.course_content_kind_id,
+            oldContentType: this.contentType ? { color: this.contentType.color, kind: this.contentType.course_content_kind_id } : null
+        });
+
         // Preserve the old absolute directory path before overwriting
         const oldDirectory = (this.courseContent as any)?.directory;
 
         // Overwrite backing fields (readonly at type-level only)
         (this as any).courseContent = updatedContent;
         (this as any).submissionGroup = updatedContent.submission_group;
-        if ((updatedContent as any)?.course_content_type) {
-            (this as any).contentType = (updatedContent as any).course_content_type;
+        if (newContentType) {
+            (this as any).contentType = newContentType;
         }
 
         // If we had an absolute path and the new data has a relative path or no path,
@@ -945,8 +957,20 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     
     private setupIcon(): void {
         // Use the color from contentType, or grey as default
-        const derivedContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const derivedContentType = this.contentType
+            || (this.courseContent as any)?.course_content_type
+            || (this.courseContent as any)?.course_content_types;
         const color = derivedContentType?.color || (this.courseContent as any)?.color || 'grey';
+
+        console.log('[CourseContentItem.setupIcon] Setting up icon:', {
+            contentId: this.courseContent?.id,
+            derivedContentType: derivedContentType ? { color: derivedContentType.color, kind: derivedContentType.course_content_kind_id } : null,
+            color,
+            hasContentType: !!this.contentType,
+            hasCourseContentType: !!(this.courseContent as any)?.course_content_type,
+            hasCourseContentTypes: !!(this.courseContent as any)?.course_content_types
+        });
 
         try {
             // Determine shape based on course_content_kind_id
@@ -983,8 +1007,13 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             this.iconPath = (badge === 'none' && corner === 'none')
                 ? IconGenerator.getColoredIcon(color, shape)
                 : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
-        } catch {
+        } catch (error) {
             // Fallback to default theme icons if icon generation fails
+            console.error('[CourseContentItem] Icon generation failed:', error, {
+                color,
+                contentType: this.contentType,
+                courseContentType: (this.courseContent as any)?.course_content_type
+            });
             if (hasExampleAssigned(this.courseContent)) {
                 this.iconPath = new vscode.ThemeIcon('file-code');
             } else {
@@ -994,7 +1023,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     private isAssignment(): boolean {
-        const effectiveContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const effectiveContentType = this.contentType
+            || (this.courseContent as any)?.course_content_type
+            || (this.courseContent as any)?.course_content_types;
         if (!effectiveContentType) return hasExampleAssigned(this.courseContent);
 
         // First check the explicit kind_id
