@@ -370,10 +370,12 @@ export class TutorCommands {
           const updated = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
           if (updated && item && typeof (item as any).updateVisuals === 'function') {
             try {
-              // Preserve course_content_type if the updated data doesn't include it
+              // Preserve course_content_type/course_content_types if the updated data doesn't include it
               // The single-item endpoint may not return this field
-              const oldCourseContentType = (item.content as any)?.course_content_type;
-              if (oldCourseContentType && !(updated as any).course_content_type) {
+              // Handle both course_content_type (singular) and course_content_types (plural)
+              const oldCourseContentType = (item.content as any)?.course_content_type || (item.content as any)?.course_content_types;
+              const newCourseContentType = (updated as any).course_content_type || (updated as any).course_content_types;
+              if (oldCourseContentType && !newCourseContentType) {
                 (updated as any).course_content_type = oldCourseContentType;
               }
               // Update the content data

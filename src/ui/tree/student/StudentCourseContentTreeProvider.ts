@@ -590,7 +590,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         
         for (const content of sortedContent) {
             // Student endpoint has everything embedded
-            const contentType = content.course_content_type;
+            // Handle both course_content_type (singular) and course_content_types (plural)
+            const contentType = content.course_content_type || (content as any).course_content_types;
             const contentKind = contentType ? contentKindMap.get(contentType.course_content_kind_id) : undefined;
             const submissionGroup = content.submission_group || undefined;
             
@@ -1086,7 +1087,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);
         }
 
-        const tooltipContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const tooltipContentType = this.contentType
+            || (this.courseContent as any)?.course_content_type
+            || (this.courseContent as any)?.course_content_types;
         if (tooltipContentType) {
             lines.push(`Type: ${tooltipContentType.title || tooltipContentType.slug}`);
         }

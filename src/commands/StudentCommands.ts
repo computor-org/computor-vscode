@@ -1323,8 +1323,12 @@ export class StudentCommands {
       const submissionGroupDetails = courseContentDetails?.submission_group as SubmissionGroupStudentGet | undefined;
       const submissionGroupCombined: SubmissionGroupStudentGet | SubmissionGroupStudentList | undefined = submissionGroupDetails ?? submissionGroupSummary;
 
-      if (!contentType && (courseContent as any).course_content_type) {
-        contentType = (courseContent as any).course_content_type as CourseContentTypeList;
+      // Handle both course_content_type (singular) and course_content_types (plural)
+      if (!contentType) {
+        const ct = (courseContent as any).course_content_type || (courseContent as any).course_content_types;
+        if (ct) {
+          contentType = ct as CourseContentTypeList;
+        }
       }
 
       if (!localPath) {

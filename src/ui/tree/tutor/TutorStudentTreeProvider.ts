@@ -103,7 +103,8 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
         }
         if (i === parts.length - 1) {
           // Leaf: attach course content and kind info
-          const ct: any = (c as any).course_content_type;
+          // Handle both course_content_type (singular) and course_content_types (plural)
+          const ct: any = (c as any).course_content_type || (c as any).course_content_types;
           const ck = ct ? kindMap.get(ct.course_content_kind_id) : undefined;
           node.courseContent = c;
           (node as any).submissionGroup = c.submission_group;
@@ -162,7 +163,8 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   private isAssignmentContent(content: CourseContentStudentList): boolean {
-    const ct: any = (content as any).course_content_type;
+    // Handle both course_content_type (singular) and course_content_types (plural)
+    const ct: any = (content as any).course_content_type || (content as any).course_content_types;
     const kindId = ct?.course_content_kind_id;
     if (kindId && typeof kindId === 'string') {
       if (kindId.toLowerCase() === 'assignment') return true;
@@ -456,7 +458,8 @@ class TutorUnitItem extends vscode.TreeItem {
     // Prefer the unit node's own content type color if available.
     if (node.courseContent) {
       const cc: any = node.courseContent as any;
-      const ct = cc.course_content_type;
+      // Handle both course_content_type (singular) and course_content_types (plural)
+      const ct = cc.course_content_type || cc.course_content_types;
       if (ct?.color) return ct.color as string;
       if (cc.color) return cc.color as string;
     }
@@ -506,7 +509,8 @@ class TutorContentItem extends vscode.TreeItem {
   }
 
   updateVisuals(): void {
-    const ct: any = (this.content as any).course_content_type;
+    // Handle both course_content_type (singular) and course_content_types (plural)
+    const ct: any = (this.content as any).course_content_type || (this.content as any).course_content_types;
     const color = ct?.color || 'grey';
     const kindId = ct?.course_content_kind_id;
     const shape = kindId === 'assignment' ? 'square' : 'circle';
