@@ -440,12 +440,16 @@ class UnifiedController {
     const panelProvider = new TestResultsPanelProvider(this.context.extensionUri);
     this.disposables.push(vscode.window.registerWebviewViewProvider(TestResultsPanelProvider.viewType, panelProvider));
     const resultsTree = new TestResultsTreeDataProvider([]);
+    resultsTree.setPanelProvider(panelProvider);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.testResultsView', resultsTree));
     TestResultService.getInstance().setApiService(api);
     this.disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any) => {
       try { resultsTree.refresh(results || {}); await vscode.commands.executeCommand('computor.testResultsPanel.focus'); } catch (e) { console.error(e); }
     }));
-    this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => panelProvider.updateTestResults(item)));
+    this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
+      resultsTree.setSelectedNodeId(item.id);
+      panelProvider.updateTestResults(item);
+    }));
   }
 
   private async initializeTutorView(api: ComputorApiService): Promise<void> {
