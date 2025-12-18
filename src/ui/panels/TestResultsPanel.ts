@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { ResultArtifactInfo } from '../../types/generated/common';
 
 interface ResultsTreeNode {
     id: string;
@@ -11,6 +12,15 @@ interface ResultsTreeNode {
     toolTip?: string | vscode.MarkdownString | undefined;
     themeIcon?: vscode.ThemeIcon | undefined;
     message?: string;
+    isArtifact?: boolean;
+    artifactInfo?: ResultArtifactInfo;
+    resultId?: string;
+}
+
+export interface ResultWithArtifacts {
+    resultId?: string;
+    result_artifacts?: ResultArtifactInfo[];
+    [key: string]: any;
 }
 
 export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<ResultsTreeNode> {
@@ -18,8 +28,20 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
     readonly onDidChangeTreeData: vscode.Event<ResultsTreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
     private selectedNodeId: string | undefined;
     private panelProvider: TestResultsPanelProvider | undefined;
+    private resultArtifacts: ResultArtifactInfo[] = [];
+    private currentResultId: string | undefined;
 
     constructor(private testResults: any) {
+    }
+
+    setResultArtifacts(resultId: string, artifacts: ResultArtifactInfo[]): void {
+        this.currentResultId = resultId;
+        this.resultArtifacts = artifacts || [];
+    }
+
+    clearResultArtifacts(): void {
+        this.currentResultId = undefined;
+        this.resultArtifacts = [];
     }
 
     setPanelProvider(panelProvider: TestResultsPanelProvider): void {
@@ -87,20 +109,149 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
             treeItem.tooltip = element.toolTip;
         }
 
-        treeItem.command = { 
-            command: "computor.results.panel.update", 
-            title: "Click", 
-            arguments: [element] 
-        };
+        if (element.isArtifact && element.artifactInfo && element.resultId) {
+            treeItem.command = {
+                command: "computor.results.artifact.open",
+                title: "Open Artifact",
+                arguments: [element.resultId, element.artifactInfo]
+            };
+            treeItem.contextValue = 'resultArtifact';
+        } else {
+            treeItem.command = {
+                command: "computor.results.panel.update",
+                title: "Click",
+                arguments: [element]
+            };
+        }
 
         return treeItem;
     }
 
     getChildren(element?: any): any[] {
         if (!element) {
-            return this.convertToNodes(this.testResults);
+            const nodes: ResultsTreeNode[] = [];
+
+            if (this.resultArtifacts.length > 0 && this.currentResultId) {
+                const artifactsNode = this.createArtifactsNode();
+                nodes.push(artifactsNode);
+            }
+
+            nodes.push(...this.convertToNodes(this.testResults));
+            return nodes;
         }
         return element.children || [];
+    }
+
+    private createArtifactsNode(): ResultsTreeNode {
+        const artifactChildren: ResultsTreeNode[] = this.resultArtifacts.map(artifact => ({
+            id: `artifact/${artifact.id}`,
+            label: artifact.filename,
+            description: this.formatFileSize(artifact.file_size),
+            toolTip: this.getFileTypeDescription(artifact.filename, artifact.content_type),
+            themeIcon: this.getFileIcon(artifact.filename),
+            isArtifact: true,
+            artifactInfo: artifact,
+            resultId: this.currentResultId
+        }));
+
+        return {
+            id: 'artifacts',
+            label: 'Artifacts',
+            description: `(${this.resultArtifacts.length})`,
+            toolTip: 'Test result artifacts - click to download and open',
+            themeIcon: new vscode.ThemeIcon('package'),
+            collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
+            children: artifactChildren
+        };
+    }
+
+    private getFileExtension(filename: string): string {
+        return filename.toLowerCase().split('.').pop() || '';
+    }
+
+    private getFileTypeDescription(filename: string, contentType?: string | null): string {
+        const ext = this.getFileExtension(filename);
+
+        const fileTypes: Record<string, string> = {
+            'png': 'PNG Image',
+            'jpg': 'JPEG Image',
+            'jpeg': 'JPEG Image',
+            'gif': 'GIF Image',
+            'bmp': 'Bitmap Image',
+            'webp': 'WebP Image',
+            'svg': 'SVG Vector Image',
+            'ico': 'Icon File',
+            'pdf': 'PDF Document',
+            'txt': 'Text File',
+            'json': 'JSON File',
+            'xml': 'XML File',
+            'html': 'HTML File',
+            'css': 'CSS Stylesheet',
+            'js': 'JavaScript File',
+            'ts': 'TypeScript File',
+            'py': 'Python File',
+            'java': 'Java File',
+            'c': 'C Source File',
+            'cpp': 'C++ Source File',
+            'h': 'C/C++ Header File',
+            'md': 'Markdown File',
+            'yaml': 'YAML File',
+            'yml': 'YAML File',
+            'csv': 'CSV File',
+            'log': 'Log File',
+            'zip': 'ZIP Archive',
+            'tar': 'TAR Archive',
+            'gz': 'GZip Archive',
+            'rar': 'RAR Archive',
+            '7z': '7-Zip Archive'
+        };
+
+        if (fileTypes[ext]) {
+            return fileTypes[ext]!;
+        }
+
+        if (contentType) {
+            return contentType;
+        }
+
+        return ext ? `${ext.toUpperCase()} File` : 'File';
+    }
+
+    private getFileIcon(filename: string): vscode.ThemeIcon {
+        const ext = this.getFileExtension(filename);
+
+        const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+        const codeExtensions = ['js', 'ts', 'py', 'java', 'c', 'cpp', 'h', 'cs', 'go', 'rs', 'rb', 'php'];
+        const dataExtensions = ['json', 'xml', 'yaml', 'yml', 'csv'];
+        const archiveExtensions = ['zip', 'tar', 'gz', 'rar', '7z'];
+
+        if (imageExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-media');
+        } else if (codeExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-code');
+        } else if (dataExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-code');
+        } else if (archiveExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-zip');
+        } else if (ext === 'pdf') {
+            return new vscode.ThemeIcon('file-pdf');
+        } else if (ext === 'md') {
+            return new vscode.ThemeIcon('markdown');
+        } else if (ext === 'txt' || ext === 'log') {
+            return new vscode.ThemeIcon('file-text');
+        }
+
+        return new vscode.ThemeIcon('file');
+    }
+
+    private formatFileSize(bytes: number): string {
+        if (bytes < 1024) {
+            return `${bytes} B`;
+        } else if (bytes < 1024 * 1024) {
+            return `${(bytes / 1024).toFixed(1)} KB`;
+        } else {
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        }
     }
 
     convertToNodes(data: Record<string, any>, parentPath: string = ''): ResultsTreeNode[] {

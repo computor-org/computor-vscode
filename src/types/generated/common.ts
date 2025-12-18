@@ -2877,6 +2877,17 @@ export interface ResultCreate {
   status: TaskStatus;
 }
 
+/**
+ * Artifact information embedded in ResultGet.
+ */
+export interface ResultArtifactInfo {
+  id: string;
+  filename: string;
+  content_type?: string | null;
+  file_size: number;
+  created_at?: string | null;
+}
+
 export interface ResultGet {
   /** Creation timestamp */
   created_at?: string | null;
@@ -2900,6 +2911,9 @@ export interface ResultGet {
   reference_version_identifier?: string | null;
   status: TaskStatus;
   grading_ids?: string[] | null;
+  has_artifacts?: boolean;
+  artifact_count?: number;
+  result_artifacts?: ResultArtifactInfo[];
 }
 
 export interface ResultList {
@@ -2920,6 +2934,8 @@ export interface ResultList {
   version_identifier: string;
   reference_version_identifier?: string | null;
   status: TaskStatus;
+  has_artifacts?: boolean;
+  artifact_count?: number;
 }
 
 export interface ResultUpdate {
@@ -2976,6 +2992,9 @@ export interface ResultWithGrading {
   reference_version_identifier?: string | null;
   status: TaskStatus;
   grading_ids?: string[] | null;
+  has_artifacts?: boolean;
+  artifact_count?: number;
+  result_artifacts?: ResultArtifactInfo[];
   latest_grading?: any | null;
   grading_count?: number;
 }

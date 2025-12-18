@@ -215,6 +215,8 @@ export class StudentCommands {
       vscode.commands.registerCommand('computor.showTestResults', async (item?: any) => {
         try {
           let resultPayload: any | undefined;
+          let resultId: string | undefined;
+          let resultArtifacts: any[] | undefined;
 
           // Get course content ID from the item
           const courseContentId = item?.courseContent?.id;
@@ -228,8 +230,11 @@ export class StudentCommands {
             console.log('[showTestResults] Result keys:', result ? Object.keys(result) : 'no result');
             if (result) {
               resultPayload = result.result_json ?? result;
+              resultId = result.id;
+              resultArtifacts = result.result_artifacts;
               console.log('[showTestResults] Result payload:', JSON.stringify(resultPayload, null, 2));
               console.log('[showTestResults] Has result_json?', !!result.result_json);
+              console.log('[showTestResults] Result artifacts count:', resultArtifacts?.length ?? 0);
             }
           } else {
             // Fallback to item data if no ID available
@@ -237,11 +242,13 @@ export class StudentCommands {
             const result = courseContent?.result;
             if (result) {
               resultPayload = result.result_json ?? result;
+              resultId = result.id;
+              resultArtifacts = result.result_artifacts;
             }
           }
 
           if (resultPayload) {
-            await vscode.commands.executeCommand('computor.results.open', resultPayload);
+            await vscode.commands.executeCommand('computor.results.open', resultPayload, resultId, resultArtifacts);
           }
 
           try {
@@ -532,8 +539,9 @@ export class StudentCommands {
 
               const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
               if (hasStagedFiles) {
-                const commitDate = new Date().toISOString();
-                const commitMessage = `Submit ${commitLabel} at ${commitDate}`;
+                const now = new Date();
+                const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
+                const commitMessage = `Update ${commitLabel} - ${timestamp}`;
                 progress.report({ message: 'Committing changes...' });
                 await this.gitService.commitChanges(repoPath, commitMessage);
               }

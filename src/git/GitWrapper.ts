@@ -213,10 +213,10 @@ export class GitWrapper implements IGitWrapper {
   }
 
   async commit(repositoryPath: string, message: string): Promise<void> {
-    if (!GitValidator.isValidCommitMessage(message)) {
+    if (!message || message.trim().length === 0) {
       throw new Error('Invalid commit message: cannot be empty');
     }
-    
+
     const git = await this.getRepository(repositoryPath);
     await git.commit(message);
   }

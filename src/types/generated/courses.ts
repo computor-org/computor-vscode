@@ -10,7 +10,7 @@
 
 import type { GradingAuthor } from './auth';
 
-import type { ComputorDeploymentConfig, CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials, SubmissionGroupGradingList } from './common';
+import type { ComputorDeploymentConfig, CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials, ResultArtifactInfo, SubmissionGroupGradingList } from './common';
 
 import type { OrganizationGet } from './organizations';
 
@@ -525,6 +525,7 @@ export interface SubmissionGroupStudentGet {
 }
 
 export interface ResultStudentList {
+  id: string;
   testing_service_id?: string | null;
   test_system_id?: string | null;
   version_identifier?: string | null;
@@ -534,6 +535,7 @@ export interface ResultStudentList {
 }
 
 export interface ResultStudentGet {
+  id: string;
   testing_service_id?: string | null;
   test_system_id?: string | null;
   version_identifier?: string | null;
@@ -541,6 +543,7 @@ export interface ResultStudentGet {
   result?: number | null;
   submit?: boolean | null;
   result_json?: any | null;
+  result_artifacts?: ResultArtifactInfo[];
 }
 
 export interface CourseContentStudentProperties {
@@ -565,7 +568,7 @@ export interface CourseContentStudentGet {
   position: number;
   max_group_size?: number | null;
   submitted?: boolean | null;
-  course_content_types: CourseContentTypeGet;
+  course_content_type: CourseContentTypeGet;
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;

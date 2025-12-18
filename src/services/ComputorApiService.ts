@@ -75,7 +75,7 @@ import {
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery } from '../types/generated/common';
+import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery, ResultArtifactListItem } from '../types/generated/common';
 import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
@@ -2746,6 +2746,51 @@ export class ComputorApiService {
       return response.data;
     } catch (error: any) {
       console.error('Failed to get result:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get list of artifacts for a result
+   * @param resultId The result ID to get artifacts for
+   * @returns List of result artifacts or empty array
+   */
+  async getResultArtifacts(resultId: string): Promise<ResultArtifactListItem[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<ResultArtifactListItem[]>(`/results/${resultId}/artifacts`);
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      console.error('Failed to get result artifacts:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Download result artifacts as a zip file
+   * @param resultId The result ID to download artifacts for
+   * @returns Buffer containing the zip file or undefined
+   */
+  async downloadResultArtifacts(resultId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/results/${resultId}/artifacts/download`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error: any) {
+      console.error('Failed to download result artifacts:', error);
       return undefined;
     }
   }

@@ -2,7 +2,7 @@
  * Auto-generated error code definitions
  *
  * DO NOT EDIT MANUALLY
- * Generated at: 2025-12-10T13:31:27.009610
+ * Generated at: 2025-12-18T18:34:13.078984
  *
  * To regenerate: bash generate_error_codes.sh
  */

@@ -127,14 +127,22 @@
 | `deleteCommentCourseMemberCommentsCourseMemberCommentIdDelete` | DELETE | `/course-member-comments/{course_member_comment_id}` | — | `CourseMemberCommentList[]` |
 | `updateCommentCourseMemberCommentsCourseMemberCommentIdPatch` | PATCH | `/course-member-comments/{course_member_comment_id}` | `CommentUpdate` | `CourseMemberCommentList[]` |
 
+## CourseMemberGradingsClient
+- Base path: `/course-member-gradings`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `listCourseMemberGradingsEndpointCourseMemberGradingsGet` | GET | `/course-member-gradings` | — | `CourseMemberGradingsList[]` |
+| `getCourseMemberGradingsEndpointCourseMemberGradingsCourseMemberIdGet` | GET | `/course-member-gradings/{course_member_id}` | — | `CourseMemberGradingsGet` |
+
 ## CourseMemberImportClient
 - Base path: `/course-member-import`
 - Note: custom operations discovered from OpenAPI schema
 
 | TS Method | HTTP | Path | Request | Response |
 | --- | --- | --- | --- | --- |
-| `importCourseMembersJsonCourseMemberImportImportCourseIdPost` | POST | `/course-member-import/import/{course_id}` | `CourseMemberImportRequest` | `CourseMemberImportResponse` |
-| `uploadCourseMemberFileCourseMemberImportUploadCourseIdPost` | POST | `/course-member-import/upload/{course_id}` | — | `CourseMemberImportResponse` |
+| `importMemberCourseMemberImportCourseIdPost` | POST | `/course-member-import/{course_id}` | `CourseMemberImportRequest` | `CourseMemberImportResponse` |
 
 ## CourseMembersClient
 - Base path: `/course-members`
@@ -212,6 +220,14 @@
 | `listExtensionVersionsExtensionsExtensionIdentityVersionsGet` | GET | `/extensions/{extension_identity}/versions` | — | `ExtensionVersionListResponse` |
 | `publishExtensionVersionExtensionsExtensionIdentityVersionsPost` | POST | `/extensions/{extension_identity}/versions` | — | `ExtensionPublishResponse` |
 | `updateExtensionVersionExtensionsExtensionIdentityVersionsVersionPatch` | PATCH | `/extensions/{extension_identity}/versions/{version}` | `ExtensionVersionYankRequest` | `ExtensionVersionDetail` |
+
+## ExtensionsGettingStartedClient
+- Base path: `/extensions-getting-started`
+- Note: custom operations discovered from OpenAPI schema
+
+| TS Method | HTTP | Path | Request | Response |
+| --- | --- | --- | --- | --- |
+| `getGettingStartedUrlExtensionsGettingStartedGet` | GET | `/extensions-getting-started` | — | `string` |
 
 ## ExtensionsPublicClient
 - Base path: `/extensions-public`
@@ -318,6 +334,8 @@
 | `deleteResultResultsResultIdDelete` | DELETE | `/results/{result_id}` | — | `void` |
 | `getResultResultsResultIdGet` | GET | `/results/{result_id}` | — | `ResultGet` |
 | `updateResultResultsResultIdPatch` | PATCH | `/results/{result_id}` | `ResultUpdate` | `ResultGet` |
+| `listResultArtifactsEndpointResultsResultIdArtifactsGet` | GET | `/results/{result_id}/artifacts` | — | `ResultArtifactListItem[]` |
+| `downloadResultArtifactsResultsResultIdArtifactsDownloadGet` | GET | `/results/{result_id}/artifacts/download` | — | `void` |
 | `resultStatusResultsResultIdStatusGet` | GET | `/results/{result_id}/status` | — | `TaskStatus` |
 
 ## RolesClient

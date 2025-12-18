@@ -271,15 +271,17 @@ export class TestResultService {
    * Display test results in the panel view
    */
   private async displayTestResults(result: any, assignmentTitle: string): Promise<void> {
+    void assignmentTitle;
     try {
-      // Use legacy-style wiring: open results in tree, panel updates on selection
       const resultJson = result.result_json || result;
-      await vscode.commands.executeCommand('computor.results.open', resultJson);
+      const resultId = result.id;
+      const artifacts = result.result_artifacts || [];
+
+      await vscode.commands.executeCommand('computor.results.open', resultJson, resultId, artifacts);
       await vscode.commands.executeCommand('computor.testResultsPanel.focus');
     } catch (error) {
       console.error('[TestResultService] Error displaying test results:', error);
-      
-      // Fallback: show raw result
+
       const outputChannel = vscode.window.createOutputChannel('Computor Test Results');
       outputChannel.clear();
       outputChannel.appendLine(`Test Results for ${assignmentTitle}`);
