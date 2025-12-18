@@ -1,9 +1,17 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { MessageList, MessageCreate, MessageUpdate } from '../../types/generated';
+import { MessageList, MessageCreate, MessageUpdate, MessageQuery } from '../../types/generated';
 
 export type MessageTargetType = 'course' | 'courseGroup' | 'courseContent' | 'submissionGroup' | 'courseMember';
+
+export interface MessageFilters {
+  unread?: boolean;
+  created_after?: string;
+  created_before?: string;
+  tags?: string[];
+  tags_match_all?: boolean;
+}
 
 export interface MessageTargetContext {
   title: string;
@@ -17,6 +25,7 @@ interface MessagesWebviewData {
   target: MessageTargetContext;
   messages: EnrichedMessage[];
   identity?: { id: string; username: string; full_name?: string };
+  activeFilters?: MessageFilters;
 }
 
 type EnrichedMessage = MessageList & {
@@ -106,6 +115,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       case 'refreshMessages':
         await this.refreshMessages();
         break;
+      case 'applyFilters':
+        await this.handleApplyFilters(message.data);
+        break;
       case 'showWarning':
         if (message.data) {
           vscode.window.showWarningMessage(String(message.data));
@@ -124,6 +136,18 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   private getIdentity(): { id: string; username: string; full_name?: string } | undefined {
     const data = this.currentData as MessagesWebviewData | undefined;
     return data?.identity;
+  }
+
+  private getActiveFilters(): MessageFilters | undefined {
+    const data = this.currentData as MessagesWebviewData | undefined;
+    return data?.activeFilters;
+  }
+
+  private setActiveFilters(filters: MessageFilters | undefined): void {
+    const data = this.currentData as MessagesWebviewData | undefined;
+    if (data) {
+      data.activeFilters = filters;
+    }
   }
 
   private normalizeReadState(messages: MessageList[], currentUserId?: string): MessageList[] {
@@ -309,17 +333,35 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       this.postLoadingState(true);
       const currentUserId = this.apiService.getCurrentUserId();
       const identity = (await this.apiService.getCurrentUser().catch(() => this.getIdentity())) || this.getIdentity();
-      const rawMessages = await this.apiService.listMessages(target.query);
+      const activeFilters = this.getActiveFilters();
+
+      const query: MessageQuery = {
+        ...target.query,
+        ...activeFilters
+      };
+
+      const rawMessages = await this.apiService.listMessages(query);
       const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
       void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
       const messages = this.enrichMessages(normalizedMessages, identity);
-      this.currentData = { target, messages, identity } satisfies MessagesWebviewData;
+      this.currentData = { target, messages, identity, activeFilters } satisfies MessagesWebviewData;
       this.panel.webview.postMessage({ command: 'updateMessages', data: messages });
       this.postLoadingState(false);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to refresh messages: ${error?.message || error}`);
       this.postLoadingState(false);
     }
+  }
+
+  private async handleApplyFilters(filters: MessageFilters): Promise<void> {
+    const hasFilters = filters && Object.keys(filters).some(key => {
+      const value = filters[key as keyof MessageFilters];
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== undefined && value !== null;
+    });
+
+    this.setActiveFilters(hasFilters ? filters : undefined);
+    await this.refreshMessages();
   }
 
   private enrichMessages(messages: MessageList[], identity?: { id: string; username: string; full_name?: string }): EnrichedMessage[] {

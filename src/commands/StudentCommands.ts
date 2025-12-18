@@ -545,13 +545,12 @@ export class StudentCommands {
             throw new Error('Failed to get current commit hash');
           }
 
-          // Get the most recent tested artifact (submit=false) using the latest flag
+          // Get the most recent tested artifact (submit=false)
           let latestTestedArtifact: any = null;
           try {
             const latestTestedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
-              submit: false,
-              latest: true
+              submit: false
             });
 
             if (latestTestedArtifacts.length > 0) {
@@ -583,11 +582,10 @@ export class StudentCommands {
               let existingArtifactId: string | undefined;
               let alreadySubmitted = false;
               try {
-                // Get the LATEST artifact for this version using the latest flag
+                // Get artifact for this version
                 const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
                   submission_group_id: submissionGroupId,
-                  version_identifier: submissionVersion,
-                  latest: true
+                  version_identifier: submissionVersion
                 });
                 console.log(`[submitAssignment] GET response: Found ${existingSubmissions.length} artifacts for version ${submissionVersion}`);
                 console.log(`[submitAssignment] Full response:`, JSON.stringify(existingSubmissions, null, 2));
@@ -878,9 +876,7 @@ export class StudentCommands {
             try {
               const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
                 submission_group_id: submissionGroupId,
-                version_identifier: currentCommitHash,
-                latest: true,
-                with_latest_result: true
+                version_identifier: currentCommitHash
               });
 
               if (existingArtifacts.length > 0) {
@@ -1045,25 +1041,23 @@ export class StudentCommands {
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
         const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
 
-        // Query should NOT include course_id when viewing content-specific messages
-        // Including course_id would return ALL messages in the course (due to OR filter in backend)
-        const query: Record<string, string> = {
-          course_content_id: content.id
-        };
-
-        // Students can only write to submission_group_id, not course_content_id
-        // course_content_id is for lecturers+ only
+        let query: Record<string, string>;
         let createPayload: Partial<MessageCreate>;
 
         if (submissionGroup?.id) {
-          // Assignment with submission group - students can write to submission_group_id
-          query.submission_group_id = submissionGroup.id;
+          // Assignment with submission group - students only need submission_group messages
+          query = {
+            submission_group_id: submissionGroup.id
+          };
           createPayload = {
             submission_group_id: submissionGroup.id
           };
         } else {
-          // Unit content without submission group - students can only read course_content messages
-          // Trying to write will fail with ForbiddenException (lecturer+ only)
+          // Unit content without submission group - show course_content messages
+          // Students can only read (lecturer+ for writing)
+          query = {
+            course_content_id: content.id
+          };
           createPayload = {
             course_content_id: content.id  // This will fail with ForbiddenException, but allows reading
           };
@@ -1455,9 +1449,9 @@ export class StudentCommands {
     }
     const map: Record<string, string> = {
       '0': 'pending',
-      '1': 'correction_necessary',
-      '2': 'improvement_possible',
-      '3': 'corrected'
+      '1': 'corrected',
+      '2': 'correction_necessary',
+      '3': 'improvement_possible'
     };
     const key = String(value);
     return map[key] || key;

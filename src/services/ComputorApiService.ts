@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
+import { HttpError } from '../http/errors/HttpError';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
@@ -64,6 +65,7 @@ import {
   MessageGet,
   MessageCreate,
   MessageUpdate,
+  MessageQuery,
   CourseMemberCommentList,
   CourseContentStudentGet,
   ResultWithGrading,
@@ -74,7 +76,7 @@ import {
   SubmissionArtifactUpdate
 } from '../types/generated';
 import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult } from '../types/generated/common';
-import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/course-member-gradings';
+import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -87,17 +89,6 @@ interface ExampleQuery {
   directory?: string;
 }
 
-type MessageQueryParams = Partial<{
-  id: string;
-  parent_id: string;
-  author_id: string;
-  user_id: string;
-  course_member_id: string;
-  submission_group_id: string;
-  course_group_id: string;
-  course_content_id: string;
-  course_id: string;
-}>;
 
 export class ComputorApiService {
   private static instance?: ComputorApiService;
@@ -771,7 +762,6 @@ export class ComputorApiService {
       const client = await this.getHttpClient();
       const response = await client.get<SubmissionArtifactList[]>(`/submissions/artifacts`, {
         submission_group_id: submissionGroupId,
-        with_latest_result: 'true',
         submit: true
       });
       return response.data;
@@ -2412,7 +2402,21 @@ export class ComputorApiService {
       multiTierCache.set(cacheKey, result, 'warm');
       return (result || []).filter((c: any) => !courseId || c.course_id === courseId);
     } catch (e) {
-      console.error('Failed to get tutor member course contents:', e);
+      // Check if this is an authorization error due to stale/invalid member ID
+      if (e instanceof HttpError && e.status === 403) {
+        console.warn(`[getTutorCourseContents] Authorization failed for member ${memberId} - clearing stale selection`);
+        // Dynamically import to avoid circular dependency
+        const { TutorSelectionService } = await import('./TutorSelectionService');
+        try {
+          const selectionService = TutorSelectionService.getInstance();
+          await selectionService.clearMember();
+          vscode.window.showWarningMessage('The selected student is no longer available. Please select a student again.');
+        } catch (selectionError) {
+          console.warn('[getTutorCourseContents] Could not clear stale member selection:', selectionError);
+        }
+      } else {
+        console.error('Failed to get tutor member course contents:', e);
+      }
       return [];
     }
   }
@@ -2532,19 +2536,32 @@ export class ComputorApiService {
     }
   }
 
-  async listMessages(params: MessageQueryParams = {}): Promise<MessageList[]> {
+  async listMessages(params: MessageQuery = {}): Promise<MessageList[]> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
 
       // If both course_content_id and submission_group_id are present,
       // make two separate calls and merge results (backend does AND, we want OR)
       if (params.course_content_id && params.submission_group_id) {
+        // Extract filter params (everything except the target IDs, scope, and course_member_id)
+        const { course_content_id, submission_group_id, scope, course_member_id, ...filterParams } = params;
+        void scope; // scope is intentionally excluded - we set it explicitly below
+        void course_member_id; // only used for cache invalidation, not API queries
+        const cleanFilters = Object.fromEntries(
+          Object.entries(filterParams).filter(([, value]) => value !== undefined && value !== null)
+        );
+
         const [contentMessages, submissionMessages] = await Promise.all([
+          // For course_content_id, restrict to 'course_content' scope to avoid
+          // fetching all child submission_group messages
           client.get<MessageList[]>('/messages', {
-            course_content_id: params.course_content_id
+            course_content_id,
+            scope: 'course_content',
+            ...cleanFilters
           }).then(r => r.data),
           client.get<MessageList[]>('/messages', {
-            submission_group_id: params.submission_group_id
+            submission_group_id,
+            ...cleanFilters
           }).then(r => r.data)
         ]);
 
@@ -2557,8 +2574,11 @@ export class ComputorApiService {
       }
 
       // Otherwise, make a single call with all params
+      // Exclude course_member_id as it's only used for cache invalidation, not API queries
       const query = Object.fromEntries(
-        Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
+        Object.entries(params).filter(([key, value]) =>
+          value !== undefined && value !== null && key !== 'course_member_id'
+        )
       );
       const response = await client.get<MessageList[]>('/messages', query);
       return response.data;

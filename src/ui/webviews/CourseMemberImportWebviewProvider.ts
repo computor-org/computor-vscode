@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { CourseMemberImportRow, CourseRoleList, CourseMemberList, CourseGroupList } from '../../types/generated';
+import { CourseRoleList, CourseMemberList, CourseGroupList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { CourseMemberParserFactory } from '../../utils/parsers/CourseMemberParserFactory';
+import { CourseMemberImportRow } from '../../utils/parsers/ICourseMemberParser';
 import * as path from 'path';
 
 interface ImportMemberRow extends CourseMemberImportRow {
