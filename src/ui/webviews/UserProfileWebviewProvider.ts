@@ -113,12 +113,15 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
   }
 
   private async loadState(options?: { force?: boolean }): Promise<UserProfileViewState> {
-    const [user, studentProfiles, languages, organizations] = await Promise.all([
+    const [user, languages, organizations] = await Promise.all([
       this.apiService.getUserAccount(options),
-      this.apiService.getStudentProfiles(options),
       this.apiService.getLanguages(options),
       this.apiService.getOrganizations()
     ]);
+
+    const studentProfiles = user?.id
+      ? await this.apiService.getStudentProfiles({ user_id: user.id }, options)
+      : [];
 
     let canChangePassword = false;
     let username: string | undefined;

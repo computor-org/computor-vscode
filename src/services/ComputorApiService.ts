@@ -75,7 +75,7 @@ import {
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult } from '../types/generated/common';
+import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery } from '../types/generated/common';
 import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
@@ -1728,8 +1728,11 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentProfiles(options?: { force?: boolean }): Promise<StudentProfileGet[]> {
-    const cacheKey = 'userStudentProfiles';
+  async getStudentProfiles(
+    query?: StudentProfileQuery,
+    options?: { force?: boolean }
+  ): Promise<StudentProfileGet[]> {
+    const cacheKey = `userStudentProfiles-${JSON.stringify(query ?? {})}`;
 
     if (options?.force) {
       multiTierCache.delete(cacheKey);
@@ -1742,7 +1745,35 @@ export class ComputorApiService {
 
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<StudentProfileGet[]>('/student-profiles');
+      const params = new URLSearchParams();
+
+      if (query?.skip !== undefined && query.skip !== null) {
+        params.append('skip', String(query.skip));
+      }
+      if (query?.limit !== undefined && query.limit !== null) {
+        params.append('limit', String(query.limit));
+      }
+      if (query?.id) {
+        params.append('id', query.id);
+      }
+      if (query?.student_id) {
+        params.append('student_id', query.student_id);
+      }
+      if (query?.student_email) {
+        params.append('student_email', query.student_email);
+      }
+      if (query?.user_id) {
+        params.append('user_id', query.user_id);
+      }
+      if (query?.organization_id) {
+        params.append('organization_id', query.organization_id);
+      }
+
+      const url = params.toString()
+        ? `/student-profiles?${params.toString()}`
+        : '/student-profiles';
+
+      const response = await client.get<StudentProfileGet[]>(url);
       const profiles = Array.isArray(response.data) ? response.data : [];
       multiTierCache.set(cacheKey, profiles, 'warm');
       return profiles;
