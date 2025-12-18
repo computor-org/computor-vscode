@@ -531,13 +531,13 @@ class UnifiedController {
     const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat'];
 
     if (imageExtensions.includes(ext)) {
-      await vscode.commands.executeCommand('vscode.open', fileUri);
+      await vscode.commands.executeCommand('vscode.open', fileUri, { preview: false });
     } else if (binaryExtensions.includes(ext)) {
       await vscode.commands.executeCommand('revealFileInOS', fileUri);
       vscode.window.showInformationMessage(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
     } else {
       const doc = await vscode.workspace.openTextDocument(fileUri);
-      await vscode.window.showTextDocument(doc);
+      await vscode.window.showTextDocument(doc, { preview: false });
     }
   }
 
