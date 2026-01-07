@@ -645,6 +645,10 @@ export interface ContentTypeGradingStats {
   progress_percentage: number;
   /** Most recent SubmissionArtifact.created_at with submit=True for this type */
   latest_submission_at?: string | null;
+  /** Count of assignments with at least one grading */
+  graded_assignments?: number | null;
+  /** Average grade for all graded assignments of this type (0.0-1.0 scale) */
+  average_grading?: number | null;
 }
 
 /**
@@ -675,6 +679,14 @@ export interface CourseMemberGradingNode {
   progress_percentage: number;
   /** Most recent SubmissionArtifact.created_at with submit=True under this path */
   latest_submission_at?: string | null;
+  /** For assignments: the actual grade (0.0-1.0 scale). None if not graded or not an assignment. */
+  grading?: number | null;
+  /** For units/containers: average of all descendant grades (0.0-1.0 scale). None if no graded descendants. */
+  average_grading?: number | null;
+  /** Count of graded assignments at or under this path */
+  graded_assignments?: number | null;
+  /** For assignments: the latest grading status (GradingStatus enum: 0=NOT_REVIEWED, 1=CORRECTED, 2=CORRECTION_NECESSARY, 3=IMPROVEMENT_POSSIBLE). For units: always 0 (NOT_REVIEWED). */
+  grading_status?: number | null;
 }
 
 /**
@@ -694,6 +706,8 @@ export interface CourseMemberGradingsGet {
   overall_progress_percentage: number;
   /** Most recent submission across all content */
   latest_submission_at?: string | null;
+  /** Course-level average grade across all graded assignments (0.0-1.0 scale) */
+  overall_average_grading?: number | null;
   /** Course-level breakdown by content type */
   by_content_type?: ContentTypeGradingStats[];
   /** Hierarchical breakdown by ltree path levels */
@@ -721,6 +735,8 @@ export interface CourseMemberGradingsList {
   overall_progress_percentage: number;
   /** Most recent submission across all content */
   latest_submission_at?: string | null;
+  /** Course-level average grade across all graded assignments (0.0-1.0 scale) */
+  overall_average_grading?: number | null;
   /** Course-level breakdown by content type */
   by_content_type?: ContentTypeGradingStats[];
 }

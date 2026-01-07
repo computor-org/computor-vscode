@@ -86,6 +86,8 @@
     const percentage = gradings.overall_progress_percentage || 0;
     const submitted = gradings.total_submitted_assignments || 0;
     const total = gradings.total_max_assignments || 0;
+    const avgGrading = gradings.overall_average_grading;
+    const avgGradingDisplay = typeof avgGrading === 'number' ? `${Math.round(avgGrading * 100)}%` : '-';
 
     return `
       <div class="overall-progress-card">
@@ -104,6 +106,10 @@
           <div class="overall-progress-card__stat">
             <span>Remaining:</span>
             <span class="overall-progress-card__stat-value">${total - submitted}</span>
+          </div>
+          <div class="overall-progress-card__stat">
+            <span>Avg. Grade:</span>
+            <span class="overall-progress-card__stat-value">${avgGradingDisplay}</span>
           </div>
         </div>
       </div>
@@ -142,6 +148,8 @@
       const percentage = ct.progress_percentage || 0;
       const submitted = ct.submitted_assignments || 0;
       const total = ct.max_assignments || 0;
+      const avgGrading = ct.average_grading;
+      const avgGradingDisplay = typeof avgGrading === 'number' ? `${Math.round(avgGrading * 100)}%` : '-';
 
       return `
         <div class="content-type-item">
@@ -150,7 +158,7 @@
               <span class="content-type-item__dot" style="background-color: ${color}"></span>
               ${escapeHtml(label)}
             </span>
-            <span class="content-type-item__stats">${submitted} / ${total} (${percentage}%)</span>
+            <span class="content-type-item__stats">${submitted} / ${total} (${percentage}%) | Avg: ${avgGradingDisplay}</span>
           </div>
           <div class="content-type-item__bar">
             <div class="content-type-item__fill" style="width: ${percentage}%;"></div>
@@ -250,28 +258,67 @@
       const isSubmittable = node.submittable === true;
       const isSubmitted = node.submitted_assignments > 0;
 
-      // Assignments (submittable): show checkmark or pending indicator
-      // Units (not submittable): show progress bar with percentage
+      // Get grading display: for assignments use grading, for units use average_grading
+      const gradingValue = isSubmittable ? node.grading : node.average_grading;
+      const hasGrading = typeof gradingValue === 'number';
+      const gradingDisplay = hasGrading ? `${Math.round(gradingValue * 100)}%` : '-';
+      const gradingClass = hasGrading ? '' : 'content-tree-node__grading--empty';
+
+      // Get grading status: 0=NOT_REVIEWED, 1=CORRECTED, 2=CORRECTION_NECESSARY, 3=IMPROVEMENT_POSSIBLE
+      // Match the corner badge colors from IconGenerator.ts
+      const gradingStatus = node.grading_status;
+      let cornerBadgeHtml = '';
+      if (isSubmittable && gradingStatus != null && gradingStatus !== 0) {
+        const statusColor = gradingStatus === 1 ? '#57cc5d' : gradingStatus === 2 ? '#fc4a4a' : '#fdba4d';
+        cornerBadgeHtml = `<span class="content-tree-node__icon-badge" style="background-color: ${statusColor};"></span>`;
+      }
+
+      // Build tooltip text
+      const tooltipParts = [];
+      if (isSubmittable) {
+        tooltipParts.push(`Submitted: ${isSubmitted ? 'Yes' : 'No'}`);
+        if (hasGrading) {
+          tooltipParts.push(`Grade: ${gradingDisplay}`);
+        }
+        if (gradingStatus != null && gradingStatus !== 0) {
+          const statusText = gradingStatus === 1 ? 'Corrected' : gradingStatus === 2 ? 'Correction Necessary' : 'Improvement Possible';
+          tooltipParts.push(`Status: ${statusText}`);
+        }
+      } else {
+        tooltipParts.push(`Submissions: ${node.submitted_assignments || 0} / ${node.max_assignments || 0} (${percentage}%)`);
+        if (hasGrading) {
+          tooltipParts.push(`Avg. Grade: ${gradingDisplay}`);
+        }
+      }
+      const tooltip = escapeHtml(tooltipParts.join('\n'));
+
+      // Assignments (submittable): show grading + checkmark or pending indicator
+      // Units (not submittable): show progress bar + avg grading + submission percentage
       const progressHtml = isSubmittable
-        ? `<span class="content-tree-node__check ${isSubmitted ? 'content-tree-node__check--done' : 'content-tree-node__check--pending'}">
+        ? `<span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
+           <span class="content-tree-node__check ${isSubmitted ? 'content-tree-node__check--done' : 'content-tree-node__check--pending'}">
              ${isSubmitted ? '✓' : '○'}
            </span>`
         : `<div class="content-tree-node__progress">
              <div class="content-tree-node__bar">
                <div class="content-tree-node__fill" style="width: ${percentage}%;"></div>
              </div>
+             <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
              <span class="content-tree-node__percentage">${percentage}%</span>
            </div>`;
 
       // Icon styling: always filled with content type color
       const iconStyle = `background-color: ${color};`;
 
+      // Icon HTML with optional corner badge for grading status
+      const iconHtml = `<span class="content-tree-node__icon" style="${iconStyle}">${cornerBadgeHtml}</span>`;
+
       return `
         <div class="content-tree-node" id="${nodeId}">
-          <div class="content-tree-node__row content-tree-node__row--depth-${Math.min(depth, 3)}">
+          <div class="content-tree-node__row content-tree-node__row--depth-${Math.min(depth, 3)}" title="${tooltip}">
             <span class="content-tree-node__toggle ${hasChildren ? '' : 'content-tree-node__toggle--empty'}"
                   onclick="toggleNode('${nodeId}')">${hasChildren ? (node.expanded !== false ? '▼' : '▶') : ''}</span>
-            <span class="content-tree-node__icon" style="${iconStyle}"></span>
+            ${iconHtml}
             <span class="content-tree-node__title">${escapeHtml(node.title || node.path)}</span>
             ${progressHtml}
           </div>
