@@ -304,14 +304,6 @@ export interface ExampleDownloadResponse {
 }
 
 /**
- * Request to assign multiple examples to course contents.
- */
-export interface BulkAssignExamplesRequest {
-  /** List of assignments with course_content_id, example_id, and example_version */
-  assignments: Record<string, string>[];
-}
-
-/**
  * Validation result for example existence.
  */
 export interface ExampleValidationResult {

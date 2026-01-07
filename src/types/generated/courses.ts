@@ -10,7 +10,7 @@
 
 import type { GradingAuthor } from './auth';
 
-import type { ComputorDeploymentConfig, CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials, ResultArtifactInfo, SubmissionGroupGradingList } from './common';
+import type { CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials, ResultArtifactInfo, SubmissionGroupGradingList } from './common';
 
 import type { OrganizationGet } from './organizations';
 
@@ -976,36 +976,6 @@ export interface CourseQuery {
   language_code?: string | null;
   provider_url?: string | null;
   full_path?: string | null;
-}
-
-/**
- * DTO for releasing a course.
- */
-export interface ReleaseCourseCreate {
-  course_id?: string | null;
-  gitlab_url?: string | null;
-  descendants?: boolean | null;
-  deployment?: ComputorDeploymentConfig | null;
-}
-
-/**
- * DTO for releasing course content.
- */
-export interface ReleaseCourseContentCreate {
-  release_dir?: string | null;
-  course_id?: string | null;
-  gitlab_url?: string | null;
-  ascendants?: boolean;
-  descendants?: boolean;
-  deployment?: ComputorDeploymentConfig | null;
-}
-
-/**
- * DTO for updating course release.
- */
-export interface CourseReleaseUpdate {
-  course?: CourseUpdate | null;
-  course_content_types: CourseContentTypeCreate[];
 }
 
 /**

@@ -762,62 +762,42 @@ export class TutorCommands {
     try {
       console.log('[TutorCommands] showSubmissionTestResults called with item:', item);
 
-      // Extract result data from the submission item
-      // Note: result can be 0, so we check for undefined/null explicitly
-      if (!item || (item.result === undefined || item.result === null)) {
-        console.log('[TutorCommands] No result in item, result value:', item?.result);
+      // Get the submission artifact ID from the item
+      const artifactId = item?.artifactId;
+      if (!artifactId) {
+        console.log('[TutorCommands] No artifactId in item');
+        vscode.window.showWarningMessage('No submission artifact ID found.');
+        return;
+      }
+
+      console.log('[TutorCommands] Fetching test results for artifact:', artifactId);
+
+      // Fetch test results for this submission artifact
+      const testResults = await this.apiService.getSubmissionArtifactTestResults(artifactId);
+      console.log('[TutorCommands] Test results fetched:', testResults.length, 'results');
+
+      if (!testResults || testResults.length === 0) {
         vscode.window.showWarningMessage('No test results available for this submission.');
         return;
       }
 
-      const result = item.result;
-      console.log('[TutorCommands] result type:', typeof result, 'value:', result);
+      // Get the latest/first result (results are typically ordered by date)
+      const latestResult = testResults[0];
+      console.log('[TutorCommands] Latest result:', JSON.stringify(latestResult, null, 2));
 
-      // Fetch full result data if we only have the result number
-      let resultJson = null;
-      let resultId: string | undefined;
-      let resultArtifacts: any[] | undefined;
-
-      if (typeof result === 'number') {
-        // We need to fetch the full result data from the tutor course content endpoint
-        const memberId = item.memberId;
-        const contentId = item.content?.id;
-
-        console.log('[TutorCommands] memberId:', memberId, 'contentId:', contentId);
-
-        if (!memberId || !contentId) {
-          vscode.window.showWarningMessage('Cannot fetch test results: missing member or content ID.');
-          return;
-        }
-
-        // Fetch course content to get result with result_json
-        const courseContent = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
-        console.log('[TutorCommands] courseContent fetched:', JSON.stringify(courseContent, null, 2));
-
-        if (courseContent?.result?.result_json) {
-          resultJson = courseContent.result.result_json;
-          resultId = courseContent.result.id;
-          resultArtifacts = courseContent.result.result_artifacts;
-        } else {
-          console.log('[TutorCommands] No result_json in courseContent.result');
-          vscode.window.showWarningMessage('No detailed test results available for this submission.');
-          return;
-        }
-      } else if (typeof result === 'object' && result.result_json) {
-        resultJson = result.result_json;
-        resultId = result.id;
-        resultArtifacts = result.result_artifacts;
-      }
+      const resultJson = latestResult?.result_json;
+      const resultId = latestResult?.id;
+      const resultArtifacts = latestResult?.result_artifacts;
 
       if (!resultJson) {
-        console.log('[TutorCommands] resultJson is null');
-        vscode.window.showWarningMessage('No test results data found.');
+        console.log('[TutorCommands] No result_json in latest result');
+        vscode.window.showWarningMessage('No detailed test results available for this submission.');
         return;
       }
 
-      console.log('[TutorCommands] Opening results with resultJson:', resultJson);
+      console.log('[TutorCommands] Opening results with resultJson');
       console.log('[TutorCommands] Result artifacts count:', resultArtifacts?.length ?? 0);
-      // Display test results using the same method as student view
+
       await vscode.commands.executeCommand('computor.results.open', resultJson, resultId, resultArtifacts);
       await vscode.commands.executeCommand('computor.testResultsPanel.focus');
 

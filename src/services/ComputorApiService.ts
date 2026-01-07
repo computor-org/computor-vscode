@@ -2796,6 +2796,22 @@ export class ComputorApiService {
   }
 
   /**
+   * Get test results for a submission artifact
+   * @param artifactId The submission artifact ID
+   * @returns List of test results or empty array
+   */
+  async getSubmissionArtifactTestResults(artifactId: string): Promise<any[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<any[]>(`/submissions/artifacts/${artifactId}/tests`);
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      console.error('Failed to get submission artifact test results:', error);
+      return [];
+    }
+  }
+
+  /**
    * Clear the cached HTTP client instance.
    * This should be called when credentials change or on logout.
    */

@@ -20,8 +20,6 @@ import type { OrganizationGet } from './organizations';
 
 import type { TaskStatus } from './tasks';
 
-import type { UserGet } from './users';
-
 
 
 export interface StudentProfileCreate {
@@ -2635,68 +2633,11 @@ export interface DeployExampleRequest {
 }
 
 /**
- * DTO for creating a student.
- */
-export interface StudentCreate {
-  user_id?: string | null;
-  user?: UserGet | null;
-  course_group_id?: string | null;
-  course_group_title?: string | null;
-  role?: string | null;
-}
-
-/**
- * DTO for releasing multiple students.
- */
-export interface ReleaseStudentsCreate {
-  students?: StudentCreate[];
-  course_id: string;
-}
-
-/**
- * DTO for TUG student export data.
- */
-export interface TUGStudentExport {
-  course_group_title: string;
-  family_name: string;
-  given_name: string;
-  matriculation_number: string;
-  created_at: string;
-}
-
-/**
- * DTO for status query parameters.
- */
-export interface StatusQuery {
-  course_id?: string | null;
-}
-
-/**
  * GitLab connection credentials.
  */
 export interface GitLabCredentials {
   gitlab_url: string;
   gitlab_token: string;
-}
-
-/**
- * Represents a pending change for template generation.
- */
-export interface PendingChange {
-  /** new, update, remove */
-  type: string;
-  content_id: string;
-  path: string;
-  title: string;
-}
-
-/**
- * Response for pending changes check.
- */
-export interface PendingChangesResponse {
-  total_changes: number;
-  changes: PendingChange[];
-  last_release?: Record<string, any> | null;
 }
 
 /**
