@@ -811,12 +811,23 @@ class CourseContentPathItem extends TreeItem {
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         
-        // Use colored icon based on content type, defaulting to grey
-        const color = node.contentType?.color || 'grey';
-        
         try {
-            // Units (folders) always use circle shape
-            this.iconPath = IconGenerator.getColoredIcon(color, 'circle');
+            // Units (folders) always use circle shape; include grading-status corner dot when available.
+            const derivedContentType = node.contentType
+                || (node.courseContent as any)?.course_content_type
+                || (node.courseContent as any)?.course_content_types;
+            const color = derivedContentType?.color || (node.courseContent as any)?.color || 'grey';
+
+            const status = ((node.courseContent as any)?.status || node.submissionGroup?.status)?.toLowerCase?.();
+            const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
+                status === 'corrected' ? 'corrected'
+                    : status === 'correction_necessary' ? 'correction_necessary'
+                        : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
+                            : 'none';
+
+            this.iconPath = corner === 'none'
+                ? IconGenerator.getColoredIcon(color, 'circle')
+                : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
         } catch {
             // Fallback to default folder icon
             this.iconPath = new vscode.ThemeIcon('folder-opened');
@@ -858,10 +869,20 @@ class CourseContentPathItem extends TreeItem {
         if (node.contentType?.title) {
             tooltipLines.push(`Type: ${node.contentType.title}`);
         }
+        const status = (node.courseContent as any)?.status || node.submissionGroup?.status;
+        if (status) {
+            tooltipLines.push(`Status: ${this.formatStatus(status)}`);
+        }
         if (unread > 0) {
             tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
         }
         this.tooltip = tooltipLines.join('\n');
+    }
+
+    private formatStatus(status: string): string {
+        return status
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, c => c.toUpperCase());
     }
 }
 
@@ -981,6 +1002,14 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             // Determine success/failure badge for assignments with grading info
             let badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none';
             let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
+
+            // Get status: prefer courseContent.status (works for both assignments and units),
+            // fallback to submissionGroup.status for backward compatibility
+            const status = ((this.courseContent as any)?.status || this.submissionGroup?.status)?.toLowerCase();
+            if (status === 'corrected') corner = 'corrected';
+            else if (status === 'correction_necessary') corner = 'correction_necessary';
+            else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
+
             if (shape === 'square') {
                 const result = this.courseContent?.result?.result as number | undefined;
                 const submitted = this.courseContent?.submitted;
@@ -998,11 +1027,6 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                     // Submitted but not tested yet
                     badge = 'submitted';
                 }
-
-                const status = (this.submissionGroup?.status)?.toLowerCase();
-                if (status === 'corrected') corner = 'corrected';
-                else if (status === 'correction_necessary') corner = 'correction_necessary';
-                else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
             }
 
             this.iconPath = (badge === 'none' && corner === 'none')
@@ -1125,8 +1149,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
 
         // Additional grading details and team members
-        if (this.submissionGroup?.grading !== undefined && this.submissionGroup?.status) {
-            lines.push(`Status: ${this.formatStatus(this.submissionGroup.status)}`);
+        // Use courseContent.status (works for both assignments and units) with fallback to submissionGroup.status
+        const status = (this.courseContent as any)?.status || this.submissionGroup?.status;
+        if (status) {
+            lines.push(`Status: ${this.formatStatus(status)}`);
         }
         if (this.submissionGroup?.members && this.submissionGroup.members.length > 1) {
             lines.push('Team members:');

@@ -580,6 +580,7 @@ export interface CourseContentStudentGet {
   submission_group?: SubmissionGroupStudentGet | null;
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
+  status?: string | null;
 }
 
 export interface CourseContentStudentList {
@@ -604,6 +605,7 @@ export interface CourseContentStudentList {
   unread_message_count?: number;
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
+  status?: string | null;
 }
 
 export interface CourseContentStudentUpdate {
@@ -685,8 +687,8 @@ export interface CourseMemberGradingNode {
   average_grading?: number | null;
   /** Count of graded assignments at or under this path */
   graded_assignments?: number | null;
-  /** For assignments: the latest grading status (GradingStatus enum: 0=NOT_REVIEWED, 1=CORRECTED, 2=CORRECTION_NECESSARY, 3=IMPROVEMENT_POSSIBLE). For units: always 0 (NOT_REVIEWED). */
-  grading_status?: number | null;
+  /** Grading status: 'not_reviewed', 'corrected', 'correction_necessary', or 'improvement_possible'. For units: aggregated from descendants. */
+  grading_status?: string | null;
 }
 
 /**

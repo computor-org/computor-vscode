@@ -264,12 +264,14 @@
       const gradingDisplay = hasGrading ? `${Math.round(gradingValue * 100)}%` : '-';
       const gradingClass = hasGrading ? '' : 'content-tree-node__grading--empty';
 
-      // Get grading status: 0=NOT_REVIEWED, 1=CORRECTED, 2=CORRECTION_NECESSARY, 3=IMPROVEMENT_POSSIBLE
+      // Get grading status (string: 'corrected', 'correction_necessary', 'improvement_possible', 'not_reviewed')
       // Match the corner badge colors from IconGenerator.ts
-      const gradingStatus = node.grading_status;
+      const gradingStatus = node.grading_status?.toLowerCase?.() || null;
       let cornerBadgeHtml = '';
-      if (isSubmittable && gradingStatus != null && gradingStatus !== 0) {
-        const statusColor = gradingStatus === 1 ? '#57cc5d' : gradingStatus === 2 ? '#fc4a4a' : '#fdba4d';
+      if (gradingStatus && gradingStatus !== 'not_reviewed') {
+        const statusColor = gradingStatus === 'corrected' ? '#57cc5d'
+          : gradingStatus === 'correction_necessary' ? '#fc4a4a'
+          : '#fdba4d';
         cornerBadgeHtml = `<span class="content-tree-node__icon-badge" style="background-color: ${statusColor};"></span>`;
       }
 
@@ -280,14 +282,22 @@
         if (hasGrading) {
           tooltipParts.push(`Grade: ${gradingDisplay}`);
         }
-        if (gradingStatus != null && gradingStatus !== 0) {
-          const statusText = gradingStatus === 1 ? 'Corrected' : gradingStatus === 2 ? 'Correction Necessary' : 'Improvement Possible';
+        if (gradingStatus && gradingStatus !== 'not_reviewed') {
+          const statusText = gradingStatus === 'corrected' ? 'Corrected'
+            : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
+            : 'Improvement Possible';
           tooltipParts.push(`Status: ${statusText}`);
         }
       } else {
         tooltipParts.push(`Submissions: ${node.submitted_assignments || 0} / ${node.max_assignments || 0} (${percentage}%)`);
         if (hasGrading) {
           tooltipParts.push(`Avg. Grade: ${gradingDisplay}`);
+        }
+        if (gradingStatus && gradingStatus !== 'not_reviewed') {
+          const statusText = gradingStatus === 'corrected' ? 'Corrected'
+            : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
+            : 'Improvement Possible';
+          tooltipParts.push(`Status: ${statusText}`);
         }
       }
       const tooltip = escapeHtml(tooltipParts.join('\n'));

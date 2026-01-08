@@ -9,6 +9,26 @@ import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../uti
 import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 
+function getEmbeddedCourseContentType(courseContent: any): any | undefined {
+  const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
+  if (!ct) return undefined;
+  return Array.isArray(ct) ? ct[0] : ct;
+}
+
+function normalizeStatus(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const s = value.trim().toLowerCase();
+  return s ? s : undefined;
+}
+
+function statusSeverity(status?: string): number {
+  if (!status) return 0;
+  if (status === 'correction_necessary') return 3;
+  if (status === 'correction_possible' || status === 'improvement_possible') return 2;
+  if (status === 'corrected') return 1;
+  return 0;
+}
+
 export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -103,8 +123,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
         }
         if (i === parts.length - 1) {
           // Leaf: attach course content and kind info
-          // Handle both course_content_type (singular) and course_content_types (plural)
-          const ct: any = (c as any).course_content_type || (c as any).course_content_types;
+          const ct: any = getEmbeddedCourseContentType(c);
           const ck = ct ? kindMap.get(ct.course_content_kind_id) : undefined;
           node.courseContent = c;
           (node as any).submissionGroup = c.submission_group;
@@ -119,6 +138,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     }
 
     this.aggregateUnreadCounts(root);
+    this.aggregateUnitDecorations(root);
     return root;
   }
 
@@ -132,6 +152,36 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
 
     node.unreadMessageCount = total;
     return total;
+  }
+
+  private aggregateUnitDecorations(node: ContentNode): { status?: string; color?: string } {
+    let bestStatus: string | undefined = normalizeStatus((node as any)?.status)
+      ?? normalizeStatus((node.courseContent as any)?.status)
+      ?? normalizeStatus((node as any)?.submissionGroup?.status);
+
+    let bestStatusSeverity = statusSeverity(bestStatus);
+
+    const ct = getEmbeddedCourseContentType(node.courseContent);
+    let bestColor: string | undefined = ct?.color || (node.courseContent as any)?.color;
+
+    node.children.forEach(child => {
+      const aggregated = this.aggregateUnitDecorations(child);
+
+      const childStatus = aggregated.status;
+      const childSeverity = statusSeverity(childStatus);
+      if (childSeverity > bestStatusSeverity) {
+        bestStatusSeverity = childSeverity;
+        bestStatus = childStatus;
+      }
+
+      if (!bestColor && aggregated.color) {
+        bestColor = aggregated.color;
+      }
+    });
+
+    (node as any).aggregatedStatus = bestStatus;
+    (node as any).aggregatedColor = bestColor;
+    return { status: bestStatus, color: bestColor };
   }
 
   private createTreeItems(node: ContentNode, memberId: string): vscode.TreeItem[] {
@@ -163,8 +213,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   private isAssignmentContent(content: CourseContentStudentList): boolean {
-    // Handle both course_content_type (singular) and course_content_types (plural)
-    const ct: any = (content as any).course_content_type || (content as any).course_content_types;
+    const ct: any = getEmbeddedCourseContentType(content);
     const kindId = ct?.course_content_kind_id;
     if (kindId && typeof kindId === 'string') {
       if (kindId.toLowerCase() === 'assignment') return true;
@@ -428,6 +477,8 @@ interface ContentNode {
   isUnit: boolean;
   unreadMessageCount?: number;
   submissionGroup?: SubmissionGroupStudentList;
+  aggregatedStatus?: string;
+  aggregatedColor?: string;
 }
 
 class MessageItem extends vscode.TreeItem {
@@ -446,7 +497,17 @@ class TutorUnitItem extends vscode.TreeItem {
     // Try to use a colored circle icon like in the student view
     try {
       const color = this.deriveColor(node) || 'grey';
-      this.iconPath = IconGenerator.getColoredIcon(color, 'circle');
+      const status = normalizeStatus(node.aggregatedStatus)
+        ?? normalizeStatus((node.courseContent as any)?.status)
+        ?? normalizeStatus(node.submissionGroup?.status);
+      const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
+        status === 'corrected' ? 'corrected'
+          : status === 'correction_necessary' ? 'correction_necessary'
+            : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
+              : 'none';
+      this.iconPath = corner === 'none'
+        ? IconGenerator.getColoredIcon(color, 'circle')
+        : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
     } catch {
       this.iconPath = new vscode.ThemeIcon('folder');
     }
@@ -458,11 +519,11 @@ class TutorUnitItem extends vscode.TreeItem {
     // Prefer the unit node's own content type color if available.
     if (node.courseContent) {
       const cc: any = node.courseContent as any;
-      // Handle both course_content_type (singular) and course_content_types (plural)
-      const ct = cc.course_content_type || cc.course_content_types;
+      const ct = getEmbeddedCourseContentType(cc);
       if (ct?.color) return ct.color as string;
       if (cc.color) return cc.color as string;
     }
+    if (node.aggregatedColor) return node.aggregatedColor;
     // Otherwise, no reliable unit color from the tutor endpoints; fall back to undefined (grey default)
     return undefined;
   }
@@ -474,10 +535,20 @@ class TutorUnitItem extends vscode.TreeItem {
     const tooltipLines = [
       `Unit: ${this.label?.toString() ?? 'Unit'}`
     ];
+    const status = this.node.aggregatedStatus || (this.node.courseContent as any)?.status || this.node.submissionGroup?.status;
+    if (status) {
+      tooltipLines.push(`Status: ${this.formatStatus(String(status))}`);
+    }
     if (unread > 0) {
       tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
     }
     this.tooltip = tooltipLines.join('\n');
+  }
+
+  private formatStatus(status: string): string {
+    return status
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
   }
 }
 
@@ -509,8 +580,7 @@ class TutorContentItem extends vscode.TreeItem {
   }
 
   updateVisuals(): void {
-    // Handle both course_content_type (singular) and course_content_types (plural)
-    const ct: any = (this.content as any).course_content_type || (this.content as any).course_content_types;
+    const ct: any = getEmbeddedCourseContentType(this.content);
     const color = ct?.color || 'grey';
     const kindId = ct?.course_content_kind_id;
     const shape = kindId === 'assignment' ? 'square' : 'circle';
@@ -518,7 +588,7 @@ class TutorContentItem extends vscode.TreeItem {
     let badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none';
     let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
     const submission: SubmissionGroupStudentList = this.content.submission_group!;
-    const status = submission?.status?.toLowerCase?.();
+    const status = normalizeStatus((this.content as any)?.status) ?? normalizeStatus(submission?.status);
     const grading = submission?.grading;
     if (status === 'corrected') corner = 'corrected';
     else if (status === 'correction_necessary') corner = 'correction_necessary';
