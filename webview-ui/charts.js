@@ -319,6 +319,8 @@
     }
 
     const colors = data.colors || data.labels.map((_, i) => DEFAULT_PALETTE[i % DEFAULT_PALETTE.length]);
+    const legendLabelFormatter = typeof options.legendLabelFormatter === 'function' ? options.legendLabelFormatter : null;
+    const tooltipLabelFormatter = typeof options.tooltipLabelFormatter === 'function' ? options.tooltipLabelFormatter : null;
 
     return new Chart(ctx, {
       type: options.pie ? 'pie' : 'doughnut',
@@ -359,7 +361,7 @@
                     const value = data.datasets[0].data[i];
                     const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
                     return {
-                      text: `${label}: ${percentage}%`,
+                      text: legendLabelFormatter ? legendLabelFormatter({ label, value, percentage, index: i, total, chart }) : `${label}: ${percentage}%`,
                       fillStyle: data.datasets[0].backgroundColor[i],
                       strokeStyle: data.datasets[0].backgroundColor[i],
                       hidden: false,
@@ -385,7 +387,9 @@
                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                 const value = context.raw;
                 const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                return `${context.label}: ${value} (${percentage}%)`;
+                return tooltipLabelFormatter
+                  ? tooltipLabelFormatter({ label: context.label, value, percentage, index: context.dataIndex, total, context })
+                  : `${context.label}: ${value} (${percentage}%)`;
               }
             }
           },

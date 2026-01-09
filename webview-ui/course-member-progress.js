@@ -83,20 +83,44 @@
   }
 
   function renderOverallProgress(gradings) {
-    const percentage = gradings.overall_progress_percentage || 0;
-    const submitted = gradings.total_submitted_assignments || 0;
-    const total = gradings.total_max_assignments || 0;
+    const total = toNonNegativeInt(gradings.total_max_assignments);
+    const submitted = toNonNegativeInt(gradings.total_submitted_assignments);
+    const remaining = Math.max(total - submitted, 0);
+
+    const percentageRaw = gradings.overall_progress_percentage;
+    const computedPercentage = total > 0 ? (submitted / total) * 100 : 0;
+    const percentage = clamp(
+      (typeof percentageRaw === 'number' && Number.isFinite(percentageRaw)) ? percentageRaw : computedPercentage,
+      0,
+      100
+    );
+    const percentageRounded = Math.round(percentage);
+
     const avgGrading = gradings.overall_average_grading;
-    const avgGradingDisplay = typeof avgGrading === 'number' ? `${Math.round(avgGrading * 100)}%` : '-';
+    const avgGradingDisplay = formatGrade(avgGrading);
+    const avgGradingPercentage = clamp(
+      (typeof avgGrading === 'number' && Number.isFinite(avgGrading)) ? avgGrading * 100 : 0,
+      0,
+      100
+    );
+    const avgGradingRounded = Math.round(avgGradingPercentage);
 
     return `
       <div class="overall-progress-card">
         <div class="overall-progress-card__header">
-          <h2 class="overall-progress-card__title">Overall Progress</h2>
-          <div class="overall-progress-card__percentage">${percentage}%</div>
+          <h2 class="overall-progress-card__title">Grade</h2>
+          <div class="overall-progress-card__percentage">${avgGradingDisplay}</div>
         </div>
         <div class="overall-progress-card__bar">
-          <div class="overall-progress-card__fill" style="width: ${percentage}%;"></div>
+          <div class="overall-progress-card__fill" style="width: ${avgGradingRounded}%; background-color: var(--vscode-debugIcon-continueForeground);"></div>
+        </div>
+
+        <div class="overall-progress-card__header" style="margin-top: 16px;">
+          <h2 class="overall-progress-card__title">Overall Progress</h2>
+          <div class="overall-progress-card__percentage">${percentageRounded}%</div>
+        </div>
+        <div class="overall-progress-card__bar">
+          <div class="overall-progress-card__fill" style="width: ${percentageRounded}%;"></div>
         </div>
         <div class="overall-progress-card__stats">
           <div class="overall-progress-card__stat">
@@ -105,11 +129,7 @@
           </div>
           <div class="overall-progress-card__stat">
             <span>Remaining:</span>
-            <span class="overall-progress-card__stat-value">${total - submitted}</span>
-          </div>
-          <div class="overall-progress-card__stat">
-            <span>Avg. Grade:</span>
-            <span class="overall-progress-card__stat-value">${avgGradingDisplay}</span>
+            <span class="overall-progress-card__stat-value">${remaining}</span>
           </div>
         </div>
       </div>
@@ -122,7 +142,7 @@
     return `
       <div class="member-charts-row">
         <div class="chart-card">
-          <h3 class="chart-card__title">Completion by Type</h3>
+          <h3 class="chart-card__title">Submissions by Type</h3>
           <div class="chart-card__canvas">
             <canvas id="donutChart"></canvas>
           </div>
@@ -149,7 +169,7 @@
       const submitted = ct.submitted_assignments || 0;
       const total = ct.max_assignments || 0;
       const avgGrading = ct.average_grading;
-      const avgGradingDisplay = typeof avgGrading === 'number' ? `${Math.round(avgGrading * 100)}%` : '-';
+      const avgGradingDisplay = formatGrade(avgGrading);
 
       return `
         <div class="content-type-item">
@@ -158,7 +178,7 @@
               <span class="content-type-item__dot" style="background-color: ${color}"></span>
               ${escapeHtml(label)}
             </span>
-            <span class="content-type-item__stats">${submitted} / ${total} (${percentage}%) | Avg: ${avgGradingDisplay}</span>
+            <span class="content-type-item__stats">${submitted} / ${total} (${percentage}%) | Grade: ${avgGradingDisplay}</span>
           </div>
           <div class="content-type-item__bar">
             <div class="content-type-item__fill" style="width: ${percentage}%;"></div>
@@ -355,12 +375,19 @@
     const labels = contentTypes.map(ct => ct.course_content_type_title || ct.course_content_type_slug);
     const values = contentTypes.map(ct => ct.submitted_assignments || 0);
     const colors = contentTypes.map(ct => ct.course_content_type_color || ComputorCharts.DEFAULT_PALETTE[0]);
+    const segments = contentTypes.map(ct => ({
+      kind: 'type',
+      submitted: ct.submitted_assignments || 0,
+      max: ct.max_assignments || 0,
+      progressPercentage: ct.progress_percentage || 0
+    }));
 
     // Add "Remaining" segment if there are incomplete assignments
     if (remaining > 0) {
       labels.push('Remaining');
       values.push(remaining);
       colors.push('rgba(100, 149, 237, 0.2)'); // Light blue to match unfilled progress bars
+      segments.push({ kind: 'remaining', remaining });
     }
 
     donutChart = ComputorCharts.createDonutChart('donutChart', {
@@ -369,7 +396,21 @@
       colors
     }, {
       cutout: '65%',
-      legendPosition: 'bottom'
+      legendPosition: 'bottom',
+      legendLabelFormatter: ({ label, value, percentage, index }) => {
+        const seg = segments[index];
+        if (seg?.kind === 'type') {
+          return `${label}: ${seg.submitted}/${seg.max} (${seg.progressPercentage}%)`;
+        }
+        return `${label}: ${value} (${percentage}%)`;
+      },
+      tooltipLabelFormatter: ({ label, value, percentage, index }) => {
+        const seg = segments[index];
+        if (seg?.kind === 'type') {
+          return `${label}: ${seg.submitted}/${seg.max} submitted (${seg.progressPercentage}%)`;
+        }
+        return `${label}: ${value} (${percentage}%)`;
+      }
     });
   }
 
@@ -403,6 +444,22 @@
     const div = document.createElement('div');
     div.textContent = String(text);
     return div.innerHTML;
+  }
+
+  function formatGrade(value) {
+    if (typeof value !== 'number') return '-';
+    const pct = (value * 100).toFixed(1).replace(/\\.0$/, '');
+    return `${pct}%`;
+  }
+
+  function toNonNegativeInt(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+    return Math.max(0, Math.floor(value));
+  }
+
+  function clamp(value, min, max) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return min;
+    return Math.min(max, Math.max(min, value));
   }
 
   // Global handlers
