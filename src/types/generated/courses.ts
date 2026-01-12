@@ -688,7 +688,7 @@ export interface CourseMemberGradingNode {
   /** Count of graded assignments at or under this path */
   graded_assignments?: number | null;
   /** Grading status: 'not_reviewed', 'corrected', 'correction_necessary', or 'improvement_possible'. For units: aggregated from descendants. */
-  grading_status?: string | null;
+  status?: string | null;
 }
 
 /**

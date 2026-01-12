@@ -774,7 +774,7 @@ export class ComputorApiService {
   async getSubmissionArtifact(artifactId: string): Promise<any | undefined> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<any>(`/submissions/artifacts/${artifactId}`);
+      const response = await client.get<any>(`/submissions/${artifactId}`);
       return response.data;
     } catch (error) {
       console.error('Failed to get submission artifact:', error);
