@@ -590,7 +590,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         
         for (const content of sortedContent) {
             // Student endpoint has everything embedded
-            const contentType = content.course_content_type;
+            // Handle both course_content_type (singular) and course_content_types (plural)
+            const contentType = content.course_content_type || (content as any).course_content_types;
             const contentKind = contentType ? contentKindMap.get(contentType.course_content_kind_id) : undefined;
             const submissionGroup = content.submission_group || undefined;
             
@@ -810,12 +811,23 @@ class CourseContentPathItem extends TreeItem {
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         
-        // Use colored icon based on content type, defaulting to grey
-        const color = node.contentType?.color || 'grey';
-        
         try {
-            // Units (folders) always use circle shape
-            this.iconPath = IconGenerator.getColoredIcon(color, 'circle');
+            // Units (folders) always use circle shape; include grading-status corner dot when available.
+            const derivedContentType = node.contentType
+                || (node.courseContent as any)?.course_content_type
+                || (node.courseContent as any)?.course_content_types;
+            const color = derivedContentType?.color || (node.courseContent as any)?.color || 'grey';
+
+            const status = ((node.courseContent as any)?.status || node.submissionGroup?.status)?.toLowerCase?.();
+            const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
+                status === 'corrected' ? 'corrected'
+                    : status === 'correction_necessary' ? 'correction_necessary'
+                        : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
+                            : 'none';
+
+            this.iconPath = corner === 'none'
+                ? IconGenerator.getColoredIcon(color, 'circle')
+                : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
         } catch {
             // Fallback to default folder icon
             this.iconPath = new vscode.ThemeIcon('folder-opened');
@@ -857,10 +869,20 @@ class CourseContentPathItem extends TreeItem {
         if (node.contentType?.title) {
             tooltipLines.push(`Type: ${node.contentType.title}`);
         }
+        const status = (node.courseContent as any)?.status || node.submissionGroup?.status;
+        if (status) {
+            tooltipLines.push(`Status: ${this.formatStatus(status)}`);
+        }
         if (unread > 0) {
             tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
         }
         this.tooltip = tooltipLines.join('\n');
+    }
+
+    private formatStatus(status: string): string {
+        return status
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, c => c.toUpperCase());
     }
 }
 
@@ -916,14 +938,26 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 
     // Update this item's data from a fresh course content object
     public applyUpdate(updatedContent: CourseContentStudentList): void {
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const newContentType = (updatedContent as any).course_content_type || (updatedContent as any).course_content_types;
+
+        console.log('[CourseContentItem.applyUpdate] Applying update:', {
+            contentId: updatedContent.id,
+            hasCourseContentType: !!(updatedContent as any).course_content_type,
+            hasCourseContentTypes: !!(updatedContent as any).course_content_types,
+            newContentTypeColor: newContentType?.color,
+            newContentTypeKind: newContentType?.course_content_kind_id,
+            oldContentType: this.contentType ? { color: this.contentType.color, kind: this.contentType.course_content_kind_id } : null
+        });
+
         // Preserve the old absolute directory path before overwriting
         const oldDirectory = (this.courseContent as any)?.directory;
 
         // Overwrite backing fields (readonly at type-level only)
         (this as any).courseContent = updatedContent;
         (this as any).submissionGroup = updatedContent.submission_group;
-        if ((updatedContent as any)?.course_content_type) {
-            (this as any).contentType = (updatedContent as any).course_content_type;
+        if (newContentType) {
+            (this as any).contentType = newContentType;
         }
 
         // If we had an absolute path and the new data has a relative path or no path,
@@ -945,8 +979,20 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     
     private setupIcon(): void {
         // Use the color from contentType, or grey as default
-        const derivedContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const derivedContentType = this.contentType
+            || (this.courseContent as any)?.course_content_type
+            || (this.courseContent as any)?.course_content_types;
         const color = derivedContentType?.color || (this.courseContent as any)?.color || 'grey';
+
+        console.log('[CourseContentItem.setupIcon] Setting up icon:', {
+            contentId: this.courseContent?.id,
+            derivedContentType: derivedContentType ? { color: derivedContentType.color, kind: derivedContentType.course_content_kind_id } : null,
+            color,
+            hasContentType: !!this.contentType,
+            hasCourseContentType: !!(this.courseContent as any)?.course_content_type,
+            hasCourseContentTypes: !!(this.courseContent as any)?.course_content_types
+        });
 
         try {
             // Determine shape based on course_content_kind_id
@@ -956,6 +1002,14 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             // Determine success/failure badge for assignments with grading info
             let badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none';
             let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
+
+            // Get status: prefer courseContent.status (works for both assignments and units),
+            // fallback to submissionGroup.status for backward compatibility
+            const status = ((this.courseContent as any)?.status || this.submissionGroup?.status)?.toLowerCase();
+            if (status === 'corrected') corner = 'corrected';
+            else if (status === 'correction_necessary') corner = 'correction_necessary';
+            else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
+
             if (shape === 'square') {
                 const result = this.courseContent?.result?.result as number | undefined;
                 const submitted = this.courseContent?.submitted;
@@ -973,18 +1027,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                     // Submitted but not tested yet
                     badge = 'submitted';
                 }
-
-                const status = (this.submissionGroup?.status)?.toLowerCase();
-                if (status === 'corrected') corner = 'corrected';
-                else if (status === 'correction_necessary') corner = 'correction_necessary';
-                else if (status === 'correction_possible' || status === 'improvement_possible') corner = 'correction_possible';
             }
 
             this.iconPath = (badge === 'none' && corner === 'none')
                 ? IconGenerator.getColoredIcon(color, shape)
                 : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
-        } catch {
+        } catch (error) {
             // Fallback to default theme icons if icon generation fails
+            console.error('[CourseContentItem] Icon generation failed:', error, {
+                color,
+                contentType: this.contentType,
+                courseContentType: (this.courseContent as any)?.course_content_type
+            });
             if (hasExampleAssigned(this.courseContent)) {
                 this.iconPath = new vscode.ThemeIcon('file-code');
             } else {
@@ -994,7 +1048,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
     
     private isAssignment(): boolean {
-        const effectiveContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const effectiveContentType = this.contentType
+            || (this.courseContent as any)?.course_content_type
+            || (this.courseContent as any)?.course_content_types;
         if (!effectiveContentType) return hasExampleAssigned(this.courseContent);
 
         // First check the explicit kind_id
@@ -1054,7 +1111,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);
         }
 
-        const tooltipContentType = this.contentType || (this.courseContent as any)?.course_content_type;
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const tooltipContentType = this.contentType
+            || (this.courseContent as any)?.course_content_type
+            || (this.courseContent as any)?.course_content_types;
         if (tooltipContentType) {
             lines.push(`Type: ${tooltipContentType.title || tooltipContentType.slug}`);
         }
@@ -1089,8 +1149,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
 
         // Additional grading details and team members
-        if (this.submissionGroup?.grading !== undefined && this.submissionGroup?.status) {
-            lines.push(`Status: ${this.formatStatus(this.submissionGroup.status)}`);
+        // Use courseContent.status (works for both assignments and units) with fallback to submissionGroup.status
+        const status = (this.courseContent as any)?.status || this.submissionGroup?.status;
+        if (status) {
+            lines.push(`Status: ${this.formatStatus(status)}`);
         }
         if (this.submissionGroup?.members && this.submissionGroup.members.length > 1) {
             lines.push('Team members:');

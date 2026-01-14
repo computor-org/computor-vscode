@@ -10,6 +10,8 @@ export interface WorkspaceDirectories {
   reviewReference: string;
   reviewSubmissions: string;
   reference: string;
+  tmp: string;
+  tmpArtifacts: string;
 }
 
 export class WorkspaceStructureManager {
@@ -36,6 +38,7 @@ export class WorkspaceStructureManager {
    */
   getDirectories(): WorkspaceDirectories {
     const review = path.join(this.workspaceRoot, 'review');
+    const tmp = path.join(this.workspaceRoot, 'tmp');
     return {
       root: this.workspaceRoot,
       student: path.join(this.workspaceRoot, 'student'),
@@ -43,7 +46,9 @@ export class WorkspaceStructureManager {
       reviewRepositories: path.join(review, 'repositories'),
       reviewReference: path.join(review, 'reference'),
       reviewSubmissions: path.join(review, 'submissions'),
-      reference: path.join(this.workspaceRoot, 'reference')
+      reference: path.join(this.workspaceRoot, 'reference'),
+      tmp,
+      tmpArtifacts: path.join(tmp, 'artifacts')
     };
   }
 
@@ -58,6 +63,8 @@ export class WorkspaceStructureManager {
     await fs.promises.mkdir(dirs.reviewReference, { recursive: true });
     await fs.promises.mkdir(dirs.reviewSubmissions, { recursive: true });
     await fs.promises.mkdir(dirs.reference, { recursive: true });
+    await fs.promises.mkdir(dirs.tmp, { recursive: true });
+    await fs.promises.mkdir(dirs.tmpArtifacts, { recursive: true });
   }
 
   /**
@@ -246,6 +253,37 @@ export class WorkspaceStructureManager {
       const entries = await fs.promises.readdir(submissionGroupPath, { withFileTypes: true });
       return entries
         .filter(entry => entry.isDirectory())
+        .map(entry => entry.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get result artifacts directory path for a result ID
+   */
+  getResultArtifactsPath(resultId: string): string {
+    const dirs = this.getDirectories();
+    return path.join(dirs.tmpArtifacts, resultId);
+  }
+
+  /**
+   * Check if result artifacts exist for a result ID
+   */
+  async resultArtifactsExist(resultId: string): Promise<boolean> {
+    const artifactsPath = this.getResultArtifactsPath(resultId);
+    return this.directoryExists(artifactsPath);
+  }
+
+  /**
+   * Get all files in the result artifacts directory
+   */
+  async getResultArtifactFiles(resultId: string): Promise<string[]> {
+    const artifactsPath = this.getResultArtifactsPath(resultId);
+    try {
+      const entries = await fs.promises.readdir(artifactsPath, { withFileTypes: true });
+      return entries
+        .filter(entry => entry.isFile())
         .map(entry => entry.name);
     } catch {
       return [];

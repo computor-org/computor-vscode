@@ -215,6 +215,8 @@ export class StudentCommands {
       vscode.commands.registerCommand('computor.showTestResults', async (item?: any) => {
         try {
           let resultPayload: any | undefined;
+          let resultId: string | undefined;
+          let resultArtifacts: any[] | undefined;
 
           // Get course content ID from the item
           const courseContentId = item?.courseContent?.id;
@@ -228,8 +230,11 @@ export class StudentCommands {
             console.log('[showTestResults] Result keys:', result ? Object.keys(result) : 'no result');
             if (result) {
               resultPayload = result.result_json ?? result;
+              resultId = result.id;
+              resultArtifacts = result.result_artifacts;
               console.log('[showTestResults] Result payload:', JSON.stringify(resultPayload, null, 2));
               console.log('[showTestResults] Has result_json?', !!result.result_json);
+              console.log('[showTestResults] Result artifacts count:', resultArtifacts?.length ?? 0);
             }
           } else {
             // Fallback to item data if no ID available
@@ -237,11 +242,13 @@ export class StudentCommands {
             const result = courseContent?.result;
             if (result) {
               resultPayload = result.result_json ?? result;
+              resultId = result.id;
+              resultArtifacts = result.result_artifacts;
             }
           }
 
           if (resultPayload) {
-            await vscode.commands.executeCommand('computor.results.open', resultPayload);
+            await vscode.commands.executeCommand('computor.results.open', resultPayload, resultId, resultArtifacts);
           }
 
           try {
@@ -432,9 +439,12 @@ export class StudentCommands {
           let assignmentTitle: string | undefined;
           let submissionGroup: SubmissionGroupStudentList | undefined;
           let courseContentId: string | undefined;
+          let testingServiceId: string | null | undefined;
+          let courseContent: CourseContentStudentList | CourseContentStudentGet | undefined;
 
           if (itemOrSubmissionGroup?.courseContent) {
             const item = itemOrSubmissionGroup;
+            courseContent = item.courseContent as CourseContentStudentList | CourseContentStudentGet;
             directory = (item.courseContent as any)?.directory as string | undefined;
             {
               const pv: any = (item.courseContent as any)?.path;
@@ -446,6 +456,7 @@ export class StudentCommands {
             }
             submissionGroup = item.submissionGroup as SubmissionGroupStudentList | undefined;
             courseContentId = typeof item.courseContent?.id === 'string' ? item.courseContent.id : undefined;
+            testingServiceId = courseContent?.testing_service_id;
           } else {
             // Backward compatibility with old signature
             submissionGroup = itemOrSubmissionGroup as SubmissionGroupStudentList | undefined;
@@ -470,6 +481,10 @@ export class StudentCommands {
               directory = (match as any)?.directory as string | undefined;
               if (!courseContentId && match?.id) {
                 courseContentId = String(match.id);
+              }
+              if (match) {
+                courseContent = match;
+                testingServiceId = match.testing_service_id;
               }
             }
           }
@@ -524,8 +539,9 @@ export class StudentCommands {
 
               const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
               if (hasStagedFiles) {
-                const commitDate = new Date().toISOString();
-                const commitMessage = `Submit ${commitLabel} at ${commitDate}`;
+                const now = new Date();
+                const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
+                const commitMessage = `Update ${commitLabel} - ${timestamp}`;
                 progress.report({ message: 'Committing changes...' });
                 await this.gitService.commitChanges(repoPath, commitMessage);
               }
@@ -558,6 +574,117 @@ export class StudentCommands {
             }
           } catch (listError) {
             console.warn('[submitAssignment] Failed to check tested artifacts:', listError);
+          }
+
+          // Check if current commit has been tested
+          const currentCommitTested = latestTestedArtifact?.version_identifier === currentCommitHash;
+
+          // If testing is required and current commit hasn't been tested, run test first
+          if (testingServiceId && !currentCommitTested) {
+            console.log(`[submitAssignment] Testing required (testing_service_id: ${testingServiceId}), running test first...`);
+
+            let testArtifactId: string | undefined;
+
+            // Check if artifact already exists for current commit (untested)
+            try {
+              const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+                submission_group_id: submissionGroupId,
+                version_identifier: currentCommitHash
+              });
+
+              if (existingArtifacts.length > 0) {
+                const artifact = existingArtifacts[0];
+                if (artifact) {
+                  const hasResult = artifact.result !== undefined && artifact.result !== null;
+                  if (hasResult) {
+                    // Already tested, update latestTestedArtifact
+                    console.log(`[submitAssignment] Commit ${currentCommitHash} already tested`);
+                    latestTestedArtifact = artifact;
+                  } else {
+                    // Artifact exists but not tested - reuse it for testing
+                    console.log(`[submitAssignment] Reusing existing untested artifact ID: ${artifact.id}`);
+                    testArtifactId = artifact.id;
+                  }
+                }
+              }
+            } catch (checkError) {
+              console.warn('[submitAssignment] Failed to check existing artifacts:', checkError);
+            }
+
+            // If no existing artifact, create one
+            if (!testArtifactId && !latestTestedArtifact?.version_identifier) {
+              await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Testing ${assignmentTitle}...`,
+                cancellable: false
+              }, async (progress) => {
+                progress.report({ message: 'Packaging submission archive...' });
+                const archive = await this.createSubmissionArchive(submissionDirectory);
+                console.log(`[submitAssignment] Archive created for testing`);
+
+                progress.report({ message: 'Uploading for testing...' });
+                const testSubmissionResponse = await this.apiService.createStudentSubmission({
+                  submission_group_id: submissionGroupId,
+                  version_identifier: currentCommitHash,
+                  submit: false
+                }, archive);
+                console.log(`[submitAssignment] Created test artifact:`, testSubmissionResponse);
+
+                if (testSubmissionResponse?.artifacts && testSubmissionResponse.artifacts.length > 0) {
+                  testArtifactId = testSubmissionResponse.artifacts[0];
+                }
+              });
+            }
+
+            // Run the test and wait for results
+            if (testArtifactId && courseContentId) {
+              console.log(`[submitAssignment] Submitting test with artifact ID: ${testArtifactId}`);
+              const testResult = await this.testResultService.submitTestByArtifactAndAwaitResults(
+                testArtifactId,
+                assignmentTitle || 'Assignment',
+                undefined,
+                { courseContentId }
+              );
+
+              // Check if test was successful
+              // Test is considered successful if status is SUCCESS (regardless of score)
+              // We allow submission even with partial test scores
+              if (!testResult || testResult.status === 'ERROR' || testResult.status === 'TIMEOUT') {
+                vscode.window.showErrorMessage('Test execution failed. Please try again.');
+                // Clear cache and refresh tree
+                if (courseContentId) {
+                  this.apiService.clearStudentCourseContentCache(courseContentId);
+                  this.treeDataProvider.refresh();
+                }
+                return;
+              }
+
+              if (testResult.status === 'CANCELLED') {
+                vscode.window.showWarningMessage('Test was cancelled. Submission aborted.');
+                if (courseContentId) {
+                  this.apiService.clearStudentCourseContentCache(courseContentId);
+                  this.treeDataProvider.refresh();
+                }
+                return;
+              }
+
+              // FAILED status means test execution failed (not that tests didn't pass)
+              // We still proceed with submission as the student may want to submit anyway
+              console.log(`[submitAssignment] Test completed with status: ${testResult.status}, proceeding with submission`);
+
+              // Update latestTestedArtifact with the newly tested artifact
+              try {
+                const testedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+                  submission_group_id: submissionGroupId,
+                  version_identifier: currentCommitHash
+                });
+                if (testedArtifacts.length > 0) {
+                  latestTestedArtifact = testedArtifacts[0];
+                }
+              } catch (refreshError) {
+                console.warn('[submitAssignment] Failed to refresh tested artifact:', refreshError);
+              }
+            }
           }
 
           // Determine which version to submit
@@ -1204,8 +1331,12 @@ export class StudentCommands {
       const submissionGroupDetails = courseContentDetails?.submission_group as SubmissionGroupStudentGet | undefined;
       const submissionGroupCombined: SubmissionGroupStudentGet | SubmissionGroupStudentList | undefined = submissionGroupDetails ?? submissionGroupSummary;
 
-      if (!contentType && (courseContent as any).course_content_type) {
-        contentType = (courseContent as any).course_content_type as CourseContentTypeList;
+      // Handle both course_content_type (singular) and course_content_types (plural)
+      if (!contentType) {
+        const ct = (courseContent as any).course_content_type || (courseContent as any).course_content_types;
+        if (ct) {
+          contentType = ct as CourseContentTypeList;
+        }
       }
 
       if (!localPath) {

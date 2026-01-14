@@ -9,6 +9,18 @@ import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../uti
 import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 
+function getEmbeddedCourseContentType(courseContent: any): any | undefined {
+  const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
+  if (!ct) return undefined;
+  return Array.isArray(ct) ? ct[0] : ct;
+}
+
+function normalizeStatus(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const s = value.trim().toLowerCase();
+  return s ? s : undefined;
+}
+
 export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -73,51 +85,63 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     return [];
   }
 
-  // Tree building similar to student provider (simplified)
+  // Tree building similar to student provider
   private buildContentTree(contents: CourseContentStudentList[], kinds: CourseContentKindList[]): ContentNode {
     const root: ContentNode = { children: new Map(), isUnit: false };
     const kindMap = new Map<string, CourseContentKindList>();
     kinds.forEach(k => kindMap.set(k.id, k));
 
-    // Build a map of nodes; synthesize parent unit nodes if backend doesn't return them
-    const nodeMap = new Map<string, ContentNode>();
+    // Sort by path depth first (shorter paths = higher in tree), then by position
+    const sortedContents = [...contents].sort((a, b) => {
+      const aDepth = (a.path.match(/\./g) || []).length;
+      const bDepth = (b.path.match(/\./g) || []).length;
+      if (aDepth !== bDepth) {
+        return aDepth - bDepth;
+      }
+      return a.position - b.position;
+    });
 
-    for (const c of contents) {
-      const parts = c.path.split('.');
-      let currentPath = '';
-      let parentNode = root;
-      for (let i = 0; i < parts.length; i++) {
-        const seg = parts[i] ?? '';
-        const head = parts[0] ?? '';
-        currentPath = i === 0 ? head : `${currentPath}.${seg}`;
-        let node = nodeMap.get(currentPath);
-        if (!node) {
-          node = {
-            name: i === parts.length - 1 ? ((c.title ?? seg) as string) : seg,
-            children: new Map(),
-            isUnit: i !== parts.length - 1,
-            unreadMessageCount: 0,
-          } as ContentNode;
-          nodeMap.set(currentPath, node);
-          parentNode.children.set(currentPath, node);
+    // Create a map to track all content items by their path for parent-child lookup
+    const contentMap = new Map<string, ContentNode>();
+
+    for (const content of sortedContents) {
+      const ct: any = getEmbeddedCourseContentType(content);
+      const contentKind = ct ? kindMap.get(ct.course_content_kind_id) : undefined;
+      const submissionGroup = content.submission_group || undefined;
+      const isUnit = contentKind ? !!contentKind.has_descendants : false;
+
+      const node: ContentNode = {
+        name: content.title || content.path.split('.').pop() || content.path,
+        children: new Map(),
+        courseContent: content,
+        contentKind,
+        isUnit,
+        unreadMessageCount: (content as any).unread_message_count ?? 0,
+        submissionGroup,
+      };
+
+      contentMap.set(content.path, node);
+
+      // Find parent path and attach to parent or root
+      const pathParts = content.path.split('.');
+      if (pathParts.length === 1) {
+        // Top-level item, add directly to root
+        root.children.set(content.path, node);
+      } else {
+        // Find parent by removing the last part of the path
+        const parentPath = pathParts.slice(0, -1).join('.');
+        const parentNode = contentMap.get(parentPath);
+        if (parentNode) {
+          parentNode.children.set(content.path, node);
+        } else {
+          // Parent doesn't exist in API response, add to root
+          root.children.set(content.path, node);
         }
-        if (i === parts.length - 1) {
-          // Leaf: attach course content and kind info
-          const ct: any = (c as any).course_content_type;
-          const ck = ct ? kindMap.get(ct.course_content_kind_id) : undefined;
-          node.courseContent = c;
-          (node as any).submissionGroup = c.submission_group;
-          node.contentKind = ck;
-          node.isUnit = ck ? !!ck.has_descendants : false;
-          // Ensure the displayed name uses the course content title when available
-          node.name = ((c.title as string | undefined) ?? node.name ?? seg) as string;
-          node.unreadMessageCount = (c as any).unread_message_count ?? 0;
-        }
-        parentNode = node;
       }
     }
 
     this.aggregateUnreadCounts(root);
+    this.aggregateUnitDecorations(root);
     return root;
   }
 
@@ -131,6 +155,22 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
 
     node.unreadMessageCount = total;
     return total;
+  }
+
+  private aggregateUnitDecorations(node: ContentNode): { color?: string } {
+    const ct = getEmbeddedCourseContentType(node.courseContent);
+    let bestColor: string | undefined = ct?.color || (node.courseContent as any)?.color;
+
+    node.children.forEach(child => {
+      const aggregated = this.aggregateUnitDecorations(child);
+
+      if (!bestColor && aggregated.color) {
+        bestColor = aggregated.color;
+      }
+    });
+
+    (node as any).aggregatedColor = bestColor;
+    return { color: bestColor };
   }
 
   private createTreeItems(node: ContentNode, memberId: string): vscode.TreeItem[] {
@@ -162,7 +202,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   }
 
   private isAssignmentContent(content: CourseContentStudentList): boolean {
-    const ct: any = (content as any).course_content_type;
+    const ct: any = getEmbeddedCourseContentType(content);
     const kindId = ct?.course_content_kind_id;
     if (kindId && typeof kindId === 'string') {
       if (kindId.toLowerCase() === 'assignment') return true;
@@ -426,6 +466,7 @@ interface ContentNode {
   isUnit: boolean;
   unreadMessageCount?: number;
   submissionGroup?: SubmissionGroupStudentList;
+  aggregatedColor?: string;
 }
 
 class MessageItem extends vscode.TreeItem {
@@ -444,7 +485,15 @@ class TutorUnitItem extends vscode.TreeItem {
     // Try to use a colored circle icon like in the student view
     try {
       const color = this.deriveColor(node) || 'grey';
-      this.iconPath = IconGenerator.getColoredIcon(color, 'circle');
+      const status = ((node.courseContent as any)?.status || node.submissionGroup?.status)?.toLowerCase?.();
+      const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
+        status === 'corrected' ? 'corrected'
+          : status === 'correction_necessary' ? 'correction_necessary'
+            : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
+              : 'none';
+      this.iconPath = corner === 'none'
+        ? IconGenerator.getColoredIcon(color, 'circle')
+        : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
     } catch {
       this.iconPath = new vscode.ThemeIcon('folder');
     }
@@ -456,10 +505,11 @@ class TutorUnitItem extends vscode.TreeItem {
     // Prefer the unit node's own content type color if available.
     if (node.courseContent) {
       const cc: any = node.courseContent as any;
-      const ct = cc.course_content_type;
+      const ct = getEmbeddedCourseContentType(cc);
       if (ct?.color) return ct.color as string;
       if (cc.color) return cc.color as string;
     }
+    if (node.aggregatedColor) return node.aggregatedColor;
     // Otherwise, no reliable unit color from the tutor endpoints; fall back to undefined (grey default)
     return undefined;
   }
@@ -471,10 +521,20 @@ class TutorUnitItem extends vscode.TreeItem {
     const tooltipLines = [
       `Unit: ${this.label?.toString() ?? 'Unit'}`
     ];
+    const status = (this.node.courseContent as any)?.status || this.node.submissionGroup?.status;
+    if (status) {
+      tooltipLines.push(`Status: ${this.formatStatus(String(status))}`);
+    }
     if (unread > 0) {
       tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
     }
     this.tooltip = tooltipLines.join('\n');
+  }
+
+  private formatStatus(status: string): string {
+    return status
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
   }
 }
 
@@ -506,7 +566,7 @@ class TutorContentItem extends vscode.TreeItem {
   }
 
   updateVisuals(): void {
-    const ct: any = (this.content as any).course_content_type;
+    const ct: any = getEmbeddedCourseContentType(this.content);
     const color = ct?.color || 'grey';
     const kindId = ct?.course_content_kind_id;
     const shape = kindId === 'assignment' ? 'square' : 'circle';
@@ -514,7 +574,7 @@ class TutorContentItem extends vscode.TreeItem {
     let badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none';
     let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
     const submission: SubmissionGroupStudentList = this.content.submission_group!;
-    const status = submission?.status?.toLowerCase?.();
+    const status = normalizeStatus((this.content as any)?.status) ?? normalizeStatus(submission?.status);
     const grading = submission?.grading;
     if (status === 'corrected') corner = 'corrected';
     else if (status === 'correction_necessary') corner = 'correction_necessary';

@@ -20,8 +20,6 @@ import type { OrganizationGet } from './organizations';
 
 import type { TaskStatus } from './tasks';
 
-import type { UserGet } from './users';
-
 
 
 export interface StudentProfileCreate {
@@ -2635,68 +2633,11 @@ export interface DeployExampleRequest {
 }
 
 /**
- * DTO for creating a student.
- */
-export interface StudentCreate {
-  user_id?: string | null;
-  user?: UserGet | null;
-  course_group_id?: string | null;
-  course_group_title?: string | null;
-  role?: string | null;
-}
-
-/**
- * DTO for releasing multiple students.
- */
-export interface ReleaseStudentsCreate {
-  students?: StudentCreate[];
-  course_id: string;
-}
-
-/**
- * DTO for TUG student export data.
- */
-export interface TUGStudentExport {
-  course_group_title: string;
-  family_name: string;
-  given_name: string;
-  matriculation_number: string;
-  created_at: string;
-}
-
-/**
- * DTO for status query parameters.
- */
-export interface StatusQuery {
-  course_id?: string | null;
-}
-
-/**
  * GitLab connection credentials.
  */
 export interface GitLabCredentials {
   gitlab_url: string;
   gitlab_token: string;
-}
-
-/**
- * Represents a pending change for template generation.
- */
-export interface PendingChange {
-  /** new, update, remove */
-  type: string;
-  content_id: string;
-  path: string;
-  title: string;
-}
-
-/**
- * Response for pending changes check.
- */
-export interface PendingChangesResponse {
-  total_changes: number;
-  changes: PendingChange[];
-  last_release?: Record<string, any> | null;
 }
 
 /**
@@ -2877,6 +2818,17 @@ export interface ResultCreate {
   status: TaskStatus;
 }
 
+/**
+ * Artifact information embedded in ResultGet.
+ */
+export interface ResultArtifactInfo {
+  id: string;
+  filename: string;
+  content_type?: string | null;
+  file_size: number;
+  created_at?: string | null;
+}
+
 export interface ResultGet {
   /** Creation timestamp */
   created_at?: string | null;
@@ -2900,6 +2852,9 @@ export interface ResultGet {
   reference_version_identifier?: string | null;
   status: TaskStatus;
   grading_ids?: string[] | null;
+  has_artifacts?: boolean;
+  artifact_count?: number;
+  result_artifacts?: ResultArtifactInfo[];
 }
 
 export interface ResultList {
@@ -2920,6 +2875,8 @@ export interface ResultList {
   version_identifier: string;
   reference_version_identifier?: string | null;
   status: TaskStatus;
+  has_artifacts?: boolean;
+  artifact_count?: number;
 }
 
 export interface ResultUpdate {
@@ -2976,6 +2933,9 @@ export interface ResultWithGrading {
   reference_version_identifier?: string | null;
   status: TaskStatus;
   grading_ids?: string[] | null;
+  has_artifacts?: boolean;
+  artifact_count?: number;
+  result_artifacts?: ResultArtifactInfo[];
   latest_grading?: any | null;
   grading_count?: number;
 }
@@ -3311,6 +3271,7 @@ export interface TutorGradeResponse {
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  testing_service_id?: string | null;
   directory?: string | null;
   color: string;
   result?: ResultStudentList | null;
@@ -3318,6 +3279,7 @@ export interface TutorGradeResponse {
   unread_message_count?: number;
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
+  status?: string | null;
   graded_artifact_id?: string | null;
   graded_artifact_info?: GradedArtifactInfo | null;
 }
@@ -3664,7 +3626,6 @@ export interface SubmissionGroupMemberGet {
   updated_by?: string | null;
   id: string;
   course_id: string;
-  course_content_id: string;
   course_member_id: string;
   submission_group_id: string;
   grading?: number | null;
@@ -3675,7 +3636,6 @@ export interface SubmissionGroupMemberGet {
 export interface SubmissionGroupMemberList {
   id: string;
   course_id: string;
-  course_content_id: string;
   course_member_id: string;
   submission_group_id: string;
   grading?: number | null;

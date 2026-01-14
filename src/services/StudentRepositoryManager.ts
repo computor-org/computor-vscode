@@ -107,7 +107,9 @@ export class StudentRepositoryManager {
 
     for (const content of courseContents) {
       // Check if it's an assignment with a repository
-      const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' ||
+      // Handle both course_content_type (singular) and course_content_types (plural)
+      const contentType = content.course_content_type || content.course_content_types;
+      const isAssignment = contentType?.course_content_kind_id === 'assignment' ||
                           content.example_id;
       const repo = content.submission_group?.repository;
 
@@ -346,7 +348,9 @@ export class StudentRepositoryManager {
           }
         
         // Try to find the repository for this content
-        const isAssignment = content.course_content_type?.course_content_kind_id === 'assignment' ||
+        // Handle both course_content_type (singular) and course_content_types (plural)
+        const contentType = content.course_content_type || content.course_content_types;
+        const isAssignment = contentType?.course_content_kind_id === 'assignment' ||
                             content.example_id;
 
         if (isAssignment && content.submission_group?.repository?.full_path) {

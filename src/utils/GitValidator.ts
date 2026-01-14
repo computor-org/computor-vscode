@@ -104,11 +104,6 @@ export class GitValidator {
     if (!message || message.trim().length === 0) {
       return false;
     }
-    
-    if (message.length > 72 && !message.includes('\n')) {
-      return false;
-    }
-    
     return true;
   }
   

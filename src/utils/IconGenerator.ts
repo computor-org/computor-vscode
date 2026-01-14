@@ -22,8 +22,14 @@ export class IconGenerator {
       return new vscode.ThemeIcon('symbol-enum');
     }
 
+    // Check if icon directory is initialized
+    if (!this.iconDir) {
+      console.warn('[IconGenerator] Icon directory not initialized, using fallback icon');
+      return new vscode.ThemeIcon('symbol-enum');
+    }
+
     const cacheKey = `${shape}-${normalizedColor}`;
-    
+
     // Check cache
     if (this.iconCache.has(cacheKey)) {
       return this.iconCache.get(cacheKey)!;
@@ -33,6 +39,11 @@ export class IconGenerator {
     const svg = this.generateSvg(normalizedColor, shape);
     const fileName = `${cacheKey}.svg`;
     const filePath = path.join(this.iconDir, fileName);
+
+    // Ensure directory exists before writing
+    if (!fs.existsSync(this.iconDir)) {
+      fs.mkdirSync(this.iconDir, { recursive: true });
+    }
 
     // Write SVG to file
     fs.writeFileSync(filePath, svg);
@@ -55,6 +66,12 @@ export class IconGenerator {
       return new vscode.ThemeIcon('symbol-enum');
     }
 
+    // Check if icon directory is initialized
+    if (!this.iconDir) {
+      console.warn('[IconGenerator] Icon directory not initialized, using fallback icon');
+      return new vscode.ThemeIcon('symbol-enum');
+    }
+
     const cacheKey = `${shape}-${normalizedColor}-${badge}-${corner}`;
     if (this.iconCache.has(cacheKey)) {
       return this.iconCache.get(cacheKey)!;
@@ -63,6 +80,12 @@ export class IconGenerator {
     const svg = this.generateSvg(normalizedColor, shape, badge, corner);
     const fileName = `${cacheKey}.svg`;
     const filePath = path.join(this.iconDir, fileName);
+
+    // Ensure directory exists before writing
+    if (!fs.existsSync(this.iconDir)) {
+      fs.mkdirSync(this.iconDir, { recursive: true });
+    }
+
     fs.writeFileSync(filePath, svg);
     const uri = vscode.Uri.file(filePath);
     this.iconCache.set(cacheKey, uri);

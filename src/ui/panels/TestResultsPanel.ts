@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
+import { ResultArtifactInfo } from '../../types/generated/common';
 
 interface ResultsTreeNode {
+    id: string;
     label: string;
     isTest?: boolean;
     passed?: boolean;
@@ -10,18 +12,77 @@ interface ResultsTreeNode {
     toolTip?: string | vscode.MarkdownString | undefined;
     themeIcon?: vscode.ThemeIcon | undefined;
     message?: string;
+    isArtifact?: boolean;
+    artifactInfo?: ResultArtifactInfo;
+    resultId?: string;
+}
+
+export interface ResultWithArtifacts {
+    resultId?: string;
+    result_artifacts?: ResultArtifactInfo[];
+    [key: string]: any;
 }
 
 export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<ResultsTreeNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<ResultsTreeNode | undefined | null | void> = new vscode.EventEmitter<ResultsTreeNode | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<ResultsTreeNode | undefined | null | void> = this._onDidChangeTreeData.event;
+    private selectedNodeId: string | undefined;
+    private panelProvider: TestResultsPanelProvider | undefined;
+    private resultArtifacts: ResultArtifactInfo[] = [];
+    private currentResultId: string | undefined;
 
     constructor(private testResults: any) {
+    }
+
+    setResultArtifacts(resultId: string, artifacts: ResultArtifactInfo[]): void {
+        this.currentResultId = resultId;
+        this.resultArtifacts = artifacts || [];
+    }
+
+    clearResultArtifacts(): void {
+        this.currentResultId = undefined;
+        this.resultArtifacts = [];
+    }
+
+    setPanelProvider(panelProvider: TestResultsPanelProvider): void {
+        this.panelProvider = panelProvider;
+    }
+
+    setSelectedNodeId(nodeId: string): void {
+        this.selectedNodeId = nodeId;
     }
 
     refresh(testResults: any): void {
         this.testResults = testResults;
         this._onDidChangeTreeData.fire();
+
+        if (this.panelProvider) {
+            const nodes = this.convertToNodes(this.testResults);
+            const selectedNode = this.selectedNodeId
+                ? this.findNodeById(nodes, this.selectedNodeId)
+                : undefined;
+
+            if (selectedNode) {
+                this.panelProvider.updateTestResults(selectedNode);
+            } else {
+                this.panelProvider.clearResults();
+            }
+        }
+    }
+
+    private findNodeById(nodes: ResultsTreeNode[], id: string): ResultsTreeNode | undefined {
+        for (const node of nodes) {
+            if (node.id === id) {
+                return node;
+            }
+            if (node.children) {
+                const found = this.findNodeById(node.children, id);
+                if (found) {
+                    return found;
+                }
+            }
+        }
+        return undefined;
     }
 
     getTreeItem(element: ResultsTreeNode): vscode.TreeItem {
@@ -48,27 +109,158 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
             treeItem.tooltip = element.toolTip;
         }
 
-        treeItem.command = { 
-            command: "computor.results.panel.update", 
-            title: "Click", 
-            arguments: [element] 
-        };
+        if (element.isArtifact && element.artifactInfo && element.resultId) {
+            treeItem.command = {
+                command: "computor.results.artifact.open",
+                title: "Open Artifact",
+                arguments: [element.resultId, element.artifactInfo]
+            };
+            treeItem.contextValue = 'resultArtifact';
+        } else {
+            treeItem.command = {
+                command: "computor.results.panel.update",
+                title: "Click",
+                arguments: [element]
+            };
+        }
 
         return treeItem;
     }
 
     getChildren(element?: any): any[] {
         if (!element) {
-            return this.convertToNodes(this.testResults);
+            const nodes: ResultsTreeNode[] = [];
+
+            if (this.resultArtifacts.length > 0 && this.currentResultId) {
+                const artifactsNode = this.createArtifactsNode();
+                nodes.push(artifactsNode);
+            }
+
+            nodes.push(...this.convertToNodes(this.testResults));
+            return nodes;
         }
         return element.children || [];
     }
 
-    convertToNodes(data: Record<string, any>): ResultsTreeNode[] {
+    private createArtifactsNode(): ResultsTreeNode {
+        const artifactChildren: ResultsTreeNode[] = this.resultArtifacts.map(artifact => ({
+            id: `artifact/${artifact.id}`,
+            label: artifact.filename,
+            description: this.formatFileSize(artifact.file_size),
+            toolTip: this.getFileTypeDescription(artifact.filename, artifact.content_type),
+            themeIcon: this.getFileIcon(artifact.filename),
+            isArtifact: true,
+            artifactInfo: artifact,
+            resultId: this.currentResultId
+        }));
+
+        return {
+            id: 'artifacts',
+            label: 'Artifacts',
+            description: `(${this.resultArtifacts.length})`,
+            toolTip: 'Test result artifacts - click to download and open',
+            themeIcon: new vscode.ThemeIcon('package'),
+            collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
+            children: artifactChildren
+        };
+    }
+
+    private getFileExtension(filename: string): string {
+        return filename.toLowerCase().split('.').pop() || '';
+    }
+
+    private getFileTypeDescription(filename: string, contentType?: string | null): string {
+        const ext = this.getFileExtension(filename);
+
+        const fileTypes: Record<string, string> = {
+            'png': 'PNG Image',
+            'jpg': 'JPEG Image',
+            'jpeg': 'JPEG Image',
+            'gif': 'GIF Image',
+            'bmp': 'Bitmap Image',
+            'webp': 'WebP Image',
+            'svg': 'SVG Vector Image',
+            'ico': 'Icon File',
+            'pdf': 'PDF Document',
+            'txt': 'Text File',
+            'json': 'JSON File',
+            'xml': 'XML File',
+            'html': 'HTML File',
+            'css': 'CSS Stylesheet',
+            'js': 'JavaScript File',
+            'ts': 'TypeScript File',
+            'py': 'Python File',
+            'java': 'Java File',
+            'c': 'C Source File',
+            'cpp': 'C++ Source File',
+            'h': 'C/C++ Header File',
+            'md': 'Markdown File',
+            'yaml': 'YAML File',
+            'yml': 'YAML File',
+            'csv': 'CSV File',
+            'log': 'Log File',
+            'zip': 'ZIP Archive',
+            'tar': 'TAR Archive',
+            'gz': 'GZip Archive',
+            'rar': 'RAR Archive',
+            '7z': '7-Zip Archive'
+        };
+
+        if (fileTypes[ext]) {
+            return fileTypes[ext]!;
+        }
+
+        if (contentType) {
+            return contentType;
+        }
+
+        return ext ? `${ext.toUpperCase()} File` : 'File';
+    }
+
+    private getFileIcon(filename: string): vscode.ThemeIcon {
+        const ext = this.getFileExtension(filename);
+
+        const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+        const codeExtensions = ['js', 'ts', 'py', 'java', 'c', 'cpp', 'h', 'cs', 'go', 'rs', 'rb', 'php'];
+        const dataExtensions = ['json', 'xml', 'yaml', 'yml', 'csv'];
+        const archiveExtensions = ['zip', 'tar', 'gz', 'rar', '7z'];
+
+        if (imageExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-media');
+        } else if (codeExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-code');
+        } else if (dataExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-code');
+        } else if (archiveExtensions.includes(ext)) {
+            return new vscode.ThemeIcon('file-zip');
+        } else if (ext === 'pdf') {
+            return new vscode.ThemeIcon('file-pdf');
+        } else if (ext === 'md') {
+            return new vscode.ThemeIcon('markdown');
+        } else if (ext === 'txt' || ext === 'log') {
+            return new vscode.ThemeIcon('file-text');
+        }
+
+        return new vscode.ThemeIcon('file');
+    }
+
+    private formatFileSize(bytes: number): string {
+        if (bytes < 1024) {
+            return `${bytes} B`;
+        } else if (bytes < 1024 * 1024) {
+            return `${(bytes / 1024).toFixed(1)} KB`;
+        } else {
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        }
+    }
+
+    convertToNodes(data: Record<string, any>, parentPath: string = ''): ResultsTreeNode[] {
         // Handle error field in the result payload
         if (!Array.isArray(data) && 'error' in data && typeof data.error === 'string') {
+            const errorId = parentPath ? `${parentPath}/error` : 'error';
             const errorChildren: ResultsTreeNode[] = [
                 {
+                    id: `${errorId}/message`,
                     label: data.error,
                     themeIcon: new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'))
                 }
@@ -80,6 +272,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 const failed = data.failed ?? 0;
                 const total = data.total ?? (passed + failed);
                 errorChildren.push({
+                    id: `${errorId}/stats`,
                     label: `Tests: ${passed} passed, ${failed} failed, ${total} total`,
                     themeIcon: new vscode.ThemeIcon('graph-line')
                 });
@@ -89,12 +282,14 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
             if ('result_value' in data) {
                 const percentage = Math.round((data.result_value ?? 0) * 100);
                 errorChildren.push({
+                    id: `${errorId}/result`,
                     label: `Result: ${percentage}%`,
                     themeIcon: new vscode.ThemeIcon('symbol-numeric')
                 });
             }
 
             return [{
+                id: errorId,
                 label: 'Test Execution Error',
                 description: undefined,
                 passed: false,
@@ -108,13 +303,16 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
         }
 
         if (Array.isArray(data)) {
-            return data.map((item) => {
+            return data.map((item, index) => {
+                const itemName = item.name ? item.name : `item-${index}`;
+                const itemId = parentPath ? `${parentPath}/${itemName}` : itemName;
                 const totalSubtests = item.tests ? item.tests.length : 0;
                 const passedSubtests = item.tests ? item.tests.filter((subtest: any) => subtest.result === 'PASSED').length : 0;
                 const allSubtestsPassed = totalSubtests === passedSubtests;
                 const failed = !allSubtestsPassed;
-    
-                let treeValue: ResultsTreeNode = {
+
+                const treeValue: ResultsTreeNode = {
+                    id: itemId,
                     label: item.name ? item.name : 'Unnamed Item',
                     description: totalSubtests > 0 ? `[${passedSubtests}/${totalSubtests}]` : '',
                     passed: item.result === 'PASSED' && allSubtestsPassed,
@@ -123,27 +321,28 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                     collapsibleState: item.tests && item.tests.length > 0
                         ? (failed ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
                         : vscode.TreeItemCollapsibleState.None,
-                    children: item.tests ? this.convertToNodes(item.tests) : undefined
+                    children: item.tests ? this.convertToNodes(item.tests, itemId) : undefined
                 };
-    
+
                 if ("type" in item && "result" in item && "name" in item && "summary" in item) {
                     treeValue.description += " " + item.type;
                 }
-                
+
                 if ("resultMessage" in item) {
                     treeValue.toolTip = item.resultMessage;
                     treeValue.message = item.resultMessage;
                 }
-    
+
                 return treeValue;
             });
         } else {
-            const treeItems: Array<any> = [];
+            const treeItems: ResultsTreeNode[] = [];
 
             if ('type' in data) {
+                const headId = parentPath ? `${parentPath}/${data.type}` : data.type;
                 let labelHead = data.type;
-                let descriptionHead: any = undefined;
-                let toolTipHead: any = undefined;
+                let descriptionHead: string | undefined = undefined;
+                let toolTipHead: string | undefined = undefined;
 
                 if ('timestamp' in data) {
                     // Convert UTC timestamp to local time
@@ -164,18 +363,20 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                     toolTipHead += ` ${data.version}`;
                 }
 
-                const childrenHead: Array<ResultsTreeNode> = [];
+                const childrenHead: ResultsTreeNode[] = [];
 
                 if ('environment' in data) {
-                    const subs = Object.entries(data.environment).map(([key, value]) => {
+                    const envId = `${headId}/environment`;
+                    const subs = Object.entries(data.environment).map(([key, value], idx) => {
                         if (typeof value === "object") {
-                            return { label: `${key}: ${JSON.stringify(value)}` };
+                            return { id: `${envId}/${key}`, label: `${key}: ${JSON.stringify(value)}` };
                         } else {
-                            return { label: `${key}: ${value}` };
+                            return { id: `${envId}/${key}`, label: `${key}: ${value}` };
                         }
                     });
 
                     childrenHead.push({
+                        id: envId,
                         label: 'Environment',
                         description: undefined,
                         toolTip: 'Environment',
@@ -185,14 +386,17 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 }
 
                 if ('summary' in data) {
+                    const summaryId = `${headId}/summary`;
                     const subs = Object.entries(data.summary).map(([key, value]) => {
-                        return { 
-                            label: `${key}: ${value}`, 
-                            themeIcon: new vscode.ThemeIcon('debug-console-evaluation-input') 
+                        return {
+                            id: `${summaryId}/${key}`,
+                            label: `${key}: ${value}`,
+                            themeIcon: new vscode.ThemeIcon('debug-console-evaluation-input')
                         };
                     });
 
                     childrenHead.push({
+                        id: summaryId,
                         label: 'Summary',
                         description: undefined,
                         toolTip: 'Summary',
@@ -209,19 +413,22 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 }
 
                 treeItems.push({
+                    id: headId,
                     label: labelHead,
                     description: descriptionHead,
                     toolTip: toolTipHead,
                     children: childrenHead,
                     collapsibleState: collapsibleState,
                     themeIcon: new vscode.ThemeIcon('debug-console'),
-                } as ResultsTreeNode);
+                });
             }
 
             if ('tests' in data) {
+                const testName = 'name' in data ? data.name : 'tests';
+                const testsId = parentPath ? `${parentPath}/${testName}` : testName;
                 let labelIdentifier = "";
-                let toolTipIdentifier: any = undefined;
-                let messageIdentifier: any = undefined;
+                let toolTipIdentifier: string | undefined = undefined;
+                let messageIdentifier: string | undefined = undefined;
 
                 if ('resultMessage' in data) {
                     toolTipIdentifier = data.resultMessage;
@@ -237,8 +444,9 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 const passedTests = tests.filter((test: { result: string; }) => test.result === 'PASSED').length;
                 const allTestsPassed = totalTests === passedTests;
                 const failed = !allTestsPassed;
-                
+
                 treeItems.push({
+                    id: testsId,
                     label: labelIdentifier,
                     description: `[${passedTests}/${totalTests}]`,
                     passed: allTestsPassed,
@@ -246,9 +454,9 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                     collapsibleState: tests.length > 0
                         ? (failed ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
                         : vscode.TreeItemCollapsibleState.None,
-                    children: this.convertToNodes(tests),
+                    children: this.convertToNodes(tests, testsId),
                     message: messageIdentifier
-                } as ResultsTreeNode);
+                });
             }
 
             return treeItems;
@@ -267,13 +475,20 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     }
 
     public updateTestResults(testResults: any): void {
-        // Update tree provider if it exists
-        // if (this.testResultsTreeProvider && testResults !== undefined) {
-        //     this.testResultsTreeProvider.refresh(testResults);
-        // }
-        
-        // Update webview content
         this.value = this.buildMessage(testResults);
+        if (this.view) {
+            this.view.webview.postMessage({
+                message: "results-update",
+                data: {
+                    message: this.value.message,
+                    label: this.value.label
+                }
+            });
+        }
+    }
+
+    public clearResults(): void {
+        this.value = this.buildMessage(undefined);
         if (this.view) {
             this.view.webview.postMessage({
                 message: "results-update",

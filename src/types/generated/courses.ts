@@ -10,7 +10,7 @@
 
 import type { GradingAuthor } from './auth';
 
-import type { ComputorDeploymentConfig, CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials, SubmissionGroupGradingList } from './common';
+import type { CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials, ResultArtifactInfo, SubmissionGroupGradingList } from './common';
 
 import type { OrganizationGet } from './organizations';
 
@@ -525,6 +525,7 @@ export interface SubmissionGroupStudentGet {
 }
 
 export interface ResultStudentList {
+  id: string;
   testing_service_id?: string | null;
   test_system_id?: string | null;
   version_identifier?: string | null;
@@ -534,6 +535,7 @@ export interface ResultStudentList {
 }
 
 export interface ResultStudentGet {
+  id: string;
   testing_service_id?: string | null;
   test_system_id?: string | null;
   version_identifier?: string | null;
@@ -541,6 +543,7 @@ export interface ResultStudentGet {
   result?: number | null;
   submit?: boolean | null;
   result_json?: any | null;
+  result_artifacts?: ResultArtifactInfo[];
 }
 
 export interface CourseContentStudentProperties {
@@ -565,10 +568,11 @@ export interface CourseContentStudentGet {
   position: number;
   max_group_size?: number | null;
   submitted?: boolean | null;
-  course_content_types: CourseContentTypeGet;
+  course_content_type: CourseContentTypeGet;
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  testing_service_id?: string | null;
   unread_message_count?: number;
   result?: ResultStudentGet | null;
   directory?: string | null;
@@ -576,6 +580,7 @@ export interface CourseContentStudentGet {
   submission_group?: SubmissionGroupStudentGet | null;
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
+  status?: string | null;
 }
 
 export interface CourseContentStudentList {
@@ -592,6 +597,7 @@ export interface CourseContentStudentList {
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  testing_service_id?: string | null;
   directory?: string | null;
   color: string;
   result?: ResultStudentList | null;
@@ -599,6 +605,7 @@ export interface CourseContentStudentList {
   unread_message_count?: number;
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
+  status?: string | null;
 }
 
 export interface CourseContentStudentUpdate {
@@ -640,6 +647,10 @@ export interface ContentTypeGradingStats {
   progress_percentage: number;
   /** Most recent SubmissionArtifact.created_at with submit=True for this type */
   latest_submission_at?: string | null;
+  /** Count of assignments with at least one grading */
+  graded_assignments?: number | null;
+  /** Average grade for all graded assignments of this type (0.0-1.0 scale) */
+  average_grading?: number | null;
 }
 
 /**
@@ -670,6 +681,14 @@ export interface CourseMemberGradingNode {
   progress_percentage: number;
   /** Most recent SubmissionArtifact.created_at with submit=True under this path */
   latest_submission_at?: string | null;
+  /** For assignments: the actual grade (0.0-1.0 scale). None if not graded or not an assignment. */
+  grading?: number | null;
+  /** For units/containers: average of all descendant grades (0.0-1.0 scale). None if no graded descendants. */
+  average_grading?: number | null;
+  /** Count of graded assignments at or under this path */
+  graded_assignments?: number | null;
+  /** Grading status: 'not_reviewed', 'corrected', 'correction_necessary', or 'improvement_possible'. For units: aggregated from descendants. */
+  status?: string | null;
 }
 
 /**
@@ -689,6 +708,8 @@ export interface CourseMemberGradingsGet {
   overall_progress_percentage: number;
   /** Most recent submission across all content */
   latest_submission_at?: string | null;
+  /** Course-level average grade across all graded assignments (0.0-1.0 scale) */
+  overall_average_grading?: number | null;
   /** Course-level breakdown by content type */
   by_content_type?: ContentTypeGradingStats[];
   /** Hierarchical breakdown by ltree path levels */
@@ -716,6 +737,8 @@ export interface CourseMemberGradingsList {
   overall_progress_percentage: number;
   /** Most recent submission across all content */
   latest_submission_at?: string | null;
+  /** Course-level average grade across all graded assignments (0.0-1.0 scale) */
+  overall_average_grading?: number | null;
   /** Course-level breakdown by content type */
   by_content_type?: ContentTypeGradingStats[];
 }
@@ -974,36 +997,6 @@ export interface CourseQuery {
 }
 
 /**
- * DTO for releasing a course.
- */
-export interface ReleaseCourseCreate {
-  course_id?: string | null;
-  gitlab_url?: string | null;
-  descendants?: boolean | null;
-  deployment?: ComputorDeploymentConfig | null;
-}
-
-/**
- * DTO for releasing course content.
- */
-export interface ReleaseCourseContentCreate {
-  release_dir?: string | null;
-  course_id?: string | null;
-  gitlab_url?: string | null;
-  ascendants?: boolean;
-  descendants?: boolean;
-  deployment?: ComputorDeploymentConfig | null;
-}
-
-/**
- * DTO for updating course release.
- */
-export interface CourseReleaseUpdate {
-  course?: CourseUpdate | null;
-  course_content_types: CourseContentTypeCreate[];
-}
-
-/**
  * Request to create a course family via Temporal workflow.
  */
 export interface CourseFamilyTaskRequest {
@@ -1151,5 +1144,6 @@ export interface TutorCourseMemberList {
   course_role_id: string;
   unreviewed?: boolean | null;
   ungraded_submissions_count?: number | null;
+  unread_message_count?: number | null;
   user: UserList;
 }

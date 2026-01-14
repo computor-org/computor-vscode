@@ -440,12 +440,105 @@ class UnifiedController {
     const panelProvider = new TestResultsPanelProvider(this.context.extensionUri);
     this.disposables.push(vscode.window.registerWebviewViewProvider(TestResultsPanelProvider.viewType, panelProvider));
     const resultsTree = new TestResultsTreeDataProvider([]);
+    resultsTree.setPanelProvider(panelProvider);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.testResultsView', resultsTree));
     TestResultService.getInstance().setApiService(api);
-    this.disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any) => {
-      try { resultsTree.refresh(results || {}); await vscode.commands.executeCommand('computor.testResultsPanel.focus'); } catch (e) { console.error(e); }
+    this.disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any, resultId?: string, artifacts?: any[]) => {
+      try {
+        if (resultId && artifacts && artifacts.length > 0) {
+          resultsTree.setResultArtifacts(resultId, artifacts);
+        } else {
+          resultsTree.clearResultArtifacts();
+        }
+        resultsTree.refresh(results || {});
+        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+      } catch (e) { console.error(e); }
     }));
-    this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => panelProvider.updateTestResults(item)));
+    this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
+      resultsTree.setSelectedNodeId(item.id);
+      panelProvider.updateTestResults(item);
+    }));
+    this.disposables.push(vscode.commands.registerCommand('computor.results.artifact.open', async (resultId: string, artifactInfo: any) => {
+      try {
+        await this.openResultArtifact(api, resultId, artifactInfo);
+      } catch (e) {
+        console.error('Failed to open artifact:', e);
+        vscode.window.showErrorMessage(`Failed to open artifact: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }));
+  }
+
+  private async openResultArtifact(api: ComputorApiService, resultId: string, artifactInfo: any): Promise<void> {
+    const { WorkspaceStructureManager } = await import('./utils/workspaceStructure');
+    const fs = await import('fs');
+    const path = await import('path');
+    const JSZip = (await import('jszip')).default;
+
+    const wsManager = WorkspaceStructureManager.getInstance();
+    const artifactsDir = wsManager.getResultArtifactsPath(resultId);
+    const artifactFilePath = path.join(artifactsDir, artifactInfo.filename);
+
+    const artifactExists = await wsManager.resultArtifactsExist(resultId);
+    const fileExists = artifactExists && fs.existsSync(artifactFilePath);
+
+    if (fileExists) {
+      await this.openArtifactFile(artifactFilePath);
+      return;
+    }
+
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Downloading artifact: ${artifactInfo.filename}`,
+      cancellable: false
+    }, async () => {
+      const buffer = await api.downloadResultArtifacts(resultId);
+      if (!buffer) {
+        throw new Error('Failed to download artifacts');
+      }
+
+      await fs.promises.mkdir(artifactsDir, { recursive: true });
+
+      const zip = await JSZip.loadAsync(buffer);
+      for (const [filename, zipEntry] of Object.entries(zip.files)) {
+        if (!zipEntry.dir) {
+          const content = await zipEntry.async('nodebuffer');
+          const filePath = path.join(artifactsDir, filename);
+          const fileDir = path.dirname(filePath);
+          await fs.promises.mkdir(fileDir, { recursive: true });
+          await fs.promises.writeFile(filePath, content);
+        }
+      }
+    });
+
+    if (fs.existsSync(artifactFilePath)) {
+      await this.openArtifactFile(artifactFilePath);
+    } else {
+      const files = await wsManager.getResultArtifactFiles(resultId);
+      if (files.length > 0) {
+        const firstFile = path.join(artifactsDir, files[0]!);
+        await this.openArtifactFile(firstFile);
+      } else {
+        vscode.window.showInformationMessage('Artifacts downloaded but no files found to open');
+      }
+    }
+  }
+
+  private async openArtifactFile(filePath: string): Promise<void> {
+    const fileUri = vscode.Uri.file(filePath);
+    const ext = filePath.toLowerCase().split('.').pop() || '';
+
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+    const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat'];
+
+    if (imageExtensions.includes(ext)) {
+      await vscode.commands.executeCommand('vscode.open', fileUri, { preview: false });
+    } else if (binaryExtensions.includes(ext)) {
+      await vscode.commands.executeCommand('revealFileInOS', fileUri);
+      vscode.window.showInformationMessage(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
+    } else {
+      const doc = await vscode.workspace.openTextDocument(fileUri);
+      await vscode.window.showTextDocument(doc, { preview: false });
+    }
   }
 
   private async initializeTutorView(api: ComputorApiService): Promise<void> {

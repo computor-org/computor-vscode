@@ -75,7 +75,7 @@ import {
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult } from '../types/generated/common';
+import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery, ResultArtifactListItem } from '../types/generated/common';
 import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
@@ -774,7 +774,7 @@ export class ComputorApiService {
   async getSubmissionArtifact(artifactId: string): Promise<any | undefined> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<any>(`/submissions/artifacts/${artifactId}`);
+      const response = await client.get<any>(`/submissions/${artifactId}`);
       return response.data;
     } catch (error) {
       console.error('Failed to get submission artifact:', error);
@@ -1728,8 +1728,11 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentProfiles(options?: { force?: boolean }): Promise<StudentProfileGet[]> {
-    const cacheKey = 'userStudentProfiles';
+  async getStudentProfiles(
+    query?: StudentProfileQuery,
+    options?: { force?: boolean }
+  ): Promise<StudentProfileGet[]> {
+    const cacheKey = `userStudentProfiles-${JSON.stringify(query ?? {})}`;
 
     if (options?.force) {
       multiTierCache.delete(cacheKey);
@@ -1742,7 +1745,35 @@ export class ComputorApiService {
 
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<StudentProfileGet[]>('/student-profiles');
+      const params = new URLSearchParams();
+
+      if (query?.skip !== undefined && query.skip !== null) {
+        params.append('skip', String(query.skip));
+      }
+      if (query?.limit !== undefined && query.limit !== null) {
+        params.append('limit', String(query.limit));
+      }
+      if (query?.id) {
+        params.append('id', query.id);
+      }
+      if (query?.student_id) {
+        params.append('student_id', query.student_id);
+      }
+      if (query?.student_email) {
+        params.append('student_email', query.student_email);
+      }
+      if (query?.user_id) {
+        params.append('user_id', query.user_id);
+      }
+      if (query?.organization_id) {
+        params.append('organization_id', query.organization_id);
+      }
+
+      const url = params.toString()
+        ? `/student-profiles?${params.toString()}`
+        : '/student-profiles';
+
+      const response = await client.get<StudentProfileGet[]>(url);
       const profiles = Array.isArray(response.data) ? response.data : [];
       multiTierCache.set(cacheKey, profiles, 'warm');
       return profiles;
@@ -2716,6 +2747,67 @@ export class ComputorApiService {
     } catch (error: any) {
       console.error('Failed to get result:', error);
       return undefined;
+    }
+  }
+
+  /**
+   * Get list of artifacts for a result
+   * @param resultId The result ID to get artifacts for
+   * @returns List of result artifacts or empty array
+   */
+  async getResultArtifacts(resultId: string): Promise<ResultArtifactListItem[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<ResultArtifactListItem[]>(`/results/${resultId}/artifacts`);
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      console.error('Failed to get result artifacts:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Download result artifacts as a zip file
+   * @param resultId The result ID to download artifacts for
+   * @returns Buffer containing the zip file or undefined
+   */
+  async downloadResultArtifacts(resultId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/results/${resultId}/artifacts/download`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error: any) {
+      console.error('Failed to download result artifacts:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get test results for a submission artifact
+   * @param artifactId The submission artifact ID
+   * @returns List of test results or empty array
+   */
+  async getSubmissionArtifactTestResults(artifactId: string): Promise<any[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<any[]>(`/submissions/artifacts/${artifactId}/tests`);
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      console.error('Failed to get submission artifact test results:', error);
+      return [];
     }
   }
 
