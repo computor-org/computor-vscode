@@ -118,7 +118,7 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
             const user = member?.user;
             let name = '';
             if (user?.given_name && user?.family_name) {
-              name = user.given_name + ' ' + user.family_name;
+              name = user.family_name + ', ' + user.given_name;
             } else {
               name = (user?.full_name) || (user?.username) || member.id;
             }
@@ -317,7 +317,7 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
       let label = first.id;
       if (first.user) {
         if (first.user.given_name && first.user.family_name) {
-          label = first.user.given_name + ' ' + first.user.family_name;
+          label = first.user.family_name + ', ' + first.user.given_name;
         } else {
           label = first.user.full_name || first.user.username || first.id;
         }
