@@ -75,7 +75,7 @@ import {
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery, ResultArtifactListItem } from '../types/generated/common';
+import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, SubmissionArtifactQuery, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery, ResultArtifactListItem } from '../types/generated/common';
 import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
@@ -757,12 +757,13 @@ export class ComputorApiService {
     }
   }
 
-  async listSubmissionArtifacts(submissionGroupId: string): Promise<SubmissionArtifactList[] | undefined> {
+  async listSubmissionArtifacts(submissionGroupId: string, query?: Partial<SubmissionArtifactQuery>): Promise<SubmissionArtifactList[] | undefined> {
     try {
       const client = await this.getHttpClient();
       const response = await client.get<SubmissionArtifactList[]>(`/submissions/artifacts`, {
         submission_group_id: submissionGroupId,
-        submit: true
+        submit: true,
+        ...query
       });
       return response.data;
     } catch (error) {

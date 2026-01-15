@@ -310,6 +310,16 @@ export class TutorCommands {
         const memberId = sel.getCurrentMemberId();
         if (!memberId) { vscode.window.showErrorMessage('No course member selected.'); return; }
 
+        // Get the latest submitted artifact to ensure grade is applied correctly
+        const submissionGroupId: string | undefined = content?.submission_group?.id;
+        let latestSubmittedArtifactId: string | undefined;
+        if (submissionGroupId) {
+          const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroupId, { latest: true });
+          if (artifacts && artifacts.length > 0 && artifacts[0]) {
+            latestSubmittedArtifactId = artifacts[0].id;
+          }
+        }
+
         const prev = (() => {
           const submission: any = content?.submission_group || content?.submission;
           const latest = submission?.latest_grading || submission?.grading;
@@ -353,7 +363,9 @@ export class TutorCommands {
 
         try {
           // Use new TutorGradeCreate type with enum status
+          // Pass artifact_id to ensure grade is applied to the correct submitted artifact
           const tutorGrade: TutorGradeCreate = {
+            artifact_id: latestSubmittedArtifactId,
             grade: grade,
             status: statusPick.value,
             feedback: null
