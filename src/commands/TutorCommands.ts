@@ -366,33 +366,10 @@ export class TutorCommands {
             this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
           }
 
-          // Fetch fresh item and update the clicked tree item inline
-          const updated = await this.apiService.getTutorMemberCourseContent(memberId, contentId);
-          if (updated && item && typeof (item as any).updateVisuals === 'function') {
-            try {
-              // Preserve course_content_type/course_content_types if the updated data doesn't include it
-              // The single-item endpoint may not return this field
-              // Handle both course_content_type (singular) and course_content_types (plural)
-              const oldCourseContentType = (item.content as any)?.course_content_type || (item.content as any)?.course_content_types;
-              const newCourseContentType = (updated as any).course_content_type || (updated as any).course_content_types;
-              if (oldCourseContentType && !newCourseContentType) {
-                (updated as any).course_content_type = oldCourseContentType;
-              }
-              // Update the content data
-              item.content = updated;
-              item.label = updated.title || updated.path;
-              // Use the tree item's own method to update icon, tooltip, etc.
-              (item as any).updateVisuals();
-              // Trigger a targeted refresh for this item
-              (this.treeDataProvider as any).refreshItem?.(item);
-            } catch {
-              // Fallback to full refresh if targeted update fails
-              this.treeDataProvider.refresh();
-            }
-          } else {
-            // Fallback to full refresh
-            this.treeDataProvider.refresh();
-          }
+          // Always do a full tree refresh because:
+          // 1. Status changes affect parent unit items (aggregated status from API)
+          // 2. The API provides fresh data for all items including computed fields
+          this.treeDataProvider.refresh();
 
           // Refresh filter panel to update ungraded_submissions_count
           this.filterProvider?.refreshFilters();
