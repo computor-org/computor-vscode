@@ -248,6 +248,8 @@
           <div class="content-tree-header">
             <span class="content-tree-header__spacer"></span>
             <div class="content-tree-header__columns">
+              <span class="content-tree-header__column content-tree-header__column--tests" title="Test attempts / max allowed tests">Tests</span>
+              <span class="content-tree-header__column content-tree-header__column--subs" title="Submission count / max allowed submissions">Subs</span>
               <span class="content-tree-header__column content-tree-header__column--correction" title="Correction status">●</span>
               <span class="content-tree-header__column content-tree-header__column--progress" title="Submission progress (units only)">Progress</span>
               <span class="content-tree-header__column content-tree-header__column--grade" title="Tutor-assigned grade (assignments) or average grade (units)">Grade</span>
@@ -399,11 +401,40 @@
         return `<span class="content-tree-node__status-indicator" style="background-color: ${statusColor};" title="${statusText}"></span>`;
       })();
 
+      // Build tests column display (only for submittable items)
+      const testsHtml = (() => {
+        if (!isSubmittable) {
+          return '<span class="content-tree-node__tests content-tree-node__tests--empty">-</span>';
+        }
+        if (typeof testRunsCount !== 'number') {
+          return '<span class="content-tree-node__tests content-tree-node__tests--empty">-</span>';
+        }
+        const testsDisplay = typeof maxTestRuns === 'number'
+          ? `${testRunsCount}/${maxTestRuns}`
+          : `${testRunsCount}`;
+        return `<span class="content-tree-node__tests">${testsDisplay}</span>`;
+      })();
+
+      // Build submissions column display (only for submittable items)
+      const subsHtml = (() => {
+        if (!isSubmittable) {
+          return '<span class="content-tree-node__subs content-tree-node__subs--empty">-</span>';
+        }
+        if (typeof submissionsCount !== 'number') {
+          return '<span class="content-tree-node__subs content-tree-node__subs--empty">-</span>';
+        }
+        const subsDisplay = typeof maxSubmissions === 'number'
+          ? `${submissionsCount}/${maxSubmissions}`
+          : `${submissionsCount}`;
+        return `<span class="content-tree-node__subs">${subsDisplay}</span>`;
+      })();
+
       // Both assignments and units use consistent column structure for alignment
-      // Assignments: status indicator + empty progress + grading + result + checkmark
-      // Units: status indicator + progress bar + grading (avg) + empty result column + percentage
+      // Columns: tests + subs + status indicator + progress + grading + result + status
       const progressHtml = isSubmittable
         ? `<div class="content-tree-node__columns">
+             ${testsHtml}
+             ${subsHtml}
              ${statusIndicatorHtml}
              <div class="content-tree-node__bar-container"></div>
              <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
@@ -413,6 +444,8 @@
              </span>
            </div>`
         : `<div class="content-tree-node__columns">
+             ${testsHtml}
+             ${subsHtml}
              ${statusIndicatorHtml}
              <div class="content-tree-node__bar-container">
                <div class="content-tree-node__bar">
