@@ -85,6 +85,16 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
           vscode.window.showErrorMessage(String(message.data));
         }
         break;
+      case 'copyToClipboard':
+        if (message.data?.text) {
+          try {
+            await vscode.env.clipboard.writeText(message.data.text);
+            this.panel?.webview.postMessage({ command: 'copySuccess', data: { btnId: message.data.btnId } });
+          } catch (err) {
+            vscode.window.showErrorMessage(`Failed to copy: ${err}`);
+          }
+        }
+        break;
       default:
         break;
     }

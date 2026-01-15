@@ -38,8 +38,23 @@
             render();
           }
           break;
+        case 'copySuccess':
+          showCopyFeedback(message.data?.btnId);
+          break;
       }
     });
+  }
+
+  function showCopyFeedback(btnId) {
+    const btn = btnId ? document.getElementById(btnId) : null;
+    if (btn) {
+      btn.innerHTML = CHECK_ICON;
+      btn.classList.add('copyable-id__btn--copied');
+      setTimeout(() => {
+        btn.innerHTML = COPY_ICON;
+        btn.classList.remove('copyable-id__btn--copied');
+      }, 1500);
+    }
   }
 
   function render() {
@@ -253,9 +268,18 @@
             const name = (row.family_name && row.given_name)
               ? row.family_name + ', ' + row.given_name
               : row.family_name || row.given_name || 'Unknown';
+            const studentId = row.student_id;
+            const copyBtnId = 'copy-btn-' + row.course_member_id;
             return `
               <div class="student-name">${escapeHtml(name)}</div>
-              ${row.username ? `<div class="student-username">@${escapeHtml(row.username)}</div>` : ''}
+              ${studentId ? `
+                <div class="copyable-id">
+                  <span class="copyable-id__value">${escapeHtml(studentId)}</span>
+                  <button class="copyable-id__btn" id="${copyBtnId}" data-copy-value="${escapeHtml(studentId)}" title="Copy to clipboard">
+                    ${COPY_ICON}
+                  </button>
+                </div>
+              ` : ''}
             `;
           }
         },
@@ -317,6 +341,20 @@
     });
 
     container.appendChild(studentTable);
+    attachCopyButtonListeners();
+  }
+
+  function attachCopyButtonListeners() {
+    document.querySelectorAll('.copyable-id__btn[data-copy-value]').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const value = this.getAttribute('data-copy-value');
+        const btnId = this.id;
+        if (value) {
+          vscode.postMessage({ command: 'copyToClipboard', data: { text: value, btnId } });
+        }
+      });
+    });
   }
 
   function renderContentTypeProgress(contentTypes) {
@@ -398,9 +436,17 @@
     return div.innerHTML;
   }
 
+  const COPY_ICON = '<svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>';
+  const CHECK_ICON = '<svg viewBox="0 0 16 16"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
+
   // Global handlers
   window.handleRefresh = function() {
     vscode.postMessage({ command: 'refresh' });
+  };
+
+  window.copyWithFeedback = function(text, btnId) {
+    // Use VS Code's clipboard API via message passing (navigator.clipboard doesn't work in webviews)
+    vscode.postMessage({ command: 'copyToClipboard', data: { text, btnId } });
   };
 
   window.handleSearch = function(query) {

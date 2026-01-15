@@ -13,8 +13,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
@@ -35,10 +35,81 @@
   color: var(--vscode-descriptionForeground);
 }
 
+.member-progress-header__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.member-progress-header__last-active {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
 .member-progress-header__username {
   margin: 2px 0 0;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* Copyable ID badge (GitLab-style) */
+.copyable-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  cursor: default;
+}
+
+.copyable-id__label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+}
+
+.copyable-id__value {
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.copyable-id__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.copyable-id__btn:hover {
+  opacity: 1;
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.copyable-id__btn:active {
+  transform: scale(0.95);
+}
+
+.copyable-id__btn--copied {
+  color: var(--vscode-debugIcon-continueForeground, #89d185);
+  opacity: 1;
+}
+
+.copyable-id__btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
 }
 
 .member-progress-header__actions {

@@ -716,6 +716,12 @@ export interface CourseMemberGradingNode {
 export interface CourseMemberGradingsGet {
   course_member_id: string;
   course_id: string;
+  user_id?: string | null;
+  username?: string | null;
+  given_name?: string | null;
+  family_name?: string | null;
+  /** Student ID from the student_profile belonging to the course's organization */
+  student_id?: string | null;
   /** Total number of submittable course_contents in the course */
   total_max_assignments: number;
   /** Total course_contents with at least one submitted artifact */
@@ -745,6 +751,8 @@ export interface CourseMemberGradingsList {
   username?: string | null;
   given_name?: string | null;
   family_name?: string | null;
+  /** Student ID from the student_profile belonging to the course's organization */
+  student_id?: string | null;
   /** Total number of submittable course_contents in the course */
   total_max_assignments: number;
   /** Total course_contents with at least one submitted artifact */

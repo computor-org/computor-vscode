@@ -128,6 +128,60 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* Copyable ID badge (GitLab-style) */
+.copyable-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  cursor: default;
+}
+
+.copyable-id__value {
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.copyable-id__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.copyable-id__btn:hover {
+  opacity: 1;
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.copyable-id__btn:active {
+  transform: scale(0.95);
+}
+
+.copyable-id__btn--copied {
+  color: var(--vscode-debugIcon-continueForeground, #89d185);
+  opacity: 1;
+}
+
+.copyable-id__btn svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
 .progress-cell {
   min-width: 120px;
 }
