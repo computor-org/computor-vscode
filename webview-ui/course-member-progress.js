@@ -213,6 +213,16 @@
           <h2 class="content-tree-section__title">Course Content Progress</h2>
         </div>
         <div class="content-tree">
+          <div class="content-tree-header">
+            <span class="content-tree-header__spacer"></span>
+            <div class="content-tree-header__columns">
+              <span class="content-tree-header__column content-tree-header__column--correction" title="Correction status">●</span>
+              <span class="content-tree-header__column content-tree-header__column--progress" title="Submission progress (units only)">Progress</span>
+              <span class="content-tree-header__column content-tree-header__column--grade" title="Tutor-assigned grade (assignments) or average grade (units)">Grade</span>
+              <span class="content-tree-header__column content-tree-header__column--result" title="Latest test result">Result</span>
+              <span class="content-tree-header__column content-tree-header__column--status" title="Submission status (assignments) or completion percentage (units)">Status</span>
+            </div>
+          </div>
           ${renderTreeNodes(tree, 0, colorMap)}
         </div>
       </section>
@@ -284,9 +294,21 @@
       const gradingDisplay = hasGrading ? `${Math.round(gradingValue * 100)}%` : '-';
       const gradingClass = hasGrading ? '' : 'content-tree-node__grading--empty';
 
+      // Get latest test result display
+      const resultValue = node.latest_result_grade;
+      const hasResult = typeof resultValue === 'number';
+      const resultDisplay = hasResult ? `${Math.round(resultValue * 100)}%` : '-';
+      const resultClass = hasResult ? '' : 'content-tree-node__result--empty';
+
+      // Get test runs and submissions counts
+      const testRunsCount = node.test_runs_count;
+      const maxTestRuns = node.max_test_runs;
+      const submissionsCount = node.submissions_count;
+      const maxSubmissions = node.max_submissions;
+
       // Get grading status (string: 'corrected', 'correction_necessary', 'improvement_possible', 'not_reviewed')
       // Match the corner badge colors from IconGenerator.ts
-      const gradingStatus = node.grading_status?.toLowerCase?.() || null;
+      const gradingStatus = node.status?.toLowerCase?.() || null;
       let cornerBadgeHtml = '';
       if (gradingStatus && gradingStatus !== 'not_reviewed') {
         const statusColor = gradingStatus === 'corrected' ? '#57cc5d'
@@ -301,6 +323,15 @@
         tooltipParts.push(`Submitted: ${isSubmitted ? 'Yes' : 'No'}`);
         if (hasGrading) {
           tooltipParts.push(`Grade: ${gradingDisplay}`);
+        }
+        if (hasResult) {
+          tooltipParts.push(`Result: ${resultDisplay}`);
+        }
+        if (typeof testRunsCount === 'number') {
+          tooltipParts.push(`Tests: ${testRunsCount}${typeof maxTestRuns === 'number' ? ` of ${maxTestRuns}` : ''}`);
+        }
+        if (typeof submissionsCount === 'number') {
+          tooltipParts.push(`Submissions: ${submissionsCount}${typeof maxSubmissions === 'number' ? ` of ${maxSubmissions}` : ''}`);
         }
         if (gradingStatus && gradingStatus !== 'not_reviewed') {
           const statusText = gradingStatus === 'corrected' ? 'Corrected'
@@ -322,18 +353,42 @@
       }
       const tooltip = escapeHtml(tooltipParts.join('\n'));
 
-      // Assignments (submittable): show grading + checkmark or pending indicator
-      // Units (not submittable): show progress bar + avg grading + submission percentage
+      // Status indicator circle (shown to the left of columns)
+      const statusIndicatorHtml = (() => {
+        if (!gradingStatus || gradingStatus === 'not_reviewed') {
+          return '<span class="content-tree-node__status-indicator content-tree-node__status-indicator--empty"></span>';
+        }
+        const statusColor = gradingStatus === 'corrected' ? '#57cc5d'
+          : gradingStatus === 'correction_necessary' ? '#fc4a4a'
+          : '#fdba4d';
+        const statusText = gradingStatus === 'corrected' ? 'Corrected'
+          : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
+          : 'Improvement Possible';
+        return `<span class="content-tree-node__status-indicator" style="background-color: ${statusColor};" title="${statusText}"></span>`;
+      })();
+
+      // Both assignments and units use consistent column structure for alignment
+      // Assignments: status indicator + empty progress + grading + result + checkmark
+      // Units: status indicator + progress bar + grading (avg) + empty result column + percentage
       const progressHtml = isSubmittable
-        ? `<span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
-           <span class="content-tree-node__check ${isSubmitted ? 'content-tree-node__check--done' : 'content-tree-node__check--pending'}">
-             ${isSubmitted ? '✓' : '○'}
-           </span>`
-        : `<div class="content-tree-node__progress">
-             <div class="content-tree-node__bar">
-               <div class="content-tree-node__fill" style="width: ${percentage}%;"></div>
+        ? `<div class="content-tree-node__columns">
+             ${statusIndicatorHtml}
+             <div class="content-tree-node__bar-container"></div>
+             <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
+             <span class="content-tree-node__result ${resultClass}">${resultDisplay}</span>
+             <span class="content-tree-node__check ${isSubmitted ? 'content-tree-node__check--done' : 'content-tree-node__check--pending'}">
+               ${isSubmitted ? '✓' : '○'}
+             </span>
+           </div>`
+        : `<div class="content-tree-node__columns">
+             ${statusIndicatorHtml}
+             <div class="content-tree-node__bar-container">
+               <div class="content-tree-node__bar">
+                 <div class="content-tree-node__fill" style="width: ${percentage}%;"></div>
+               </div>
              </div>
              <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
+             <span class="content-tree-node__result content-tree-node__result--empty">-</span>
              <span class="content-tree-node__percentage">${percentage}%</span>
            </div>`;
 

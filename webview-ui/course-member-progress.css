@@ -219,6 +219,63 @@
   overflow: hidden;
 }
 
+/* Content tree header */
+.content-tree-header {
+  display: flex;
+  align-items: center;
+  /* Match content row padding: 16px base + 24px toggle + 22px icon = ~62px left offset */
+  padding: 8px 16px;
+  background-color: var(--vscode-sideBarSectionHeader-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.content-tree-header__spacer {
+  flex: 1;
+}
+
+.content-tree-header__columns {
+  display: flex;
+  align-items: center;
+}
+
+.content-tree-header__column {
+  cursor: help;
+}
+
+.content-tree-header__column--correction {
+  width: 18px;
+  margin-right: 18px;
+  text-align: center;
+}
+
+.content-tree-header__column--progress {
+  width: 60px;
+  margin-right: 12px;
+  text-align: center;
+}
+
+.content-tree-header__column--grade {
+  width: 45px;
+  margin-right: 12px;
+  text-align: right;
+}
+
+.content-tree-header__column--result {
+  width: 45px;
+  margin-right: 12px;
+  text-align: right;
+}
+
+.content-tree-header__column--status {
+  width: 40px;
+  text-align: center;
+}
+
 .content-tree-node {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
@@ -300,6 +357,28 @@
   white-space: nowrap;
 }
 
+/* Unified columns container for consistent alignment */
+.content-tree-node__columns {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.content-tree-node__status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 4px;
+  margin-right: 22px;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.content-tree-node__status-indicator--empty {
+  width: 10px;
+  background-color: transparent;
+}
+
 .content-tree-node__progress {
   display: flex;
   align-items: center;
@@ -307,8 +386,13 @@
   min-width: 140px;
 }
 
+.content-tree-node__bar-container {
+  width: 60px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
 .content-tree-node__bar {
-  flex: 1;
   height: 6px;
   background-color: rgba(100, 149, 237, 0.2); /* Light blue for unfilled */
   border-radius: 3px;
@@ -325,8 +409,9 @@
 .content-tree-node__percentage {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
-  min-width: 40px;
-  text-align: right;
+  width: 40px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .content-tree-node__status {
@@ -340,9 +425,10 @@
 .content-tree-node__check {
   font-size: 18px;
   font-weight: 700;
-  min-width: 24px;
+  width: 40px;
   text-align: center;
   text-shadow: 0 0 2px currentColor;
+  flex-shrink: 0;
 }
 
 .content-tree-node__check--done {
@@ -357,12 +443,27 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--vscode-foreground);
-  min-width: 45px;
+  width: 45px;
   text-align: right;
   margin-right: 12px;
+  flex-shrink: 0;
 }
 
 .content-tree-node__grading--empty {
+  color: var(--vscode-descriptionForeground);
+}
+
+.content-tree-node__result {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  width: 45px;
+  text-align: right;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.content-tree-node__result--empty {
   color: var(--vscode-descriptionForeground);
 }
 

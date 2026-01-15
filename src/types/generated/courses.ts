@@ -689,6 +689,22 @@ export interface CourseMemberGradingNode {
   graded_assignments?: number | null;
   /** Grading status: 'not_reviewed', 'corrected', 'correction_necessary', or 'improvement_possible'. For units: aggregated from descendants. */
   status?: string | null;
+  /** ID of the latest test result for this assignment */
+  latest_result_id?: string | null;
+  /** Grade from the latest test result (0.0-1.0 scale) */
+  latest_result_grade?: number | null;
+  /** Status of the latest test result (0=finished, 1=failed, 2=cancelled, etc.) */
+  latest_result_status?: number | null;
+  /** When the latest test result was created */
+  latest_result_created_at?: string | null;
+  /** Number of test runs used for this assignment */
+  test_runs_count?: number | null;
+  /** Maximum allowed test runs for this assignment (from course_content or submission_group) */
+  max_test_runs?: number | null;
+  /** Number of submissions made for this assignment */
+  submissions_count?: number | null;
+  /** Maximum allowed submissions for this assignment (from course_content or submission_group) */
+  max_submissions?: number | null;
 }
 
 /**
