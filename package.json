@@ -749,6 +749,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "computor.tutor.refresh",
+          "when": "view == computor.tutor.filters",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.tutor.showCourseProgress",
           "when": "view == computor.tutor.filters",
           "group": "navigation@1"

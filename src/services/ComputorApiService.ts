@@ -1079,6 +1079,14 @@ export class ComputorApiService {
   }
 
   // Tutor helpers: cache invalidation
+  clearTutorCoursesCache(): void {
+    multiTierCache.delete('tutorCourses');
+  }
+
+  clearTutorCourseGroupsCache(courseId: string): void {
+    multiTierCache.delete(`tutorCourseGroups-${courseId}`);
+  }
+
   clearTutorMemberCourseContentsCache(memberId: string): void {
     multiTierCache.delete(`tutorContents-${memberId}`);
   }

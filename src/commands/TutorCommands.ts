@@ -50,11 +50,15 @@ export class TutorCommands {
           const memberId = sel.getCurrentMemberId();
           const courseId = sel.getCurrentCourseId();
           const groupId = sel.getCurrentGroupId();
+
+          // Clear all tutor-related caches to ensure fresh data
+          this.apiService.clearTutorCoursesCache();
+          if (courseId) {
+            this.apiService.clearTutorCourseGroupsCache(courseId);
+            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
+          }
           if (memberId) {
             this.apiService.clearTutorMemberCourseContentsCache(memberId);
-          }
-          if (courseId) {
-            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
           }
           // Also clear content kinds to be safe
           this.apiService.clearCourseContentKindsCache();
