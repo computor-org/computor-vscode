@@ -515,12 +515,19 @@ class TutorUnitItem extends vscode.TreeItem {
   }
 
   private applyCounts(): void {
+    const count = this.countItems(this.node);
     const unread = this.node.unreadMessageCount ?? 0;
-    this.description = unread > 0 ? `🔔 ${unread}` : undefined;
+    const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
+    this.description = unread > 0 ? `🔔 ${unread} • ${itemLabel}` : itemLabel;
 
     const tooltipLines = [
-      `Unit: ${this.label?.toString() ?? 'Unit'}`
+      `Unit: ${this.label?.toString() ?? 'Unit'}`,
+      `${count} item${count !== 1 ? 's' : ''}`
     ];
+    const ct = getEmbeddedCourseContentType(this.node.courseContent);
+    if (ct?.title) {
+      tooltipLines.push(`Type: ${ct.title}`);
+    }
     const status = (this.node.courseContent as any)?.status || this.node.submissionGroup?.status;
     if (status) {
       tooltipLines.push(`Status: ${this.formatStatus(String(status))}`);
@@ -529,6 +536,18 @@ class TutorUnitItem extends vscode.TreeItem {
       tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
     }
     this.tooltip = tooltipLines.join('\n');
+  }
+
+  private countItems(node: ContentNode): number {
+    let count = 0;
+    Array.from(node.children.values()).forEach(child => {
+      if (child.courseContent && !child.isUnit) {
+        count++;
+      } else if (child.isUnit || child.children.size > 0) {
+        count += this.countItems(child);
+      }
+    });
+    return count;
   }
 
   private formatStatus(status: string): string {
@@ -563,6 +582,18 @@ class TutorContentItem extends vscode.TreeItem {
     }
     this.id = content.id;
     this.updateVisuals();
+    this.setupCommand();
+  }
+
+  private setupCommand(): void {
+    // Add click command to show test results for assignments with results
+    if (this.isAssignment && this.content?.result) {
+      this.command = {
+        command: 'computor.showTestResults',
+        title: 'Show Test Results',
+        arguments: [{ courseContent: this.content }]
+      };
+    }
   }
 
   updateVisuals(): void {
@@ -598,7 +629,40 @@ class TutorContentItem extends vscode.TreeItem {
     this.iconPath = (badge === 'none' && corner === 'none')
       ? IconGenerator.getColoredIcon(color, shape)
       : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
-    this.description = unread > 0 ? `🔔 ${unread}` : undefined;
+
+    // Build description with test/submission counts like student view
+    const descriptionParts: string[] = [];
+
+    if (unread > 0) {
+      descriptionParts.push(`🔔 ${unread}`);
+    }
+
+    const testCount = (this.content as any)?.result_count as number | undefined;
+    const maxTests = (this.content as any)?.max_test_runs as number | undefined;
+    if (typeof testCount === 'number') {
+      descriptionParts.push(typeof maxTests === 'number' ? `[${testCount}/${maxTests}]` : `[${testCount}]`);
+    }
+
+    const submitCount = submission?.count as number | undefined;
+    const maxSubmits = submission?.max_submissions as number | undefined;
+    if (typeof submitCount === 'number') {
+      descriptionParts.push(typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`);
+    }
+
+    this.description = descriptionParts.length > 0 ? descriptionParts.join('') : undefined;
+
+    // Append result percentage if available
+    if (typeof result === 'number') {
+      const pts = Math.round(result * 100);
+      this.description = this.description ? `${this.description} ${pts}%` : `${pts}%`;
+    }
+
+    // Append grading percentage if available
+    if (typeof grading === 'number') {
+      const pts = Math.round(grading * 100);
+      this.description = this.description ? `${this.description} ${pts}%` : `${pts}%`;
+    }
+
     const friendlyStatus = (() => {
       if (!status) return undefined;
       if (status === 'corrected') return 'Corrected';
@@ -608,11 +672,28 @@ class TutorContentItem extends vscode.TreeItem {
       const t = status.replace(/_/g, ' ');
       return t.charAt(0).toUpperCase() + t.slice(1);
     })();
-    this.tooltip = [
-      friendlyStatus ? `Status: ${friendlyStatus}` : undefined,
-      (typeof grading === 'number') ? `Grading: ${(grading * 100).toFixed(2)}%` : undefined,
-      unread > 0 ? `${unread} unread message${unread === 1 ? '' : 's'}` : undefined
-    ].filter(Boolean).join('\n');
+
+    // Build tooltip with detailed information
+    const tooltipLines: string[] = [];
+    if (friendlyStatus) {
+      tooltipLines.push(`Status: ${friendlyStatus}`);
+    }
+    if (typeof testCount === 'number') {
+      tooltipLines.push(`Tests: ${typeof maxTests === 'number' ? `${testCount} of ${maxTests}` : `${testCount}`}`);
+    }
+    if (typeof submitCount === 'number') {
+      tooltipLines.push(`Submissions: ${typeof maxSubmits === 'number' ? `${submitCount} of ${maxSubmits}` : `${submitCount}`}`);
+    }
+    if (typeof result === 'number') {
+      tooltipLines.push(`Result: ${(result * 100).toFixed(2)}%`);
+    }
+    if (typeof grading === 'number') {
+      tooltipLines.push(`Grading: ${(grading * 100).toFixed(2)}%`);
+    }
+    if (unread > 0) {
+      tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+    }
+    this.tooltip = tooltipLines.join('\n');
   }
 }
 
