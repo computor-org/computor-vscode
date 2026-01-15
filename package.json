@@ -52,8 +52,8 @@
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.tutor.downloadReference",
-        "title": "Download Reference",
+        "command": "computor.tutor.checkout",
+        "title": "Checkout",
         "icon": "$(cloud-download)",
         "category": "Computor Tutor"
       },
@@ -1016,9 +1016,9 @@
           "group": "1_status@2"
         },
         {
-          "command": "computor.tutor.downloadReference",
-          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo || viewItem == tutorVirtualFolder.reference)",
-          "group": "3_external@1"
+          "command": "computor.tutor.checkout",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
+          "group": "3_external@0"
         },
         {
           "command": "computor.tutor.downloadSubmissionArtifact",

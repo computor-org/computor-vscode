@@ -408,6 +408,13 @@ export class TutorCommands {
         await this.showSubmissionTestResults(item);
       })
     );
+
+    // Tutor: Checkout - download reference and latest submission (or just reference if no submission)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.checkout', async (item: any) => {
+        await this.checkout(item);
+      })
+    );
   }
 
   private async showCourseMemberComments(): Promise<void> {
@@ -781,6 +788,141 @@ export class TutorCommands {
     } catch (error: any) {
       console.error('[TutorCommands] Error in showSubmissionTestResults:', error);
       vscode.window.showErrorMessage(`Failed to show test results: ${error?.message || error}`);
+    }
+  }
+
+  private async checkout(item: any): Promise<void> {
+    try {
+      const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
+
+      if (!content) {
+        vscode.window.showErrorMessage('No course content information available');
+        return;
+      }
+
+      const deployment = content.deployment;
+      if (!deployment || !deployment.example_version_id) {
+        vscode.window.showErrorMessage('No reference available for this assignment');
+        return;
+      }
+
+      const exampleVersionId = deployment.example_version_id;
+      const submissionGroupId = content.submission_group?.id;
+
+      // Try to get latest submission artifact (may not exist)
+      let latestArtifact: { id: string } | undefined;
+      if (submissionGroupId) {
+        const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroupId);
+        if (artifacts && artifacts.length > 0) {
+          // Sort by created_at/uploaded_at descending to get latest
+          const sortedArtifacts = artifacts.sort((a, b) => {
+            const dateA = new Date((a as any).uploaded_at || (a as any).created_at || '').getTime();
+            const dateB = new Date((b as any).uploaded_at || (b as any).created_at || '').getTime();
+            return dateB - dateA;
+          });
+          latestArtifact = sortedArtifacts[0];
+        }
+      }
+
+      const referencePath = this.workspaceStructure.getReviewReferencePath(exampleVersionId);
+      const submissionPath = latestArtifact && submissionGroupId
+        ? this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, latestArtifact.id)
+        : undefined;
+
+      // Check what already exists
+      const referenceExists = await this.workspaceStructure.directoryExists(referencePath);
+      const submissionExists = submissionPath
+        ? await this.workspaceStructure.directoryExists(submissionPath)
+        : false;
+
+      // Determine what needs to be downloaded
+      const hasSubmission = !!latestArtifact && !!submissionPath;
+
+      if (hasSubmission && referenceExists && submissionExists) {
+        const choice = await vscode.window.showWarningMessage(
+          'Reference and latest submission already exist locally. Re-download?',
+          'Re-download',
+          'Cancel'
+        );
+        if (choice !== 'Re-download') {
+          return;
+        }
+        await fs.promises.rm(referencePath, { recursive: true, force: true });
+        await fs.promises.rm(submissionPath, { recursive: true, force: true });
+      } else if (!hasSubmission && referenceExists) {
+        const choice = await vscode.window.showWarningMessage(
+          'Reference already exists locally. Re-download?',
+          'Re-download',
+          'Cancel'
+        );
+        if (choice !== 'Re-download') {
+          return;
+        }
+        await fs.promises.rm(referencePath, { recursive: true, force: true });
+      }
+
+      const progressTitle = hasSubmission
+        ? 'Checking out reference and submission...'
+        : 'Checking out reference...';
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: progressTitle,
+          cancellable: false
+        },
+        async (progress) => {
+          const JSZip = require('jszip');
+
+          // Download reference
+          progress.report({ message: 'Downloading reference...' });
+          const referenceBuffer = await this.apiService.downloadCourseContentReference(content.id, true);
+          if (!referenceBuffer) {
+            throw new Error('Failed to download reference');
+          }
+
+          await fs.promises.mkdir(referencePath, { recursive: true });
+          const referenceZip = await JSZip.loadAsync(referenceBuffer);
+          for (const [filename, file] of Object.entries(referenceZip.files)) {
+            const fileData = file as any;
+            if (!fileData.dir) {
+              const fileContent = await fileData.async('nodebuffer');
+              const filePath = path.join(referencePath, filename);
+              await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+              await fs.promises.writeFile(filePath, fileContent);
+            }
+          }
+
+          // Download latest submission if available
+          if (hasSubmission && latestArtifact && submissionPath) {
+            progress.report({ message: 'Downloading latest submission...' });
+            const submissionBuffer = await this.apiService.downloadSubmissionArtifact(latestArtifact.id);
+            if (!submissionBuffer) {
+              throw new Error('Failed to download submission artifact');
+            }
+
+            await fs.promises.mkdir(submissionPath, { recursive: true });
+            const submissionZip = await JSZip.loadAsync(submissionBuffer);
+            for (const [filename, file] of Object.entries(submissionZip.files)) {
+              const fileData = file as any;
+              if (!fileData.dir) {
+                const fileContent = await fileData.async('nodebuffer');
+                const filePath = path.join(submissionPath, filename);
+                await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+                await fs.promises.writeFile(filePath, fileContent);
+              }
+            }
+          }
+        }
+      );
+
+      const successMessage = hasSubmission
+        ? 'Reference and latest submission checked out successfully'
+        : 'Reference checked out successfully (no submission available)';
+      vscode.window.showInformationMessage(successMessage);
+      this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to checkout: ${error?.message || error}`);
     }
   }
 
