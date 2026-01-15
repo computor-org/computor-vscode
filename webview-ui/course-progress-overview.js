@@ -250,7 +250,9 @@
           key: 'name',
           label: 'Student',
           render: (val, row) => {
-            const name = [row.given_name, row.family_name].filter(Boolean).join(' ') || 'Unknown';
+            const name = (row.family_name && row.given_name)
+              ? row.family_name + ', ' + row.given_name
+              : row.family_name || row.given_name || 'Unknown';
             return `
               <div class="student-name">${escapeHtml(name)}</div>
               ${row.username ? `<div class="student-username">@${escapeHtml(row.username)}</div>` : ''}
@@ -296,7 +298,9 @@
       ],
       data: students.map(s => ({
         ...s,
-        name: [s.given_name, s.family_name].filter(Boolean).join(' ') || s.username || 'Unknown'
+        name: (s.family_name && s.given_name)
+          ? s.family_name + ', ' + s.given_name
+          : s.family_name || s.given_name || s.username || 'Unknown'
       })),
       defaultSort: 'overall_progress_percentage',
       defaultSortDirection: 'desc',
@@ -373,7 +377,9 @@
       const students = state.students || [];
       studentTable.updateData(students.map(s => ({
         ...s,
-        name: [s.given_name, s.family_name].filter(Boolean).join(' ') || s.username || 'Unknown'
+        name: (s.family_name && s.given_name)
+          ? s.family_name + ', ' + s.given_name
+          : s.family_name || s.given_name || s.username || 'Unknown'
       })));
     }
   }
