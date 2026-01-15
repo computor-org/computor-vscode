@@ -586,14 +586,8 @@ class TutorContentItem extends vscode.TreeItem {
   }
 
   private setupCommand(): void {
-    // Add click command to show test results for assignments with results
-    if (this.isAssignment && this.content?.result) {
-      this.command = {
-        command: 'computor.showTestResults',
-        title: 'Show Test Results',
-        arguments: [{ courseContent: this.content }]
-      };
-    }
+    // Command removed - selection handler in extension.ts now triggers showTestResults
+    // This avoids duplicate API calls (command + selection both firing)
   }
 
   updateVisuals(): void {

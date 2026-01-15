@@ -926,14 +926,8 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
 
     private setupCommand(): void {
-        // Add click command to show test results for assignments
-        if (this.isAssignment() && this.courseContent?.result) {
-            this.command = {
-                command: 'computor.showTestResults',
-                title: 'Show Test Results',
-                arguments: [this]
-            };
-        }
+        // Command removed - selection handler in extension.ts now triggers showTestResults
+        // This avoids duplicate API calls (command + selection both firing)
     }
 
     // Update this item's data from a fresh course content object

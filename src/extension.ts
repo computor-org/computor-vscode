@@ -413,7 +413,20 @@ class UnifiedController {
       if (!element) return;
       void tree.onTreeItemCollapsed(element);
     });
-    this.disposables.push(studentExpandListener, studentCollapseListener);
+    const studentSelectionListener = treeView.onDidChangeSelection((event) => {
+      const selected = event.selection[0];
+      if (!selected) return;
+      // Show test results automatically when an assignment is selected
+      if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
+        if ((selected as any).courseContent?.result) {
+          void vscode.commands.executeCommand('computor.showTestResults', selected);
+        } else {
+          // Clear results view when selecting an assignment without results
+          void vscode.commands.executeCommand('computor.results.clear');
+        }
+      }
+    });
+    this.disposables.push(studentExpandListener, studentCollapseListener, studentSelectionListener);
 
     // No course pre-selection - tree will show all courses
 
@@ -457,6 +470,11 @@ class UnifiedController {
     this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
       resultsTree.setSelectedNodeId(item.id);
       panelProvider.updateTestResults(item);
+    }));
+    this.disposables.push(vscode.commands.registerCommand('computor.results.clear', () => {
+      resultsTree.clearResultArtifacts();
+      resultsTree.refresh({});
+      panelProvider.clearResults();
     }));
     this.disposables.push(vscode.commands.registerCommand('computor.results.artifact.open', async (resultId: string, artifactInfo: any) => {
       try {
@@ -557,6 +575,21 @@ class UnifiedController {
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.tutor.courses', tree));
     const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: tree, showCollapseAll: true });
     this.disposables.push(treeView);
+
+    // Show test results automatically when an assignment is selected
+    const tutorSelectionListener = treeView.onDidChangeSelection((event) => {
+      const selected = event.selection[0];
+      if (!selected) return;
+      if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
+        if ((selected as any).content?.result) {
+          void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
+        } else {
+          // Clear results view when selecting an assignment without results
+          void vscode.commands.executeCommand('computor.results.clear');
+        }
+      }
+    });
+    this.disposables.push(tutorSelectionListener);
 
     // Status bar: show selection and allow reset
     const tutorStatus = TutorStatusBarService.initialize();
