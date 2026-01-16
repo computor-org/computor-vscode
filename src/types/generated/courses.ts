@@ -386,7 +386,8 @@ export interface CourseContentQuery {
 
 export interface CourseTutorRepository {
   provider_url?: string | null;
-  full_path_reference?: string | null;
+  full_path_assignments?: string | null;
+  full_path_student_template?: string | null;
 }
 
 export interface CourseTutorGet {

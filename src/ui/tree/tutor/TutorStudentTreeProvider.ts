@@ -27,11 +27,45 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
 
   private contentKinds: CourseContentKindList[] = [];
 
+  // Content ID that should be expanded on next getChildren call (one-time trigger)
+  private pendingExpandContentId?: string;
+  // Content ID whose virtual folders (Reference, Submissions) should be expanded (one-time trigger)
+  private pendingExpandVirtualFoldersForContentId?: string;
+
+  // Expansion state cache - persists until user collapses manually
+  private expandedContentIds = new Set<string>();
+  private expandedVirtualFolderIds = new Set<string>();
+  private expandedSubmissionIds = new Set<string>();
+
   constructor(private api: ComputorApiService, private selection: TutorSelectionService) {
     selection.onDidChangeSelection(() => this.refresh());
   }
 
+  /**
+   * Handle collapse event from TreeView - remove from expansion cache
+   */
+  handleCollapse(element: vscode.TreeItem): void {
+    const id = element.id;
+    if (!id) return;
+    // Extract base ID (remove :expanded:timestamp suffix if present)
+    const baseId = id.replace(/:expanded:\d+$/, '');
+    this.expandedContentIds.delete(baseId);
+    this.expandedVirtualFolderIds.delete(baseId);
+    this.expandedSubmissionIds.delete(baseId);
+  }
+
   refresh(): void { this._onDidChangeTreeData.fire(undefined); }
+
+  /**
+   * Mark a content item to be expanded (with its virtual folders visible) after refresh.
+   * The item will be created with collapsibleState.Expanded and a temporary unique ID
+   * to force VS Code to treat it as a new item and respect the expansion state.
+   * The Reference and Submissions virtual folders will also be expanded.
+   */
+  markForVirtualFolderExpansion(contentId: string): void {
+    this.pendingExpandContentId = contentId;
+    this.pendingExpandVirtualFoldersForContentId = contentId;
+  }
 
   // Allow targeted refresh of a specific element
   refreshItem(element: vscode.TreeItem): void { this._onDidChangeTreeData.fire(element); }
@@ -189,13 +223,23 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       } else if (child.courseContent) {
         const isAssignment = this.isAssignmentContent(child.courseContent);
         const hasRepository = isAssignment ? this.hasLocalRepository(child.courseContent, memberId) : false;
-        items.push(new TutorContentItem(
+        // Check if this content should be expanded (pending trigger or cached)
+        const contentId = child.courseContent.id;
+        const isPendingExpand = this.pendingExpandContentId === contentId;
+        if (isPendingExpand) {
+          this.pendingExpandContentId = undefined;
+          this.expandedContentIds.add(contentId); // Add to cache
+        }
+        const shouldExpand = isPendingExpand || this.expandedContentIds.has(contentId);
+        const contentItem = new TutorContentItem(
           child.courseContent,
           memberId,
           isAssignment,
           this.deriveAssignmentDirectory(child.courseContent),
-          hasRepository
-        ));
+          hasRepository,
+          shouldExpand
+        );
+        items.push(contentItem);
       }
     }
     return items;
@@ -256,6 +300,13 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       return [];
     }
 
+    // Check if virtual folders should be expanded (pending trigger)
+    const contentId = element.content.id;
+    const isPendingExpand = this.pendingExpandVirtualFoldersForContentId === contentId;
+    if (isPendingExpand) {
+      this.pendingExpandVirtualFoldersForContentId = undefined;
+    }
+
     // Return three virtual folders: Reference, Submissions, Repository
     const items: vscode.TreeItem[] = [];
 
@@ -268,11 +319,21 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       const versionTag = element.content.deployment.version_tag || '';
       const label = versionTag ? `Reference (${versionTag})` : 'Reference';
 
-      items.push(new TutorVirtualFolderItem(label, 'reference', element.content, courseId, memberId, undefined, referenceExists));
+      const refFolderId = `tutorVirtualFolder:reference:${contentId}:${courseId}:${memberId}`;
+      if (isPendingExpand) {
+        this.expandedVirtualFolderIds.add(refFolderId);
+      }
+      const shouldExpandRef = isPendingExpand || this.expandedVirtualFolderIds.has(refFolderId);
+      items.push(new TutorVirtualFolderItem(label, 'reference', element.content, courseId, memberId, undefined, referenceExists, shouldExpandRef));
     }
 
-    // 2. Submissions folder
-    items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId));
+    // 2. Submissions folder - expand and mark to expand latest submission
+    const subsFolderId = `tutorVirtualFolder:submissions:${contentId}:${courseId}:${memberId}`;
+    if (isPendingExpand) {
+      this.expandedVirtualFolderIds.add(subsFolderId);
+    }
+    const shouldExpandSubs = isPendingExpand || this.expandedVirtualFolderIds.has(subsFolderId);
+    items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId, undefined, undefined, shouldExpandSubs, isPendingExpand));
 
     // 3. Repository folder - re-check if repository exists (in case it was cloned after tree item was created)
     const hasRepo = this.hasLocalRepository(element.content, memberId);
@@ -392,11 +453,18 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       });
 
       // Create tree items with formatted timestamps
+      const isPendingExpandLatest = element.expandLatestSubmission;
       const items: vscode.TreeItem[] = sortedArtifacts.map((artifact, index) => {
         const timestamp = artifact.uploaded_at || artifact.created_at;
         const formattedDate = timestamp ? new Date(timestamp).toLocaleString() : artifact.id;
         const isLatest = index === 0; // First item after sorting is the latest
         const result = (artifact as any).latest_result?.result;
+        // Check if this submission should be expanded (pending trigger or cached)
+        const submissionBaseId = `tutorSubmission:${artifact.id}:${submissionGroupId}:${element.courseId}:${element.memberId}`;
+        if (isLatest && isPendingExpandLatest) {
+          this.expandedSubmissionIds.add(submissionBaseId);
+        }
+        const startExpanded = this.expandedSubmissionIds.has(submissionBaseId);
         return new TutorSubmissionItem(
           artifact.id,
           submissionGroupId,
@@ -405,7 +473,8 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
           element.memberId,
           formattedDate,
           isLatest,
-          result
+          result,
+          startExpanded
         );
       });
 
@@ -568,9 +637,13 @@ class TutorContentItem extends vscode.TreeItem {
     memberId: string,
     isAssignment: boolean,
     assignmentDirectory?: string,
-    hasRepository: boolean = false
+    hasRepository: boolean = false,
+    startExpanded: boolean = false
   ) {
-    super(content.title || content.path, isAssignment ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+    const collapsibleState = isAssignment
+      ? (startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+      : vscode.TreeItemCollapsibleState.None;
+    super(content.title || content.path, collapsibleState);
     this.memberId = memberId;
     this.isAssignment = isAssignment;
     this.assignmentDirectory = assignmentDirectory;
@@ -580,7 +653,9 @@ class TutorContentItem extends vscode.TreeItem {
     } else {
       this.contextValue = 'tutorStudentContent.reading';
     }
-    this.id = content.id;
+    // Use a temporary unique ID when startExpanded is true to force VS Code to treat this as a new item
+    // and respect the collapsibleState.Expanded. The ID will revert to normal on next refresh.
+    this.id = startExpanded ? `${content.id}:expanded:${Date.now()}` : content.id;
     this.updateVisuals();
     this.setupCommand();
   }
@@ -726,7 +801,9 @@ class TutorFsFileItem extends vscode.TreeItem {
   }
 }
 
-class TutorVirtualFolderItem extends vscode.TreeItem {
+export class TutorVirtualFolderItem extends vscode.TreeItem {
+  public readonly expandLatestSubmission: boolean;
+
   constructor(
     label: string,
     public folderType: 'repository' | 'reference' | 'submissions',
@@ -734,9 +811,12 @@ class TutorVirtualFolderItem extends vscode.TreeItem {
     public courseId: string,
     public memberId: string,
     hasRepository?: boolean,
-    referenceExists?: boolean
+    referenceExists?: boolean,
+    startExpanded: boolean = false,
+    expandLatestSubmission: boolean = false
   ) {
-    super(label, vscode.TreeItemCollapsibleState.Collapsed);
+    super(label, startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+    this.expandLatestSubmission = expandLatestSubmission;
 
     // Set context value based on folder type and repository status
     if (folderType === 'repository') {
@@ -745,7 +825,9 @@ class TutorVirtualFolderItem extends vscode.TreeItem {
       this.contextValue = `tutorVirtualFolder.${folderType}`;
     }
 
-    this.id = `tutorVirtualFolder:${folderType}:${content.id}:${courseId}:${memberId}`;
+    // Use temporary unique ID when startExpanded to force VS Code to treat as new item
+    const baseId = `tutorVirtualFolder:${folderType}:${content.id}:${courseId}:${memberId}`;
+    this.id = startExpanded ? `${baseId}:expanded:${Date.now()}` : baseId;
 
     // Set appropriate icons
     if (folderType === 'repository') {
@@ -779,7 +861,8 @@ class TutorSubmissionItem extends vscode.TreeItem {
     public memberId: string,
     createdAt?: string,
     isLatest?: boolean,
-    result?: number
+    result?: number,
+    startExpanded: boolean = false
   ) {
     // Use created_at as label if available, otherwise use artifact ID
     let label = createdAt || artifactId;
@@ -795,9 +878,11 @@ class TutorSubmissionItem extends vscode.TreeItem {
       label = `${label} (latest)`;
     }
 
-    super(label, vscode.TreeItemCollapsibleState.Collapsed);
+    super(label, startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = 'tutorSubmissionArtifact';
-    this.id = `tutorSubmission:${artifactId}:${submissionGroupId}:${courseId}:${memberId}`;
+    // Use temporary unique ID when startExpanded to force VS Code to treat as new item
+    const baseId = `tutorSubmission:${artifactId}:${submissionGroupId}:${courseId}:${memberId}`;
+    this.id = startExpanded ? `${baseId}:expanded:${Date.now()}` : baseId;
     this.result = result;
 
     // Use different icon for latest submission

@@ -936,6 +936,9 @@ export class TutorCommands {
         ? 'Reference and latest submission checked out successfully'
         : 'Reference checked out successfully (no submission available)';
       vscode.window.showInformationMessage(successMessage);
+
+      // Mark this content to be expanded when the tree refreshes
+      this.treeDataProvider.markForVirtualFolderExpansion(content.id);
       this.treeDataProvider.refresh();
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to checkout: ${error?.message || error}`);

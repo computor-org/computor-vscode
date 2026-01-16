@@ -576,6 +576,12 @@ class UnifiedController {
     const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: tree, showCollapseAll: true });
     this.disposables.push(treeView);
 
+    // Track collapse events to update expansion cache
+    const tutorCollapseListener = treeView.onDidCollapseElement((event) => {
+      tree.handleCollapse(event.element);
+    });
+    this.disposables.push(tutorCollapseListener);
+
     // Show test results automatically when an assignment is selected
     const tutorSelectionListener = treeView.onDidChangeSelection((event) => {
       const selected = event.selection[0];
