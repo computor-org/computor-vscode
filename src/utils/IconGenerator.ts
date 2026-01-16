@@ -59,7 +59,8 @@ export class IconGenerator {
     color: string,
     shape: 'circle' | 'square' = 'circle',
     badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none',
-    corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
+    corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none',
+    unreviewed: boolean = false
   ): vscode.Uri | vscode.ThemeIcon {
     const normalizedColor = this.normalizeColor(color);
     if (!normalizedColor) {
@@ -72,12 +73,12 @@ export class IconGenerator {
       return new vscode.ThemeIcon('symbol-enum');
     }
 
-    const cacheKey = `${shape}-${normalizedColor}-${badge}-${corner}`;
+    const cacheKey = `${shape}-${normalizedColor}-${badge}-${corner}-${unreviewed ? 'unrev' : 'rev'}`;
     if (this.iconCache.has(cacheKey)) {
       return this.iconCache.get(cacheKey)!;
     }
 
-    const svg = this.generateSvg(normalizedColor, shape, badge, corner);
+    const svg = this.generateSvg(normalizedColor, shape, badge, corner, unreviewed);
     const fileName = `${cacheKey}.svg`;
     const filePath = path.join(this.iconDir, fileName);
 
@@ -96,7 +97,8 @@ export class IconGenerator {
     color: string,
     shape: 'circle' | 'square',
     badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none',
-    corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none'
+    corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none',
+    unreviewed: boolean = false
   ): string {
     const size = 16;
     const padding = 2;
@@ -150,7 +152,7 @@ export class IconGenerator {
       `;
     }
 
-    // Corner status dot
+    // Corner status dot (bottom-right)
     let cornerElement = '';
     if (corner !== 'none') {
       const cornerColor = corner === 'corrected' ? '#57cc5dff' : corner === 'correction_necessary' ? '#fc4a4aff' : '#fdba4dff';
@@ -160,11 +162,21 @@ export class IconGenerator {
       cornerElement = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${cornerColor}" stroke="#ffffff" stroke-width="1.5" />`;
     }
 
+    // Unreviewed indicator dot (top-left) - cyan/blue dot to indicate pending review
+    let unreviewedElement = '';
+    if (unreviewed) {
+      const cx = 3.5;
+      const cy = 3.5;
+      const r = 3;
+      unreviewedElement = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#38bdf8" stroke="#ffffff" stroke-width="1.5" />`;
+    }
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
   ${shapeElement}
   ${badgeElement}
   ${cornerElement}
+  ${unreviewedElement}
 </svg>`;
   }
 

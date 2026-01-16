@@ -582,6 +582,8 @@ export interface CourseContentStudentGet {
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
   status?: string | null;
+  unreviewed_count?: number;
+  latest_grade_status?: string | null;
 }
 
 export interface CourseContentStudentList {
@@ -607,6 +609,8 @@ export interface CourseContentStudentList {
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
   status?: string | null;
+  unreviewed_count?: number;
+  latest_grade_status?: string | null;
 }
 
 export interface CourseContentStudentUpdate {

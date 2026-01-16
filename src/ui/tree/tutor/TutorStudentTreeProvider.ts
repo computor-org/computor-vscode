@@ -175,6 +175,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     }
 
     this.aggregateUnreadCounts(root);
+    this.aggregateUnreviewedCounts(root);
     this.aggregateUnitDecorations(root);
     return root;
   }
@@ -188,6 +189,18 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     });
 
     node.unreadMessageCount = total;
+    return total;
+  }
+
+  private aggregateUnreviewedCounts(node: ContentNode): number {
+    const ownUnreviewed = (node.courseContent as any)?.unreviewed_count ?? 0;
+    let total = ownUnreviewed;
+
+    node.children.forEach((child) => {
+      total += this.aggregateUnreviewedCounts(child);
+    });
+
+    node.unreviewedCount = total;
     return total;
   }
 
@@ -534,6 +547,7 @@ interface ContentNode {
   contentKind?: CourseContentKindList;
   isUnit: boolean;
   unreadMessageCount?: number;
+  unreviewedCount?: number;
   submissionGroup?: SubmissionGroupStudentList;
   aggregatedColor?: string;
 }
@@ -560,9 +574,10 @@ class TutorUnitItem extends vscode.TreeItem {
           : status === 'correction_necessary' ? 'correction_necessary'
             : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
               : 'none';
-      this.iconPath = corner === 'none'
+      const hasUnreviewed = (node.unreviewedCount ?? 0) > 0;
+      this.iconPath = (corner === 'none' && !hasUnreviewed)
         ? IconGenerator.getColoredIcon(color, 'circle')
-        : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
+        : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner, hasUnreviewed);
     } catch {
       this.iconPath = new vscode.ThemeIcon('folder');
     }
@@ -586,8 +601,17 @@ class TutorUnitItem extends vscode.TreeItem {
   private applyCounts(): void {
     const count = this.countItems(this.node);
     const unread = this.node.unreadMessageCount ?? 0;
+    const unreviewed = this.node.unreviewedCount ?? 0;
     const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
-    this.description = unread > 0 ? `🔔 ${unread} • ${itemLabel}` : itemLabel;
+    const descParts: string[] = [];
+    if (unreviewed > 0) {
+      descParts.push(`📝 ${unreviewed}`);
+    }
+    if (unread > 0) {
+      descParts.push(`🔔 ${unread}`);
+    }
+    descParts.push(itemLabel);
+    this.description = descParts.join(' • ');
 
     const tooltipLines = [
       `Unit: ${this.label?.toString() ?? 'Unit'}`,
@@ -600,6 +624,9 @@ class TutorUnitItem extends vscode.TreeItem {
     const status = (this.node.courseContent as any)?.status || this.node.submissionGroup?.status;
     if (status) {
       tooltipLines.push(`Status: ${this.formatStatus(String(status))}`);
+    }
+    if (unreviewed > 0) {
+      tooltipLines.push(`${unreviewed} unreviewed assignment${unreviewed === 1 ? '' : 's'}`);
     }
     if (unread > 0) {
       tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
@@ -671,6 +698,8 @@ class TutorContentItem extends vscode.TreeItem {
     const kindId = ct?.course_content_kind_id;
     const shape = kindId === 'assignment' ? 'square' : 'circle';
     const unread = (this.content as any).unread_message_count ?? 0;
+    const unreviewedCount = (this.content as any).unreviewed_count ?? 0;
+    const hasUnreviewed = unreviewedCount > 0;
     let badge: 'success' | 'success-submitted' | 'failure' | 'failure-submitted' | 'submitted' | 'none' = 'none';
     let corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' = 'none';
     const submission: SubmissionGroupStudentList = this.content.submission_group!;
@@ -695,12 +724,16 @@ class TutorContentItem extends vscode.TreeItem {
         // Submitted but not tested yet
         badge = 'submitted';
     }
-    this.iconPath = (badge === 'none' && corner === 'none')
+    this.iconPath = (badge === 'none' && corner === 'none' && !hasUnreviewed)
       ? IconGenerator.getColoredIcon(color, shape)
-      : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner);
+      : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner, hasUnreviewed);
 
     // Build description with test/submission counts like student view
     const descriptionParts: string[] = [];
+
+    if (hasUnreviewed) {
+      descriptionParts.push('📝');
+    }
 
     if (unread > 0) {
       descriptionParts.push(`🔔 ${unread}`);
@@ -758,6 +791,9 @@ class TutorContentItem extends vscode.TreeItem {
     }
     if (typeof grading === 'number') {
       tooltipLines.push(`Grading: ${(grading * 100).toFixed(2)}%`);
+    }
+    if (hasUnreviewed) {
+      tooltipLines.push('Unreviewed assignment');
     }
     if (unread > 0) {
       tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);

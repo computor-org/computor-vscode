@@ -3280,6 +3280,8 @@ export interface TutorGradeResponse {
   deployment?: CourseContentDeploymentList | null;
   has_deployment?: boolean | null;
   status?: string | null;
+  unreviewed_count?: number;
+  latest_grade_status?: string | null;
   graded_artifact_id?: string | null;
   graded_artifact_info?: GradedArtifactInfo | null;
 }
