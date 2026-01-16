@@ -564,7 +564,12 @@ class UnifiedController {
     const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
+    const { TutorEditorDecorationService } = await import('./providers/TutorEditorDecorationService');
     const selection = TutorSelectionService.initialize(this.context, api);
+
+    // Initialize editor decoration service for in-editor student name display
+    const editorDecorationService = TutorEditorDecorationService.initialize(this.context);
+    editorDecorationService.connectToSelectionService(selection);
 
     // Don't pre-select any course - tutor will show all courses in dropdown
     const filterProvider = new TutorFilterPanelProvider(this.context.extensionUri, api, selection);
