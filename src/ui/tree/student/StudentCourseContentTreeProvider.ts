@@ -443,8 +443,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     }
 
                     const itemCount = courseContents.length;
-                    const courseItem = new CourseRootItem(title, courseId, itemCount, true);
                     const rootId = `course-${courseId}`;
+                    const courseItem = new CourseRootItem(title, courseId, itemCount, this.getExpandedState(rootId));
                     courseItem.id = rootId;
                     this.itemIndex.set(rootId, courseItem);
                     courseItems.push(courseItem);
