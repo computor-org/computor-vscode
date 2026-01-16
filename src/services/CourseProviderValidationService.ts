@@ -105,8 +105,9 @@ export class CourseProviderValidationService {
   /**
    * Validate and register user for all course providers
    * This is called once after login to ensure user has access to all course repositories
+   * @param onProgress Optional callback for progress reporting (used during startup to avoid multiple popups)
    */
-  async validateAllCourseProviders(): Promise<void> {
+  async validateAllCourseProviders(onProgress?: (message: string) => void): Promise<void> {
     const providerMap = await this.extractUniqueProviderUrls();
 
     if (providerMap.size === 0) {
@@ -142,7 +143,7 @@ export class CourseProviderValidationService {
         }
 
         // Validate token for each course and register if needed
-        await this.validateAndRegisterCourses(providerUrl, token, courses);
+        await this.validateAndRegisterCourses(providerUrl, token, courses, onProgress);
 
         // Mark as validated
         this.validatedProviders.add(providerUrl);
@@ -176,18 +177,15 @@ export class CourseProviderValidationService {
 
   /**
    * Validate and register user for multiple courses on the same provider
+   * @param onProgress Optional external progress callback. If provided, uses it instead of showing a separate popup.
    */
   private async validateAndRegisterCourses(
     providerUrl: string,
     token: string,
-    courses: CourseProviderInfo[]
+    courses: CourseProviderInfo[],
+    onProgress?: (message: string) => void
   ): Promise<void> {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Validating GitLab access for ${providerUrl}`,
-      cancellable: false
-    }, async (progress) => {
-      let successCount = 0;
+    const validateCourses = async (report: (message: string) => void) => {
       let failureCount = 0;
 
       for (let i = 0; i < courses.length; i++) {
@@ -196,17 +194,13 @@ export class CourseProviderValidationService {
           continue;
         }
 
-        progress.report({
-          message: `Course ${i + 1}/${courses.length}: ${course.courseTitle}`,
-          increment: (100 / courses.length)
-        });
+        report(`Validating ${course.courseTitle} (${i + 1}/${courses.length})`);
 
         try {
           // Validate the token for this course (backend handles registration automatically)
           const readiness = await this.api.validateCourseReadiness(course.courseId, token);
 
           if (readiness.is_ready) {
-            successCount++;
             console.log(`[CourseProviderValidationService] ✓ Validated: ${course.courseTitle}`);
           } else {
             failureCount++;
@@ -215,24 +209,31 @@ export class CourseProviderValidationService {
         } catch (error: any) {
           failureCount++;
           console.error(`[CourseProviderValidationService] Error validating ${course.courseTitle}:`, error);
-
           // Don't show error for each course - we'll show summary at the end
         }
       }
 
-      // Show summary
-      if (successCount > 0) {
-        vscode.window.showInformationMessage(
-          `✓ GitLab access validated for ${successCount} course${successCount > 1 ? 's' : ''} on ${providerUrl}`
-        );
-      }
-
+      // Show summary only if there were failures (success is implicit)
       if (failureCount > 0) {
         vscode.window.showWarningMessage(
-          `⚠ Could not validate ${failureCount} course${failureCount > 1 ? 's' : ''} on ${providerUrl}. You may need to configure access manually.`
+          `Could not validate ${failureCount} course${failureCount > 1 ? 's' : ''} on ${providerUrl}. You may need to configure access manually.`
         );
       }
-    });
+    };
+
+    // If external progress callback provided, use it (no separate popup)
+    if (onProgress) {
+      await validateCourses(onProgress);
+    } else {
+      // Standalone call - show its own progress popup
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Validating GitLab access for ${providerUrl}`,
+        cancellable: false
+      }, async (progress) => {
+        await validateCourses((msg) => progress.report({ message: msg }));
+      });
+    }
   }
 
   /**

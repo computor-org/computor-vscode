@@ -29,7 +29,6 @@ import { StudentRepositoryManager } from './services/StudentRepositoryManager';
 import { CourseSelectionService } from './services/CourseSelectionService';
 import { StudentCommands } from './commands/StudentCommands';
 
-// import { TutorTreeDataProvider } from './ui/tree/tutor/TutorTreeDataProvider';
 import { TutorCommands } from './commands/TutorCommands';
 
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
@@ -76,7 +75,8 @@ async function attemptSilentAutoLogin(
   context: vscode.ExtensionContext,
   baseUrl: string,
   username: string,
-  password: string
+  password: string,
+  onProgress?: (message: string) => void
 ): Promise<boolean> {
   try {
     const client = new BearerTokenHttpClient(baseUrl, 5000);
@@ -94,7 +94,7 @@ async function attemptSilentAutoLogin(
     await ensureWorkspaceMarker(baseUrl);
     const controller = new UnifiedController(context);
 
-    await controller.activate(client as any);
+    await controller.activate(client as any, onProgress);
     backendConnectionService.startHealthCheck(baseUrl);
 
     activeSession = {
@@ -203,6 +203,117 @@ async function writeMarker(file: string, data: { backendUrl: string }): Promise<
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
+/**
+ * Result of auto-login attempt
+ */
+interface AutoLoginResult {
+  success: boolean;
+  shouldPromptManualLogin: boolean;
+}
+
+/**
+ * Handles automatic login when .computor file is detected in workspace.
+ * Consolidates duplicated auto-login logic from activation and workspace change handlers.
+ */
+async function handleComputorWorkspaceDetected(
+  context: vscode.ExtensionContext,
+  computorMarkerPath: string
+): Promise<void> {
+  const settings = new ComputorSettingsManager(context);
+  const autoLoginEnabled = await settings.isAutoLoginEnabled();
+  const storedUsername = await context.secrets.get('computor.username');
+  const storedPassword = await context.secrets.get('computor.password');
+
+  if (autoLoginEnabled && storedUsername && storedPassword) {
+    const result = await performAutoLogin(context, computorMarkerPath, storedUsername, storedPassword);
+
+    if (!result.success && result.shouldPromptManualLogin) {
+      const action = await vscode.window.showWarningMessage(
+        'Auto-login failed. Would you like to login manually?',
+        'Login',
+        'Not Now'
+      );
+      if (action === 'Login') {
+        await unifiedLoginFlow(context);
+      }
+    }
+  } else if (autoLoginEnabled === false) {
+    // Auto-login is explicitly disabled - show prompt
+    const action = await vscode.window.showInformationMessage(
+      'Computor workspace detected. Would you like to login?',
+      'Login',
+      'Not Now'
+    );
+    if (action === 'Login') {
+      await unifiedLoginFlow(context);
+    }
+  }
+  // If autoLogin is true but no credentials are stored, do nothing (silent)
+}
+
+/**
+ * Performs the actual auto-login attempt with a single unified progress notification.
+ */
+async function performAutoLogin(
+  context: vscode.ExtensionContext,
+  computorMarkerPath: string,
+  username: string,
+  password: string
+): Promise<AutoLoginResult> {
+  let loginFailed = false;
+
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: 'Computor',
+    cancellable: false
+  }, async (progress) => {
+    try {
+      progress.report({ message: 'Connecting to backend...' });
+
+      const settings = new ComputorSettingsManager(context);
+      const marker = await readMarker(computorMarkerPath);
+      const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
+
+      if (!baseUrl) {
+        loginFailed = true;
+        return;
+      }
+
+      backendConnectionService.setBaseUrl(baseUrl);
+      const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+      if (!connectionStatus.isReachable) {
+        await backendConnectionService.showConnectionError(connectionStatus);
+        loginFailed = true;
+        return;
+      }
+
+      progress.report({ message: 'Authenticating...' });
+
+      const success = await attemptSilentAutoLogin(
+        context,
+        baseUrl,
+        username,
+        password,
+        (msg) => progress.report({ message: msg })
+      );
+
+      if (success) {
+        vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
+      } else {
+        loginFailed = true;
+      }
+    } catch (error: any) {
+      console.warn('Auto-login failed:', error);
+      loginFailed = true;
+    }
+  });
+
+  return {
+    success: !loginFailed,
+    shouldPromptManualLogin: loginFailed
+  };
+}
+
 async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
@@ -268,7 +379,12 @@ class UnifiedController {
     this.context = context;
   }
 
-  async activate(client: ReturnType<typeof buildHttpClient>): Promise<void> {
+  async activate(
+    client: ReturnType<typeof buildHttpClient>,
+    onProgress?: (message: string) => void
+  ): Promise<void> {
+    const report = onProgress || (() => {});
+
     this.httpClient = client;
     const api = await this.setupApi(client);
 
@@ -285,20 +401,24 @@ class UnifiedController {
 
     // Get available views for this user across all courses
     // This is a lightweight check to determine which role views to show
+    report('Loading user views...');
     const availableViews = await this.getAvailableViews(api);
 
     if (availableViews.length === 0) {
       throw new Error('No views available for your account.');
     }
 
+    report('Validating Git environment...');
     await GitEnvironmentService.getInstance().validateGitEnvironment();
 
     // Validate and register course provider accounts BEFORE initializing views
     // This ensures tokens are ready before ANY git operations
-    await this.validateCourseProviderAccess(api);
+    report('Validating course access...');
+    await this.validateCourseProviderAccess(api, onProgress);
 
     // NOW initialize views - git operations will work because tokens are validated
-    await this.initializeViews(api, null, availableViews);
+    report('Initializing views...');
+    await this.initializeViews(api, null, availableViews, onProgress);
 
     // Focus on the highest priority view: lecturer > tutor > student
     await this.focusHighestPriorityView(availableViews);
@@ -315,37 +435,51 @@ class UnifiedController {
     return await api.getUserViews();
   }
 
-  private async validateCourseProviderAccess(api: ComputorApiService): Promise<void> {
+  private async validateCourseProviderAccess(
+    api: ComputorApiService,
+    onProgress?: (message: string) => void
+  ): Promise<void> {
     try {
       const { CourseProviderValidationService } = await import('./services/CourseProviderValidationService');
       const validationService = new CourseProviderValidationService(this.context, api);
-      await validationService.validateAllCourseProviders();
+      await validationService.validateAllCourseProviders(onProgress);
       console.log('[UnifiedController] Course provider validation complete');
     } catch (error) {
       console.warn('[UnifiedController] Failed to validate course provider access:', error);
     }
   }
 
-  private async initializeViews(api: ComputorApiService, courseId: string | null, views: string[]): Promise<void> {
+  private async initializeViews(
+    api: ComputorApiService,
+    courseId: string | null,
+    views: string[],
+    onProgress?: (message: string) => void
+  ): Promise<void> {
     void courseId; // No longer used - views show all courses
+    const report = onProgress || (() => {});
+
     // Store the active views
     this.activeViews = views;
 
     // Initialize ALL available views - each will get its own activity bar container
     // Each view will fetch and display all available courses
     if (views.includes('student')) {
-      await this.initializeStudentView(api);
+      report('Setting up student view...');
+      await this.initializeStudentView(api, onProgress);
       await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
     }
     if (views.includes('tutor')) {
+      report('Setting up tutor view...');
       await this.initializeTutorView(api);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
     }
     if (views.includes('lecturer')) {
+      report('Setting up lecturer view...');
       await this.initializeLecturerView(api);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
     }
     if (views.includes('user_manager')) {
+      report('Setting up user manager view...');
       await this.initializeUserManagerView(api);
       await vscode.commands.executeCommand('setContext', 'computor.user_manager.show', true);
     }
@@ -391,7 +525,12 @@ class UnifiedController {
     }
   }
 
-  private async initializeStudentView(api: ComputorApiService): Promise<void> {
+  private async initializeStudentView(
+    api: ComputorApiService,
+    onProgress?: (message: string) => void
+  ): Promise<void> {
+    const report = onProgress || (() => {});
+
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
     const statusBar = (await import('./ui/StatusBarService')).StatusBarService.initialize(this.context);
@@ -448,19 +587,28 @@ class UnifiedController {
     // Auto-setup repositories only for expanded courses (tokens already validated before this runs)
     // Courses that were never expanded will be set up lazily when first expanded
     if (expandedCourseIds.size > 0) {
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Preparing course repositories...',
-        cancellable: false
-      }, async (progress) => {
-        progress.report({ message: 'Starting...' });
+      // Use external progress if available, otherwise show own popup
+      const setupRepositories = async (progressReport: (msg: string) => void) => {
+        progressReport('Preparing repositories...');
         try {
-          await repositoryManager.autoSetupRepositories(undefined, (msg) => progress.report({ message: msg }), expandedCourseIds);
+          await repositoryManager.autoSetupRepositories(undefined, progressReport, expandedCourseIds);
         } catch (e) {
           console.error('[initializeStudentView] Repository auto-setup failed:', e);
         }
         tree.refresh();
-      });
+      };
+
+      if (onProgress) {
+        await setupRepositories(report);
+      } else {
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: 'Preparing course repositories...',
+          cancellable: false
+        }, async (progress) => {
+          await setupRepositories((msg) => progress.report({ message: msg }));
+        });
+      }
     } else {
       console.log('[initializeStudentView] No expanded courses, skipping initial repository setup');
     }
@@ -1160,66 +1308,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (workspaceRoot && !activeSession) {
     const computorMarkerPath = path.join(workspaceRoot, computorMarker);
     if (fs.existsSync(computorMarkerPath)) {
-      setTimeout(async () => {
-        const settings = new ComputorSettingsManager(context);
-        const autoLoginEnabled = await settings.isAutoLoginEnabled();
-        const storedUsername = await context.secrets.get('computor.username');
-        const storedPassword = await context.secrets.get('computor.password');
-
-        if (autoLoginEnabled && storedUsername && storedPassword) {
-          // Auto-login is enabled and credentials are stored - attempt silent login
-          let loginFailed = false;
-          await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: 'Auto-logging in to Computor...',
-            cancellable: false
-          }, async () => {
-            try {
-              const marker = await readMarker(computorMarkerPath);
-              const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
-
-              backendConnectionService.setBaseUrl(baseUrl);
-              const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-              if (!connectionStatus.isReachable) {
-                await backendConnectionService.showConnectionError(connectionStatus);
-                return;
-              }
-
-              const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
-              if (success) {
-                vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
-              } else {
-                throw new Error('Authentication failed');
-              }
-            } catch (error: any) {
-              console.warn('Auto-login failed:', error);
-              loginFailed = true;
-            }
-          });
-
-          if (loginFailed) {
-            const action = await vscode.window.showWarningMessage(
-              'Auto-login failed. Would you like to login manually?',
-              'Login',
-              'Not Now'
-            );
-            if (action === 'Login') {
-              await unifiedLoginFlow(context);
-            }
-          }
-        } else if (!autoLoginEnabled) {
-          // Auto-login is explicitly disabled - show prompt
-          const action = await vscode.window.showInformationMessage(
-            'Computor workspace detected. Would you like to login?',
-            'Login',
-            'Not Now'
-          );
-          if (action === 'Login') {
-            await unifiedLoginFlow(context);
-          }
-        }
-        // If autoLogin is true but no credentials are stored, do nothing (silent)
-      }, 1500);
+      // Small delay to let VS Code finish initializing
+      setTimeout(() => {
+        void handleComputorWorkspaceDetected(context, computorMarkerPath);
+      }, 500);
     }
   }
 
@@ -1239,72 +1331,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
 
   // Listen for workspace folder changes to detect .computor files
-  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
     if (!activeSession) {
       const workspaceRoot = getWorkspaceRoot();
       if (workspaceRoot) {
         const computorMarkerPath = path.join(workspaceRoot, computorMarker);
         if (fs.existsSync(computorMarkerPath)) {
-          setTimeout(async () => {
-            const settings = new ComputorSettingsManager(context);
-            const autoLoginEnabled = await settings.isAutoLoginEnabled();
-            const storedUsername = await context.secrets.get('computor.username');
-            const storedPassword = await context.secrets.get('computor.password');
-
-            if (autoLoginEnabled && storedUsername && storedPassword) {
-              // Auto-login is enabled and credentials are stored - attempt silent login
-              let loginFailed = false;
-              await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Auto-logging in to Computor...',
-                cancellable: false
-              }, async () => {
-                try {
-                  const marker = await readMarker(computorMarkerPath);
-                  const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
-
-                  backendConnectionService.setBaseUrl(baseUrl);
-                  const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-                  if (!connectionStatus.isReachable) {
-                    await backendConnectionService.showConnectionError(connectionStatus);
-                    return;
-                  }
-
-                  const success = await attemptSilentAutoLogin(context, baseUrl, storedUsername, storedPassword);
-                  if (success) {
-                    vscode.window.showInformationMessage(`Auto-login successful: ${baseUrl}`);
-                  } else {
-                    throw new Error('Authentication failed');
-                  }
-                } catch (error: any) {
-                  console.warn('Auto-login failed:', error);
-                  loginFailed = true;
-                }
-              });
-
-              if (loginFailed) {
-                const action = await vscode.window.showWarningMessage(
-                  'Auto-login failed. Would you like to login manually?',
-                  'Login',
-                  'Not Now'
-                );
-                if (action === 'Login') {
-                  await unifiedLoginFlow(context);
-                }
-              }
-            } else if (!autoLoginEnabled) {
-              // Auto-login is explicitly disabled - show prompt
-              const action = await vscode.window.showInformationMessage(
-                'Computor workspace detected. Would you like to login?',
-                'Login',
-                'Not Now'
-              );
-              if (action === 'Login') {
-                await unifiedLoginFlow(context);
-              }
-            }
-            // If autoLogin is true but no credentials are stored, do nothing (silent)
-          }, 1500);
+          // Small delay to let VS Code finish processing
+          setTimeout(() => {
+            void handleComputorWorkspaceDetected(context, computorMarkerPath);
+          }, 500);
         }
       }
     }
