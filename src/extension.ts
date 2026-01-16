@@ -430,20 +430,40 @@ class UnifiedController {
 
     // No course pre-selection - tree will show all courses
 
-    // Auto-setup repositories (tokens already validated before this runs)
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'Preparing course repositories...',
-      cancellable: false
-    }, async (progress) => {
-      progress.report({ message: 'Starting...' });
-      try {
-        await repositoryManager.autoSetupRepositories(undefined, (msg) => progress.report({ message: msg }));
-      } catch (e) {
-        console.error('[initializeStudentView] Repository auto-setup failed:', e);
+    // Load expanded states to determine which courses need immediate update
+    // Only previously expanded courses will have their repositories updated on startup
+    const settingsManager = new ComputorSettingsManager(this.context);
+    const expandedStates = await settingsManager.getStudentTreeExpandedStates();
+
+    // Extract course IDs from expanded states (format: "course-{courseId}")
+    const expandedCourseIds = new Set<string>();
+    for (const nodeId of Object.keys(expandedStates)) {
+      if (nodeId.startsWith('course-') && expandedStates[nodeId]) {
+        expandedCourseIds.add(nodeId.replace('course-', ''));
       }
-      tree.refresh();
-    });
+    }
+
+    console.log(`[initializeStudentView] Expanded courses for startup update: ${Array.from(expandedCourseIds).join(', ') || '(none)'}`);
+
+    // Auto-setup repositories only for expanded courses (tokens already validated before this runs)
+    // Courses that were never expanded will be set up lazily when first expanded
+    if (expandedCourseIds.size > 0) {
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Preparing course repositories...',
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ message: 'Starting...' });
+        try {
+          await repositoryManager.autoSetupRepositories(undefined, (msg) => progress.report({ message: msg }), expandedCourseIds);
+        } catch (e) {
+          console.error('[initializeStudentView] Repository auto-setup failed:', e);
+        }
+        tree.refresh();
+      });
+    } else {
+      console.log('[initializeStudentView] No expanded courses, skipping initial repository setup');
+    }
 
     // Student commands
     const commands = new StudentCommands(this.context, tree, api, repositoryManager);

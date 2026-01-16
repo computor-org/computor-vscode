@@ -31,7 +31,7 @@ interface CloneRepositoryItem {
 export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<TreeItem | undefined | null>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-    
+
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
     private repositoryManager?: StudentRepositoryManager;
@@ -41,6 +41,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private expandedStates: Record<string, boolean> = {};
     private itemIndex: Map<string, TreeItem> = new Map();
     private forceRefresh: boolean = false;
+    // Track courses that have been set up in this session (to avoid redundant setup)
+    private coursesSetupThisSession: Set<string> = new Set();
     // private courseCache: { id: string; title: string } | null = null;
     
     constructor(
@@ -62,7 +64,15 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (!this.settingsManager) return;
         try {
             this.expandedStates = await this.settingsManager.getStudentTreeExpandedStates();
+            // Mark courses that were expanded at startup as already set up
+            // (their repositories were updated during initializeStudentView)
+            for (const nodeId of Object.keys(this.expandedStates)) {
+                if (nodeId.startsWith('course-') && this.expandedStates[nodeId]) {
+                    this.coursesSetupThisSession.add(nodeId.replace('course-', ''));
+                }
+            }
             console.log('Loaded student tree expanded states:', Object.keys(this.expandedStates));
+            console.log('Courses already set up:', Array.from(this.coursesSetupThisSession));
         } catch (error) {
             console.error('Failed to load student tree expanded states:', error);
             this.expandedStates = {};
@@ -466,6 +476,29 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (element instanceof CourseRootItem) {
             const selectedCourseId = element.courseId;
             try {
+                // Check if this course needs initial repository setup
+                // (first expansion of a course that wasn't expanded at startup)
+                if (this.repositoryManager && !this.coursesSetupThisSession.has(selectedCourseId)) {
+                    console.log(`[StudentTree] First expansion of course ${selectedCourseId}, triggering repository setup`);
+                    this.coursesSetupThisSession.add(selectedCourseId);
+
+                    await vscode.window.withProgress({
+                        location: vscode.ProgressLocation.Notification,
+                        title: `Setting up repositories for ${element.title}...`,
+                        cancellable: false
+                    }, async (progress) => {
+                        progress.report({ message: 'Starting...' });
+                        try {
+                            await this.repositoryManager!.autoSetupRepositories(
+                                selectedCourseId,
+                                (msg) => progress.report({ message: msg })
+                            );
+                        } catch (e) {
+                            console.error(`[StudentTree] Repository setup failed for course ${selectedCourseId}:`, e);
+                        }
+                    });
+                }
+
                 // Ensure kinds and contents
                 if (this.contentKinds.length === 0) this.contentKinds = await this.apiService.getCourseContentKinds() || [];
                 const shouldForce = this.forceRefresh;

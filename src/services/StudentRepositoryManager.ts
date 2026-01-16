@@ -38,8 +38,18 @@ export class StudentRepositoryManager {
 
   /**
    * Auto-clone or update all repositories for a student's courses
+   * @param courseId - Optional specific course to setup
+   * @param onProgress - Optional progress callback
+   * @param expandedCourseIds - Optional set of course IDs to process. When provided,
+   *                           only repositories belonging to these courses will be
+   *                           cloned/updated/fork-synced. Other courses are skipped
+   *                           for faster startup.
    */
-  async autoSetupRepositories(courseId?: string, onProgress?: (message: string) => void): Promise<void> {
+  async autoSetupRepositories(
+    courseId?: string,
+    onProgress?: (message: string) => void,
+    expandedCourseIds?: Set<string>
+  ): Promise<void> {
     const report = onProgress || (() => {});
     console.log('[StudentRepositoryManager] Starting auto-setup of repositories');
     report('Discovering course contents...');
@@ -84,6 +94,11 @@ export class StudentRepositoryManager {
       
       // Process each course's repositories
       for (const [courseIdForRepo, repos] of reposByCourse) {
+        // Skip courses not in the expanded set (if provided)
+        if (expandedCourseIds && !expandedCourseIds.has(courseIdForRepo)) {
+          console.log(`[StudentRepositoryManager] Skipping course ${courseIdForRepo} (not expanded)`);
+          continue;
+        }
         report(`Processing repositories for course ${courseIdForRepo} (${repos.length})`);
         await this.processRepositoriesForCourse(courseIdForRepo, repos, courseContents, report);
       }
