@@ -738,13 +738,13 @@ class TutorContentItem extends vscode.TreeItem {
     const testCount = (this.content as any)?.result_count as number | undefined;
     const maxTests = (this.content as any)?.max_test_runs as number | undefined;
     if (typeof testCount === 'number') {
-      descriptionParts.push(typeof maxTests === 'number' ? `[${testCount}/${maxTests}]` : `[${testCount}]`);
+      descriptionParts.push(typeof maxTests === 'number' ? `(${testCount}/${maxTests})` : `(${testCount})`);
     }
 
     const submitCount = submission?.count as number | undefined;
     const maxSubmits = submission?.max_submissions as number | undefined;
     if (typeof submitCount === 'number') {
-      descriptionParts.push(typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`);
+      descriptionParts.push(typeof maxSubmits === 'number' ? `(${submitCount}/${maxSubmits})` : `(${submitCount})`);
     }
 
     this.description = descriptionParts.length > 0 ? descriptionParts.join('') : undefined;

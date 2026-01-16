@@ -1104,13 +1104,13 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         const testCount = (this.courseContent as any)?.result_count as number | undefined;
         const maxTests = (this.courseContent as any)?.max_test_runs as number | undefined;
         if (typeof testCount === 'number') {
-            entries.push(typeof maxTests === 'number' ? `[${testCount}/${maxTests}]` : `[${testCount}]`);
+            entries.push(typeof maxTests === 'number' ? `(${testCount}/${maxTests})` : `(${testCount})`);
         }
 
         const submitCount = this.submissionGroup?.count as number | undefined;
         const maxSubmits = this.submissionGroup?.max_submissions as number | undefined;
         if (typeof submitCount === 'number') {
-            entries.push(typeof maxSubmits === 'number' ? `[${submitCount}/${maxSubmits}]` : `[${submitCount}]`);
+            entries.push(typeof maxSubmits === 'number' ? `(${submitCount}/${maxSubmits})` : `(${submitCount})`);
         }
 
         this.description = entries.length > 0 ? entries.join('') : undefined;
