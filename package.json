@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "2025.10.4",
+  "version": "2025.10.5",
   "publisher": "itpcp-tugraz",
   "engines": {
     "vscode": "^1.74.0"
