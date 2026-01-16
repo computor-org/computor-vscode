@@ -474,7 +474,18 @@ export class TutorCommands {
       }
 
       const courseLabel = selection.getCurrentCourseLabel();
-      const memberLabel = selection.getCurrentMemberLabel();
+
+      // Fetch member data to build clean name (without badges)
+      const member = await this.apiService.getCourseMember(memberId);
+      let memberName: string | null = null;
+      if (member?.user) {
+        const user = member.user;
+        if (user.given_name && user.family_name) {
+          memberName = `${user.family_name}, ${user.given_name}`;
+        } else {
+          memberName = (user as any).full_name || user.username || null;
+        }
+      }
 
       const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
       const submissionGroup: SubmissionGroupStudentList | undefined = content?.submission_group || item?.submissionGroup;
@@ -511,9 +522,9 @@ export class TutorCommands {
           };
         }
 
-        const subtitleSegments = [courseLabel, memberLabel, content.path || contentTitle].filter(Boolean) as string[];
+        const subtitleSegments = [courseLabel, memberName, content.path || contentTitle].filter(Boolean) as string[];
         const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
-        const title = memberLabel ? `${memberLabel} — ${contentTitle}` : contentTitle;
+        const title = memberName ? `${memberName} — ${contentTitle}` : contentTitle;
 
         target = {
           title,
@@ -529,10 +540,10 @@ export class TutorCommands {
         // Tutors cannot write to course_id or course_member_id
         // course_member_id is not implemented, course_id is lecturer+ only
         // Use scope filter to show ONLY course-scoped messages, not content/submission messages
-        const subtitleSegments = [courseLabel, memberLabel].filter(Boolean) as string[];
+        const subtitleSegments = [courseLabel, memberName].filter(Boolean) as string[];
         const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
         target = {
-          title: memberLabel ? `${memberLabel} — Course messages` : 'Course member messages',
+          title: memberName ? `${memberName} — Course messages` : 'Course member messages',
           subtitle,
           query: { course_id: courseId, course_member_id: memberId, scope: 'course' },
           createPayload: { course_id: courseId },  // This will fail - lecturer+ only

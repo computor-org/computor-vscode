@@ -590,19 +590,23 @@ class TutorUnitItem extends vscode.TreeItem {
     const count = this.countItems(this.node);
     const unread = this.node.unreadMessageCount ?? 0;
     const unreviewed = this.node.unreviewedCount ?? 0;
-    const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
-    const descParts: string[] = [];
+
+    // Build label prefix with indicators
+    const labelParts: string[] = [];
     if (unreviewed > 0) {
-      descParts.push(`📝 ${unreviewed}`);
+      labelParts.push(`[📝${unreviewed}]`);
     }
     if (unread > 0) {
-      descParts.push(`🔔 ${unread}`);
+      labelParts.push(`[🔔${unread}]`);
     }
-    descParts.push(itemLabel);
-    this.description = descParts.join(' • ');
+    const baseName = this.node.name || 'Unit';
+    this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;
+
+    // Description shows item count
+    this.description = `${count} item${count !== 1 ? 's' : ''}`;
 
     const tooltipLines = [
-      `Unit: ${this.label?.toString() ?? 'Unit'}`,
+      `Unit: ${baseName}`,
       `${count} item${count !== 1 ? 's' : ''}`
     ];
     const ct = getEmbeddedCourseContentType(this.node.courseContent);
@@ -716,16 +720,19 @@ class TutorContentItem extends vscode.TreeItem {
       ? IconGenerator.getColoredIcon(color, shape)
       : IconGenerator.getColoredIconWithBadge(color, shape, badge, corner, hasUnreviewed);
 
+    // Build label prefix with indicators
+    const labelParts: string[] = [];
+    if (hasUnreviewed) {
+      labelParts.push('[📝]');
+    }
+    if (unread > 0) {
+      labelParts.push('[🔔]');
+    }
+    const baseName = this.content.title || this.content.path;
+    this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;
+
     // Build description with test/submission counts like student view
     const descriptionParts: string[] = [];
-
-    if (hasUnreviewed) {
-      descriptionParts.push('📝');
-    }
-
-    if (unread > 0) {
-      descriptionParts.push(`🔔 ${unread}`);
-    }
 
     const testCount = (this.content as any)?.result_count as number | undefined;
     const maxTests = (this.content as any)?.max_test_runs as number | undefined;

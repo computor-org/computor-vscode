@@ -49,7 +49,13 @@ export class TutorSelectionService {
   getCurrentMemberId(): string | null { return this.memberId; }
   getCurrentCourseLabel(): string | null { return this.courseLabel; }
   getCurrentGroupLabel(): string | null { return this.groupLabel; }
-  getCurrentMemberLabel(): string | null { return this.memberLabel; }
+  getCurrentMemberLabel(): string | null {
+    // Strip any badge decorations that may have been persisted from old versions
+    if (this.memberLabel) {
+      return this.memberLabel.replace(/\s*\([📝🔔\s\d·]+\)\s*$/, '').trim();
+    }
+    return this.memberLabel;
+  }
 
   async selectCourse(courseId: string | null, label?: string | null): Promise<void> {
     this.courseId = courseId;

@@ -103,7 +103,8 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
           const state = {
             courses: false,
             groups: false,
-            members: false
+            members: false,
+            membersList: []
           };
 
           const toStringOrEmpty = (value) => (value == null ? '' : String(value));
@@ -114,15 +115,15 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
           const getGroupLabel = (group) => group.title || group.name || group.id;
-          const getMemberLabel = (member) => {
+          const getMemberName = (member) => {
             const user = member?.user;
-            let name = '';
             if (user?.given_name && user?.family_name) {
-              name = user.family_name + ', ' + user.given_name;
-            } else {
-              name = (user?.full_name) || (user?.username) || member.id;
+              return user.family_name + ', ' + user.given_name;
             }
-
+            return (user?.full_name) || (user?.username) || member.id;
+          };
+          const getMemberLabel = (member) => {
+            const name = getMemberName(member);
             const badges = [];
             if (member.ungraded_submissions_count && member.ungraded_submissions_count > 0) {
               badges.push('📝 ' + member.ungraded_submissions_count);
@@ -203,11 +204,12 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
               }
             } else if (command === 'members') {
               state.members = true;
+              const items = data ?? [];
+              state.membersList = items;
               if (disabled) {
                 memberSel.innerHTML = '<option value="" disabled selected>Course unavailable</option>';
                 memberSel.disabled = true;
               } else {
-                const items = data ?? [];
                 if (!items.length) {
                   memberSel.innerHTML = '<option value="" disabled selected>No members found</option>';
                   memberSel.disabled = true;
@@ -248,8 +250,10 @@ export class TutorFilterPanelProvider implements vscode.WebviewViewProvider {
             if (memberSel.disabled) {
               return;
             }
-            const label = memberSel.options[memberSel.selectedIndex]?.text || null;
-            vscode.postMessage({ command: 'course-member-select', id: memberSel.value || null, label });
+            const selectedId = memberSel.value || null;
+            const member = state.membersList.find(m => m.id === selectedId);
+            const label = member ? getMemberName(member) : null;
+            vscode.postMessage({ command: 'course-member-select', id: selectedId, label });
           });
         </script>
       </body>
