@@ -502,13 +502,14 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     try {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
       const items: vscode.TreeItem[] = [];
+      const memberLabel = this.selection.getCurrentMemberLabel() || undefined;
       for (const entry of entries) {
         if (entry.name === '.git') continue;
         const absPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          items.push(new TutorFsFolderItem(absPath, courseId, memberId, repositoryRoot, content, folderType));
+          items.push(new TutorFsFolderItem(absPath, courseId, memberId, repositoryRoot, content, folderType, memberLabel));
         } else if (entry.isFile()) {
-          items.push(new TutorFsFileItem(absPath, courseId, memberId, repositoryRoot, content, folderType));
+          items.push(new TutorFsFileItem(absPath, courseId, memberId, repositoryRoot, content, folderType, memberLabel));
         }
       }
 
@@ -804,7 +805,8 @@ class TutorFsFolderItem extends vscode.TreeItem {
     public memberId: string,
     public repositoryRoot: string,
     public content?: CourseContentStudentList,
-    public folderType?: 'repository' | 'reference' | 'submission'
+    public folderType?: 'repository' | 'reference' | 'submission',
+    public memberLabel?: string
   ) {
     super(path.basename(absPath), vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = folderType ? `tutorFsFolder.${folderType}` : 'tutorFsFolder';
@@ -821,9 +823,12 @@ class TutorFsFileItem extends vscode.TreeItem {
     public memberId: string,
     public repositoryRoot: string,
     public content?: CourseContentStudentList,
-    public folderType?: 'repository' | 'reference' | 'submission'
+    public folderType?: 'repository' | 'reference' | 'submission',
+    public memberLabel?: string
   ) {
-    super(path.basename(absPath), vscode.TreeItemCollapsibleState.None);
+    const filename = path.basename(absPath);
+    const suffix = folderType === 'reference' ? ' (Reference)' : memberLabel ? ` (${memberLabel})` : '';
+    super(filename + suffix, vscode.TreeItemCollapsibleState.None);
     this.contextValue = folderType ? `tutorFsFile.${folderType}` : 'tutorFsFile';
     this.tooltip = absPath;
     this.resourceUri = vscode.Uri.file(absPath);
