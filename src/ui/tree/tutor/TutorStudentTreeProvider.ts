@@ -151,6 +151,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
         contentKind,
         isUnit,
         unreadMessageCount: (content as any).unread_message_count ?? 0,
+        unreviewedCount: (content as any).unreviewed_count ?? 0,
         submissionGroup,
       };
 
@@ -175,7 +176,6 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     }
 
     this.aggregateUnreadCounts(root);
-    this.aggregateUnreviewedCounts(root);
     this.aggregateUnitDecorations(root);
     return root;
   }
@@ -189,18 +189,6 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     });
 
     node.unreadMessageCount = total;
-    return total;
-  }
-
-  private aggregateUnreviewedCounts(node: ContentNode): number {
-    const ownUnreviewed = (node.courseContent as any)?.unreviewed_count ?? 0;
-    let total = ownUnreviewed;
-
-    node.children.forEach((child) => {
-      total += this.aggregateUnreviewedCounts(child);
-    });
-
-    node.unreviewedCount = total;
     return total;
   }
 
