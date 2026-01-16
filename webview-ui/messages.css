@@ -210,38 +210,6 @@ body {
   font-size: 12px;
 }
 
-.form-card {
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
-  background: var(--vscode-editorWidget-background);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.form-card h2 {
-  margin: 0;
-  font-size: 14px;
-}
-
-.form-context {
-  margin: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
-}
-
-.form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-row label {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
 
 .markdown-body {
   line-height: 1.4;
@@ -259,14 +227,6 @@ body {
   font-family: var(--vscode-editor-font-family, monospace);
 }
 
-textarea.vscode-input {
-  resize: vertical;
-  min-height: 80px;
-  max-height: 200px;
-  font-family: var(--vscode-font-family);
-  font-size: 12px;
-  line-height: 1.4;
-}
 
 /* Filter Bar Styles */
 .filter-bar {

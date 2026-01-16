@@ -11,6 +11,7 @@ import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, C
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
+import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 import JSZip from 'jszip';
 
@@ -30,10 +31,11 @@ export class StudentCommands {
   private contentDetailsWebviewProvider: StudentCourseContentDetailsWebviewProvider;
 
   constructor(
-    context: vscode.ExtensionContext, 
+    context: vscode.ExtensionContext,
     treeDataProvider: StudentCourseContentTreeProvider,
     apiService?: ComputorApiService,
-    repositoryManager?: StudentRepositoryManager
+    repositoryManager?: StudentRepositoryManager,
+    messagesInputPanel?: MessagesInputPanelProvider
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
@@ -46,6 +48,9 @@ export class StudentCommands {
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    if (messagesInputPanel) {
+      this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
+    }
     this.contentDetailsWebviewProvider = new StudentCourseContentDetailsWebviewProvider(context);
     void this.courseContentTreeProvider; // Unused for now
   }

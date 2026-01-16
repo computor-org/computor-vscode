@@ -33,6 +33,7 @@ import { TutorCommands } from './commands/TutorCommands';
 
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
 import { TestResultService } from './services/TestResultService';
+import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
@@ -374,6 +375,7 @@ class UnifiedController {
   private disposables: vscode.Disposable[] = [];
   private activeViews: string[] = [];
   private profileWebviewProvider?: UserProfileWebviewProvider;
+  private messagesInputPanel?: MessagesInputPanelProvider;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -398,6 +400,12 @@ class UnifiedController {
       await this.profileWebviewProvider.open();
     });
     this.disposables.push(profileCommand);
+
+    // Messages input panel (shared across all views)
+    this.messagesInputPanel = new MessagesInputPanelProvider(this.context.extensionUri, api);
+    this.disposables.push(
+      vscode.window.registerWebviewViewProvider(MessagesInputPanelProvider.viewType, this.messagesInputPanel)
+    );
 
     // Get available views for this user across all courses
     // This is a lightweight check to determine which role views to show
@@ -614,7 +622,7 @@ class UnifiedController {
     }
 
     // Student commands
-    const commands = new StudentCommands(this.context, tree, api, repositoryManager);
+    const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel);
     commands.registerCommands();
 
     // Results panel + tree
@@ -792,7 +800,7 @@ class UnifiedController {
       filterProvider.refreshFilters();
     }));
 
-    const commands = new TutorCommands(this.context, tree, api, filterProvider);
+    const commands = new TutorCommands(this.context, tree, api, filterProvider, this.messagesInputPanel);
     commands.registerCommands();
   }
 
@@ -829,7 +837,7 @@ class UnifiedController {
     });
     this.disposables.push(exampleTreeView);
 
-    const commands = new LecturerCommands(this.context, tree, api);
+    const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel);
     commands.registerCommands();
 
     // Register example-related commands (search, upload from ZIP, etc.)

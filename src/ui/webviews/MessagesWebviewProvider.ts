@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { MessageList, MessageCreate, MessageUpdate, MessageQuery } from '../../types/generated';
+import { MessageList, MessageQuery } from '../../types/generated';
+import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 
 export type MessageTargetType = 'course' | 'courseGroup' | 'courseContent' | 'submissionGroup' | 'courseMember';
 
@@ -17,7 +18,7 @@ export interface MessageTargetContext {
   title: string;
   subtitle?: string;
   query: Record<string, string>;
-  createPayload: Partial<MessageCreate>;
+  createPayload: Record<string, unknown>;
   sourceRole?: 'student' | 'tutor' | 'lecturer';
 }
 
@@ -37,10 +38,15 @@ type EnrichedMessage = MessageList & {
 
 export class MessagesWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
+  private inputPanel?: MessagesInputPanelProvider;
 
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.messagesView');
     this.apiService = apiService;
+  }
+
+  public setInputPanel(inputPanel: MessagesInputPanelProvider): void {
+    this.inputPanel = inputPanel;
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
@@ -55,6 +61,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const messages = this.enrichMessages(normalizedMessages, identity);
     const payload: MessagesWebviewData = { target, messages, identity };
     await this.show(`Messages: ${target.title}`, payload);
+
+    if (this.inputPanel) {
+      this.inputPanel.setTarget(target, rawMessages);
+      // Register this provider's refresh callback when showing messages
+      this.inputPanel.setOnMessageCreated(() => this.refreshMessages());
+      void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+    }
   }
 
   protected async getWebviewContent(data?: MessagesWebviewData): Promise<string> {
@@ -100,11 +113,17 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
 
     switch (message.command) {
-      case 'createMessage':
-        await this.handleCreateMessage(message.data);
+      case 'replyTo':
+        if (this.inputPanel && message.data) {
+          this.inputPanel.setReplyTo(message.data);
+          void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+        }
         break;
-      case 'updateMessage':
-        await this.handleUpdateMessage(message.data);
+      case 'editMessage':
+        if (this.inputPanel && message.data) {
+          this.inputPanel.setEditingMessage(message.data);
+          void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+        }
         break;
       case 'confirmDeleteMessage':
         await this.handleConfirmDeleteMessage(message.data);
@@ -231,65 +250,6 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private async handleCreateMessage(data: { title: string; content: string; parent_id?: string }): Promise<void> {
-    const target = this.getCurrentTarget();
-    if (!target) {
-      vscode.window.showWarningMessage('Unable to post message: target context missing.');
-      return;
-    }
-
-    const level = this.resolveMessageLevel(data.parent_id);
-
-    // Build payload with only the fields from createPayload that are target fields
-    // This prevents accidental inclusion of multiple target fields
-    const targetFields = ['user_id', 'course_member_id', 'submission_group_id', 'course_group_id', 'course_content_id', 'course_id'] as const;
-    const filteredPayload: Partial<MessageCreate> = {};
-    for (const field of targetFields) {
-      if (target.createPayload[field] !== undefined) {
-        filteredPayload[field] = target.createPayload[field];
-      }
-    }
-
-    const payload: MessageCreate = {
-      title: data.title,
-      content: data.content,
-      parent_id: data.parent_id ?? null,
-      level,
-      ...filteredPayload
-    } as MessageCreate;
-
-    try {
-      this.postLoadingState(true);
-      await this.apiService.createMessage(payload);
-      await this.refreshMessages();
-      vscode.window.showInformationMessage('Message sent.');
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to send message: ${error?.message || error}`);
-      this.postLoadingState(false);
-    }
-  }
-
-  private async handleUpdateMessage(data: { messageId: string; title: string; content: string }): Promise<void> {
-    if (!data?.messageId) {
-      return;
-    }
-
-    const updates: MessageUpdate = {
-      title: data.title,
-      content: data.content
-    };
-
-    try {
-      this.postLoadingState(true);
-      await this.apiService.updateMessage(data.messageId, updates);
-      await this.refreshMessages();
-      vscode.window.showInformationMessage('Message updated.');
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to update message: ${error?.message || error}`);
-      this.postLoadingState(false);
-    }
-  }
-
   private async handleConfirmDeleteMessage(data: { messageId: string; title?: string }): Promise<void> {
     if (!data?.messageId) {
       return;
@@ -323,7 +283,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private async refreshMessages(): Promise<void> {
+  public async refreshMessages(): Promise<void> {
     const target = this.getCurrentTarget();
     if (!target || !this.panel) {
       return;
@@ -347,6 +307,10 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       this.currentData = { target, messages, identity, activeFilters } satisfies MessagesWebviewData;
       this.panel.webview.postMessage({ command: 'updateMessages', data: messages });
       this.postLoadingState(false);
+
+      if (this.inputPanel) {
+        this.inputPanel.updateMessages(rawMessages);
+      }
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to refresh messages: ${error?.message || error}`);
       this.postLoadingState(false);
@@ -386,18 +350,6 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     });
   }
 
-  private resolveMessageLevel(parentId?: string): number {
-    if (!parentId) {
-      return 0;
-    }
-
-    const currentMessages = (this.currentData as MessagesWebviewData | undefined)?.messages ?? [];
-    const parent = currentMessages.find((message) => message.id === parentId);
-    if (!parent) {
-      return 1;
-    }
-    return (parent.level ?? 0) + 1;
-  }
 
   private postLoadingState(loading: boolean): void {
     if (!this.panel) {

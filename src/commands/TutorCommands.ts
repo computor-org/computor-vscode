@@ -14,6 +14,7 @@ import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/Me
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
+import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -28,7 +29,8 @@ export class TutorCommands {
     context: vscode.ExtensionContext,
     treeDataProvider: TutorStudentTreeProvider,
     apiService?: ComputorApiService,
-    filterProvider?: TutorFilterPanelProvider
+    filterProvider?: TutorFilterPanelProvider,
+    messagesInputPanel?: MessagesInputPanelProvider
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
@@ -36,6 +38,9 @@ export class TutorCommands {
     this.apiService = apiService || new ComputorApiService(context);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    if (messagesInputPanel) {
+      this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
+    }
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
     this.filterProvider = filterProvider;
     // No workspace manager needed for current tutor actions

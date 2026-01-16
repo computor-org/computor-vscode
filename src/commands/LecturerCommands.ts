@@ -27,6 +27,7 @@ import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager
 import { createSimpleGit } from '../git/simpleGitFactory';
 import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
+import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 
 interface ReleaseScope {
   label?: string;
@@ -55,7 +56,8 @@ export class LecturerCommands {
   constructor(
     private context: vscode.ExtensionContext,
     private treeDataProvider: LecturerTreeDataProvider,
-    apiService?: ComputorApiService
+    apiService?: ComputorApiService,
+    messagesInputPanel?: MessagesInputPanelProvider
   ) {
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
@@ -67,6 +69,9 @@ export class LecturerCommands {
     this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberImportWebviewProvider = new CourseMemberImportWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    if (messagesInputPanel) {
+      this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
+    }
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
     this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);

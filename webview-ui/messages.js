@@ -1,14 +1,12 @@
 (function () {
   const vscode = window.vscodeApi || acquireVsCodeApi();
-  const { createButton, createInput } = window.UIComponents || {};
+  const { createButton } = window.UIComponents || {};
 
   const state = {
     target: undefined,
     messages: [],
     loading: false,
     error: undefined,
-    replyTo: undefined,
-    editingMessage: undefined,
     identity: undefined,
     filtersExpanded: false,
     filters: {
@@ -287,7 +285,7 @@
         text: 'Reply',
         size: 'xs',
         variant: 'secondary',
-        onClick: () => setState({ replyTo: message, editingMessage: undefined })
+        onClick: () => vscode.postMessage({ command: 'replyTo', data: message })
       });
       const replyEl = replyButton.render();
       replyEl.classList.add('message-reply-button');
@@ -321,11 +319,7 @@
         text: 'Edit',
         size: 'sm',
         variant: 'secondary',
-        onClick: () =>
-          setState({
-            editingMessage: message,
-            replyTo: undefined
-          })
+        onClick: () => vscode.postMessage({ command: 'editMessage', data: message })
       });
       actions.appendChild(editBtn.render());
     }
@@ -388,7 +382,7 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'No messages yet. Start the discussion below.'
+          textContent: 'No messages yet. Use the input panel below to start the discussion.'
         })
       );
       return;
@@ -402,121 +396,6 @@
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
     });
-  }
-
-  function renderForm(formWrapper) {
-    formWrapper.innerHTML = '';
-
-    const header = createElement('div', { className: 'form-header' });
-
-    const contextInfo = state.replyTo
-      ? `Replying to “${state.replyTo.title || 'message'}”`
-      : state.editingMessage
-      ? `Editing “${state.editingMessage.title || 'message'}”`
-      : undefined;
-
-    if (contextInfo) {
-      header.appendChild(
-        createElement('p', {
-          className: 'form-context',
-          textContent: contextInfo
-        })
-      );
-    }
-
-    const titleInput = createInput
-      ? createInput({
-          placeholder: 'Message title',
-          value: state.editingMessage ? state.editingMessage.title || '' : '',
-          disabled: state.loading
-        })
-      : null;
-
-    const textarea = createElement('textarea', {
-      className: 'vscode-input',
-      attributes: {
-        rows: '5',
-        placeholder: 'Write your message…'
-      }
-    });
-    textarea.value = state.editingMessage ? state.editingMessage.content || '' : '';
-
-    const actions = createElement('div', { className: 'toolbar' });
-
-    const submitButton = createButton
-      ? createButton({
-          text: state.editingMessage ? 'Save Changes' : 'Send Message',
-          variant: 'primary',
-          loading: state.loading,
-          onClick: () => {
-          const titleValue = titleInput ? titleInput.getValue() : '';
-          const contentValue = textarea.value.trim();
-          if (!titleValue.trim()) {
-            vscode.postMessage({ command: 'showWarning', data: 'Message title is required.' });
-            return;
-          }
-          if (!contentValue) {
-            vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
-            return;
-          }
-            setState({ loading: true });
-            if (state.editingMessage) {
-              vscode.postMessage({
-                command: 'updateMessage',
-                data: {
-                  messageId: state.editingMessage.id,
-                  title: titleValue,
-                  content: contentValue
-                }
-              });
-            } else {
-              vscode.postMessage({
-                command: 'createMessage',
-                data: {
-                  title: titleValue,
-                  content: contentValue,
-                  parent_id: state.replyTo ? state.replyTo.id : undefined
-                }
-              });
-            }
-          }
-        })
-      : null;
-
-    if (submitButton) {
-      actions.appendChild(submitButton.render());
-    }
-
-    if ((state.replyTo || state.editingMessage) && createButton) {
-      const cancelButton = createButton({
-        text: 'Cancel',
-        variant: 'secondary',
-        onClick: () => setState({ replyTo: undefined, editingMessage: undefined })
-      });
-      actions.appendChild(cancelButton.render());
-    }
-
-    if (titleInput) {
-      const titleRow = createElement('div', {
-        className: 'form-row'
-      });
-      titleRow.appendChild(
-        createElement('label', { textContent: 'Title', attributes: { for: 'message-title' } })
-      );
-      const titleEl = titleInput.render();
-      titleEl.id = 'message-title';
-      titleRow.appendChild(titleEl);
-      formWrapper.appendChild(titleRow);
-    }
-
-    const bodyRow = createElement('div', { className: 'form-row' });
-    bodyRow.appendChild(createElement('label', { textContent: 'Message', attributes: { for: 'message-body' } }));
-    textarea.id = 'message-body';
-    bodyRow.appendChild(textarea);
-
-    formWrapper.appendChild(header);
-    formWrapper.appendChild(bodyRow);
-    formWrapper.appendChild(actions);
   }
 
   function renderFilterBar() {
@@ -757,18 +636,9 @@
     const messagesContainer = createElement('div', { className: 'messages-container' });
     renderMessagesSection(messagesContainer);
 
-    const formCard = createElement('div', { className: 'form-card' });
-    formCard.appendChild(
-      createElement('h2', {
-        textContent: state.editingMessage ? 'Edit Message' : 'New Message'
-      })
-    );
-    renderForm(formCard);
-
     view.appendChild(header);
     view.appendChild(filterBar);
     view.appendChild(messagesContainer);
-    view.appendChild(formCard);
 
     mount.appendChild(view);
   }
@@ -779,7 +649,7 @@
 
     switch (message.command) {
       case 'updateMessages':
-        setState({ messages: message.data || [], loading: false, replyTo: undefined, editingMessage: undefined });
+        setState({ messages: message.data || [], loading: false });
         break;
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
