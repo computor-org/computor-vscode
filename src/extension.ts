@@ -755,15 +755,18 @@ class UnifiedController {
     });
     this.disposables.push(tutorCollapseListener);
 
-    // Show test results automatically when an assignment is selected
+    // Checkout and show test results automatically when an assignment is selected
     const tutorSelectionListener = treeView.onDidChangeSelection((event) => {
       const selected = event.selection[0];
       if (!selected) return;
       if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
+        // Trigger checkout for the assignment
+        void vscode.commands.executeCommand('computor.tutor.checkout', selected);
+
+        // Show test results if available
         if ((selected as any).content?.result) {
           void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
         } else {
-          // Clear results view when selecting an assignment without results
           void vscode.commands.executeCommand('computor.results.clear');
         }
       }

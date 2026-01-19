@@ -23,6 +23,8 @@ export class TutorCommands {
   private messagesWebviewProvider: MessagesWebviewProvider;
   private workspaceStructure: WorkspaceStructureManager;
   private filterProvider?: TutorFilterPanelProvider;
+  private checkoutQueue: Array<{ item: unknown; resolve: () => void }> = [];
+  private isCheckoutInProgress = false;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -427,10 +429,34 @@ export class TutorCommands {
 
     // Tutor: Checkout - download reference and latest submission (or just reference if no submission)
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.checkout', async (item: any) => {
-        await this.checkout(item);
+      vscode.commands.registerCommand('computor.tutor.checkout', async (item: unknown) => {
+        await this.queueCheckout(item);
       })
     );
+  }
+
+  private async queueCheckout(item: unknown): Promise<void> {
+    return new Promise((resolve) => {
+      this.checkoutQueue.push({ item, resolve });
+      void this.processCheckoutQueue();
+    });
+  }
+
+  private async processCheckoutQueue(): Promise<void> {
+    if (this.isCheckoutInProgress || this.checkoutQueue.length === 0) {
+      return;
+    }
+
+    this.isCheckoutInProgress = true;
+    const { item, resolve } = this.checkoutQueue.shift()!;
+
+    try {
+      await this.checkout(item);
+    } finally {
+      this.isCheckoutInProgress = false;
+      resolve();
+      void this.processCheckoutQueue();
+    }
   }
 
   private async showCourseMemberComments(): Promise<void> {
@@ -872,6 +898,9 @@ export class TutorCommands {
           'Cancel'
         );
         if (choice !== 'Re-download') {
+          // Still expand the folders even if not re-downloading
+          this.treeDataProvider.markForVirtualFolderExpansion(content.id);
+          this.treeDataProvider.refresh();
           return;
         }
         await fs.promises.rm(referencePath, { recursive: true, force: true });
@@ -883,6 +912,9 @@ export class TutorCommands {
           'Cancel'
         );
         if (choice !== 'Re-download') {
+          // Still expand the folders even if not re-downloading
+          this.treeDataProvider.markForVirtualFolderExpansion(content.id);
+          this.treeDataProvider.refresh();
           return;
         }
         await fs.promises.rm(referencePath, { recursive: true, force: true });
