@@ -79,6 +79,7 @@
 
     initDonutChart(gradings);
     attachCopyButtonListeners();
+    attachButtonListeners();
   }
 
   function attachCopyButtonListeners() {
@@ -110,8 +111,18 @@
             <span class="member-progress-header__last-active">Last active: ${escapeHtml(lastActive)}</span>
           </div>
         </div>
+        <button type="button" class="button button-secondary" id="refreshBtn" title="Refresh data">Refresh</button>
       </header>
     `;
+  }
+
+  function attachButtonListeners() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        vscode.postMessage({ command: 'refresh' });
+      });
+    }
   }
 
   function renderOverallProgress(gradings) {
@@ -599,10 +610,6 @@
   }
 
   // Global handlers
-  window.handleRefresh = function() {
-    vscode.postMessage({ command: 'refresh' });
-  };
-
   window.copyWithFeedback = function(text, btnId) {
     // Use VS Code's clipboard API via message passing (navigator.clipboard doesn't work in webviews)
     vscode.postMessage({ command: 'copyToClipboard', data: { text, btnId } });
