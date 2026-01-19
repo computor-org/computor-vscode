@@ -326,8 +326,8 @@
           ? s.family_name + ', ' + s.given_name
           : s.family_name || s.given_name || s.username || 'Unknown'
       })),
-      defaultSort: 'overall_progress_percentage',
-      defaultSortDirection: 'desc',
+      defaultSort: 'name',
+      defaultSortDirection: 'asc',
       onRowClick: (row) => {
         vscode.postMessage({
           command: 'showStudentDetails',
