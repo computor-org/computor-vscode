@@ -326,7 +326,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       const referenceExists = await workspaceStructure.referenceExists(exampleVersionId);
 
       const versionTag = element.content.deployment.version_tag || '';
-      const label = versionTag ? `Reference (${versionTag})` : 'Reference';
+      const label = versionTag ? `References (${versionTag})` : 'References';
 
       const refFolderId = `tutorVirtualFolder:reference:${contentId}:${courseId}:${memberId}`;
       if (isPendingExpand) {
