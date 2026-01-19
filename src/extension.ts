@@ -760,8 +760,8 @@ class UnifiedController {
       const selected = event.selection[0];
       if (!selected) return;
       if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
-        // Trigger checkout for the assignment
-        void vscode.commands.executeCommand('computor.tutor.checkout', selected);
+        // Trigger checkout for the assignment (confirmRedownload=false: always download without asking)
+        void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
 
         // Show test results if available
         if ((selected as any).content?.result) {

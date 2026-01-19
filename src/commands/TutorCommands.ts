@@ -23,7 +23,7 @@ export class TutorCommands {
   private messagesWebviewProvider: MessagesWebviewProvider;
   private workspaceStructure: WorkspaceStructureManager;
   private filterProvider?: TutorFilterPanelProvider;
-  private checkoutQueue: Array<{ item: unknown; resolve: () => void }> = [];
+  private checkoutQueue: Array<{ item: unknown; confirmRedownload: boolean; resolve: () => void }> = [];
   private isCheckoutInProgress = false;
 
   constructor(
@@ -428,16 +428,18 @@ export class TutorCommands {
     );
 
     // Tutor: Checkout - download reference and latest submission (or just reference if no submission)
+    // When called from context menu (confirmRedownload=true), asks before re-downloading existing files
+    // When called from selection (confirmRedownload=false), always downloads without asking
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.checkout', async (item: unknown) => {
-        await this.queueCheckout(item);
+      vscode.commands.registerCommand('computor.tutor.checkout', async (item: unknown, confirmRedownload?: boolean) => {
+        await this.queueCheckout(item, confirmRedownload ?? true);
       })
     );
   }
 
-  private async queueCheckout(item: unknown): Promise<void> {
+  private async queueCheckout(item: unknown, confirmRedownload: boolean): Promise<void> {
     return new Promise((resolve) => {
-      this.checkoutQueue.push({ item, resolve });
+      this.checkoutQueue.push({ item, confirmRedownload, resolve });
       void this.processCheckoutQueue();
     });
   }
@@ -448,10 +450,10 @@ export class TutorCommands {
     }
 
     this.isCheckoutInProgress = true;
-    const { item, resolve } = this.checkoutQueue.shift()!;
+    const { item, confirmRedownload, resolve } = this.checkoutQueue.shift()!;
 
     try {
-      await this.checkout(item);
+      await this.checkout(item, confirmRedownload);
     } finally {
       this.isCheckoutInProgress = false;
       resolve();
@@ -844,9 +846,10 @@ export class TutorCommands {
     }
   }
 
-  private async checkout(item: any): Promise<void> {
+  private async checkout(item: unknown, confirmRedownload = true): Promise<void> {
     try {
-      const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
+      const itemAny = item as any;
+      const content: CourseContentStudentList = itemAny?.content || itemAny?.courseContent || itemAny?.course_content;
 
       if (!content) {
         vscode.window.showErrorMessage('No course content information available');
@@ -891,31 +894,36 @@ export class TutorCommands {
       // Determine what needs to be downloaded
       const hasSubmission = !!latestArtifact && !!submissionPath;
 
+      // Handle existing files based on confirmRedownload flag
       if (hasSubmission && referenceExists && submissionExists) {
-        const choice = await vscode.window.showWarningMessage(
-          'Reference and latest submission already exist locally. Re-download?',
-          'Re-download',
-          'Cancel'
-        );
-        if (choice !== 'Re-download') {
-          // Still expand the folders even if not re-downloading
-          this.treeDataProvider.markForVirtualFolderExpansion(content.id);
-          this.treeDataProvider.refresh();
-          return;
+        if (confirmRedownload) {
+          const choice = await vscode.window.showWarningMessage(
+            'Reference and latest submission already exist locally. Re-download?',
+            'Re-download',
+            'Cancel'
+          );
+          if (choice !== 'Re-download') {
+            // Still expand the folders even if not re-downloading
+            this.treeDataProvider.markForVirtualFolderExpansion(content.id);
+            this.treeDataProvider.refresh();
+            return;
+          }
         }
         await fs.promises.rm(referencePath, { recursive: true, force: true });
         await fs.promises.rm(submissionPath, { recursive: true, force: true });
       } else if (!hasSubmission && referenceExists) {
-        const choice = await vscode.window.showWarningMessage(
-          'Reference already exists locally. Re-download?',
-          'Re-download',
-          'Cancel'
-        );
-        if (choice !== 'Re-download') {
-          // Still expand the folders even if not re-downloading
-          this.treeDataProvider.markForVirtualFolderExpansion(content.id);
-          this.treeDataProvider.refresh();
-          return;
+        if (confirmRedownload) {
+          const choice = await vscode.window.showWarningMessage(
+            'Reference already exists locally. Re-download?',
+            'Re-download',
+            'Cancel'
+          );
+          if (choice !== 'Re-download') {
+            // Still expand the folders even if not re-downloading
+            this.treeDataProvider.markForVirtualFolderExpansion(content.id);
+            this.treeDataProvider.refresh();
+            return;
+          }
         }
         await fs.promises.rm(referencePath, { recursive: true, force: true });
       }
