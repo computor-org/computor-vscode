@@ -789,9 +789,9 @@ export class TutorCommands {
       // Open diff view (reference on left, submission on right)
       const submissionUri = vscode.Uri.file(submissionFilePath);
       const referenceUri = vscode.Uri.file(referenceFilePath);
-      const title = `${path.basename(submissionFilePath)} (Submission ↔ Reference)`;
+      const title = `${path.basename(submissionFilePath)} (Reference ↔ Submission)`;
 
-      await vscode.commands.executeCommand('vscode.diff', submissionUri, referenceUri, title);
+      await vscode.commands.executeCommand('vscode.diff', referenceUri, submissionUri, title);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to compare with reference: ${error?.message || error}`);
     }
