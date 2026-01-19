@@ -308,7 +308,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       this.pendingExpandVirtualFoldersForContentId = undefined;
     }
 
-    // Return three virtual folders: Submissions, Reference, Repository
+    // Return two virtual folders: Submissions, References
     const items: vscode.TreeItem[] = [];
 
     // 1. Submissions folder - expand and mark to expand latest submission
@@ -319,7 +319,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     const shouldExpandSubs = isPendingExpand || this.expandedVirtualFolderIds.has(subsFolderId);
     items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId, undefined, undefined, shouldExpandSubs, isPendingExpand));
 
-    // 2. Reference folder (only if deployment exists)
+    // 2. References folder (only if deployment exists)
     if (element.content.deployment && element.content.deployment.example_version_id) {
       const workspaceStructure = WorkspaceStructureManager.getInstance();
       const exampleVersionId = element.content.deployment.example_version_id;
@@ -335,10 +335,6 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       const shouldExpandRef = isPendingExpand || this.expandedVirtualFolderIds.has(refFolderId);
       items.push(new TutorVirtualFolderItem(label, 'reference', element.content, courseId, memberId, undefined, referenceExists, shouldExpandRef));
     }
-
-    // 3. Repository folder - re-check if repository exists (in case it was cloned after tree item was created)
-    const hasRepo = this.hasLocalRepository(element.content, memberId);
-    items.push(new TutorVirtualFolderItem('Repository', 'repository', element.content, courseId, memberId, hasRepo));
 
     return items;
   }
