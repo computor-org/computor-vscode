@@ -58,6 +58,12 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.showReadme",
+        "title": "Show README Preview",
+        "icon": "$(open-preview)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.downloadSubmissionArtifact",
         "title": "Download Submission Artifact",
         "icon": "$(cloud-download)",
@@ -1008,6 +1014,11 @@
         {
           "command": "computor.tutor.updateStudentRepository",
           "when": "view == computor.tutor.courses && viewItem == tutorVirtualFolder.repository.hasRepo",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.tutor.showReadme",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
           "group": "inline@1"
         },
         {

@@ -435,6 +435,13 @@ export class TutorCommands {
         await this.queueCheckout(item, confirmRedownload ?? true);
       })
     );
+
+    // Tutor: Show README preview for assignment
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showReadme', async (item: any) => {
+        await this.showReadme(item);
+      })
+    );
   }
 
   private async queueCheckout(item: unknown, confirmRedownload: boolean): Promise<void> {
@@ -993,6 +1000,135 @@ export class TutorCommands {
       this.treeDataProvider.refresh();
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to checkout: ${error?.message || error}`);
+    }
+  }
+
+  /**
+   * Show README preview for a tutor assignment.
+   * Downloads the description (README) from the API if not cached, then opens in markdown preview.
+   */
+  private async showReadme(item: any): Promise<void> {
+    try {
+      const content: CourseContentStudentList | undefined = item?.content;
+      if (!content) {
+        vscode.window.showErrorMessage('No course content found');
+        return;
+      }
+
+      const courseContentId = content.id;
+      const descriptionPath = this.workspaceStructure.getReviewDescriptionPath(courseContentId);
+
+      // Check if description is already cached
+      const descriptionExists = await this.workspaceStructure.directoryExists(descriptionPath);
+
+      if (!descriptionExists) {
+        // Download description from API
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Downloading README...',
+            cancellable: false
+          },
+          async () => {
+            const buffer = await this.apiService.downloadCourseContentDescription(courseContentId);
+            if (!buffer) {
+              throw new Error('No README available for this assignment');
+            }
+
+            // Extract ZIP to description path
+            await fs.promises.mkdir(descriptionPath, { recursive: true });
+            const JSZip = require('jszip');
+            const zip = await JSZip.loadAsync(buffer);
+
+            for (const [filename, file] of Object.entries(zip.files)) {
+              const zipFile = file as any;
+              if (!zipFile.dir) {
+                const fileContent = await zipFile.async('nodebuffer');
+                const filePath = path.join(descriptionPath, filename);
+                await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+                await fs.promises.writeFile(filePath, fileContent);
+              }
+            }
+          }
+        );
+      }
+
+      // Find and open README file
+      await this.openReadmeFromDirectory(descriptionPath);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to show README: ${error?.message || error}`);
+    }
+  }
+
+  /**
+   * Find and open a description file from a directory, with language preference support.
+   * Supports both README and index naming patterns (e.g., README_en.md, index_de.md).
+   * Searches recursively in case files are in subdirectories.
+   */
+  private async openReadmeFromDirectory(dir: string): Promise<void> {
+    let descriptionPath: string | undefined;
+    let preferredLanguage: string | null = null;
+
+    // Try to get language preference
+    try {
+      const userAccount = await this.apiService.getUserAccount();
+      preferredLanguage = userAccount?.profile?.language_code || null;
+    } catch {
+      // Ignore language preference errors
+    }
+
+    // Pattern matches: README.md, README_en.md, index.md, index_de.md, etc.
+    const descriptionPattern = /^(README|index)(_[a-z]{2})?\.md$/i;
+
+    // Find all description files recursively
+    const findDescriptionFiles = (directory: string): string[] => {
+      const results: string[] = [];
+      try {
+        const entries = fs.readdirSync(directory, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(directory, entry.name);
+          if (entry.isDirectory()) {
+            results.push(...findDescriptionFiles(fullPath));
+          } else if (descriptionPattern.test(entry.name)) {
+            results.push(fullPath);
+          }
+        }
+      } catch {
+        // Ignore read errors
+      }
+      return results;
+    };
+
+    const allDescriptionFiles = findDescriptionFiles(dir);
+
+    // Check for localized version first (both README_xx.md and index_xx.md)
+    if (preferredLanguage) {
+      const localizedPattern = new RegExp(`(README|index)_${preferredLanguage}\\.md$`, 'i');
+      const localized = allDescriptionFiles.find(f => localizedPattern.test(f));
+      if (localized) {
+        descriptionPath = localized;
+      }
+    }
+
+    // Fall back to finding any description file
+    if (!descriptionPath && allDescriptionFiles.length > 0) {
+      // Prefer non-localized versions (README.md or index.md)
+      const basicFile = allDescriptionFiles.find(f =>
+        f.endsWith('README.md') || f.endsWith('index.md')
+      );
+      descriptionPath = basicFile || allDescriptionFiles[0];
+    }
+
+    if (descriptionPath && fs.existsSync(descriptionPath)) {
+      const descriptionUri = vscode.Uri.file(descriptionPath);
+      // Open beside active editor if one exists
+      if (vscode.window.activeTextEditor) {
+        await vscode.commands.executeCommand('markdown.showPreviewToSide', descriptionUri);
+      } else {
+        await vscode.commands.executeCommand('markdown.showPreview', descriptionUri);
+      }
+    } else {
+      vscode.window.showInformationMessage('No description found for this assignment');
     }
   }
 

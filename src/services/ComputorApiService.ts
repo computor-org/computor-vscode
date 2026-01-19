@@ -757,6 +757,37 @@ export class ComputorApiService {
     }
   }
 
+  /**
+   * Download course content description (README) for tutors.
+   * Returns a ZIP buffer containing the README files.
+   */
+  async downloadCourseContentDescription(courseContentId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/tutors/course-contents/${courseContentId}/description`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return undefined;
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Failed to download course content description:', error);
+      return undefined;
+    }
+  }
+
   async listSubmissionArtifacts(submissionGroupId: string, query?: Partial<SubmissionArtifactQuery>): Promise<SubmissionArtifactList[] | undefined> {
     try {
       const client = await this.getHttpClient();
