@@ -15,6 +15,7 @@ import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } f
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
+import type { WebSocketService } from '../services/WebSocketService';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -30,7 +31,8 @@ export class TutorCommands {
     treeDataProvider: TutorStudentTreeProvider,
     apiService?: ComputorApiService,
     filterProvider?: TutorFilterPanelProvider,
-    messagesInputPanel?: MessagesInputPanelProvider
+    messagesInputPanel?: MessagesInputPanelProvider,
+    wsService?: WebSocketService
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
@@ -40,6 +42,9 @@ export class TutorCommands {
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
+    }
+    if (wsService) {
+      this.messagesWebviewProvider.setWebSocketService(wsService);
     }
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
     this.filterProvider = filterProvider;
@@ -503,6 +508,8 @@ export class TutorCommands {
         let query: Record<string, string>;
         let createPayload: Partial<MessageCreate>;
 
+        let wsChannel: string | undefined;
+
         if (submissionGroup?.id) {
           // Assignment with submission group - tutors only need submission_group messages
           // (not course_content announcements which are for all students)
@@ -514,6 +521,8 @@ export class TutorCommands {
           createPayload = {
             submission_group_id: submissionGroup.id
           };
+          // Tutors subscribe to the specific submission group for targeted updates
+          wsChannel = `submission_group:${submissionGroup.id}`;
         } else {
           // Unit content without submission group - show course_content messages
           // Tutors can only read (lecturer+ for writing)
@@ -525,6 +534,7 @@ export class TutorCommands {
           createPayload = {
             course_content_id: content.id  // Lecturer+ only
           };
+          wsChannel = `course_content:${content.id}`;
         }
 
         const subtitleSegments = [courseLabel, memberName, content.path || contentTitle].filter(Boolean) as string[];
@@ -536,7 +546,8 @@ export class TutorCommands {
           subtitle,
           query,
           createPayload,
-          sourceRole: 'tutor'
+          sourceRole: 'tutor',
+          wsChannel
         } satisfies MessageTargetContext;
       }
 
@@ -552,7 +563,8 @@ export class TutorCommands {
           subtitle,
           query: { course_id: courseId, course_member_id: memberId, scope: 'course' },
           createPayload: { course_id: courseId },  // This will fail - lecturer+ only
-          sourceRole: 'tutor'
+          sourceRole: 'tutor',
+          wsChannel: `course:${courseId}`
         } satisfies MessageTargetContext;
       }
 

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { MessageCreate, MessageUpdate, MessageList } from '../../types/generated';
 import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
+import { WebSocketService } from '../../services/WebSocketService';
 
 interface InputPanelState {
   target?: MessageTargetContext;
@@ -9,6 +10,7 @@ interface InputPanelState {
   editingMessage?: MessageList;
   loading: boolean;
   messages?: MessageList[];
+  wsChannel?: string;
 }
 
 export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
@@ -16,6 +18,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private state: InputPanelState = { loading: false };
   private onMessageCreatedCallback?: () => Promise<void>;
+  private wsService?: WebSocketService;
+  private typingTimeout?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -32,12 +36,15 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case 'createMessage':
+          this.stopTyping();
           await this.handleCreateMessage(message.data);
           break;
         case 'updateMessage':
+          this.stopTyping();
           await this.handleUpdateMessage(message.data);
           break;
         case 'cancel':
+          this.stopTyping();
           this.clearReplyAndEdit();
           break;
         case 'showWarning':
@@ -47,6 +54,9 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
           break;
         case 'ready':
           this.postState();
+          break;
+        case 'typing':
+          this.notifyTyping();
           break;
       }
     });
@@ -91,6 +101,44 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
 
   public updateMessages(messages: MessageList[]): void {
     this.state.messages = messages;
+  }
+
+  public setWebSocketService(wsService: WebSocketService): void {
+    this.wsService = wsService;
+  }
+
+  public setWebSocketChannel(channel: string): void {
+    this.state.wsChannel = channel;
+  }
+
+  public notifyTyping(): void {
+    if (!this.wsService || !this.state.wsChannel) {
+      return;
+    }
+
+    // Clear existing timeout
+    if (this.typingTimeout) {
+      clearTimeout(this.typingTimeout);
+    }
+
+    // Start typing indicator
+    this.wsService.startTyping(this.state.wsChannel);
+
+    // Auto-stop after 5 seconds of no input
+    this.typingTimeout = setTimeout(() => {
+      this.stopTyping();
+    }, 5000);
+  }
+
+  public stopTyping(): void {
+    if (this.typingTimeout) {
+      clearTimeout(this.typingTimeout);
+      this.typingTimeout = undefined;
+    }
+
+    if (this.wsService && this.state.wsChannel) {
+      this.wsService.stopTyping(this.state.wsChannel);
+    }
   }
 
   private postState(): void {

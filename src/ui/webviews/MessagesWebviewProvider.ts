@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
+import { WebSocketService } from '../../services/WebSocketService';
 
 export type MessageTargetType = 'course' | 'courseGroup' | 'courseContent' | 'submissionGroup' | 'courseMember';
 
@@ -20,6 +21,8 @@ export interface MessageTargetContext {
   query: Record<string, string>;
   createPayload: Record<string, unknown>;
   sourceRole?: 'student' | 'tutor' | 'lecturer';
+  /** WebSocket channel for real-time updates (e.g., "submission_group:uuid") */
+  wsChannel?: string;
 }
 
 interface MessagesWebviewData {
@@ -39,14 +42,22 @@ type EnrichedMessage = MessageList & {
 export class MessagesWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
   private inputPanel?: MessagesInputPanelProvider;
+  private wsService?: WebSocketService;
+  private currentWsChannel?: string;
+  private readonly wsHandlerId: string;
 
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.messagesView');
     this.apiService = apiService;
+    this.wsHandlerId = `messages-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
   public setInputPanel(inputPanel: MessagesInputPanelProvider): void {
     this.inputPanel = inputPanel;
+  }
+
+  public setWebSocketService(wsService: WebSocketService): void {
+    this.wsService = wsService;
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
@@ -62,11 +73,102 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const payload: MessagesWebviewData = { target, messages, identity };
     await this.show(`Messages: ${target.title}`, payload);
 
+    // Subscribe to WebSocket channel for real-time updates
+    this.subscribeToChannel(target);
+
     if (this.inputPanel) {
       this.inputPanel.setTarget(target, rawMessages);
       // Register this provider's refresh callback when showing messages
       this.inputPanel.setOnMessageCreated(() => this.refreshMessages());
+      // Pass WebSocket channel to input panel for typing indicators
+      if (target.wsChannel) {
+        this.inputPanel.setWebSocketChannel(target.wsChannel);
+      }
       void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+    }
+  }
+
+  private subscribeToChannel(target: MessageTargetContext): void {
+    if (!this.wsService || !target.wsChannel) {
+      return;
+    }
+
+    // Unsubscribe from previous channel if different
+    if (this.currentWsChannel && this.currentWsChannel !== target.wsChannel) {
+      this.wsService.unsubscribe([this.currentWsChannel], this.wsHandlerId);
+    }
+
+    this.currentWsChannel = target.wsChannel;
+
+    this.wsService.subscribe([target.wsChannel], this.wsHandlerId, {
+      onMessageNew: (channel, data) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsMessageNew(data);
+        }
+      },
+      onMessageUpdate: (channel, messageId, data) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsMessageUpdate(messageId, data);
+        }
+      },
+      onMessageDelete: (channel, messageId) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsMessageDelete(messageId);
+        }
+      },
+      onTypingUpdate: (channel, userId, userName, isTyping) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsTypingUpdate(userId, userName, isTyping);
+        }
+      }
+    });
+  }
+
+  private handleWsMessageNew(data: Record<string, unknown>): void {
+    if (!this.panel) {
+      return;
+    }
+    // Send new message to webview
+    this.panel.webview.postMessage({
+      command: 'wsMessageNew',
+      data
+    });
+  }
+
+  private handleWsMessageUpdate(messageId: string, data: Record<string, unknown>): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({
+      command: 'wsMessageUpdate',
+      data: { messageId, ...data }
+    });
+  }
+
+  private handleWsMessageDelete(messageId: string): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({
+      command: 'wsMessageDelete',
+      data: { messageId }
+    });
+  }
+
+  private handleWsTypingUpdate(userId: string, userName: string, isTyping: boolean): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({
+      command: 'wsTypingUpdate',
+      data: { userId, userName, isTyping }
+    });
+  }
+
+  public dispose(): void {
+    // Unsubscribe from WebSocket channel
+    if (this.wsService && this.currentWsChannel) {
+      this.wsService.unsubscribe([this.currentWsChannel], this.wsHandlerId);
     }
   }
 

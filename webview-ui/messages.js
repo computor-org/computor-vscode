@@ -17,6 +17,7 @@
       tags: null,
       tags_match_all: false
     },
+    typingUsers: [], // { userId, userName }
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -393,8 +394,32 @@
       container.appendChild(renderMessageNode(thread, thread.level ?? 0));
     });
 
+    // Render typing indicator if someone is typing
+    if (state.typingUsers && state.typingUsers.length > 0) {
+      const typingIndicator = renderTypingIndicator();
+      container.appendChild(typingIndicator);
+    }
+
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
+    });
+  }
+
+  function renderTypingIndicator() {
+    const users = state.typingUsers || [];
+    let text = '';
+
+    if (users.length === 1) {
+      text = `${users[0].userName} is typing…`;
+    } else if (users.length === 2) {
+      text = `${users[0].userName} and ${users[1].userName} are typing…`;
+    } else if (users.length > 2) {
+      text = `${users[0].userName} and ${users.length - 1} others are typing…`;
+    }
+
+    return createElement('div', {
+      className: 'typing-indicator',
+      innerHTML: `<span class="typing-dots"><span></span><span></span><span></span></span> ${escapeHtml(text)}`
     });
   }
 
@@ -663,10 +688,67 @@
       case 'update':
         setState(message.data || {});
         break;
+      // WebSocket events
+      case 'wsMessageNew':
+        handleWsMessageNew(message.data);
+        break;
+      case 'wsMessageUpdate':
+        handleWsMessageUpdate(message.data);
+        break;
+      case 'wsMessageDelete':
+        handleWsMessageDelete(message.data);
+        break;
+      case 'wsTypingUpdate':
+        handleWsTypingUpdate(message.data);
+        break;
       default:
         break;
     }
   });
+
+  // WebSocket event handlers
+  function handleWsMessageNew(data) {
+    if (!data) return;
+    // Add the new message to the list
+    const newMessages = [...state.messages, data];
+    setState({ messages: newMessages });
+  }
+
+  function handleWsMessageUpdate(data) {
+    if (!data || !data.messageId) return;
+    const updatedMessages = state.messages.map((msg) => {
+      if (msg.id === data.messageId) {
+        return { ...msg, ...data };
+      }
+      return msg;
+    });
+    setState({ messages: updatedMessages });
+  }
+
+  function handleWsMessageDelete(data) {
+    if (!data || !data.messageId) return;
+    const filteredMessages = state.messages.filter((msg) => msg.id !== data.messageId);
+    setState({ messages: filteredMessages });
+  }
+
+  function handleWsTypingUpdate(data) {
+    if (!data) return;
+    const { userId, userName, isTyping } = data;
+
+    let typingUsers = [...(state.typingUsers || [])];
+
+    if (isTyping) {
+      // Add user if not already in the list
+      if (!typingUsers.find((u) => u.userId === userId)) {
+        typingUsers.push({ userId, userName });
+      }
+    } else {
+      // Remove user from list
+      typingUsers = typingUsers.filter((u) => u.userId !== userId);
+    }
+
+    setState({ typingUsers });
+  }
 
   document.addEventListener('DOMContentLoaded', () => {
     render();

@@ -10,6 +10,7 @@ import { ComputorApiService } from './services/ComputorApiService';
 // import { GitLabTokenManager } from './services/GitLabTokenManager';
 
 import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
+import { WebSocketService } from './services/WebSocketService';
 import { BackendConnectionService } from './services/BackendConnectionService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
@@ -376,6 +377,7 @@ class UnifiedController {
   private activeViews: string[] = [];
   private profileWebviewProvider?: UserProfileWebviewProvider;
   private messagesInputPanel?: MessagesInputPanelProvider;
+  private wsService?: WebSocketService;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -406,6 +408,15 @@ class UnifiedController {
     this.disposables.push(
       vscode.window.registerWebviewViewProvider(MessagesInputPanelProvider.viewType, this.messagesInputPanel)
     );
+
+    // Initialize WebSocket service for real-time messaging
+    const settingsManager = new ComputorSettingsManager(this.context);
+    this.wsService = WebSocketService.getInstance(settingsManager);
+    this.wsService.setHttpClient(client);
+    this.messagesInputPanel.setWebSocketService(this.wsService);
+
+    // Connect WebSocket (fire-and-forget, will reconnect automatically on failure)
+    void this.wsService.connect();
 
     // Get available views for this user across all courses
     // This is a lightweight check to determine which role views to show
@@ -622,7 +633,7 @@ class UnifiedController {
     }
 
     // Student commands
-    const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel);
+    const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
     commands.registerCommands();
 
     // Results panel + tree
@@ -800,7 +811,7 @@ class UnifiedController {
       filterProvider.refreshFilters();
     }));
 
-    const commands = new TutorCommands(this.context, tree, api, filterProvider, this.messagesInputPanel);
+    const commands = new TutorCommands(this.context, tree, api, filterProvider, this.messagesInputPanel, this.wsService);
     commands.registerCommands();
   }
 
@@ -837,7 +848,7 @@ class UnifiedController {
     });
     this.disposables.push(exampleTreeView);
 
-    const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel);
+    const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService);
     commands.registerCommands();
 
     // Register example-related commands (search, upload from ZIP, etc.)
@@ -879,6 +890,10 @@ class UnifiedController {
   async dispose(): Promise<void> {
     for (const d of this.disposables) d.dispose();
     this.disposables = [];
+    if (this.wsService) {
+      this.wsService.dispose();
+      this.wsService = undefined;
+    }
     if (this.api) this.api.clearHttpClient();
     this.api = undefined;
     this.profileWebviewProvider = undefined;

@@ -201,9 +201,11 @@
       if (state.loading) {
         textarea.disabled = true;
       }
-      // Save content on input
+      // Save content on input and notify typing
       textarea.addEventListener('input', (e) => {
         state.messageContent = e.target.value;
+        // Send typing indicator
+        vscode.postMessage({ command: 'typing' });
       });
       contentArea.appendChild(textarea);
     } else {

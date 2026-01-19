@@ -12,6 +12,7 @@ import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
+import type { WebSocketService } from '../services/WebSocketService';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 import JSZip from 'jszip';
 
@@ -35,7 +36,8 @@ export class StudentCommands {
     treeDataProvider: StudentCourseContentTreeProvider,
     apiService?: ComputorApiService,
     repositoryManager?: StudentRepositoryManager,
-    messagesInputPanel?: MessagesInputPanelProvider
+    messagesInputPanel?: MessagesInputPanelProvider,
+    wsService?: WebSocketService
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
@@ -50,6 +52,9 @@ export class StudentCommands {
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
+    }
+    if (wsService) {
+      this.messagesWebviewProvider.setWebSocketService(wsService);
     }
     this.contentDetailsWebviewProvider = new StudentCourseContentDetailsWebviewProvider(context);
     void this.courseContentTreeProvider; // Unused for now
@@ -1176,6 +1181,8 @@ export class StudentCommands {
         let query: Record<string, string>;
         let createPayload: Partial<MessageCreate>;
 
+        let wsChannel: string | undefined;
+
         if (submissionGroup?.id) {
           // Assignment with submission group - students only need submission_group messages
           query = {
@@ -1184,6 +1191,7 @@ export class StudentCommands {
           createPayload = {
             submission_group_id: submissionGroup.id
           };
+          wsChannel = `submission_group:${submissionGroup.id}`;
         } else {
           // Unit content without submission group - show course_content messages
           // Students can only read (lecturer+ for writing)
@@ -1193,6 +1201,7 @@ export class StudentCommands {
           createPayload = {
             course_content_id: content.id  // This will fail with ForbiddenException, but allows reading
           };
+          wsChannel = `course_content:${content.id}`;
         }
 
         target = {
@@ -1200,7 +1209,8 @@ export class StudentCommands {
           subtitle,
           query,
           createPayload,
-          sourceRole: 'student'
+          sourceRole: 'student',
+          wsChannel
         } satisfies MessageTargetContext;
       }
 
@@ -1221,7 +1231,8 @@ export class StudentCommands {
           subtitle,
           query: { course_id: courseId, scope: 'course' },
           createPayload: { course_id: courseId },  // This will fail with ForbiddenException
-          sourceRole: 'student'
+          sourceRole: 'student',
+          wsChannel: `course:${courseId}`
         } satisfies MessageTargetContext;
       }
 
