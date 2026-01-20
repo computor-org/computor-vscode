@@ -82,6 +82,12 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.runTest",
+        "title": "Run Test",
+        "icon": "$(play)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.changeRealmUrl",
         "title": "Change Backend URL",
         "category": "Computor"
@@ -1050,6 +1056,11 @@
           "command": "computor.tutor.showSubmissionTestResults",
           "when": "view == computor.tutor.courses && viewItem == tutorSubmissionArtifact",
           "group": "3_external@4"
+        },
+        {
+          "command": "computor.tutor.runTest",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo || viewItem == tutorVirtualFolder.submissions || viewItem == tutorSubmissionArtifact || viewItem == tutorVirtualFolder.reference)",
+          "group": "3_external@5"
         },
         {
           "command": "computor.tutor.showMessages",

@@ -73,10 +73,23 @@ import {
   SubmissionListItem,
   SubmissionQuery,
   SubmissionUploadResponseModel,
-  SubmissionArtifactUpdate
+  SubmissionArtifactUpdate,
+  TutorGradeCreate,
+  TutorSubmissionGroupList,
+  TutorSubmissionGroupGet,
+  TutorSubmissionGroupQuery,
+  SubmissionArtifactList,
+  SubmissionArtifactQuery,
+  GitLabSyncRequest,
+  GitLabSyncResult,
+  StudentProfileQuery,
+  ResultArtifactListItem,
+  TutorTestCreateResponse,
+  TutorTestStatus,
+  TutorTestArtifactList,
+  CourseMemberGradingsList,
+  CourseMemberGradingsGet
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, SubmissionArtifactQuery, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery, ResultArtifactListItem } from '../types/generated/common';
-import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -2568,6 +2581,117 @@ export class ComputorApiService {
     multiTierCache.delete(`tutorContents-${memberId}`);
     multiTierCache.delete(`studentCourseContent-${courseContentId}`);
     return response.data;
+  }
+
+  /**
+   * Create a tutor test for a course content
+   * @param courseContentId The course content ID
+   * @param zipFile The ZIP file buffer containing the submission code
+   * @param config Optional test configuration
+   * @returns The test creation response with test ID
+   */
+  async createTutorTest(
+    courseContentId: string,
+    zipFile: Buffer,
+    config?: { store_graphics_artifacts?: boolean; timeout_seconds?: number | null }
+  ): Promise<TutorTestCreateResponse> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/tutors/course-contents/${courseContentId}/test`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      // Create form data
+      const FormData = require('form-data');
+      const formData = new FormData();
+      formData.append('file', zipFile, 'submission.zip');
+
+      if (config) {
+        formData.append('config', JSON.stringify(config));
+      }
+
+      // Make the request with proper headers
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...client.getAuthHeaders(),
+          ...formData.getHeaders()
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data as TutorTestCreateResponse;
+    } catch (error) {
+      console.error('Failed to create tutor test:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the status of a tutor test
+   * @param testId The test ID
+   * @returns The test status
+   */
+  async getTutorTestStatus(testId: string): Promise<TutorTestStatus | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<TutorTestStatus>(`/tutors/tests/${testId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get tutor test status:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Download tutor test artifacts as a ZIP file
+   * @param testId The test ID
+   * @returns The artifacts ZIP file as a buffer
+   */
+  async downloadTutorTestArtifacts(testId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/tutors/tests/${testId}/artifacts`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Failed to download tutor test artifacts:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * List artifacts from a tutor test
+   * @param testId The test ID
+   * @returns The list of artifacts
+   */
+  async listTutorTestArtifacts(testId: string): Promise<TutorTestArtifactList | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<TutorTestArtifactList>(`/tutors/tests/${testId}/artifacts/list`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to list tutor test artifacts:', error);
+      return undefined;
+    }
   }
 
   /**

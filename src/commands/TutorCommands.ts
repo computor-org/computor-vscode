@@ -14,6 +14,7 @@ import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/Me
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
+import { TutorTestService } from '../services/TutorTestService';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -25,6 +26,7 @@ export class TutorCommands {
   private filterProvider?: TutorFilterPanelProvider;
   private checkoutQueue: Array<{ item: unknown; confirmRedownload: boolean; resolve: () => void }> = [];
   private isCheckoutInProgress = false;
+  private tutorTestService: TutorTestService;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -40,6 +42,7 @@ export class TutorCommands {
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
     this.filterProvider = filterProvider;
+    this.tutorTestService = TutorTestService.getInstance(this.apiService);
     // No workspace manager needed for current tutor actions
   }
 
@@ -440,6 +443,13 @@ export class TutorCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.tutor.showReadme', async (item: any) => {
         await this.showReadme(item);
+      })
+    );
+
+    // Tutor: Run test on submission
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.runTest', async (item: any) => {
+        await this.runTestOnSubmission(item);
       })
     );
   }
@@ -1129,6 +1139,101 @@ export class TutorCommands {
       }
     } else {
       vscode.window.showInformationMessage('No description found for this assignment');
+    }
+  }
+
+  /**
+   * Run a test on the checked-out submission
+   */
+  private async runTestOnSubmission(item: any): Promise<void> {
+    try {
+      // Get course content information
+      const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
+      if (!content) {
+        vscode.window.showErrorMessage('No course content information available');
+        return;
+      }
+
+      const courseContentId = content.id;
+      const submissionGroupId = content.submission_group?.id;
+
+      if (!courseContentId) {
+        vscode.window.showErrorMessage('No course content ID available');
+        return;
+      }
+
+      // Determine the submission path
+      let submissionPath: string | undefined;
+
+      // First, check if we have a specific submission artifact in the item
+      if (item?.artifactId && submissionGroupId) {
+        // Testing a specific submission artifact
+        submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, item.artifactId);
+      } else if (submissionGroupId) {
+        // Try to find the latest downloaded submission artifact
+        const artifacts = await this.workspaceStructure.getSubmissionArtifacts(submissionGroupId);
+        if (artifacts.length > 0) {
+          // Use the most recent artifact (they're typically sorted by name/date)
+          const latestArtifact = artifacts[artifacts.length - 1]!;
+          submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, latestArtifact);
+        }
+      }
+
+      if (!submissionPath || !await this.workspaceStructure.directoryExists(submissionPath)) {
+        // No submission found, offer to test the reference instead
+        const choice = await vscode.window.showWarningMessage(
+          'No student submission found. Would you like to test the reference solution instead?',
+          'Test Reference',
+          'Cancel'
+        );
+
+        if (choice !== 'Test Reference') {
+          return;
+        }
+
+        // Use reference path
+        const deployment = content.deployment;
+        if (!deployment || !deployment.example_version_id) {
+          vscode.window.showErrorMessage('No reference available for this assignment');
+          return;
+        }
+
+        submissionPath = this.workspaceStructure.getReviewReferencePath(deployment.example_version_id);
+
+        if (!await this.workspaceStructure.directoryExists(submissionPath)) {
+          vscode.window.showErrorMessage('Reference not downloaded. Please checkout the assignment first.');
+          return;
+        }
+      }
+
+      // Get assignment title for display
+      const assignmentTitle = content.title || 'Assignment';
+
+      // Run the test
+      const result = await this.tutorTestService.runTutorTest(
+        courseContentId,
+        submissionPath,
+        assignmentTitle
+      );
+
+      if (!result) {
+        return;
+      }
+
+      // Handle test results
+      if (result.status === 'SUCCESS' || result.status === 'FAILED') {
+        // Open test results if available
+        if (result.testId) {
+          await this.tutorTestService.openTestResults(result.testId, result.artifactsPath);
+        }
+
+        // Refresh the tree to show updated status
+        this.treeDataProvider.refresh();
+      }
+
+    } catch (error: any) {
+      console.error('[TutorCommands] Error running test:', error);
+      vscode.window.showErrorMessage(`Failed to run test: ${error?.message || error}`);
     }
   }
 
