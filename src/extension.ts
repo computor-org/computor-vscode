@@ -565,7 +565,13 @@ class UnifiedController {
         }
       }
     });
-    this.disposables.push(studentExpandListener, studentCollapseListener, studentSelectionListener);
+    const studentVisibilityListener = treeView.onDidChangeVisibility((event) => {
+      if (event.visible) {
+        // Clear results view when switching to student view
+        void vscode.commands.executeCommand('computor.results.clear');
+      }
+    });
+    this.disposables.push(studentExpandListener, studentCollapseListener, studentSelectionListener, studentVisibilityListener);
 
     // No course pre-selection - tree will show all courses
 
@@ -755,20 +761,29 @@ class UnifiedController {
     });
     this.disposables.push(tutorCollapseListener);
 
-    // Show test results automatically when an assignment is selected
+    // Checkout and show test results automatically when an assignment is selected
     const tutorSelectionListener = treeView.onDidChangeSelection((event) => {
       const selected = event.selection[0];
       if (!selected) return;
       if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
+        // Trigger checkout for the assignment (confirmRedownload=false: always download without asking)
+        void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
+
+        // Show test results if available
         if ((selected as any).content?.result) {
           void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
         } else {
-          // Clear results view when selecting an assignment without results
           void vscode.commands.executeCommand('computor.results.clear');
         }
       }
     });
-    this.disposables.push(tutorSelectionListener);
+    const tutorVisibilityListener = treeView.onDidChangeVisibility((event) => {
+      if (event.visible) {
+        // Clear results view when switching to tutor view
+        void vscode.commands.executeCommand('computor.results.clear');
+      }
+    });
+    this.disposables.push(tutorSelectionListener, tutorVisibilityListener);
 
     // Status bar: show selection and allow reset
     const tutorStatus = TutorStatusBarService.initialize();
@@ -818,7 +833,13 @@ class UnifiedController {
       if (!elementId) return;
       void tree.setNodeExpanded(elementId, false);
     });
-    this.disposables.push(lecturerExpandListener, lecturerCollapseListener);
+    const lecturerVisibilityListener = treeView.onDidChangeVisibility((event) => {
+      if (event.visible) {
+        // Clear results view when switching to lecturer view
+        void vscode.commands.executeCommand('computor.results.clear');
+      }
+    });
+    this.disposables.push(lecturerExpandListener, lecturerCollapseListener, lecturerVisibilityListener);
 
     const exampleTree = new LecturerExampleTreeProvider(this.context, api);
     const exampleTreeView = vscode.window.createTreeView('computor.lecturer.examples', {
@@ -863,6 +884,14 @@ class UnifiedController {
       showCollapseAll: false
     });
     this.disposables.push(treeView);
+
+    const userManagerVisibilityListener = treeView.onDidChangeVisibility((event) => {
+      if (event.visible) {
+        // Clear results view when switching to user manager view
+        void vscode.commands.executeCommand('computor.results.clear');
+      }
+    });
+    this.disposables.push(userManagerVisibilityListener);
 
     const commands = new UserManagerCommands(this.context, tree, api);
     commands.registerCommands();

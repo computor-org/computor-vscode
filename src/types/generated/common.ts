@@ -1412,6 +1412,73 @@ export interface GitLabSyncResult {
 }
 
 /**
+ * Optional configuration for tutor test (passed as JSON in form data).
+ */
+export interface TutorTestConfig {
+  store_graphics_artifacts?: boolean;
+  timeout_seconds?: number | null;
+}
+
+/**
+ * Response when creating a tutor test - just the essentials.
+ */
+export interface TutorTestCreateResponse {
+  test_id: string;
+  status?: "pending" | "running" | "completed" | "failed" | "timeout";
+  created_at?: string | null;
+}
+
+/**
+ * Quick status check for a tutor test run (for polling).
+ */
+export interface TutorTestStatus {
+  test_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  has_artifacts?: boolean;
+  artifact_count?: number;
+}
+
+/**
+ * Full tutor test details including result_dict from MinIO.
+ */
+export interface TutorTestGet {
+  test_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  result_dict?: any | null;
+  passed?: number | null;
+  failed?: number | null;
+  total?: number | null;
+  result_value?: number | null;
+  error?: string | null;
+  has_artifacts?: boolean;
+  artifact_count?: number;
+}
+
+/**
+ * Information about a single artifact.
+ */
+export interface TutorTestArtifactInfo {
+  filename: string;
+  size: number;
+  last_modified?: string | null;
+}
+
+/**
+ * List of artifacts from a tutor test.
+ */
+export interface TutorTestArtifactList {
+  test_id: string;
+  artifacts?: TutorTestArtifactInfo[];
+  total_count?: number;
+}
+
+/**
  * Member information in a submission group.
  */
 export interface TutorSubmissionGroupMember {
@@ -2369,6 +2436,24 @@ export interface ResultArtifactQuery {
   id?: string | null;
   result_id?: string | null;
   content_type?: string | null;
+}
+
+/**
+ * Information about a single uploaded artifact.
+ */
+export interface ArtifactInfo {
+  filename: string;
+  file_size: number;
+  content_type?: string | null;
+}
+
+/**
+ * Response for artifact upload endpoint.
+ */
+export interface ResultArtifactUploadResponse {
+  result_id: string;
+  artifacts_count: number;
+  artifacts: ArtifactInfo[];
 }
 
 export interface CourseMemberGitLabConfig {

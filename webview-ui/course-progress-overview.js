@@ -80,6 +80,7 @@
 
     initCharts();
     initTable();
+    attachRefreshListener();
   }
 
   function renderHeader() {
@@ -90,8 +91,18 @@
           <h1 class="course-progress-header__title">${escapeHtml(course.title || course.path)}</h1>
           <p class="course-progress-header__subtitle">Student Progress Overview</p>
         </div>
+        <button type="button" class="button button-secondary" id="refreshBtn" title="Refresh data">Refresh</button>
       </header>
     `;
+  }
+
+  function attachRefreshListener() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        vscode.postMessage({ command: 'refresh' });
+      });
+    }
   }
 
   function renderStatCards() {
@@ -326,8 +337,8 @@
           ? s.family_name + ', ' + s.given_name
           : s.family_name || s.given_name || s.username || 'Unknown'
       })),
-      defaultSort: 'overall_progress_percentage',
-      defaultSortDirection: 'desc',
+      defaultSort: 'name',
+      defaultSortDirection: 'asc',
       onRowClick: (row) => {
         vscode.postMessage({
           command: 'showStudentDetails',
@@ -440,10 +451,6 @@
   const CHECK_ICON = '<svg viewBox="0 0 16 16"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
 
   // Global handlers
-  window.handleRefresh = function() {
-    vscode.postMessage({ command: 'refresh' });
-  };
-
   window.copyWithFeedback = function(text, btnId) {
     // Use VS Code's clipboard API via message passing (navigator.clipboard doesn't work in webviews)
     vscode.postMessage({ command: 'copyToClipboard', data: { text, btnId } });

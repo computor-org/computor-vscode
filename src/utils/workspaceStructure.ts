@@ -92,6 +92,14 @@ export class WorkspaceStructureManager {
   }
 
   /**
+   * Get tutor course content description (README) cache path
+   */
+  getReviewDescriptionPath(courseContentId: string): string {
+    const dirs = this.getDirectories();
+    return path.join(dirs.reviewReference, 'descriptions', courseContentId);
+  }
+
+  /**
    * Get tutor review submission artifact path
    */
   getReviewSubmissionPath(submissionGroupId: string, artifactId: string): string {
