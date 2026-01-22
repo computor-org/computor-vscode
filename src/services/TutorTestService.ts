@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
+import { TutorTestGet, ResultArtifactInfo, TutorTestArtifactInfo } from '../types/generated';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { showErrorWithSeverity } from '../utils/errorDisplay';
 
@@ -69,7 +70,7 @@ export class TutorTestService {
     courseContentId: string,
     submissionPath: string,
     assignmentTitle: string
-  ): Promise<{ status: 'SUCCESS' | 'FAILED' | 'ERROR' | 'CANCELLED' | 'TIMEOUT'; testId?: string; artifactsPath?: string } | undefined> {
+  ): Promise<{ status: 'SUCCESS' | 'FAILED' | 'ERROR' | 'CANCELLED' | 'TIMEOUT'; testId?: string; artifactsPath?: string; testDetails?: TutorTestGet; artifacts?: ResultArtifactInfo[] } | undefined> {
     try {
       // Check if submission path exists
       if (!await this.workspaceStructure.directoryExists(submissionPath)) {
@@ -112,21 +113,27 @@ export class TutorTestService {
               return { status: 'CANCELLED' };
             }
 
-            // Download and extract artifacts if test completed
+            // Download artifacts and get full results if test completed
             if (result.status === 'SUCCESS' || result.status === 'FAILED') {
-              // Check if there are artifacts to download
-              const testStatus = await this.apiService.getTutorTestStatus(testId);
-              let artifactsPath: string | undefined;
+              // Get full test results
+              progress.report({ message: 'Fetching test results...' });
+              const testDetails = await this.apiService.getTutorTest(testId);
 
-              if (testStatus?.has_artifacts) {
-                progress.report({ message: `Downloading test artifacts (${testStatus.artifact_count || 0} files)...` });
-                artifactsPath = await this.downloadAndExtractArtifacts(testId);
-              }
+              // Get artifact list for display in results panel
+              progress.report({ message: 'Fetching artifact list...' });
+              const artifactList = await this.apiService.listTutorTestArtifacts(testId);
+              const artifacts = this.mapArtifactsToResultFormat(testId, artifactList?.artifacts);
+
+              // Download artifacts to local storage
+              progress.report({ message: 'Downloading test artifacts...' });
+              const artifactsPath = await this.downloadAndExtractArtifacts(testId);
 
               return {
                 status: result.status,
                 testId,
-                artifactsPath
+                artifactsPath,
+                testDetails,
+                artifacts
               };
             }
 
@@ -196,20 +203,11 @@ export class TutorTestService {
           // Check if test is complete
           if (testStatus.status === 'completed') {
             this.stopPolling(testId);
-
-            // Check if there's a result to determine success/failure
-            // If result exists and has error information, it might have failed
-            // This might need adjustment based on actual backend response structure
-            if (testStatus.error) {
-              vscode.window.showWarningMessage('Test completed with errors');
-              resolve({ status: 'FAILED' });
-            } else {
-              vscode.window.showInformationMessage('Test completed successfully');
-              resolve({ status: 'SUCCESS' });
-            }
+            vscode.window.showInformationMessage('Test completed');
+            resolve({ status: 'SUCCESS' });
           } else if (testStatus.status === 'failed') {
             this.stopPolling(testId);
-            vscode.window.showErrorMessage(`Test failed${testStatus.error ? ': ' + testStatus.error : ''}`);
+            vscode.window.showWarningMessage('Test failed');
             resolve({ status: 'FAILED' });
           } else if (testStatus.status === 'timeout') {
             this.stopPolling(testId);
@@ -282,23 +280,31 @@ export class TutorTestService {
   /**
    * Open test results in the results panel
    */
-  async openTestResults(testId: string, artifactsPath?: string): Promise<void> {
+  async openTestResults(testId: string, artifactsPath?: string, testDetails?: TutorTestGet, artifacts?: ResultArtifactInfo[]): Promise<void> {
     try {
-      // First, try to read test results from artifacts
+      const artifactsToPass = artifacts || [];
+
+      // First, try to use testDetails.result_dict if available
+      if (testDetails?.result_dict) {
+        await vscode.commands.executeCommand('computor.results.open', testDetails.result_dict, testId, artifactsToPass);
+        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+        return;
+      }
+
+      // Fallback: try to read test results from artifacts
       if (artifactsPath) {
         const resultsFile = path.join(artifactsPath, 'results.json');
         if (await this.fileExists(resultsFile)) {
           const resultsContent = await fs.promises.readFile(resultsFile, 'utf8');
           const resultsJson = JSON.parse(resultsContent);
 
-          // Open in test results panel (using existing command)
-          await vscode.commands.executeCommand('computor.results.open', resultsJson, testId, []);
+          await vscode.commands.executeCommand('computor.results.open', resultsJson, testId, artifactsToPass);
           await vscode.commands.executeCommand('computor.testResultsPanel.focus');
           return;
         }
       }
 
-      // If no results.json, just show the artifacts directory
+      // If no results available, just show the artifacts directory
       if (artifactsPath) {
         const uri = vscode.Uri.file(artifactsPath);
         await vscode.commands.executeCommand('revealInExplorer', uri);
@@ -319,6 +325,44 @@ export class TutorTestService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Map TutorTestArtifactInfo to ResultArtifactInfo format for the results panel
+   */
+  private mapArtifactsToResultFormat(testId: string, artifacts?: TutorTestArtifactInfo[]): ResultArtifactInfo[] {
+    if (!artifacts || artifacts.length === 0) {
+      return [];
+    }
+
+    return artifacts.map((artifact, index) => ({
+      id: `${testId}-artifact-${index}`,
+      filename: artifact.filename,
+      content_type: this.guessContentType(artifact.filename),
+      file_size: artifact.size,
+      created_at: artifact.last_modified
+    }));
+  }
+
+  /**
+   * Guess content type from filename extension
+   */
+  private guessContentType(filename: string): string {
+    const ext = path.extname(filename).toLowerCase();
+    const contentTypes: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.pdf': 'application/pdf',
+      '.json': 'application/json',
+      '.txt': 'text/plain',
+      '.html': 'text/html',
+      '.xml': 'application/xml',
+      '.zip': 'application/zip'
+    };
+    return contentTypes[ext] || 'application/octet-stream';
   }
 
   /**

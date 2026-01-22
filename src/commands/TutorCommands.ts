@@ -1224,11 +1224,8 @@ export class TutorCommands {
       if (result.status === 'SUCCESS' || result.status === 'FAILED') {
         // Open test results if available
         if (result.testId) {
-          await this.tutorTestService.openTestResults(result.testId, result.artifactsPath);
+          await this.tutorTestService.openTestResults(result.testId, result.artifactsPath, result.testDetails, result.artifacts);
         }
-
-        // Refresh the tree to show updated status
-        this.treeDataProvider.refresh();
       }
 
     } catch (error: any) {

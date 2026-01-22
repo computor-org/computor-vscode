@@ -86,6 +86,7 @@ import {
   ResultArtifactListItem,
   TutorTestCreateResponse,
   TutorTestStatus,
+  TutorTestGet,
   TutorTestArtifactList,
   CourseMemberGradingsList,
   CourseMemberGradingsGet
@@ -2597,36 +2598,22 @@ export class ComputorApiService {
   ): Promise<TutorTestCreateResponse> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
-      const endpoint = `/tutors/course-contents/${courseContentId}/test`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      // Create form data
-      const FormData = require('form-data');
       const formData = new FormData();
-      formData.append('file', zipFile, 'submission.zip');
+      formData.append('file', zipFile, {
+        filename: 'submission.zip',
+        contentType: 'application/zip'
+      });
 
       if (config) {
         formData.append('config', JSON.stringify(config));
       }
 
-      // Make the request with proper headers
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          ...client.getAuthHeaders(),
-          ...formData.getHeaders()
-        },
-        body: formData
-      });
+      const response = await client.post<TutorTestCreateResponse>(
+        `/tutors/course-contents/${courseContentId}/test`,
+        formData
+      );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data as TutorTestCreateResponse;
+      return response.data;
     } catch (error) {
       console.error('Failed to create tutor test:', error);
       throw error;
@@ -2634,17 +2621,49 @@ export class ComputorApiService {
   }
 
   /**
-   * Get the status of a tutor test
+   * Get the status of a tutor test (for polling)
    * @param testId The test ID
    * @returns The test status
    */
   async getTutorTestStatus(testId: string): Promise<TutorTestStatus | undefined> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<TutorTestStatus>(`/tutors/tests/${testId}`);
+      const response = await client.get<TutorTestStatus>(`/tutors/tests/${testId}/status`);
       return response.data;
     } catch (error) {
       console.error('Failed to get tutor test status:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get full tutor test details including result_dict
+   * @param testId The test ID
+   * @returns The full test details with results
+   */
+  async getTutorTest(testId: string): Promise<TutorTestGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<TutorTestGet>(`/tutors/tests/${testId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get tutor test:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * List artifacts from a tutor test
+   * @param testId The test ID
+   * @returns The list of artifacts
+   */
+  async listTutorTestArtifacts(testId: string): Promise<TutorTestArtifactList | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<TutorTestArtifactList>(`/tutors/tests/${testId}/artifacts`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to list tutor test artifacts:', error);
       return undefined;
     }
   }
@@ -2658,7 +2677,7 @@ export class ComputorApiService {
     try {
       const client = await this.getHttpClient();
       const settings = await this.settingsManager.getSettings();
-      const endpoint = `/tutors/tests/${testId}/artifacts`;
+      const endpoint = `/tutors/tests/${testId}/artifacts/download`;
       const url = `${settings.authentication.baseUrl}${endpoint}`;
 
       const response = await fetch(url, {
@@ -2674,22 +2693,6 @@ export class ComputorApiService {
       return Buffer.from(arrayBuffer);
     } catch (error) {
       console.error('Failed to download tutor test artifacts:', error);
-      return undefined;
-    }
-  }
-
-  /**
-   * List artifacts from a tutor test
-   * @param testId The test ID
-   * @returns The list of artifacts
-   */
-  async listTutorTestArtifacts(testId: string): Promise<TutorTestArtifactList | undefined> {
-    try {
-      const client = await this.getHttpClient();
-      const response = await client.get<TutorTestArtifactList>(`/tutors/tests/${testId}/artifacts/list`);
-      return response.data;
-    } catch (error) {
-      console.error('Failed to list tutor test artifacts:', error);
       return undefined;
     }
   }
