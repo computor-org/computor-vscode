@@ -81,7 +81,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (this.inputPanel) {
       this.inputPanel.setTarget(target, rawMessages);
       // Register this provider's refresh callback when showing messages
-      this.inputPanel.setOnMessageCreated(() => this.refreshMessages());
+      // Skip indicator update since sending a message shouldn't refresh the tree
+      this.inputPanel.setOnMessageCreated(() => this.refreshMessages({ skipIndicatorUpdate: true }));
       // Pass WebSocket channel to input panel for typing indicators
       if (target.wsChannel) {
         this.inputPanel.setWebSocketChannel(target.wsChannel);
@@ -441,7 +442,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     try {
       this.postLoadingState(true);
       await this.apiService.deleteMessage(data.messageId);
-      await this.refreshMessages();
+      // Skip indicator update - deleting a message doesn't change unread state
+      await this.refreshMessages({ skipIndicatorUpdate: true });
       vscode.window.showInformationMessage('Message deleted.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to delete message: ${error?.message || error}`);
@@ -449,7 +451,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  public async refreshMessages(): Promise<void> {
+  public async refreshMessages(options?: { skipIndicatorUpdate?: boolean }): Promise<void> {
     const target = this.getCurrentTarget();
     if (!target || !this.panel) {
       return;
@@ -468,7 +470,10 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
       const rawMessages = await this.apiService.listMessages(query);
       const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
-      void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+      // Only mark as read and update indicators when not skipping (e.g., after sending a message)
+      if (!options?.skipIndicatorUpdate) {
+        void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+      }
       const messages = this.enrichMessages(normalizedMessages, identity);
       this.currentData = { target, messages, identity, activeFilters } satisfies MessagesWebviewData;
       this.panel.webview.postMessage({ command: 'updateMessages', data: messages });
