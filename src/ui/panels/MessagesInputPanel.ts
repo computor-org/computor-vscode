@@ -263,7 +263,6 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       if (this.onMessageCreatedCallback) {
         await this.onMessageCreatedCallback();
       }
-      vscode.window.showInformationMessage('Message sent.');
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to send message: ${errorMessage}`);
@@ -289,7 +288,6 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       if (this.onMessageCreatedCallback) {
         await this.onMessageCreatedCallback();
       }
-      vscode.window.showInformationMessage('Message updated.');
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to update message: ${errorMessage}`);
