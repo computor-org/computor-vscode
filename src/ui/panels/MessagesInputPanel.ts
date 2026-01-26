@@ -39,6 +39,14 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.extensionUri]
     };
 
+    // Re-send state when view becomes visible (handles VS Code suspending webviews)
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        console.log('[MessagesInputPanel] View became visible, re-sending state');
+        this.postState();
+      }
+    });
+
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case 'createMessage':
@@ -101,8 +109,30 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   }
 
   public clearState(): void {
-    this.state = { loading: false, typingUsers: [] };
-    this.postState();
+    console.log('[MessagesInputPanel] clearState called');
+
+    // Stop any pending typing timeout
+    if (this.typingTimeout) {
+      clearTimeout(this.typingTimeout);
+      this.typingTimeout = undefined;
+    }
+
+    // Clear all state - no target means placeholder will be shown
+    this.state = {
+      target: undefined,
+      replyTo: undefined,
+      editingMessage: undefined,
+      loading: false,
+      messages: undefined,
+      wsChannel: undefined,
+      typingUsers: []
+    };
+    console.log('[MessagesInputPanel] State cleared, calling postState. View exists:', !!this.view);
+
+    // Force webview to re-render by updating HTML (ensures fresh JS context)
+    if (this.view) {
+      this.updateHtml();
+    }
   }
 
   public updateMessages(messages: MessageList[]): void {

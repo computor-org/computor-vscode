@@ -220,12 +220,20 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   protected onPanelDisposed(): void {
+    console.log('[MessagesWebviewProvider] onPanelDisposed called');
+
     // Unsubscribe from WebSocket channel when panel is closed
     if (this.wsService && this.currentWsChannel) {
       this.wsService.unsubscribe([this.currentWsChannel], this.wsHandlerId);
       this.currentWsChannel = undefined;
     }
     this.pendingUnreadMessageIds.clear();
+
+    // Clear the input panel state (removes typing indicators and resets form)
+    console.log('[MessagesWebviewProvider] Clearing input panel state, inputPanel exists:', !!this.inputPanel);
+    if (this.inputPanel) {
+      this.inputPanel.clearState();
+    }
   }
 
   protected onPanelBecameVisible(): void {

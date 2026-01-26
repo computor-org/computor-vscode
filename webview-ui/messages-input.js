@@ -105,16 +105,33 @@
   function render() {
     const mount = root();
     if (!mount) {
+      console.log('[messages-input] render: mount element not found');
       return;
     }
 
+    console.log('[messages-input] render called, state.target:', state.target);
     mount.innerHTML = '';
 
     if (!state.target) {
+      console.log('[messages-input] render: No target, showing placeholder');
       const placeholder = createElement('div', {
-        className: 'placeholder-state',
-        textContent: 'Open a messages view to compose a message.'
+        className: 'placeholder-state'
       });
+      const icon = createElement('span', {
+        className: 'placeholder-icon',
+        textContent: '💬'
+      });
+      const text = createElement('span', {
+        className: 'placeholder-text',
+        textContent: 'No message view selected'
+      });
+      const hint = createElement('span', {
+        className: 'placeholder-hint',
+        textContent: 'Open a messages view from the sidebar to compose a message.'
+      });
+      placeholder.appendChild(icon);
+      placeholder.appendChild(text);
+      placeholder.appendChild(hint);
       mount.appendChild(placeholder);
       return;
     }
@@ -375,10 +392,13 @@
 
     switch (message.command) {
       case 'updateState':
+        console.log('[messages-input] Received updateState:', message.data);
+        console.log('[messages-input] Target is:', message.data?.target);
         // Reset content and tab when context changes
         state.messageContent = message.data?.editingMessage?.content || '';
         state.activeTab = 'write';
         setState(message.data || {});
+        console.log('[messages-input] State after update, target:', state.target);
         break;
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
