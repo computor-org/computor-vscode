@@ -260,16 +260,23 @@
       const roleClass = authorRole ? authorRole.replace('_', '') : '';
       const roleBadge = createElement('span', {
         className: `author-role-badge role-${roleClass}`,
-        textContent: roleLabel
+        textContent: roleLabel,
+        attributes: {
+          title: `Course Role: ${roleLabel}`
+        }
       });
       metaLeftChildren.push(roleBadge);
     }
 
     // Add scope tag if available
     if (message.scope) {
+      const scopeLabel = getScopeLabel(message.scope);
       const scopeTag = createElement('span', {
         className: `message-scope-tag scope-${message.scope}`,
-        textContent: getScopeLabel(message.scope)
+        textContent: scopeLabel,
+        attributes: {
+          title: `Message Scope: ${scopeLabel}`
+        }
       });
       metaLeftChildren.push(scopeTag);
     }
