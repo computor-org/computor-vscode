@@ -143,17 +143,65 @@
       const header = createElement('div', { className: 'input-header' });
 
       if (state.replyTo) {
+        const contextRow = createElement('div', { className: 'input-context-row' });
         const contextLabel = createElement('span', {
           className: 'input-context reply-context',
           innerHTML: `Replying to <strong>${escapeHtml(state.replyTo.title || 'message')}</strong>`
         });
-        header.appendChild(contextLabel);
+        contextRow.appendChild(contextLabel);
+
+        // Add close button to dismiss reply
+        const closeBtn = createElement('button', {
+          className: 'context-close-btn',
+          innerHTML: '&#10005;',
+          attributes: {
+            type: 'button',
+            title: 'Cancel reply'
+          }
+        });
+        closeBtn.addEventListener('click', () => {
+          // Update local state immediately for responsive UI
+          setState({
+            replyTo: undefined,
+            editingMessage: undefined,
+            messageContent: '',
+            activeTab: 'write'
+          });
+          // Notify extension to sync state
+          vscode.postMessage({ command: 'cancel' });
+        });
+        contextRow.appendChild(closeBtn);
+        header.appendChild(contextRow);
       } else if (state.editingMessage) {
+        const contextRow = createElement('div', { className: 'input-context-row' });
         const contextLabel = createElement('span', {
           className: 'input-context edit-context',
           innerHTML: `Editing <strong>${escapeHtml(state.editingMessage.title || 'message')}</strong>`
         });
-        header.appendChild(contextLabel);
+        contextRow.appendChild(contextLabel);
+
+        // Add close button to dismiss edit
+        const closeBtn = createElement('button', {
+          className: 'context-close-btn',
+          innerHTML: '&#10005;',
+          attributes: {
+            type: 'button',
+            title: 'Cancel edit'
+          }
+        });
+        closeBtn.addEventListener('click', () => {
+          // Update local state immediately for responsive UI
+          setState({
+            replyTo: undefined,
+            editingMessage: undefined,
+            messageContent: '',
+            activeTab: 'write'
+          });
+          // Notify extension to sync state
+          vscode.postMessage({ command: 'cancel' });
+        });
+        contextRow.appendChild(closeBtn);
+        header.appendChild(contextRow);
       } else if (state.target?.title) {
         const contextLabel = createElement('span', {
           className: 'input-context',
@@ -303,8 +351,14 @@
           variant: 'tertiary',
           size: 'sm',
           onClick: () => {
-            state.messageContent = '';
-            state.activeTab = 'write';
+            // Update local state immediately for responsive UI
+            setState({
+              replyTo: undefined,
+              editingMessage: undefined,
+              messageContent: '',
+              activeTab: 'write'
+            });
+            // Notify extension to sync state
             vscode.postMessage({ command: 'cancel' });
           }
         });
