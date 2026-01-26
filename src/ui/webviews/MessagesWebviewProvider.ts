@@ -46,6 +46,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   private wsService?: WebSocketService;
   private currentWsChannel?: string;
   private readonly wsHandlerId: string;
+  private pendingUnreadMessageIds: Set<string> = new Set();
 
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.messagesView');
@@ -133,10 +134,22 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const messageData = (data.data ?? data) as unknown as MessageGet;
     const enrichedMessage = this.enrichMessageGet(messageData);
 
+    // Send to webview for display
     this.panel.webview.postMessage({
       command: 'wsMessageNew',
       data: enrichedMessage
     });
+
+    // Handle read marking if message is not from current user
+    if (!messageData.is_author && messageData.id) {
+      if (this.isPanelVisible) {
+        // Panel is visible - mark as read immediately
+        this.markSingleMessageAsRead(messageData.id);
+      } else {
+        // Panel is hidden - queue for later
+        this.pendingUnreadMessageIds.add(messageData.id);
+      }
+    }
   }
 
   private handleWsMessageUpdate(messageId: string, data: Record<string, unknown>): void {
@@ -178,6 +191,29 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (this.wsService && this.currentWsChannel) {
       this.wsService.unsubscribe([this.currentWsChannel], this.wsHandlerId);
       this.currentWsChannel = undefined;
+    }
+    this.pendingUnreadMessageIds.clear();
+  }
+
+  protected onPanelBecameVisible(): void {
+    // Mark all pending unread messages as read
+    if (this.pendingUnreadMessageIds.size > 0) {
+      for (const messageId of this.pendingUnreadMessageIds) {
+        this.markSingleMessageAsRead(messageId);
+      }
+      this.pendingUnreadMessageIds.clear();
+    }
+  }
+
+  private markSingleMessageAsRead(messageId: string): void {
+    // Mark via REST API for persistence
+    this.apiService.markMessageRead(messageId).catch((error) => {
+      console.error(`Failed to mark message ${messageId} as read:`, error);
+    });
+
+    // Mark via WebSocket for real-time read receipts
+    if (this.wsService && this.currentWsChannel) {
+      this.wsService.markMessageRead(this.currentWsChannel, messageId);
     }
   }
 
