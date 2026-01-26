@@ -88,6 +88,13 @@ export class TutorCommands {
       })
     );
 
+    // Refresh tree view only (without cache clearing/API re-fetch) - used after marking messages as read
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.refreshTree', () => {
+        this.treeDataProvider.refresh();
+      })
+    );
+
     // Show Course Progress (uses current selected course from filters)
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.tutor.showCourseProgress', async () => {

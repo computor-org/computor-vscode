@@ -215,6 +215,13 @@ export class StudentCommands {
       })
     );
 
+    // Refresh tree view only (without Git updates) - used after marking messages as read
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.student.refreshTree', () => {
+        this.treeDataProvider.refresh();
+      })
+    );
+
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.student.showMessages', async (item?: any) => {
         await this.showMessages(item);

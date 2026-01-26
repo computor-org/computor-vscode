@@ -133,6 +133,14 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
     // WebSocket sends { channel, data: MessageGet } - extract the nested data
     const messageData = (data.data ?? data) as unknown as MessageGet;
+    console.log('[MessagesWebviewProvider] handleWsMessageNew received:', {
+      id: messageData.id,
+      is_author: messageData.is_author,
+      is_read: (messageData as any).is_read,
+      author_id: (messageData as any).author_id,
+      isPanelVisible: this.isPanelVisible
+    });
+
     const enrichedMessage = this.enrichMessageGet(messageData);
 
     // Send to webview for display
@@ -143,13 +151,18 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     // Handle read marking if message is not from current user
     if (!messageData.is_author && messageData.id) {
+      console.log('[MessagesWebviewProvider] Message is not from current user, will mark as read');
       if (this.isPanelVisible) {
         // Panel is visible - mark as read immediately
+        console.log('[MessagesWebviewProvider] Panel visible, marking as read immediately:', messageData.id);
         this.markSingleMessageAsRead(messageData.id);
       } else {
         // Panel is hidden - queue for later
+        console.log('[MessagesWebviewProvider] Panel hidden, queuing for later:', messageData.id);
         this.pendingUnreadMessageIds.add(messageData.id);
       }
+    } else {
+      console.log('[MessagesWebviewProvider] Message is from current user (is_author=true), skipping read mark');
     }
   }
 
@@ -226,13 +239,21 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   private markSingleMessageAsRead(messageId: string): void {
+    console.log('[MessagesWebviewProvider] markSingleMessageAsRead called for:', messageId);
+
     // Mark via REST API for persistence
-    this.apiService.markMessageRead(messageId).catch((error) => {
-      console.error(`Failed to mark message ${messageId} as read:`, error);
-    });
+    this.apiService
+      .markMessageRead(messageId)
+      .then(() => {
+        console.log('[MessagesWebviewProvider] Successfully marked message as read via API:', messageId);
+      })
+      .catch((error) => {
+        console.error(`Failed to mark message ${messageId} as read:`, error);
+      });
 
     // Mark via WebSocket for real-time read receipts
     if (this.wsService && this.currentWsChannel) {
+      console.log('[MessagesWebviewProvider] Also marking via WebSocket:', messageId, this.currentWsChannel);
       this.wsService.markMessageRead(this.currentWsChannel, messageId);
     }
   }
@@ -354,11 +375,25 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     target: MessageTargetContext | undefined,
     currentUserId?: string
   ): Promise<void> {
+    console.log('[MessagesWebviewProvider] markUnreadMessagesAsRead called', {
+      totalMessages: messages.length,
+      currentUserId,
+      messageStates: messages.map((m) => ({
+        id: m.id,
+        is_read: m.is_read,
+        author_id: m.author_id,
+        isOwnMessage: m.author_id === currentUserId
+      }))
+    });
+
     const unreadIds = messages
       .filter((message) => !message.is_read && message.author_id !== currentUserId)
       .map((message) => message.id);
 
+    console.log('[MessagesWebviewProvider] Found unread messages to mark:', unreadIds);
+
     if (unreadIds.length === 0) {
+      console.log('[MessagesWebviewProvider] No unread messages to mark');
       return;
     }
 
@@ -401,14 +436,16 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         for (const contentId of contentIds) {
           this.apiService.clearStudentCourseContentCache(contentId);
         }
-        void vscode.commands.executeCommand('computor.student.refresh');
+        // Use refreshTree instead of refresh to avoid Git updates
+        void vscode.commands.executeCommand('computor.student.refreshTree');
         break;
       }
       case 'tutor': {
         const memberId = target.createPayload.course_member_id || target.query.course_member_id;
         if (typeof memberId === 'string' && memberId.length > 0) {
           this.apiService.clearTutorMemberCourseContentsCache(memberId);
-          void vscode.commands.executeCommand('computor.tutor.refresh');
+          // Use refreshTree instead of refresh to avoid unnecessary API re-fetch
+          void vscode.commands.executeCommand('computor.tutor.refreshTree');
         }
         break;
       }
