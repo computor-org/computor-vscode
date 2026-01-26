@@ -123,9 +123,11 @@ export class WebSocketService {
   private connectionState: ConnectionState = 'disconnected';
   private pingInterval?: ReturnType<typeof setInterval>;
   private reconnectTimeout?: ReturnType<typeof setTimeout>;
+  private connectionTimeout?: ReturnType<typeof setTimeout>;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelayMs = 1000;
+  private connectionTimeoutMs = 10000; // 10 seconds to establish connection
   private typingTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly typingTimeoutMs = 5000;
   private statusBarItem: vscode.StatusBarItem;
@@ -176,8 +178,20 @@ export class WebSocketService {
 
       this.ws = new WebSocket(fullUrl);
 
+      // Set connection timeout - if we don't connect within this time, consider it failed
+      this.connectionTimeout = setTimeout(() => {
+        if (this.connectionState === 'connecting') {
+          console.warn('[WebSocket] Connection timeout');
+          this.ws?.close();
+          this.connectionState = 'disconnected';
+          this.updateStatusBar();
+          this.scheduleReconnect();
+        }
+      }, this.connectionTimeoutMs);
+
       this.ws.onopen = () => {
         console.log('[WebSocket] Connected');
+        this.clearConnectionTimeout();
         this.connectionState = 'connected';
         this.reconnectAttempts = 0;
         this.updateStatusBar();
@@ -199,6 +213,7 @@ export class WebSocketService {
 
       this.ws.onclose = (event) => {
         console.log(`[WebSocket] Disconnected: ${event.code} ${event.reason}`);
+        this.clearConnectionTimeout();
         this.connectionState = 'disconnected';
         this.updateStatusBar();
         this.stopPingInterval();
@@ -236,6 +251,7 @@ export class WebSocketService {
     this.connectionState = 'disconnected';
     this.updateStatusBar();
     this.stopPingInterval();
+    this.clearConnectionTimeout();
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -354,6 +370,13 @@ export class WebSocketService {
     return this.connectionState;
   }
 
+  public async reconnect(): Promise<void> {
+    console.log('[WebSocket] Manual reconnect requested');
+    this.reconnectAttempts = 0;
+    this.disconnect();
+    await this.connect();
+  }
+
   public static buildChannel(scope: ChannelScope, id: string): string {
     return `${scope}:${id}`;
   }
@@ -451,9 +474,18 @@ export class WebSocketService {
     }
   }
 
+  private clearConnectionTimeout(): void {
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = undefined;
+    }
+  }
+
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.warn('[WebSocket] Max reconnect attempts reached');
+      this.connectionState = 'disconnected';
+      this.updateStatusBar();
       return;
     }
 
@@ -480,21 +512,25 @@ export class WebSocketService {
         this.statusBarItem.text = '$(check) WS';
         this.statusBarItem.backgroundColor = undefined;
         this.statusBarItem.tooltip = 'WebSocket connected';
+        this.statusBarItem.command = undefined;
         break;
       case 'connecting':
         this.statusBarItem.text = '$(sync~spin) WS';
         this.statusBarItem.backgroundColor = undefined;
         this.statusBarItem.tooltip = 'WebSocket connecting...';
+        this.statusBarItem.command = undefined;
         break;
       case 'reconnecting':
         this.statusBarItem.text = '$(sync~spin) WS';
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         this.statusBarItem.tooltip = `WebSocket reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`;
+        this.statusBarItem.command = undefined;
         break;
       case 'disconnected':
         this.statusBarItem.text = '$(x) WS';
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-        this.statusBarItem.tooltip = 'WebSocket disconnected';
+        this.statusBarItem.tooltip = 'WebSocket disconnected - Click to reconnect';
+        this.statusBarItem.command = 'computor.websocket.reconnect';
         break;
     }
     this.statusBarItem.show();

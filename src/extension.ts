@@ -418,6 +418,15 @@ class UnifiedController {
     // Connect WebSocket (fire-and-forget, will reconnect automatically on failure)
     void this.wsService.connect();
 
+    // Register WebSocket reconnect command
+    this.disposables.push(
+      vscode.commands.registerCommand('computor.websocket.reconnect', async () => {
+        if (this.wsService) {
+          await this.wsService.reconnect();
+        }
+      })
+    );
+
     // Get available views for this user across all courses
     // This is a lightweight check to determine which role views to show
     report('Loading user views...');
