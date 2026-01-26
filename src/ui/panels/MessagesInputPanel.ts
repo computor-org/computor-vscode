@@ -4,6 +4,11 @@ import { MessageCreate, MessageUpdate, MessageList } from '../../types/generated
 import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
 import { WebSocketService } from '../../services/WebSocketService';
 
+interface TypingUser {
+  userId: string;
+  userName: string;
+}
+
 interface InputPanelState {
   target?: MessageTargetContext;
   replyTo?: MessageList;
@@ -11,12 +16,13 @@ interface InputPanelState {
   loading: boolean;
   messages?: MessageList[];
   wsChannel?: string;
+  typingUsers: TypingUser[];
 }
 
 export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'computor.messagesInputPanel';
   private view?: vscode.WebviewView;
-  private state: InputPanelState = { loading: false };
+  private state: InputPanelState = { loading: false, typingUsers: [] };
   private onMessageCreatedCallback?: () => Promise<void>;
   private wsService?: WebSocketService;
   private typingTimeout?: ReturnType<typeof setTimeout>;
@@ -95,7 +101,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   }
 
   public clearState(): void {
-    this.state = { loading: false };
+    this.state = { loading: false, typingUsers: [] };
     this.postState();
   }
 
@@ -109,6 +115,33 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
 
   public setWebSocketChannel(channel: string): void {
     this.state.wsChannel = channel;
+  }
+
+  public updateTypingUser(userId: string, userName: string, isTyping: boolean): void {
+    console.log('[MessagesInputPanel] updateTypingUser', { userId, userName, isTyping });
+    let typingUsers = [...this.state.typingUsers];
+
+    if (isTyping) {
+      if (!typingUsers.find((u) => u.userId === userId)) {
+        typingUsers.push({ userId, userName });
+      }
+    } else {
+      typingUsers = typingUsers.filter((u) => u.userId !== userId);
+    }
+
+    this.state.typingUsers = typingUsers;
+    console.log('[MessagesInputPanel] Updated typingUsers:', this.state.typingUsers);
+    this.postTypingUpdate();
+  }
+
+  private postTypingUpdate(): void {
+    if (!this.view) {
+      return;
+    }
+    this.view.webview.postMessage({
+      command: 'typingUpdate',
+      data: { typingUsers: this.state.typingUsers }
+    });
   }
 
   public notifyTyping(): void {
@@ -151,7 +184,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
         target: this.state.target,
         replyTo: this.state.replyTo,
         editingMessage: this.state.editingMessage,
-        loading: this.state.loading
+        loading: this.state.loading,
+        typingUsers: this.state.typingUsers
       }
     });
   }

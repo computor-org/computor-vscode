@@ -8,7 +8,8 @@
     editingMessage: undefined,
     loading: false,
     activeTab: 'write', // 'write' or 'preview'
-    messageContent: ''
+    messageContent: '',
+    typingUsers: [] // { userId, userName }
   };
 
   const root = () => document.getElementById('app');
@@ -70,6 +71,35 @@
       }
     }
     return escapeHtml(text).replace(/\n/g, '<br>');
+  }
+
+  function renderTypingIndicator(users) {
+    const container = createElement('div', { className: 'typing-indicator' });
+
+    // Animated dots
+    const dots = createElement('span', { className: 'typing-dots' });
+    dots.appendChild(createElement('span'));
+    dots.appendChild(createElement('span'));
+    dots.appendChild(createElement('span'));
+    container.appendChild(dots);
+
+    // Text
+    let text = '';
+    if (users.length === 1) {
+      text = `${users[0].userName} is typing`;
+    } else if (users.length === 2) {
+      text = `${users[0].userName} and ${users[1].userName} are typing`;
+    } else if (users.length > 2) {
+      text = `${users[0].userName} and ${users.length - 1} others are typing`;
+    }
+
+    const textSpan = createElement('span', {
+      className: 'typing-text',
+      textContent: text
+    });
+    container.appendChild(textSpan);
+
+    return container;
   }
 
   function render() {
@@ -225,73 +255,117 @@
 
     container.appendChild(form);
 
-    // Actions at the bottom
-    const actions = createElement('div', { className: 'form-actions' });
+    // Actions bar at the bottom
+    const actionsBar = createElement('div', { className: 'actions-bar' });
+
+    // Left section: typing indicator or markdown hint
+    const actionsLeft = createElement('div', { className: 'actions-left' });
+
+    if (state.typingUsers && state.typingUsers.length > 0) {
+      // Show typing indicator
+      const typingIndicator = renderTypingIndicator(state.typingUsers);
+      actionsLeft.appendChild(typingIndicator);
+    } else {
+      // Show markdown hint when not typing
+      const mdHint = createElement('span', {
+        className: 'markdown-hint',
+        textContent: 'Markdown supported'
+      });
+      actionsLeft.appendChild(mdHint);
+    }
+
+    actionsBar.appendChild(actionsLeft);
+
+    // Right section: buttons
+    const actionsRight = createElement('div', { className: 'actions-right' });
 
     if (createButton) {
       if (state.replyTo || state.editingMessage) {
         const cancelButton = createButton({
           text: 'Cancel',
-          variant: 'secondary',
+          variant: 'tertiary',
+          size: 'sm',
           onClick: () => {
             state.messageContent = '';
             state.activeTab = 'write';
             vscode.postMessage({ command: 'cancel' });
           }
         });
-        actions.appendChild(cancelButton.render());
+        const cancelEl = cancelButton.render();
+        cancelEl.classList.add('cancel-btn');
+        actionsRight.appendChild(cancelEl);
       }
 
-      const submitButton = createButton({
-        text: state.editingMessage ? 'Save' : 'Send',
-        variant: 'primary',
-        loading: state.loading,
-        onClick: () => {
-          const titleValue = titleInput ? titleInput.getValue() : document.getElementById('message-title')?.value || '';
-          // Get content from state (for preview mode) or textarea (for write mode)
-          const textarea = document.getElementById('message-body');
-          const contentValue = (textarea ? textarea.value : state.messageContent).trim();
-
-          if (!titleValue.trim()) {
-            vscode.postMessage({ command: 'showWarning', data: 'Message title is required.' });
-            return;
-          }
-          if (!contentValue) {
-            vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
-            return;
-          }
-
-          setState({ loading: true });
-
-          if (state.editingMessage) {
-            vscode.postMessage({
-              command: 'updateMessage',
-              data: {
-                messageId: state.editingMessage.id,
-                title: titleValue.trim(),
-                content: contentValue
-              }
-            });
-          } else {
-            vscode.postMessage({
-              command: 'createMessage',
-              data: {
-                title: titleValue.trim(),
-                content: contentValue,
-                parent_id: state.replyTo ? state.replyTo.id : undefined
-              }
-            });
-          }
-
-          // Clear content after sending
-          state.messageContent = '';
-          state.activeTab = 'write';
+      // Modern send button with arrow
+      const sendButton = createElement('button', {
+        className: `send-button ${state.loading ? 'loading' : ''} ${state.editingMessage ? 'save-mode' : ''}`,
+        attributes: {
+          type: 'button',
+          disabled: state.loading ? 'disabled' : null,
+          title: state.editingMessage ? 'Save changes' : 'Send message'
         }
       });
-      actions.appendChild(submitButton.render());
+
+      const buttonText = createElement('span', {
+        className: 'send-button-text',
+        textContent: state.editingMessage ? 'Save' : 'Send'
+      });
+      sendButton.appendChild(buttonText);
+
+      // Arrow icon (using unicode)
+      const buttonIcon = createElement('span', {
+        className: 'send-button-icon',
+        innerHTML: state.editingMessage ? '&#10003;' : '&#10148;' // checkmark or arrow
+      });
+      sendButton.appendChild(buttonIcon);
+
+      sendButton.addEventListener('click', () => {
+        if (state.loading) return;
+
+        const titleValue = titleInput ? titleInput.getValue() : document.getElementById('message-title')?.value || '';
+        const textarea = document.getElementById('message-body');
+        const contentValue = (textarea ? textarea.value : state.messageContent).trim();
+
+        if (!titleValue.trim()) {
+          vscode.postMessage({ command: 'showWarning', data: 'Message title is required.' });
+          return;
+        }
+        if (!contentValue) {
+          vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
+          return;
+        }
+
+        setState({ loading: true });
+
+        if (state.editingMessage) {
+          vscode.postMessage({
+            command: 'updateMessage',
+            data: {
+              messageId: state.editingMessage.id,
+              title: titleValue.trim(),
+              content: contentValue
+            }
+          });
+        } else {
+          vscode.postMessage({
+            command: 'createMessage',
+            data: {
+              title: titleValue.trim(),
+              content: contentValue,
+              parent_id: state.replyTo ? state.replyTo.id : undefined
+            }
+          });
+        }
+
+        state.messageContent = '';
+        state.activeTab = 'write';
+      });
+
+      actionsRight.appendChild(sendButton);
     }
 
-    container.appendChild(actions);
+    actionsBar.appendChild(actionsRight);
+    container.appendChild(actionsBar);
     mount.appendChild(container);
   }
 
@@ -308,6 +382,10 @@
         break;
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
+        break;
+      case 'typingUpdate':
+        console.log('[messages-input] Received typingUpdate:', message.data?.typingUsers);
+        setState({ typingUsers: message.data?.typingUsers || [] });
         break;
     }
   });

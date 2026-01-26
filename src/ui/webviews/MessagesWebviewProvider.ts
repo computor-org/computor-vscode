@@ -177,13 +177,32 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   private handleWsTypingUpdate(userId: string, userName: string, isTyping: boolean): void {
+    console.log('[MessagesWebviewProvider] handleWsTypingUpdate', { userId, userName, isTyping });
+
+    // Don't show typing indicator for the current user
+    const currentUserId = this.apiService.getCurrentUserId();
+    console.log('[MessagesWebviewProvider] currentUserId:', currentUserId, 'received userId:', userId);
+    if (currentUserId && userId === currentUserId) {
+      console.log('[MessagesWebviewProvider] Ignoring own typing update (same user)');
+      return;
+    }
+
     if (!this.panel) {
+      console.log('[MessagesWebviewProvider] No panel, skipping typing update');
       return;
     }
     this.panel.webview.postMessage({
       command: 'wsTypingUpdate',
       data: { userId, userName, isTyping }
     });
+
+    // Also forward to input panel for display
+    if (this.inputPanel) {
+      console.log('[MessagesWebviewProvider] Forwarding typing update to input panel');
+      this.inputPanel.updateTypingUser(userId, userName, isTyping);
+    } else {
+      console.log('[MessagesWebviewProvider] No input panel available');
+    }
   }
 
   protected onPanelDisposed(): void {

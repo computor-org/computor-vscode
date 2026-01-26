@@ -41,12 +41,27 @@ export interface WsPong {
   type: 'pong';
 }
 
+export interface WsSystemPong {
+  type: 'system:pong';
+  timestamp: string;
+}
+
+export interface WsChannelSubscribed {
+  type: 'channel:subscribed';
+  channels: string[];
+}
+
+export interface WsChannelUnsubscribed {
+  type: 'channel:unsubscribed';
+  channels: string[];
+}
+
 export interface WsError {
   type: 'error';
   message: string;
 }
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsError;
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsChannelSubscribed | WsChannelUnsubscribed | WsError;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -376,6 +391,7 @@ export class WebSocketService {
           break;
 
         case 'typing:update':
+          console.log('[WebSocket] Received typing:update raw message:', JSON.stringify(message));
           this.eventHandlers.forEach((handlers) => {
             handlers.onTypingUpdate?.(message.channel, message.user_id, message.user_name, message.is_typing);
           });
@@ -388,7 +404,18 @@ export class WebSocketService {
           break;
 
         case 'pong':
+        case 'system:pong':
           // Pong received, connection is alive
+          break;
+
+        case 'channel:subscribed':
+          // Confirmation of channel subscription
+          console.log('[WebSocket] Subscribed to channels:', (message as any).channels);
+          break;
+
+        case 'channel:unsubscribed':
+          // Confirmation of channel unsubscription
+          console.log('[WebSocket] Unsubscribed from channels:', (message as any).channels);
           break;
 
         case 'error':
