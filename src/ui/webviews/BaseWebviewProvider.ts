@@ -46,6 +46,7 @@ export abstract class BaseWebviewProvider {
 
       this.panel.onDidDispose(
         () => {
+          this.onPanelDisposed();
           this.panel = undefined;
           this.currentData = undefined;
         },
@@ -66,6 +67,11 @@ export abstract class BaseWebviewProvider {
 
   protected abstract getWebviewContent(data?: any): Promise<string>;
   protected abstract handleMessage(message: any): Promise<void>;
+
+  /** Called when the webview panel is closed. Override to clean up resources. */
+  protected onPanelDisposed(): void {
+    // Override in subclasses if cleanup is needed
+  }
 
   protected getUri(webview: vscode.Webview, extensionUri: vscode.Uri, pathList: string[]): vscode.Uri {
     return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...pathList));

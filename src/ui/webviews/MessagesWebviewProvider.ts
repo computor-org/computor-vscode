@@ -173,10 +173,11 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     });
   }
 
-  public dispose(): void {
-    // Unsubscribe from WebSocket channel
+  protected onPanelDisposed(): void {
+    // Unsubscribe from WebSocket channel when panel is closed
     if (this.wsService && this.currentWsChannel) {
       this.wsService.unsubscribe([this.currentWsChannel], this.wsHandlerId);
+      this.currentWsChannel = undefined;
     }
   }
 
