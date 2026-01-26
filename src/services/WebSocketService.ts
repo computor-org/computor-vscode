@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
 
@@ -112,9 +113,12 @@ export class WebSocketService {
   private reconnectDelayMs = 1000;
   private typingTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly typingTimeoutMs = 5000;
+  private statusBarItem: vscode.StatusBarItem;
 
   private constructor(settingsManager: ComputorSettingsManager) {
     this.settingsManager = settingsManager;
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+    this.updateStatusBar();
   }
 
   public static getInstance(settingsManager: ComputorSettingsManager): WebSocketService {
@@ -145,6 +149,7 @@ export class WebSocketService {
     }
 
     this.connectionState = 'connecting';
+    this.updateStatusBar();
 
     try {
       const settings = await this.settingsManager.getSettings();
@@ -160,6 +165,7 @@ export class WebSocketService {
         console.log('[WebSocket] Connected');
         this.connectionState = 'connected';
         this.reconnectAttempts = 0;
+        this.updateStatusBar();
         this.startPingInterval();
 
         // Resubscribe to channels
@@ -179,6 +185,7 @@ export class WebSocketService {
       this.ws.onclose = (event) => {
         console.log(`[WebSocket] Disconnected: ${event.code} ${event.reason}`);
         this.connectionState = 'disconnected';
+        this.updateStatusBar();
         this.stopPingInterval();
 
         // Notify handlers
@@ -205,12 +212,14 @@ export class WebSocketService {
     } catch (error) {
       console.error('[WebSocket] Connection error:', error);
       this.connectionState = 'disconnected';
+      this.updateStatusBar();
       this.scheduleReconnect();
     }
   }
 
   public disconnect(): void {
     this.connectionState = 'disconnected';
+    this.updateStatusBar();
     this.stopPingInterval();
 
     if (this.reconnectTimeout) {
@@ -428,6 +437,7 @@ export class WebSocketService {
     this.connectionState = 'reconnecting';
     const delay = this.reconnectDelayMs * Math.pow(2, this.reconnectAttempts);
     this.reconnectAttempts++;
+    this.updateStatusBar();
 
     console.log(`[WebSocket] Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
@@ -437,9 +447,36 @@ export class WebSocketService {
     }, delay);
   }
 
+  private updateStatusBar(): void {
+    switch (this.connectionState) {
+      case 'connected':
+        this.statusBarItem.text = '$(check) WS';
+        this.statusBarItem.backgroundColor = undefined;
+        this.statusBarItem.tooltip = 'WebSocket connected';
+        break;
+      case 'connecting':
+        this.statusBarItem.text = '$(sync~spin) WS';
+        this.statusBarItem.backgroundColor = undefined;
+        this.statusBarItem.tooltip = 'WebSocket connecting...';
+        break;
+      case 'reconnecting':
+        this.statusBarItem.text = '$(sync~spin) WS';
+        this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        this.statusBarItem.tooltip = `WebSocket reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`;
+        break;
+      case 'disconnected':
+        this.statusBarItem.text = '$(x) WS';
+        this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+        this.statusBarItem.tooltip = 'WebSocket disconnected';
+        break;
+    }
+    this.statusBarItem.show();
+  }
+
   public dispose(): void {
     this.disconnect();
     this.eventHandlers.clear();
+    this.statusBarItem.dispose();
     WebSocketService.instance = undefined;
   }
 }
