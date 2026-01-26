@@ -75,7 +75,7 @@ export interface WsReadMark {
 }
 
 export interface WsPing {
-  type: 'ping';
+  type: 'system:ping';
 }
 
 export type WsClientMessage = WsSubscribe | WsUnsubscribe | WsTypingStart | WsTypingStop | WsReadMark | WsPing;
@@ -400,12 +400,12 @@ export class WebSocketService {
   private startPingInterval(): void {
     this.stopPingInterval();
 
-    // Send ping every 30 seconds to keep connection alive
+    // Send ping every 25 seconds to keep connection alive (as per backend docs)
     this.pingInterval = setInterval(() => {
       if (this.isConnected()) {
-        this.send({ type: 'ping' });
+        this.send({ type: 'system:ping' });
       }
-    }, 30000);
+    }, 25000);
   }
 
   private stopPingInterval(): void {

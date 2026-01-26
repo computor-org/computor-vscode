@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { MessageList, MessageQuery } from '../../types/generated';
+import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
 
@@ -37,6 +37,7 @@ type EnrichedMessage = MessageList & {
   author_name?: string;
   can_edit?: boolean;
   can_delete?: boolean;
+  is_author?: boolean;
 };
 
 export class MessagesWebviewProvider extends BaseWebviewProvider {
@@ -128,10 +129,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (!this.panel) {
       return;
     }
-    // Send new message to webview
+    // WebSocket sends { channel, data: MessageGet } - extract the nested data
+    const messageData = (data.data ?? data) as unknown as MessageGet;
+    const enrichedMessage = this.enrichMessageGet(messageData);
+
     this.panel.webview.postMessage({
       command: 'wsMessageNew',
-      data
+      data: enrichedMessage
     });
   }
 
@@ -139,9 +143,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (!this.panel) {
       return;
     }
+    // WebSocket sends { channel, data: MessageGet } - extract the nested data
+    const messageData = (data.data ?? data) as unknown as MessageGet;
+    const enrichedMessage = this.enrichMessageGet(messageData);
+
     this.panel.webview.postMessage({
       command: 'wsMessageUpdate',
-      data: { messageId, ...data }
+      data: { messageId, ...enrichedMessage }
     });
   }
 
@@ -431,25 +439,44 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   private enrichMessages(messages: MessageList[], identity?: { id: string; username: string; full_name?: string }): EnrichedMessage[] {
+    return messages.map((message) => this.enrichSingleMessage(message, identity));
+  }
+
+  private enrichSingleMessage(message: MessageList, identity?: { id: string; username: string; full_name?: string }): EnrichedMessage {
     const currentUserId = identity?.id;
+    const author = message.author;
+    const trimmedParts = [author?.given_name, author?.family_name]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part.length > 0);
+    const fullName = trimmedParts.join(' ');
+    const hasFullName = fullName.length > 0;
+    const canEdit = currentUserId ? message.author_id === currentUserId : false;
 
-    return messages.map((message) => {
-      const author = message.author;
-      const trimmedParts = [author?.given_name, author?.family_name]
-        .map((part) => (typeof part === 'string' ? part.trim() : ''))
-        .filter((part) => part.length > 0);
-      const fullName = trimmedParts.join(' ');
-      const hasFullName = fullName.length > 0;
-      const canEdit = currentUserId ? message.author_id === currentUserId : false;
+    return {
+      ...message,
+      author_display: hasFullName ? fullName : undefined,
+      author_name: hasFullName ? fullName : undefined,
+      can_edit: canEdit,
+      can_delete: canEdit,
+      is_author: canEdit
+    } satisfies EnrichedMessage;
+  }
 
-      return {
-        ...message,
-        author_display: hasFullName ? fullName : undefined,
-        author_name: hasFullName ? fullName : undefined,
-        can_edit: canEdit,
-        can_delete: canEdit
-      } satisfies EnrichedMessage;
-    });
+  private enrichMessageGet(message: MessageGet): EnrichedMessage {
+    const author = message.author;
+    const trimmedParts = [author?.given_name, author?.family_name]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part.length > 0);
+    const fullName = trimmedParts.join(' ');
+    const hasFullName = fullName.length > 0;
+
+    return {
+      ...message,
+      author_display: hasFullName ? fullName : undefined,
+      author_name: hasFullName ? fullName : undefined,
+      can_edit: message.is_author ?? false,
+      can_delete: message.is_author ?? false
+    } satisfies EnrichedMessage;
   }
 
 
