@@ -453,6 +453,8 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
                   }
                 }
               });
+              // Count workflow start as success - it was accepted by the server
+              successCount++;
             } else {
               // No workflow - operation completed immediately
               const status = result.success ? 'success' : 'error';
