@@ -308,17 +308,25 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       this.pendingExpandVirtualFoldersForContentId = undefined;
     }
 
-    // Return three virtual folders: Reference, Submissions, Repository
+    // Return two virtual folders: Submissions, References
     const items: vscode.TreeItem[] = [];
 
-    // 1. Reference folder (only if deployment exists)
+    // 1. Submissions folder - expand and mark to expand latest submission
+    const subsFolderId = `tutorVirtualFolder:submissions:${contentId}:${courseId}:${memberId}`;
+    if (isPendingExpand) {
+      this.expandedVirtualFolderIds.add(subsFolderId);
+    }
+    const shouldExpandSubs = isPendingExpand || this.expandedVirtualFolderIds.has(subsFolderId);
+    items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId, undefined, undefined, shouldExpandSubs, isPendingExpand));
+
+    // 2. References folder (only if deployment exists)
     if (element.content.deployment && element.content.deployment.example_version_id) {
       const workspaceStructure = WorkspaceStructureManager.getInstance();
       const exampleVersionId = element.content.deployment.example_version_id;
       const referenceExists = await workspaceStructure.referenceExists(exampleVersionId);
 
       const versionTag = element.content.deployment.version_tag || '';
-      const label = versionTag ? `Reference (${versionTag})` : 'Reference';
+      const label = versionTag ? `References (${versionTag})` : 'References';
 
       const refFolderId = `tutorVirtualFolder:reference:${contentId}:${courseId}:${memberId}`;
       if (isPendingExpand) {
@@ -327,18 +335,6 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       const shouldExpandRef = isPendingExpand || this.expandedVirtualFolderIds.has(refFolderId);
       items.push(new TutorVirtualFolderItem(label, 'reference', element.content, courseId, memberId, undefined, referenceExists, shouldExpandRef));
     }
-
-    // 2. Submissions folder - expand and mark to expand latest submission
-    const subsFolderId = `tutorVirtualFolder:submissions:${contentId}:${courseId}:${memberId}`;
-    if (isPendingExpand) {
-      this.expandedVirtualFolderIds.add(subsFolderId);
-    }
-    const shouldExpandSubs = isPendingExpand || this.expandedVirtualFolderIds.has(subsFolderId);
-    items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId, undefined, undefined, shouldExpandSubs, isPendingExpand));
-
-    // 3. Repository folder - re-check if repository exists (in case it was cloned after tree item was created)
-    const hasRepo = this.hasLocalRepository(element.content, memberId);
-    items.push(new TutorVirtualFolderItem('Repository', 'repository', element.content, courseId, memberId, hasRepo));
 
     return items;
   }

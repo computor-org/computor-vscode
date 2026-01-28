@@ -79,6 +79,7 @@
 
     initDonutChart(gradings);
     attachCopyButtonListeners();
+    attachButtonListeners();
   }
 
   function attachCopyButtonListeners() {
@@ -110,8 +111,18 @@
             <span class="member-progress-header__last-active">Last active: ${escapeHtml(lastActive)}</span>
           </div>
         </div>
+        <button type="button" class="button button-secondary" id="refreshBtn" title="Refresh data">Refresh</button>
       </header>
     `;
+  }
+
+  function attachButtonListeners() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        vscode.postMessage({ command: 'refresh' });
+      });
+    }
   }
 
   function renderOverallProgress(gradings) {
@@ -252,8 +263,8 @@
               <span class="content-tree-header__column content-tree-header__column--subs" title="Submission count / max allowed submissions">Subs</span>
               <span class="content-tree-header__column content-tree-header__column--correction" title="Correction status">●</span>
               <span class="content-tree-header__column content-tree-header__column--progress" title="Submission progress (units only)">Progress</span>
-              <span class="content-tree-header__column content-tree-header__column--grade" title="Tutor-assigned grade (assignments) or average grade (units)">Grade</span>
               <span class="content-tree-header__column content-tree-header__column--result" title="Latest test result">Result</span>
+              <span class="content-tree-header__column content-tree-header__column--grade" title="Tutor-assigned grade (assignments) or average grade (units)">Grade</span>
               <span class="content-tree-header__column content-tree-header__column--status" title="Submission status (assignments) or completion percentage (units)">Status</span>
             </div>
           </div>
@@ -430,15 +441,15 @@
       })();
 
       // Both assignments and units use consistent column structure for alignment
-      // Columns: tests + subs + status indicator + progress + grading + result + status
+      // Columns: tests + subs + status indicator + progress + result + grading + status
       const progressHtml = isSubmittable
         ? `<div class="content-tree-node__columns">
              ${testsHtml}
              ${subsHtml}
              ${statusIndicatorHtml}
              <div class="content-tree-node__bar-container"></div>
-             <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
              <span class="content-tree-node__result ${resultClass}">${resultDisplay}</span>
+             <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
              <span class="content-tree-node__check ${isSubmitted ? 'content-tree-node__check--done' : 'content-tree-node__check--pending'}">
                ${isSubmitted ? '✓' : '○'}
              </span>
@@ -452,8 +463,8 @@
                  <div class="content-tree-node__fill" style="width: ${percentage}%;"></div>
                </div>
              </div>
-             <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
              <span class="content-tree-node__result content-tree-node__result--empty">-</span>
+             <span class="content-tree-node__grading ${gradingClass}">${gradingDisplay}</span>
              <span class="content-tree-node__percentage">${percentage}%</span>
            </div>`;
 
@@ -599,10 +610,6 @@
   }
 
   // Global handlers
-  window.handleRefresh = function() {
-    vscode.postMessage({ command: 'refresh' });
-  };
-
   window.copyWithFeedback = function(text, btnId) {
     // Use VS Code's clipboard API via message passing (navigator.clipboard doesn't work in webviews)
     vscode.postMessage({ command: 'copyToClipboard', data: { text, btnId } });

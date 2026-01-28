@@ -16,6 +16,7 @@ import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
+import { TutorTestService } from '../services/TutorTestService';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -25,6 +26,9 @@ export class TutorCommands {
   private messagesWebviewProvider: MessagesWebviewProvider;
   private workspaceStructure: WorkspaceStructureManager;
   private filterProvider?: TutorFilterPanelProvider;
+  private checkoutQueue: Array<{ item: unknown; confirmRedownload: boolean; resolve: () => void }> = [];
+  private isCheckoutInProgress = false;
+  private tutorTestService: TutorTestService;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -48,6 +52,7 @@ export class TutorCommands {
     }
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
     this.filterProvider = filterProvider;
+    this.tutorTestService = TutorTestService.getInstance(this.apiService);
     // No workspace manager needed for current tutor actions
   }
 
@@ -443,11 +448,51 @@ export class TutorCommands {
     );
 
     // Tutor: Checkout - download reference and latest submission (or just reference if no submission)
+    // When called from context menu (confirmRedownload=true), asks before re-downloading existing files
+    // When called from selection (confirmRedownload=false), always downloads without asking
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.checkout', async (item: any) => {
-        await this.checkout(item);
+      vscode.commands.registerCommand('computor.tutor.checkout', async (item: unknown, confirmRedownload?: boolean) => {
+        await this.queueCheckout(item, confirmRedownload ?? true);
       })
     );
+
+    // Tutor: Show README preview for assignment
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.showReadme', async (item: any) => {
+        await this.showReadme(item);
+      })
+    );
+
+    // Tutor: Run test on submission
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.runTest', async (item: any) => {
+        await this.runTestOnSubmission(item);
+      })
+    );
+  }
+
+  private async queueCheckout(item: unknown, confirmRedownload: boolean): Promise<void> {
+    return new Promise((resolve) => {
+      this.checkoutQueue.push({ item, confirmRedownload, resolve });
+      void this.processCheckoutQueue();
+    });
+  }
+
+  private async processCheckoutQueue(): Promise<void> {
+    if (this.isCheckoutInProgress || this.checkoutQueue.length === 0) {
+      return;
+    }
+
+    this.isCheckoutInProgress = true;
+    const { item, confirmRedownload, resolve } = this.checkoutQueue.shift()!;
+
+    try {
+      await this.checkout(item, confirmRedownload);
+    } finally {
+      this.isCheckoutInProgress = false;
+      resolve();
+      void this.processCheckoutQueue();
+    }
   }
 
   private async showCourseMemberComments(): Promise<void> {
@@ -785,9 +830,9 @@ export class TutorCommands {
       // Open diff view (reference on left, submission on right)
       const submissionUri = vscode.Uri.file(submissionFilePath);
       const referenceUri = vscode.Uri.file(referenceFilePath);
-      const title = `${path.basename(submissionFilePath)} (Submission ↔ Reference)`;
+      const title = `${path.basename(submissionFilePath)} (Reference ↔ Submission)`;
 
-      await vscode.commands.executeCommand('vscode.diff', submissionUri, referenceUri, title);
+      await vscode.commands.executeCommand('vscode.diff', referenceUri, submissionUri, title);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to compare with reference: ${error?.message || error}`);
     }
@@ -842,9 +887,10 @@ export class TutorCommands {
     }
   }
 
-  private async checkout(item: any): Promise<void> {
+  private async checkout(item: unknown, confirmRedownload = true): Promise<void> {
     try {
-      const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
+      const itemAny = item as any;
+      const content: CourseContentStudentList = itemAny?.content || itemAny?.courseContent || itemAny?.course_content;
 
       if (!content) {
         vscode.window.showErrorMessage('No course content information available');
@@ -889,25 +935,36 @@ export class TutorCommands {
       // Determine what needs to be downloaded
       const hasSubmission = !!latestArtifact && !!submissionPath;
 
+      // Handle existing files based on confirmRedownload flag
       if (hasSubmission && referenceExists && submissionExists) {
-        const choice = await vscode.window.showWarningMessage(
-          'Reference and latest submission already exist locally. Re-download?',
-          'Re-download',
-          'Cancel'
-        );
-        if (choice !== 'Re-download') {
-          return;
+        if (confirmRedownload) {
+          const choice = await vscode.window.showWarningMessage(
+            'Reference and latest submission already exist locally. Re-download?',
+            'Re-download',
+            'Cancel'
+          );
+          if (choice !== 'Re-download') {
+            // Still expand the folders even if not re-downloading
+            this.treeDataProvider.markForVirtualFolderExpansion(content.id);
+            this.treeDataProvider.refresh();
+            return;
+          }
         }
         await fs.promises.rm(referencePath, { recursive: true, force: true });
         await fs.promises.rm(submissionPath, { recursive: true, force: true });
       } else if (!hasSubmission && referenceExists) {
-        const choice = await vscode.window.showWarningMessage(
-          'Reference already exists locally. Re-download?',
-          'Re-download',
-          'Cancel'
-        );
-        if (choice !== 'Re-download') {
-          return;
+        if (confirmRedownload) {
+          const choice = await vscode.window.showWarningMessage(
+            'Reference already exists locally. Re-download?',
+            'Re-download',
+            'Cancel'
+          );
+          if (choice !== 'Re-download') {
+            // Still expand the folders even if not re-downloading
+            this.treeDataProvider.markForVirtualFolderExpansion(content.id);
+            this.treeDataProvider.refresh();
+            return;
+          }
         }
         await fs.promises.rm(referencePath, { recursive: true, force: true });
       }
@@ -977,6 +1034,227 @@ export class TutorCommands {
       this.treeDataProvider.refresh();
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to checkout: ${error?.message || error}`);
+    }
+  }
+
+  /**
+   * Show README preview for a tutor assignment.
+   * Downloads the description (README) from the API if not cached, then opens in markdown preview.
+   */
+  private async showReadme(item: any): Promise<void> {
+    try {
+      const content: CourseContentStudentList | undefined = item?.content;
+      if (!content) {
+        vscode.window.showErrorMessage('No course content found');
+        return;
+      }
+
+      const courseContentId = content.id;
+      const descriptionPath = this.workspaceStructure.getReviewDescriptionPath(courseContentId);
+
+      // Check if description is already cached
+      const descriptionExists = await this.workspaceStructure.directoryExists(descriptionPath);
+
+      if (!descriptionExists) {
+        // Download description from API
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Downloading README...',
+            cancellable: false
+          },
+          async () => {
+            const buffer = await this.apiService.downloadCourseContentDescription(courseContentId);
+            if (!buffer) {
+              throw new Error('No README available for this assignment');
+            }
+
+            // Extract ZIP to description path
+            await fs.promises.mkdir(descriptionPath, { recursive: true });
+            const JSZip = require('jszip');
+            const zip = await JSZip.loadAsync(buffer);
+
+            for (const [filename, file] of Object.entries(zip.files)) {
+              const zipFile = file as any;
+              if (!zipFile.dir) {
+                const fileContent = await zipFile.async('nodebuffer');
+                const filePath = path.join(descriptionPath, filename);
+                await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+                await fs.promises.writeFile(filePath, fileContent);
+              }
+            }
+          }
+        );
+      }
+
+      // Find and open README file
+      await this.openReadmeFromDirectory(descriptionPath);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to show README: ${error?.message || error}`);
+    }
+  }
+
+  /**
+   * Find and open a description file from a directory, with language preference support.
+   * Supports both README and index naming patterns (e.g., README_en.md, index_de.md).
+   * Searches recursively in case files are in subdirectories.
+   */
+  private async openReadmeFromDirectory(dir: string): Promise<void> {
+    let descriptionPath: string | undefined;
+    let preferredLanguage: string | null = null;
+
+    // Try to get language preference
+    try {
+      const userAccount = await this.apiService.getUserAccount();
+      preferredLanguage = userAccount?.profile?.language_code || null;
+    } catch {
+      // Ignore language preference errors
+    }
+
+    // Pattern matches: README.md, README_en.md, index.md, index_de.md, etc.
+    const descriptionPattern = /^(README|index)(_[a-z]{2})?\.md$/i;
+
+    // Find all description files recursively
+    const findDescriptionFiles = (directory: string): string[] => {
+      const results: string[] = [];
+      try {
+        const entries = fs.readdirSync(directory, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(directory, entry.name);
+          if (entry.isDirectory()) {
+            results.push(...findDescriptionFiles(fullPath));
+          } else if (descriptionPattern.test(entry.name)) {
+            results.push(fullPath);
+          }
+        }
+      } catch {
+        // Ignore read errors
+      }
+      return results;
+    };
+
+    const allDescriptionFiles = findDescriptionFiles(dir);
+
+    // Check for localized version first (both README_xx.md and index_xx.md)
+    if (preferredLanguage) {
+      const localizedPattern = new RegExp(`(README|index)_${preferredLanguage}\\.md$`, 'i');
+      const localized = allDescriptionFiles.find(f => localizedPattern.test(f));
+      if (localized) {
+        descriptionPath = localized;
+      }
+    }
+
+    // Fall back to finding any description file
+    if (!descriptionPath && allDescriptionFiles.length > 0) {
+      // Prefer non-localized versions (README.md or index.md)
+      const basicFile = allDescriptionFiles.find(f =>
+        f.endsWith('README.md') || f.endsWith('index.md')
+      );
+      descriptionPath = basicFile || allDescriptionFiles[0];
+    }
+
+    if (descriptionPath && fs.existsSync(descriptionPath)) {
+      const descriptionUri = vscode.Uri.file(descriptionPath);
+      // Open beside active editor if one exists
+      if (vscode.window.activeTextEditor) {
+        await vscode.commands.executeCommand('markdown.showPreviewToSide', descriptionUri);
+      } else {
+        await vscode.commands.executeCommand('markdown.showPreview', descriptionUri);
+      }
+    } else {
+      vscode.window.showInformationMessage('No description found for this assignment');
+    }
+  }
+
+  /**
+   * Run a test on the checked-out submission
+   */
+  private async runTestOnSubmission(item: any): Promise<void> {
+    try {
+      // Get course content information
+      const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
+      if (!content) {
+        vscode.window.showErrorMessage('No course content information available');
+        return;
+      }
+
+      const courseContentId = content.id;
+      const submissionGroupId = content.submission_group?.id;
+
+      if (!courseContentId) {
+        vscode.window.showErrorMessage('No course content ID available');
+        return;
+      }
+
+      // Determine the submission path
+      let submissionPath: string | undefined;
+
+      // First, check if we have a specific submission artifact in the item
+      if (item?.artifactId && submissionGroupId) {
+        // Testing a specific submission artifact
+        submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, item.artifactId);
+      } else if (submissionGroupId) {
+        // Try to find the latest downloaded submission artifact
+        const artifacts = await this.workspaceStructure.getSubmissionArtifacts(submissionGroupId);
+        if (artifacts.length > 0) {
+          // Use the most recent artifact (they're typically sorted by name/date)
+          const latestArtifact = artifacts[artifacts.length - 1]!;
+          submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, latestArtifact);
+        }
+      }
+
+      if (!submissionPath || !await this.workspaceStructure.directoryExists(submissionPath)) {
+        // No submission found, offer to test the reference instead
+        const choice = await vscode.window.showWarningMessage(
+          'No student submission found. Would you like to test the reference solution instead?',
+          'Test Reference',
+          'Cancel'
+        );
+
+        if (choice !== 'Test Reference') {
+          return;
+        }
+
+        // Use reference path
+        const deployment = content.deployment;
+        if (!deployment || !deployment.example_version_id) {
+          vscode.window.showErrorMessage('No reference available for this assignment');
+          return;
+        }
+
+        submissionPath = this.workspaceStructure.getReviewReferencePath(deployment.example_version_id);
+
+        if (!await this.workspaceStructure.directoryExists(submissionPath)) {
+          vscode.window.showErrorMessage('Reference not downloaded. Please checkout the assignment first.');
+          return;
+        }
+      }
+
+      // Get assignment title for display
+      const assignmentTitle = content.title || 'Assignment';
+
+      // Run the test
+      const result = await this.tutorTestService.runTutorTest(
+        courseContentId,
+        submissionPath,
+        assignmentTitle
+      );
+
+      if (!result) {
+        return;
+      }
+
+      // Handle test results
+      if (result.status === 'SUCCESS' || result.status === 'FAILED') {
+        // Open test results if available
+        if (result.testId) {
+          await this.tutorTestService.openTestResults(result.testId, result.artifactsPath, result.testDetails, result.artifacts);
+        }
+      }
+
+    } catch (error: any) {
+      console.error('[TutorCommands] Error running test:', error);
+      vscode.window.showErrorMessage(`Failed to run test: ${error?.message || error}`);
     }
   }
 

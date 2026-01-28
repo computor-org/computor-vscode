@@ -58,6 +58,12 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.showReadme",
+        "title": "Show README Preview",
+        "icon": "$(open-preview)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.downloadSubmissionArtifact",
         "title": "Download Submission Artifact",
         "icon": "$(cloud-download)",
@@ -73,6 +79,12 @@
         "command": "computor.tutor.showSubmissionTestResults",
         "title": "Show Test Results",
         "icon": "$(beaker)",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.runTest",
+        "title": "Run Test",
+        "icon": "$(play)",
         "category": "Computor Tutor"
       },
       {
@@ -1025,6 +1037,11 @@
           "group": "inline@1"
         },
         {
+          "command": "computor.tutor.showReadme",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
+          "group": "inline@1"
+        },
+        {
           "command": "computor.tutor.assignment.grading",
           "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
           "group": "1_status@1"
@@ -1053,6 +1070,11 @@
           "command": "computor.tutor.showSubmissionTestResults",
           "when": "view == computor.tutor.courses && viewItem == tutorSubmissionArtifact",
           "group": "3_external@4"
+        },
+        {
+          "command": "computor.tutor.runTest",
+          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo || viewItem == tutorVirtualFolder.submissions || viewItem == tutorSubmissionArtifact || viewItem == tutorVirtualFolder.reference)",
+          "group": "3_external@5"
         },
         {
           "command": "computor.tutor.showMessages",

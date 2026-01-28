@@ -336,6 +336,7 @@
 | `updateResultResultsResultIdPatch` | PATCH | `/results/{result_id}` | `ResultUpdate` | `ResultGet` |
 | `listResultArtifactsEndpointResultsResultIdArtifactsGet` | GET | `/results/{result_id}/artifacts` | — | `ResultArtifactListItem[]` |
 | `downloadResultArtifactsResultsResultIdArtifactsDownloadGet` | GET | `/results/{result_id}/artifacts/download` | — | `void` |
+| `uploadResultArtifactsResultsResultIdArtifactsUploadPost` | POST | `/results/{result_id}/artifacts/upload` | — | `void` |
 | `resultStatusResultsResultIdStatusGet` | GET | `/results/{result_id}/status` | — | `TaskStatus` |
 
 ## RolesClient
@@ -482,7 +483,7 @@
 | `listArtifactReviewsSubmissionsArtifactsArtifactIdReviewsGet` | GET | `/submissions/artifacts/{artifact_id}/reviews` | — | `SubmissionReviewListItem[]` |
 | `createArtifactReviewSubmissionsArtifactsArtifactIdReviewsPost` | POST | `/submissions/artifacts/{artifact_id}/reviews` | `SubmissionReviewCreate` | `SubmissionReviewListItem` |
 | `createTestResultSubmissionsArtifactsArtifactIdTestPost` | POST | `/submissions/artifacts/{artifact_id}/test` | `ResultCreate` | `ResultList` |
-| `listArtifactTestResultsSubmissionsArtifactsArtifactIdTestsGet` | GET | `/submissions/artifacts/{artifact_id}/tests` | — | `ResultList[]` |
+| `listArtifactTestResultsSubmissionsArtifactsArtifactIdTestsGet` | GET | `/submissions/artifacts/{artifact_id}/tests` | — | `ResultGet[]` |
 | `deleteArtifactGradeSubmissionsGradesGradeIdDelete` | DELETE | `/submissions/grades/{grade_id}` | — | `void` |
 | `updateArtifactGradeSubmissionsGradesGradeIdPatch` | PATCH | `/submissions/grades/{grade_id}` | `SubmissionGradeUpdate` | `SubmissionGradeDetail` |
 | `deleteArtifactReviewSubmissionsReviewsReviewIdDelete` | DELETE | `/submissions/reviews/{review_id}` | — | `void` |
@@ -549,7 +550,9 @@
 
 | TS Method | HTTP | Path | Request | Response |
 | --- | --- | --- | --- | --- |
+| `downloadCourseContentDescriptionTutorsCourseContentsCourseContentIdDescriptionGet` | GET | `/tutors/course-contents/{course_content_id}/description` | — | `void` |
 | `downloadCourseContentReferenceTutorsCourseContentsCourseContentIdReferenceGet` | GET | `/tutors/course-contents/{course_content_id}/reference` | — | `void` |
+| `createTutorTestTutorsCourseContentsCourseContentIdTestPost` | POST | `/tutors/course-contents/{course_content_id}/test` | — | `TutorTestCreateResponse` |
 | `tutorListCourseMembersEndpointTutorsCourseMembersGet` | GET | `/tutors/course-members` | — | `TutorCourseMemberList[]` |
 | `tutorGetCourseMembersEndpointTutorsCourseMembersCourseMemberIdGet` | GET | `/tutors/course-members/{course_member_id}` | — | `TutorCourseMemberGet` |
 | `tutorListCourseContentsEndpointTutorsCourseMembersCourseMemberIdCourseContentsGet` | GET | `/tutors/course-members/{course_member_id}/course-contents` | — | `CourseContentStudentList[]` |
@@ -559,6 +562,9 @@
 | `tutorGetCoursesEndpointTutorsCoursesCourseIdGet` | GET | `/tutors/courses/{course_id}` | — | `CourseTutorGet` |
 | `tutorListSubmissionGroupsEndpointTutorsSubmissionGroupsGet` | GET | `/tutors/submission-groups` | — | `TutorSubmissionGroupList[]` |
 | `tutorGetSubmissionGroupEndpointTutorsSubmissionGroupsSubmissionGroupIdGet` | GET | `/tutors/submission-groups/{submission_group_id}` | — | `TutorSubmissionGroupGet` |
+| `getTutorTestStatusTutorsTestsTestIdGet` | GET | `/tutors/tests/{test_id}` | — | `TutorTestStatus` |
+| `downloadTutorTestArtifactsTutorsTestsTestIdArtifactsGet` | GET | `/tutors/tests/{test_id}/artifacts` | — | `void` |
+| `listTutorTestArtifactsEndpointTutorsTestsTestIdArtifactsListGet` | GET | `/tutors/tests/{test_id}/artifacts/list` | — | `TutorTestArtifactList` |
 
 ## UserClient
 - Base path: `/user`

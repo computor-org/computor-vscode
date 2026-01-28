@@ -73,10 +73,24 @@ import {
   SubmissionListItem,
   SubmissionQuery,
   SubmissionUploadResponseModel,
-  SubmissionArtifactUpdate
+  SubmissionArtifactUpdate,
+  TutorGradeCreate,
+  TutorSubmissionGroupList,
+  TutorSubmissionGroupGet,
+  TutorSubmissionGroupQuery,
+  SubmissionArtifactList,
+  SubmissionArtifactQuery,
+  GitLabSyncRequest,
+  GitLabSyncResult,
+  StudentProfileQuery,
+  ResultArtifactListItem,
+  TutorTestCreateResponse,
+  TutorTestStatus,
+  TutorTestGet,
+  TutorTestArtifactList,
+  CourseMemberGradingsList,
+  CourseMemberGradingsGet
 } from '../types/generated';
-import { TutorGradeCreate, TutorSubmissionGroupList, TutorSubmissionGroupGet, TutorSubmissionGroupQuery, SubmissionArtifactList, SubmissionArtifactQuery, GitLabSyncRequest, GitLabSyncResult, StudentProfileQuery, ResultArtifactListItem } from '../types/generated/common';
-import { CourseMemberGradingsList, CourseMemberGradingsGet } from '../types/generated/courses';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -753,6 +767,37 @@ export class ComputorApiService {
       return Buffer.from(arrayBuffer);
     } catch (error) {
       console.error('Failed to download course content reference:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Download course content description (README) for tutors.
+   * Returns a ZIP buffer containing the README files.
+   */
+  async downloadCourseContentDescription(courseContentId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/tutors/course-contents/${courseContentId}/description`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return undefined;
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Failed to download course content description:', error);
       return undefined;
     }
   }
@@ -2537,6 +2582,119 @@ export class ComputorApiService {
     multiTierCache.delete(`tutorContents-${memberId}`);
     multiTierCache.delete(`studentCourseContent-${courseContentId}`);
     return response.data;
+  }
+
+  /**
+   * Create a tutor test for a course content
+   * @param courseContentId The course content ID
+   * @param zipFile The ZIP file buffer containing the submission code
+   * @param config Optional test configuration
+   * @returns The test creation response with test ID
+   */
+  async createTutorTest(
+    courseContentId: string,
+    zipFile: Buffer,
+    config?: { store_graphics_artifacts?: boolean; timeout_seconds?: number | null }
+  ): Promise<TutorTestCreateResponse> {
+    try {
+      const client = await this.getHttpClient();
+      const formData = new FormData();
+      formData.append('file', zipFile, {
+        filename: 'submission.zip',
+        contentType: 'application/zip'
+      });
+
+      if (config) {
+        formData.append('config', JSON.stringify(config));
+      }
+
+      const response = await client.post<TutorTestCreateResponse>(
+        `/tutors/course-contents/${courseContentId}/test`,
+        formData
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error('Failed to create tutor test:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the status of a tutor test (for polling)
+   * @param testId The test ID
+   * @returns The test status
+   */
+  async getTutorTestStatus(testId: string): Promise<TutorTestStatus | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<TutorTestStatus>(`/tutors/tests/${testId}/status`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get tutor test status:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get full tutor test details including result_dict
+   * @param testId The test ID
+   * @returns The full test details with results
+   */
+  async getTutorTest(testId: string): Promise<TutorTestGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<TutorTestGet>(`/tutors/tests/${testId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get tutor test:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * List artifacts from a tutor test
+   * @param testId The test ID
+   * @returns The list of artifacts
+   */
+  async listTutorTestArtifacts(testId: string): Promise<TutorTestArtifactList | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<TutorTestArtifactList>(`/tutors/tests/${testId}/artifacts`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to list tutor test artifacts:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Download tutor test artifacts as a ZIP file
+   * @param testId The test ID
+   * @returns The artifacts ZIP file as a buffer
+   */
+  async downloadTutorTestArtifacts(testId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const settings = await this.settingsManager.getSettings();
+      const endpoint = `/tutors/tests/${testId}/artifacts/download`;
+      const url = `${settings.authentication.baseUrl}${endpoint}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: client.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.error('Failed to download tutor test artifacts:', error);
+      return undefined;
+    }
   }
 
   /**
