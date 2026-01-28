@@ -1,5 +1,8 @@
 import { ICourseMemberParser, CourseMemberImportRow } from './ICourseMemberParser';
-import { ExcelXmlParser } from './ExcelXmlParser';
+import { CourseMemberXmlParser } from './CourseMemberXmlParser';
+import { CourseMemberCsvParser } from './CourseMemberCsvParser';
+import { CourseMemberJsonParser } from './CourseMemberJsonParser';
+import { CourseMemberXlsxParser } from './CourseMemberXlsxParser';
 
 /**
  * Factory for creating appropriate course member file parsers.
@@ -7,11 +10,10 @@ import { ExcelXmlParser } from './ExcelXmlParser';
  */
 export class CourseMemberParserFactory {
   private static parsers: ICourseMemberParser[] = [
-    new ExcelXmlParser()
-    // Add more parsers here as they are implemented:
-    // new CsvParser(),
-    // new JsonParser(),
-    // new ExcelXlsxParser(),
+    new CourseMemberXmlParser(),
+    new CourseMemberCsvParser(),
+    new CourseMemberJsonParser(),
+    new CourseMemberXlsxParser()
   ];
 
   /**
