@@ -253,6 +253,16 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
         console.log('Received pollWorkflowStatus message:', message.data);
         await this.handlePollWorkflowStatus(message.data);
         break;
+
+      case 'fileDropped':
+        await this.handleFileDropped(message.data);
+        break;
+
+      case 'showError':
+        if (message.data?.message) {
+          vscode.window.showErrorMessage(message.data.message);
+        }
+        break;
     }
   }
 
@@ -333,6 +343,42 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     } catch (error: any) {
       console.error('Failed to load import file:', error);
       vscode.window.showErrorMessage(`Failed to load import file: ${error?.message || error}`);
+    }
+  }
+
+  private async handleFileDropped(data: { fileName: string; content: string }): Promise<void> {
+    if (!this.courseId) {
+      vscode.window.showErrorMessage('Course ID not set');
+      return;
+    }
+
+    const { fileName, content } = data;
+    const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+
+    const supportedExtensions = CourseMemberParserFactory.getSupportedExtensions();
+    if (!supportedExtensions.includes(fileExtension)) {
+      vscode.window.showErrorMessage(
+        `Unsupported file type: .${fileExtension}. Supported formats: ${supportedExtensions.map(ext => `.${ext}`).join(', ')}`
+      );
+      return;
+    }
+
+    try {
+      const members = CourseMemberParserFactory.parse(content, fileExtension);
+
+      if (members.length === 0) {
+        vscode.window.showWarningMessage('No valid course members found in file. Make sure the file has an "email" column.');
+        return;
+      }
+
+      await this.loadImportData(members);
+
+      vscode.window.showInformationMessage(
+        `Import file loaded successfully: ${members.length} member(s) found`
+      );
+    } catch (error: any) {
+      console.error('Failed to parse dropped file:', error);
+      vscode.window.showErrorMessage(`Failed to parse file: ${error?.message || error}`);
     }
   }
 

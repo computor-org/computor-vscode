@@ -507,3 +507,39 @@ html, body {
   background-color: var(--vscode-menu-selectionBackground);
   color: var(--vscode-menu-selectionForeground);
 }
+
+/* Drag and drop */
+#app {
+  position: relative;
+  min-height: 100%;
+}
+
+#app.drag-over::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  background-color: var(--vscode-editor-selectionBackground);
+  border: 2px solid var(--vscode-focusBorder);
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.85;
+}
+
+#app.drag-over::after {
+  content: 'Drop file here to import members';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  pointer-events: none;
+  z-index: 101;
+  text-align: center;
+  padding: 20px;
+}
