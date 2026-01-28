@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { MessageList, MessageCreate, MessageUpdate, MessageQuery } from '../../types/generated';
+import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
+import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
+import { WebSocketService } from '../../services/WebSocketService';
 
 export type MessageTargetType = 'course' | 'courseGroup' | 'courseContent' | 'submissionGroup' | 'courseMember';
 
@@ -17,8 +19,10 @@ export interface MessageTargetContext {
   title: string;
   subtitle?: string;
   query: Record<string, string>;
-  createPayload: Partial<MessageCreate>;
+  createPayload: Record<string, unknown>;
   sourceRole?: 'student' | 'tutor' | 'lecturer';
+  /** WebSocket channel for real-time updates (e.g., "submission_group:uuid") */
+  wsChannel?: string;
 }
 
 interface MessagesWebviewData {
@@ -33,14 +37,29 @@ type EnrichedMessage = MessageList & {
   author_name?: string;
   can_edit?: boolean;
   can_delete?: boolean;
+  is_author?: boolean;
 };
 
 export class MessagesWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
+  private inputPanel?: MessagesInputPanelProvider;
+  private wsService?: WebSocketService;
+  private currentWsChannel?: string;
+  private readonly wsHandlerId: string;
+  private pendingUnreadMessageIds: Set<string> = new Set();
 
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.messagesView');
     this.apiService = apiService;
+    this.wsHandlerId = `messages-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  public setInputPanel(inputPanel: MessagesInputPanelProvider): void {
+    this.inputPanel = inputPanel;
+  }
+
+  public setWebSocketService(wsService: WebSocketService): void {
+    this.wsService = wsService;
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
@@ -55,6 +74,196 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const messages = this.enrichMessages(normalizedMessages, identity);
     const payload: MessagesWebviewData = { target, messages, identity };
     await this.show(`Messages: ${target.title}`, payload);
+
+    // Subscribe to WebSocket channel for real-time updates
+    this.subscribeToChannel(target);
+
+    if (this.inputPanel) {
+      this.inputPanel.setTarget(target, rawMessages);
+      // Register this provider's refresh callback when showing messages
+      // Skip indicator update since sending a message shouldn't refresh the tree
+      this.inputPanel.setOnMessageCreated(() => this.refreshMessages({ skipIndicatorUpdate: true }));
+      // Pass WebSocket channel to input panel for typing indicators
+      if (target.wsChannel) {
+        this.inputPanel.setWebSocketChannel(target.wsChannel);
+      }
+      void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+    }
+  }
+
+  private subscribeToChannel(target: MessageTargetContext): void {
+    if (!this.wsService || !target.wsChannel) {
+      return;
+    }
+
+    // Unsubscribe from previous channel if different
+    if (this.currentWsChannel && this.currentWsChannel !== target.wsChannel) {
+      this.wsService.unsubscribe([this.currentWsChannel], this.wsHandlerId);
+    }
+
+    this.currentWsChannel = target.wsChannel;
+
+    this.wsService.subscribe([target.wsChannel], this.wsHandlerId, {
+      onMessageNew: (channel, data) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsMessageNew(data);
+        }
+      },
+      onMessageUpdate: (channel, messageId, data) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsMessageUpdate(messageId, data);
+        }
+      },
+      onMessageDelete: (channel, messageId) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsMessageDelete(messageId);
+        }
+      },
+      onTypingUpdate: (channel, userId, userName, isTyping) => {
+        if (channel === this.currentWsChannel) {
+          this.handleWsTypingUpdate(userId, userName, isTyping);
+        }
+      }
+    });
+  }
+
+  private handleWsMessageNew(data: Record<string, unknown>): void {
+    if (!this.panel) {
+      return;
+    }
+    // WebSocket sends { channel, data: MessageGet } - extract the nested data
+    const messageData = (data.data ?? data) as unknown as MessageGet;
+    console.log('[MessagesWebviewProvider] handleWsMessageNew received:', {
+      id: messageData.id,
+      is_author: messageData.is_author,
+      is_read: (messageData as any).is_read,
+      author_id: (messageData as any).author_id,
+      isPanelVisible: this.isPanelVisible
+    });
+
+    const enrichedMessage = this.enrichMessageGet(messageData);
+
+    // Send to webview for display
+    this.panel.webview.postMessage({
+      command: 'wsMessageNew',
+      data: enrichedMessage
+    });
+
+    // Handle read marking if message is not from current user
+    if (!messageData.is_author && messageData.id) {
+      console.log('[MessagesWebviewProvider] Message is not from current user, will mark as read');
+      if (this.isPanelVisible) {
+        // Panel is visible - mark as read immediately
+        console.log('[MessagesWebviewProvider] Panel visible, marking as read immediately:', messageData.id);
+        this.markSingleMessageAsRead(messageData.id);
+      } else {
+        // Panel is hidden - queue for later
+        console.log('[MessagesWebviewProvider] Panel hidden, queuing for later:', messageData.id);
+        this.pendingUnreadMessageIds.add(messageData.id);
+      }
+    } else {
+      console.log('[MessagesWebviewProvider] Message is from current user (is_author=true), skipping read mark');
+    }
+  }
+
+  private handleWsMessageUpdate(messageId: string, data: Record<string, unknown>): void {
+    if (!this.panel) {
+      return;
+    }
+    // WebSocket sends { channel, data: MessageGet } - extract the nested data
+    const messageData = (data.data ?? data) as unknown as MessageGet;
+    const enrichedMessage = this.enrichMessageGet(messageData);
+
+    this.panel.webview.postMessage({
+      command: 'wsMessageUpdate',
+      data: { messageId, ...enrichedMessage }
+    });
+  }
+
+  private handleWsMessageDelete(messageId: string): void {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({
+      command: 'wsMessageDelete',
+      data: { messageId }
+    });
+  }
+
+  private handleWsTypingUpdate(userId: string, userName: string, isTyping: boolean): void {
+    console.log('[MessagesWebviewProvider] handleWsTypingUpdate', { userId, userName, isTyping });
+
+    // Don't show typing indicator for the current user
+    const currentUserId = this.apiService.getCurrentUserId();
+    console.log('[MessagesWebviewProvider] currentUserId:', currentUserId, 'received userId:', userId);
+    if (currentUserId && userId === currentUserId) {
+      console.log('[MessagesWebviewProvider] Ignoring own typing update (same user)');
+      return;
+    }
+
+    if (!this.panel) {
+      console.log('[MessagesWebviewProvider] No panel, skipping typing update');
+      return;
+    }
+    this.panel.webview.postMessage({
+      command: 'wsTypingUpdate',
+      data: { userId, userName, isTyping }
+    });
+
+    // Also forward to input panel for display
+    if (this.inputPanel) {
+      console.log('[MessagesWebviewProvider] Forwarding typing update to input panel');
+      this.inputPanel.updateTypingUser(userId, userName, isTyping);
+    } else {
+      console.log('[MessagesWebviewProvider] No input panel available');
+    }
+  }
+
+  protected onPanelDisposed(): void {
+    console.log('[MessagesWebviewProvider] onPanelDisposed called');
+
+    // Unsubscribe from WebSocket channel when panel is closed
+    if (this.wsService && this.currentWsChannel) {
+      this.wsService.unsubscribe([this.currentWsChannel], this.wsHandlerId);
+      this.currentWsChannel = undefined;
+    }
+    this.pendingUnreadMessageIds.clear();
+
+    // Clear the input panel state (removes typing indicators and resets form)
+    console.log('[MessagesWebviewProvider] Clearing input panel state, inputPanel exists:', !!this.inputPanel);
+    if (this.inputPanel) {
+      this.inputPanel.clearState();
+    }
+  }
+
+  protected onPanelBecameVisible(): void {
+    // Mark all pending unread messages as read
+    if (this.pendingUnreadMessageIds.size > 0) {
+      for (const messageId of this.pendingUnreadMessageIds) {
+        this.markSingleMessageAsRead(messageId);
+      }
+      this.pendingUnreadMessageIds.clear();
+    }
+  }
+
+  private markSingleMessageAsRead(messageId: string): void {
+    console.log('[MessagesWebviewProvider] markSingleMessageAsRead called for:', messageId);
+
+    // Mark via REST API for persistence
+    this.apiService
+      .markMessageRead(messageId)
+      .then(() => {
+        console.log('[MessagesWebviewProvider] Successfully marked message as read via API:', messageId);
+      })
+      .catch((error) => {
+        console.error(`Failed to mark message ${messageId} as read:`, error);
+      });
+
+    // Mark via WebSocket for real-time read receipts
+    if (this.wsService && this.currentWsChannel) {
+      console.log('[MessagesWebviewProvider] Also marking via WebSocket:', messageId, this.currentWsChannel);
+      this.wsService.markMessageRead(this.currentWsChannel, messageId);
+    }
   }
 
   protected async getWebviewContent(data?: MessagesWebviewData): Promise<string> {
@@ -100,11 +309,17 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
 
     switch (message.command) {
-      case 'createMessage':
-        await this.handleCreateMessage(message.data);
+      case 'replyTo':
+        if (this.inputPanel && message.data) {
+          this.inputPanel.setReplyTo(message.data);
+          void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+        }
         break;
-      case 'updateMessage':
-        await this.handleUpdateMessage(message.data);
+      case 'editMessage':
+        if (this.inputPanel && message.data) {
+          this.inputPanel.setEditingMessage(message.data);
+          void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+        }
         break;
       case 'confirmDeleteMessage':
         await this.handleConfirmDeleteMessage(message.data);
@@ -168,11 +383,25 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     target: MessageTargetContext | undefined,
     currentUserId?: string
   ): Promise<void> {
+    console.log('[MessagesWebviewProvider] markUnreadMessagesAsRead called', {
+      totalMessages: messages.length,
+      currentUserId,
+      messageStates: messages.map((m) => ({
+        id: m.id,
+        is_read: m.is_read,
+        author_id: m.author_id,
+        isOwnMessage: m.author_id === currentUserId
+      }))
+    });
+
     const unreadIds = messages
       .filter((message) => !message.is_read && message.author_id !== currentUserId)
       .map((message) => message.id);
 
+    console.log('[MessagesWebviewProvider] Found unread messages to mark:', unreadIds);
+
     if (unreadIds.length === 0) {
+      console.log('[MessagesWebviewProvider] No unread messages to mark');
       return;
     }
 
@@ -215,78 +444,21 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         for (const contentId of contentIds) {
           this.apiService.clearStudentCourseContentCache(contentId);
         }
-        void vscode.commands.executeCommand('computor.student.refresh');
+        // Use refreshTree instead of refresh to avoid Git updates
+        void vscode.commands.executeCommand('computor.student.refreshTree');
         break;
       }
       case 'tutor': {
         const memberId = target.createPayload.course_member_id || target.query.course_member_id;
         if (typeof memberId === 'string' && memberId.length > 0) {
           this.apiService.clearTutorMemberCourseContentsCache(memberId);
-          void vscode.commands.executeCommand('computor.tutor.refresh');
+          // Use refreshTree instead of refresh to avoid unnecessary API re-fetch
+          void vscode.commands.executeCommand('computor.tutor.refreshTree');
         }
         break;
       }
       default:
         break;
-    }
-  }
-
-  private async handleCreateMessage(data: { title: string; content: string; parent_id?: string }): Promise<void> {
-    const target = this.getCurrentTarget();
-    if (!target) {
-      vscode.window.showWarningMessage('Unable to post message: target context missing.');
-      return;
-    }
-
-    const level = this.resolveMessageLevel(data.parent_id);
-
-    // Build payload with only the fields from createPayload that are target fields
-    // This prevents accidental inclusion of multiple target fields
-    const targetFields = ['user_id', 'course_member_id', 'submission_group_id', 'course_group_id', 'course_content_id', 'course_id'] as const;
-    const filteredPayload: Partial<MessageCreate> = {};
-    for (const field of targetFields) {
-      if (target.createPayload[field] !== undefined) {
-        filteredPayload[field] = target.createPayload[field];
-      }
-    }
-
-    const payload: MessageCreate = {
-      title: data.title,
-      content: data.content,
-      parent_id: data.parent_id ?? null,
-      level,
-      ...filteredPayload
-    } as MessageCreate;
-
-    try {
-      this.postLoadingState(true);
-      await this.apiService.createMessage(payload);
-      await this.refreshMessages();
-      vscode.window.showInformationMessage('Message sent.');
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to send message: ${error?.message || error}`);
-      this.postLoadingState(false);
-    }
-  }
-
-  private async handleUpdateMessage(data: { messageId: string; title: string; content: string }): Promise<void> {
-    if (!data?.messageId) {
-      return;
-    }
-
-    const updates: MessageUpdate = {
-      title: data.title,
-      content: data.content
-    };
-
-    try {
-      this.postLoadingState(true);
-      await this.apiService.updateMessage(data.messageId, updates);
-      await this.refreshMessages();
-      vscode.window.showInformationMessage('Message updated.');
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to update message: ${error?.message || error}`);
-      this.postLoadingState(false);
     }
   }
 
@@ -315,7 +487,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     try {
       this.postLoadingState(true);
       await this.apiService.deleteMessage(data.messageId);
-      await this.refreshMessages();
+      // Skip indicator update - deleting a message doesn't change unread state
+      await this.refreshMessages({ skipIndicatorUpdate: true });
       vscode.window.showInformationMessage('Message deleted.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to delete message: ${error?.message || error}`);
@@ -323,7 +496,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private async refreshMessages(): Promise<void> {
+  public async refreshMessages(options?: { skipIndicatorUpdate?: boolean }): Promise<void> {
     const target = this.getCurrentTarget();
     if (!target || !this.panel) {
       return;
@@ -342,11 +515,18 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
       const rawMessages = await this.apiService.listMessages(query);
       const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
-      void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+      // Only mark as read and update indicators when not skipping (e.g., after sending a message)
+      if (!options?.skipIndicatorUpdate) {
+        void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+      }
       const messages = this.enrichMessages(normalizedMessages, identity);
       this.currentData = { target, messages, identity, activeFilters } satisfies MessagesWebviewData;
       this.panel.webview.postMessage({ command: 'updateMessages', data: messages });
       this.postLoadingState(false);
+
+      if (this.inputPanel) {
+        this.inputPanel.updateMessages(rawMessages);
+      }
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to refresh messages: ${error?.message || error}`);
       this.postLoadingState(false);
@@ -365,39 +545,46 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   private enrichMessages(messages: MessageList[], identity?: { id: string; username: string; full_name?: string }): EnrichedMessage[] {
+    return messages.map((message) => this.enrichSingleMessage(message, identity));
+  }
+
+  private enrichSingleMessage(message: MessageList, identity?: { id: string; username: string; full_name?: string }): EnrichedMessage {
     const currentUserId = identity?.id;
+    const author = message.author;
+    const trimmedParts = [author?.given_name, author?.family_name]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part.length > 0);
+    const fullName = trimmedParts.join(' ');
+    const hasFullName = fullName.length > 0;
+    const canEdit = currentUserId ? message.author_id === currentUserId : false;
 
-    return messages.map((message) => {
-      const author = message.author;
-      const trimmedParts = [author?.given_name, author?.family_name]
-        .map((part) => (typeof part === 'string' ? part.trim() : ''))
-        .filter((part) => part.length > 0);
-      const fullName = trimmedParts.join(' ');
-      const hasFullName = fullName.length > 0;
-      const canEdit = currentUserId ? message.author_id === currentUserId : false;
-
-      return {
-        ...message,
-        author_display: hasFullName ? fullName : undefined,
-        author_name: hasFullName ? fullName : undefined,
-        can_edit: canEdit,
-        can_delete: canEdit
-      } satisfies EnrichedMessage;
-    });
+    return {
+      ...message,
+      author_display: hasFullName ? fullName : undefined,
+      author_name: hasFullName ? fullName : undefined,
+      can_edit: canEdit,
+      can_delete: canEdit,
+      is_author: canEdit
+    } satisfies EnrichedMessage;
   }
 
-  private resolveMessageLevel(parentId?: string): number {
-    if (!parentId) {
-      return 0;
-    }
+  private enrichMessageGet(message: MessageGet): EnrichedMessage {
+    const author = message.author;
+    const trimmedParts = [author?.given_name, author?.family_name]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part.length > 0);
+    const fullName = trimmedParts.join(' ');
+    const hasFullName = fullName.length > 0;
 
-    const currentMessages = (this.currentData as MessagesWebviewData | undefined)?.messages ?? [];
-    const parent = currentMessages.find((message) => message.id === parentId);
-    if (!parent) {
-      return 1;
-    }
-    return (parent.level ?? 0) + 1;
+    return {
+      ...message,
+      author_display: hasFullName ? fullName : undefined,
+      author_name: hasFullName ? fullName : undefined,
+      can_edit: message.is_author ?? false,
+      can_delete: message.is_author ?? false
+    } satisfies EnrichedMessage;
   }
+
 
   private postLoadingState(loading: boolean): void {
     if (!this.panel) {

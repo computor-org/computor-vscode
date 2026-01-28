@@ -1,14 +1,12 @@
 (function () {
   const vscode = window.vscodeApi || acquireVsCodeApi();
-  const { createButton, createInput } = window.UIComponents || {};
+  const { createButton } = window.UIComponents || {};
 
   const state = {
     target: undefined,
     messages: [],
     loading: false,
     error: undefined,
-    replyTo: undefined,
-    editingMessage: undefined,
     identity: undefined,
     filtersExpanded: false,
     filters: {
@@ -19,6 +17,7 @@
       tags: null,
       tags_match_all: false
     },
+    typingUsers: [], // { userId, userName }
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -261,16 +260,23 @@
       const roleClass = authorRole ? authorRole.replace('_', '') : '';
       const roleBadge = createElement('span', {
         className: `author-role-badge role-${roleClass}`,
-        textContent: roleLabel
+        textContent: roleLabel,
+        attributes: {
+          title: `Course Role: ${roleLabel}`
+        }
       });
       metaLeftChildren.push(roleBadge);
     }
 
     // Add scope tag if available
     if (message.scope) {
+      const scopeLabel = getScopeLabel(message.scope);
       const scopeTag = createElement('span', {
         className: `message-scope-tag scope-${message.scope}`,
-        textContent: getScopeLabel(message.scope)
+        textContent: scopeLabel,
+        attributes: {
+          title: `Message Scope: ${scopeLabel}`
+        }
       });
       metaLeftChildren.push(scopeTag);
     }
@@ -287,7 +293,7 @@
         text: 'Reply',
         size: 'xs',
         variant: 'secondary',
-        onClick: () => setState({ replyTo: message, editingMessage: undefined })
+        onClick: () => vscode.postMessage({ command: 'replyTo', data: message })
       });
       const replyEl = replyButton.render();
       replyEl.classList.add('message-reply-button');
@@ -321,11 +327,7 @@
         text: 'Edit',
         size: 'sm',
         variant: 'secondary',
-        onClick: () =>
-          setState({
-            editingMessage: message,
-            replyTo: undefined
-          })
+        onClick: () => vscode.postMessage({ command: 'editMessage', data: message })
       });
       actions.appendChild(editBtn.render());
     }
@@ -388,7 +390,7 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'No messages yet. Start the discussion below.'
+          textContent: 'No messages yet. Use the input panel below to start the discussion.'
         })
       );
       return;
@@ -399,124 +401,33 @@
       container.appendChild(renderMessageNode(thread, thread.level ?? 0));
     });
 
+    // Render typing indicator if someone is typing
+    if (state.typingUsers && state.typingUsers.length > 0) {
+      const typingIndicator = renderTypingIndicator();
+      container.appendChild(typingIndicator);
+    }
+
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
     });
   }
 
-  function renderForm(formWrapper) {
-    formWrapper.innerHTML = '';
+  function renderTypingIndicator() {
+    const users = state.typingUsers || [];
+    let text = '';
 
-    const header = createElement('div', { className: 'form-header' });
-
-    const contextInfo = state.replyTo
-      ? `Replying to “${state.replyTo.title || 'message'}”`
-      : state.editingMessage
-      ? `Editing “${state.editingMessage.title || 'message'}”`
-      : undefined;
-
-    if (contextInfo) {
-      header.appendChild(
-        createElement('p', {
-          className: 'form-context',
-          textContent: contextInfo
-        })
-      );
+    if (users.length === 1) {
+      text = `${users[0].userName} is typing…`;
+    } else if (users.length === 2) {
+      text = `${users[0].userName} and ${users[1].userName} are typing…`;
+    } else if (users.length > 2) {
+      text = `${users[0].userName} and ${users.length - 1} others are typing…`;
     }
 
-    const titleInput = createInput
-      ? createInput({
-          placeholder: 'Message title',
-          value: state.editingMessage ? state.editingMessage.title || '' : '',
-          disabled: state.loading
-        })
-      : null;
-
-    const textarea = createElement('textarea', {
-      className: 'vscode-input',
-      attributes: {
-        rows: '5',
-        placeholder: 'Write your message…'
-      }
+    return createElement('div', {
+      className: 'typing-indicator',
+      innerHTML: `<span class="typing-dots"><span></span><span></span><span></span></span> ${escapeHtml(text)}`
     });
-    textarea.value = state.editingMessage ? state.editingMessage.content || '' : '';
-
-    const actions = createElement('div', { className: 'toolbar' });
-
-    const submitButton = createButton
-      ? createButton({
-          text: state.editingMessage ? 'Save Changes' : 'Send Message',
-          variant: 'primary',
-          loading: state.loading,
-          onClick: () => {
-          const titleValue = titleInput ? titleInput.getValue() : '';
-          const contentValue = textarea.value.trim();
-          if (!titleValue.trim()) {
-            vscode.postMessage({ command: 'showWarning', data: 'Message title is required.' });
-            return;
-          }
-          if (!contentValue) {
-            vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
-            return;
-          }
-            setState({ loading: true });
-            if (state.editingMessage) {
-              vscode.postMessage({
-                command: 'updateMessage',
-                data: {
-                  messageId: state.editingMessage.id,
-                  title: titleValue,
-                  content: contentValue
-                }
-              });
-            } else {
-              vscode.postMessage({
-                command: 'createMessage',
-                data: {
-                  title: titleValue,
-                  content: contentValue,
-                  parent_id: state.replyTo ? state.replyTo.id : undefined
-                }
-              });
-            }
-          }
-        })
-      : null;
-
-    if (submitButton) {
-      actions.appendChild(submitButton.render());
-    }
-
-    if ((state.replyTo || state.editingMessage) && createButton) {
-      const cancelButton = createButton({
-        text: 'Cancel',
-        variant: 'secondary',
-        onClick: () => setState({ replyTo: undefined, editingMessage: undefined })
-      });
-      actions.appendChild(cancelButton.render());
-    }
-
-    if (titleInput) {
-      const titleRow = createElement('div', {
-        className: 'form-row'
-      });
-      titleRow.appendChild(
-        createElement('label', { textContent: 'Title', attributes: { for: 'message-title' } })
-      );
-      const titleEl = titleInput.render();
-      titleEl.id = 'message-title';
-      titleRow.appendChild(titleEl);
-      formWrapper.appendChild(titleRow);
-    }
-
-    const bodyRow = createElement('div', { className: 'form-row' });
-    bodyRow.appendChild(createElement('label', { textContent: 'Message', attributes: { for: 'message-body' } }));
-    textarea.id = 'message-body';
-    bodyRow.appendChild(textarea);
-
-    formWrapper.appendChild(header);
-    formWrapper.appendChild(bodyRow);
-    formWrapper.appendChild(actions);
   }
 
   function renderFilterBar() {
@@ -757,18 +668,9 @@
     const messagesContainer = createElement('div', { className: 'messages-container' });
     renderMessagesSection(messagesContainer);
 
-    const formCard = createElement('div', { className: 'form-card' });
-    formCard.appendChild(
-      createElement('h2', {
-        textContent: state.editingMessage ? 'Edit Message' : 'New Message'
-      })
-    );
-    renderForm(formCard);
-
     view.appendChild(header);
     view.appendChild(filterBar);
     view.appendChild(messagesContainer);
-    view.appendChild(formCard);
 
     mount.appendChild(view);
   }
@@ -779,7 +681,7 @@
 
     switch (message.command) {
       case 'updateMessages':
-        setState({ messages: message.data || [], loading: false, replyTo: undefined, editingMessage: undefined });
+        setState({ messages: message.data || [], loading: false });
         break;
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
@@ -793,10 +695,67 @@
       case 'update':
         setState(message.data || {});
         break;
+      // WebSocket events
+      case 'wsMessageNew':
+        handleWsMessageNew(message.data);
+        break;
+      case 'wsMessageUpdate':
+        handleWsMessageUpdate(message.data);
+        break;
+      case 'wsMessageDelete':
+        handleWsMessageDelete(message.data);
+        break;
+      case 'wsTypingUpdate':
+        handleWsTypingUpdate(message.data);
+        break;
       default:
         break;
     }
   });
+
+  // WebSocket event handlers
+  function handleWsMessageNew(data) {
+    if (!data) return;
+    // Add the new message to the list
+    const newMessages = [...state.messages, data];
+    setState({ messages: newMessages });
+  }
+
+  function handleWsMessageUpdate(data) {
+    if (!data || !data.messageId) return;
+    const updatedMessages = state.messages.map((msg) => {
+      if (msg.id === data.messageId) {
+        return { ...msg, ...data };
+      }
+      return msg;
+    });
+    setState({ messages: updatedMessages });
+  }
+
+  function handleWsMessageDelete(data) {
+    if (!data || !data.messageId) return;
+    const filteredMessages = state.messages.filter((msg) => msg.id !== data.messageId);
+    setState({ messages: filteredMessages });
+  }
+
+  function handleWsTypingUpdate(data) {
+    if (!data) return;
+    const { userId, userName, isTyping } = data;
+
+    let typingUsers = [...(state.typingUsers || [])];
+
+    if (isTyping) {
+      // Add user if not already in the list
+      if (!typingUsers.find((u) => u.userId === userId)) {
+        typingUsers.push({ userId, userName });
+      }
+    } else {
+      // Remove user from list
+      typingUsers = typingUsers.filter((u) => u.userId !== userId);
+    }
+
+    setState({ typingUsers });
+  }
 
   document.addEventListener('DOMContentLoaded', () => {
     render();

@@ -643,6 +643,11 @@
           "id": "computor-test-results",
           "title": "Results",
           "icon": "$(beaker)"
+        },
+        {
+          "id": "computor-messages-input",
+          "title": "Message Input",
+          "icon": "$(comment)"
         }
       ]
     },
@@ -720,6 +725,15 @@
           "name": "Result Tree",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results"
+        }
+      ],
+      "computor-messages-input": [
+        {
+          "id": "computor.messagesInputPanel",
+          "type": "webview",
+          "name": "Compose",
+          "icon": "$(comment)",
+          "contextualTitle": "Message Input"
         }
       ]
     },

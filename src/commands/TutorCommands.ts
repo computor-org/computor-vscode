@@ -14,6 +14,8 @@ import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/Me
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
+import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
+import type { WebSocketService } from '../services/WebSocketService';
 import { TutorTestService } from '../services/TutorTestService';
 
 export class TutorCommands {
@@ -32,7 +34,9 @@ export class TutorCommands {
     context: vscode.ExtensionContext,
     treeDataProvider: TutorStudentTreeProvider,
     apiService?: ComputorApiService,
-    filterProvider?: TutorFilterPanelProvider
+    filterProvider?: TutorFilterPanelProvider,
+    messagesInputPanel?: MessagesInputPanelProvider,
+    wsService?: WebSocketService
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
@@ -40,6 +44,12 @@ export class TutorCommands {
     this.apiService = apiService || new ComputorApiService(context);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    if (messagesInputPanel) {
+      this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
+    }
+    if (wsService) {
+      this.messagesWebviewProvider.setWebSocketService(wsService);
+    }
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
     this.filterProvider = filterProvider;
     this.tutorTestService = TutorTestService.getInstance(this.apiService);
@@ -80,6 +90,13 @@ export class TutorCommands {
         }
         this.treeDataProvider.refresh();
         this.filterProvider?.refreshFilters();
+      })
+    );
+
+    // Refresh tree view only (without cache clearing/API re-fetch) - used after marking messages as read
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.tutor.refreshTree', () => {
+        this.treeDataProvider.refresh();
       })
     );
 
@@ -543,6 +560,8 @@ export class TutorCommands {
         let query: Record<string, string>;
         let createPayload: Partial<MessageCreate>;
 
+        let wsChannel: string | undefined;
+
         if (submissionGroup?.id) {
           // Assignment with submission group - tutors only need submission_group messages
           // (not course_content announcements which are for all students)
@@ -554,6 +573,8 @@ export class TutorCommands {
           createPayload = {
             submission_group_id: submissionGroup.id
           };
+          // Tutors subscribe to the specific submission group for targeted updates
+          wsChannel = `submission_group:${submissionGroup.id}`;
         } else {
           // Unit content without submission group - show course_content messages
           // Tutors can only read (lecturer+ for writing)
@@ -565,6 +586,7 @@ export class TutorCommands {
           createPayload = {
             course_content_id: content.id  // Lecturer+ only
           };
+          wsChannel = `course_content:${content.id}`;
         }
 
         const subtitleSegments = [courseLabel, memberName, content.path || contentTitle].filter(Boolean) as string[];
@@ -576,7 +598,8 @@ export class TutorCommands {
           subtitle,
           query,
           createPayload,
-          sourceRole: 'tutor'
+          sourceRole: 'tutor',
+          wsChannel
         } satisfies MessageTargetContext;
       }
 
@@ -592,7 +615,8 @@ export class TutorCommands {
           subtitle,
           query: { course_id: courseId, course_member_id: memberId, scope: 'course' },
           createPayload: { course_id: courseId },  // This will fail - lecturer+ only
-          sourceRole: 'tutor'
+          sourceRole: 'tutor',
+          wsChannel: `course:${courseId}`
         } satisfies MessageTargetContext;
       }
 

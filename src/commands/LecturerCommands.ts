@@ -27,6 +27,8 @@ import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager
 import { createSimpleGit } from '../git/simpleGitFactory';
 import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
+import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
+import type { WebSocketService } from '../services/WebSocketService';
 
 interface ReleaseScope {
   label?: string;
@@ -55,7 +57,9 @@ export class LecturerCommands {
   constructor(
     private context: vscode.ExtensionContext,
     private treeDataProvider: LecturerTreeDataProvider,
-    apiService?: ComputorApiService
+    apiService?: ComputorApiService,
+    messagesInputPanel?: MessagesInputPanelProvider,
+    wsService?: WebSocketService
   ) {
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
@@ -67,6 +71,12 @@ export class LecturerCommands {
     this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberImportWebviewProvider = new CourseMemberImportWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    if (messagesInputPanel) {
+      this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
+    }
+    if (wsService) {
+      this.messagesWebviewProvider.setWebSocketService(wsService);
+    }
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
     this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
     this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
@@ -1158,7 +1168,9 @@ export class LecturerCommands {
           subtitle: this.buildCourseSubtitle(item.course, item.courseFamily, item.organization),
           query: { course_id: item.course.id },
           createPayload: { course_id: item.course.id },
-          sourceRole: 'lecturer'
+          sourceRole: 'lecturer',
+          // Lecturers subscribe to course channel to receive ALL messages including submission groups
+          wsChannel: `course:${item.course.id}`
         };
       } else if (item instanceof CourseGroupTreeItem) {
         target = {
@@ -1166,7 +1178,9 @@ export class LecturerCommands {
           subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › Group`,
           query: { course_group_id: item.group.id },
           createPayload: { course_group_id: item.group.id },
-          sourceRole: 'lecturer'
+          sourceRole: 'lecturer',
+          // Course groups use course_group channel
+          wsChannel: `course_group:${item.group.id}`
         };
       } else if (item instanceof CourseContentTreeItem) {
         target = {
@@ -1174,7 +1188,8 @@ export class LecturerCommands {
           subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › ${item.courseContent.path}`,
           query: { course_content_id: item.courseContent.id },
           createPayload: { course_content_id: item.courseContent.id, course_id: item.course.id },
-          sourceRole: 'lecturer'
+          sourceRole: 'lecturer',
+          wsChannel: `course_content:${item.courseContent.id}`
         };
       }
 

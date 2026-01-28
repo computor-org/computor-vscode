@@ -6,6 +6,7 @@ export abstract class BaseWebviewProvider {
   protected panel: vscode.WebviewPanel | undefined;
   protected readonly viewType: string;
   protected currentData: any;
+  protected isPanelVisible = false;
   private readonly resourceRoots: vscode.Uri[];
 
   constructor(context: vscode.ExtensionContext, viewType: string, extraResourceRoots: vscode.Uri[] = []) {
@@ -46,12 +47,28 @@ export abstract class BaseWebviewProvider {
 
       this.panel.onDidDispose(
         () => {
+          this.onPanelDisposed();
           this.panel = undefined;
           this.currentData = undefined;
+          this.isPanelVisible = false;
         },
         undefined,
         this.context.subscriptions
       );
+
+      this.panel.onDidChangeViewState(
+        (e) => {
+          const wasVisible = this.isPanelVisible;
+          this.isPanelVisible = e.webviewPanel.visible;
+          if (!wasVisible && this.isPanelVisible) {
+            this.onPanelBecameVisible();
+          }
+        },
+        undefined,
+        this.context.subscriptions
+      );
+
+      this.isPanelVisible = true;
     }
 
     if (this.panel && this.panel.title !== title) {
@@ -66,6 +83,16 @@ export abstract class BaseWebviewProvider {
 
   protected abstract getWebviewContent(data?: any): Promise<string>;
   protected abstract handleMessage(message: any): Promise<void>;
+
+  /** Called when the webview panel is closed. Override to clean up resources. */
+  protected onPanelDisposed(): void {
+    // Override in subclasses if cleanup is needed
+  }
+
+  /** Called when the webview panel becomes visible (was hidden, now shown). */
+  protected onPanelBecameVisible(): void {
+    // Override in subclasses if needed
+  }
 
   protected getUri(webview: vscode.Webview, extensionUri: vscode.Uri, pathList: string[]): vscode.Uri {
     return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...pathList));

@@ -2,7 +2,7 @@
  * Auto-generated error code definitions
  *
  * DO NOT EDIT MANUALLY
- * Generated at: 2025-12-18T18:34:13.078984
+ * Generated at: 2026-01-28T14:24:08.677851
  *
  * To regenerate: bash generate_error_codes.sh
  */
@@ -117,6 +117,7 @@ export const ErrorCodes = {
   EXT_002: "EXT_002", // GitLab Authentication Failed
   EXT_003: "EXT_003", // MinIO Service Unavailable
   EXT_004: "EXT_004", // Temporal Service Unavailable
+  EXT_005: "EXT_005", // Task Queue Unavailable
   DB_001: "DB_001", // Database Connection Failed
   DB_002: "DB_002", // Database Query Failed
   DB_003: "DB_003", // Transaction Failed
@@ -930,6 +931,20 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     },
     retryAfter: 120,
     documentationUrl: "/docs/workflows",
+  },
+  EXT_005: {
+    code: "EXT_005",
+    httpStatus: 503,
+    category: ErrorCategory.EXTERNAL_SERVICE,
+    severity: ErrorSeverity.ERROR,
+    title: "Task Queue Unavailable",
+    message: {
+      plain: "No worker available for the specified task queue.",
+      markdown: "**Task Queue Unavailable**\n\nNo worker is available to process tasks on the specified queue. The testing service may be misconfigured or the worker is not running.",
+      html: "<strong>Task Queue Unavailable</strong><p>No worker is available to process tasks on the specified queue. The testing service may be misconfigured or the worker is not running.</p>",
+    },
+    retryAfter: 120,
+    documentationUrl: "/docs/testing-services",
   },
   DB_001: {
     code: "DB_001",
