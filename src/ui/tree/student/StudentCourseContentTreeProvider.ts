@@ -426,7 +426,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (!element) {
             // Root level - show all available courses
             try {
-                const courses = await this.apiService.getStudentCourses();
+                const shouldForce = this.forceRefresh;
+                const courses = await this.apiService.getStudentCourses({ force: shouldForce });
                 if (!courses || courses.length === 0) {
                     console.log('[StudentTree] No courses available');
                     return [new MessageItem('No courses available.', 'warning')];
@@ -444,7 +445,6 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     const title = (course.title || course.name || course.path || `Course ${courseId}`) as string;
 
                     // Pre-fetch contents for count if not cached
-                    const shouldForce = this.forceRefresh;
                     let courseContents = this.courseContentsCache.get(courseId);
                     if (!courseContents || shouldForce) {
                         courseContents = await this.apiService.getStudentCourseContents(courseId, { force: shouldForce }) || [];

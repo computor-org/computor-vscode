@@ -1868,15 +1868,18 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourses(): Promise<any[]> {
+  async getStudentCourses(options?: { force?: boolean }): Promise<any[]> {
     const cacheKey = 'studentCourses';
-    
-    // Check cache first
-    const cached = multiTierCache.get<any[]>(cacheKey);
-    if (cached) {
-      return cached;
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<any[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
@@ -1896,15 +1899,18 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourse(courseId: string): Promise<any | undefined> {
+  async getStudentCourse(courseId: string, options?: { force?: boolean }): Promise<any | undefined> {
     const cacheKey = `studentCourse-${courseId}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<any>(cacheKey);
-    if (cached) {
-      return cached;
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<any>(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();

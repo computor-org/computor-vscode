@@ -9,7 +9,7 @@ import { ICourseMemberParser, CourseMemberImportRow } from './ICourseMemberParse
  * - First row contains headers
  * - Subsequent rows contain member data
  */
-export class ExcelXmlParser implements ICourseMemberParser {
+export class CourseMemberXmlParser implements ICourseMemberParser {
   private xmlParser: XMLParser;
 
   constructor() {

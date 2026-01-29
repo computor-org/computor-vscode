@@ -343,6 +343,15 @@
   }
 
   function attachEventListeners() {
+    // Drag and drop on the whole app
+    const app = document.getElementById('app');
+    if (app) {
+      app.addEventListener('dragenter', handleDragEnter);
+      app.addEventListener('dragover', handleDragOver);
+      app.addEventListener('dragleave', handleDragLeave);
+      app.addEventListener('drop', handleDrop);
+    }
+
     // Sortable column headers
     document.querySelectorAll('.sortable').forEach(header => {
       header.addEventListener('click', () => {
@@ -494,6 +503,86 @@
         showContextMenu(e, rowNumber);
       });
     });
+  }
+
+  // Drag and drop handlers
+  let dragCounter = 0;
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleDragEnter(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter++;
+    const app = document.getElementById('app');
+    if (app && dragCounter === 1) {
+      app.classList.add('drag-over');
+    }
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter--;
+    if (dragCounter === 0) {
+      const app = document.getElementById('app');
+      if (app) {
+        app.classList.remove('drag-over');
+      }
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter = 0;
+    const app = document.getElementById('app');
+    if (app) {
+      app.classList.remove('drag-over');
+    }
+
+    if (isImporting) {
+      return;
+    }
+
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const file = files[0];
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const content = event.target?.result;
+      if (typeof content === 'string') {
+        vscode.postMessage({
+          command: 'fileDropped',
+          data: {
+            fileName: file.name,
+            content: content
+          }
+        });
+      }
+    };
+
+    reader.onerror = () => {
+      vscode.postMessage({
+        command: 'showError',
+        data: { message: 'Failed to read dropped file' }
+      });
+    };
+
+    // Read as text for CSV, JSON, XML; as binary string for XLSX
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension === 'xlsx' || extension === 'xls') {
+      reader.readAsBinaryString(file);
+    } else {
+      reader.readAsText(file);
+    }
   }
 
   function selectAll(selected) {
