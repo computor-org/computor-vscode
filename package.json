@@ -2,8 +2,12 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "2025.10.5",
+  "version": "2026.3.1",
   "publisher": "itpcp-tugraz",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/computor-org/computor-vsc-extension.git"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },
