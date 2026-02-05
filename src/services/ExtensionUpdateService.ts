@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import semver from 'semver';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { ExtensionVersionListItem, ExtensionVersionListResponse } from '../types/generated';
+import { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
 
 /**
  * Handles backend-driven extension updates by polling the Computor backend for new versions.
@@ -13,6 +14,7 @@ import { ExtensionVersionListItem, ExtensionVersionListResponse } from '../types
 export class ExtensionUpdateService {
   private readonly extensionId: string;
   private checking = false;
+  private httpClient: BearerTokenHttpClient | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly settings: ComputorSettingsManager) {
     const pkg = context.extension.packageJSON as { name?: string; publisher?: string };
@@ -21,7 +23,8 @@ export class ExtensionUpdateService {
     this.extensionId = `${publisher}.${name}`;
   }
 
-  async checkForUpdates(): Promise<void> {
+  async checkForUpdates(httpClient?: BearerTokenHttpClient): Promise<void> {
+    this.httpClient = httpClient;
     if (this.checking) {
       return;
     }
@@ -91,7 +94,7 @@ export class ExtensionUpdateService {
       url.searchParams.set('include_yanked', 'false');
       url.searchParams.set('limit', '100');
 
-      const headers = await this.buildAuthHeaders({ Accept: 'application/json' });
+      const headers = this.buildAuthHeaders({ Accept: 'application/json' });
       if (!headers) {
         return [];
       }
@@ -166,7 +169,7 @@ export class ExtensionUpdateService {
     }, async (progress) => {
       progress.report({ message: 'Downloading…' });
 
-      const headers = await this.buildAuthHeaders();
+      const headers = this.buildAuthHeaders();
       if (!headers) {
         throw new Error('Authentication required for extension download.');
       }
@@ -202,25 +205,19 @@ export class ExtensionUpdateService {
     }
   }
 
-  private async buildAuthHeaders(extraHeaders: Record<string, string> = {}): Promise<Record<string, string> | undefined> {
-    try {
-      const secretRaw = await this.context.secrets.get('computor.auth');
-      if (!secretRaw) {
-        return undefined;
-      }
-      const auth = JSON.parse(secretRaw) as { type?: string; username?: string; password?: string } | undefined;
-      if (!auth || auth.type !== 'basic' || !auth.username || !auth.password) {
-        return undefined;
-      }
-
-      const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
-      return {
-        ...extraHeaders,
-        Authorization: `Basic ${credentials}`
-      };
-    } catch (error) {
-      console.warn('Failed to build auth headers for extension update check:', error);
+  private buildAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> | undefined {
+    if (!this.httpClient || !this.httpClient.isAuthenticated()) {
       return undefined;
     }
+
+    const authHeaders = this.httpClient.getAuthHeaders();
+    if (!authHeaders.Authorization) {
+      return undefined;
+    }
+
+    return {
+      ...extraHeaders,
+      ...authHeaders
+    };
   }
 }

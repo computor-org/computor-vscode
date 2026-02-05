@@ -114,7 +114,7 @@ async function attemptSilentAutoLogin(
     await context.secrets.store('computor.auth', JSON.stringify(auth));
 
     if (extensionUpdateService) {
-      extensionUpdateService.checkForUpdates().catch(err => {
+      extensionUpdateService.checkForUpdates(client).catch(err => {
         console.warn('Extension update check failed:', err);
       });
     }
@@ -1225,7 +1225,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       }
 
       if (extensionUpdateService) {
-        extensionUpdateService.checkForUpdates().catch(err => {
+        extensionUpdateService.checkForUpdates(client).catch(err => {
           console.warn('Extension update check failed:', err);
         });
       }
