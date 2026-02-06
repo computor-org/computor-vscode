@@ -22,6 +22,15 @@ import type { TaskStatus } from './tasks';
 
 
 
+/**
+ * Response with Coder session token.
+ */
+export interface CoderSessionResponse {
+  success: boolean;
+  session_token?: string | null;
+  message: string;
+}
+
 export interface StudentProfileCreate {
   student_id?: string | null;
   student_email?: string | null;
@@ -377,6 +386,9 @@ export interface ExecutionBackendReference {
 
 /**
  * User configuration for a service.
+ * 
+ * DEPRECATED: Use UserDeployment directly in ServiceConfig instead.
+ * Kept for backwards compatibility.
  */
 export interface ServiceUserConfig {
   /** Username for the service user */
@@ -407,6 +419,9 @@ export interface ServiceApiTokenConfig {
 
 /**
  * Full service configuration for defining services at root level.
+ * 
+ * Services are deployed AFTER course hierarchy creation, allowing course_members
+ * to be assigned to existing courses.
  */
 export interface ServiceConfig {
   /** Unique identifier for the service */
@@ -415,14 +430,16 @@ export interface ServiceConfig {
   service_type_path: string;
   /** Programming language for testing services (e.g., 'python', 'matlab') */
   language?: string | null;
-  /** User configuration for this service */
-  user: ServiceUserConfig;
+  /** User configuration for this service (same as regular users) */
+  user: UserDeployment;
   /** API token configuration */
   api_token: ServiceApiTokenConfig;
   /** Service-specific configuration (task_queue, timeouts, etc.) */
   config?: Record<string, any> | null;
   /** Service description */
   description?: string | null;
+  /** Course memberships for this service's user (e.g., _tutor role for testing services) */
+  course_members?: CourseMemberDeployment[];
 }
 
 /**
@@ -1744,6 +1761,10 @@ export interface ServiceCreate {
   username?: string | null;
   /** Email for service user */
   email?: string | null;
+  /** Given name for service user (defaults to first word of name) */
+  given_name?: string | null;
+  /** Family name for service user (defaults to rest of name) */
+  family_name?: string | null;
   /** Password for service user (optional - use API tokens instead) */
   password?: string | null;
   /** Service-specific configuration */
@@ -1782,10 +1803,14 @@ export interface ServiceGet {
   description?: string | null;
   /** ServiceType UUID */
   service_type_id?: string | null;
+  /** ServiceType path (e.g., 'testing.python') */
+  service_type_path?: string | null;
   user_id: string;
   config?: Record<string, any>;
   enabled: boolean;
   last_seen_at?: string | null;
+  /** Additional properties */
+  properties?: Record<string, any> | null;
 }
 
 /**
@@ -1815,6 +1840,68 @@ export interface ServiceQuery {
   enabled?: boolean | null;
   /** Filter by user ID */
   user_id?: string | null;
+}
+
+/**
+ * Count of deleted entities by type.
+ */
+export interface EntityDeleteCount {
+  courses?: number;
+  course_families?: number;
+  course_members?: number;
+  course_groups?: number;
+  course_content_types?: number;
+  course_contents?: number;
+  submission_groups?: number;
+  submission_group_members?: number;
+  submission_artifacts?: number;
+  submission_grades?: number;
+  submission_reviews?: number;
+  results?: number;
+  result_artifacts?: number;
+  course_content_deployments?: number;
+  deployment_histories?: number;
+  course_member_comments?: number;
+  messages?: number;
+  example_repositories?: number;
+  examples?: number;
+  example_versions?: number;
+  example_dependencies?: number;
+  student_profiles?: number;
+}
+
+/**
+ * Preview of what will be deleted in a cascade operation.
+ */
+export interface CascadeDeletePreview {
+  /** Type of root entity being deleted */
+  entity_type: string;
+  /** ID of root entity being deleted */
+  entity_id: string;
+  /** Name/identifier of root entity */
+  entity_name: string;
+  /** Count of child entities that will be deleted */
+  child_counts?: EntityDeleteCount;
+  /** MinIO storage paths that will be cleaned up */
+  minio_paths?: string[];
+}
+
+/**
+ * Result of a cascade deletion operation.
+ */
+export interface CascadeDeleteResult {
+  /** Whether this was a preview only */
+  dry_run: boolean;
+  /** Type of root entity deleted */
+  entity_type: string;
+  /** ID of root entity deleted */
+  entity_id: string;
+  /** Count of entities deleted by type */
+  deleted_counts?: EntityDeleteCount;
+  /** Number of MinIO objects deleted */
+  minio_objects_deleted?: number;
+  /** Errors encountered during deletion */
+  errors?: string[];
 }
 
 export interface TestCreate {
@@ -2298,7 +2385,7 @@ export interface SubmissionGradeUpdate {
 /**
  * List item representation for submission grades.
  */
-export interface SubmissionGradeListItem {
+export interface SubmissionGradeList {
   /** Creation timestamp */
   created_at?: string | null;
   /** Update timestamp */
@@ -2339,6 +2426,10 @@ export interface SubmissionGradeQuery {
   artifact_id?: string | null;
   graded_by_course_member_id?: string | null;
   status?: GradingStatus | null;
+  course_id?: string | null;
+  latest?: boolean | null;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 /**
@@ -3766,10 +3857,12 @@ export type LanguageEnum = "de" | "en";
 
 export type MetaTypeEnum = "course" | "unit" | "assignment";
 
+export type ForceLevel = "none" | "old" | "all";
+
 export type ErrorSeverity = "info" | "warning" | "error" | "critical";
 
 export type ErrorCategory = "authentication" | "authorization" | "validation" | "not_found" | "conflict" | "rate_limit" | "external_service" | "database" | "internal" | "not_implemented";
 
 export type GradingStatus = 0 | 1 | 2 | 3;
 
-export type ErrorCode = "AUTH_001" | "AUTH_002" | "AUTH_003" | "AUTH_004" | "AUTHZ_001" | "AUTHZ_002" | "AUTHZ_003" | "AUTHZ_004" | "AUTHZ_005" | "VAL_001" | "VAL_002" | "VAL_003" | "VAL_004" | "NF_001" | "NF_002" | "NF_003" | "NF_004" | "CONFLICT_001" | "CONFLICT_002" | "RATE_001" | "RATE_002" | "RATE_003" | "CONTENT_001" | "CONTENT_002" | "CONTENT_003" | "CONTENT_004" | "CONTENT_005" | "VERSION_001" | "DEPLOY_001" | "DEPLOY_002" | "DEPLOY_003" | "DEPLOY_004" | "SUBMIT_001" | "SUBMIT_002" | "SUBMIT_003" | "SUBMIT_004" | "SUBMIT_005" | "SUBMIT_006" | "SUBMIT_007" | "SUBMIT_008" | "TASK_001" | "TASK_002" | "TASK_003" | "TASK_004" | "GITLAB_001" | "GITLAB_002" | "GITLAB_003" | "GITLAB_004" | "GITLAB_005" | "GITLAB_006" | "GITLAB_007" | "GITLAB_008" | "EXT_001" | "EXT_002" | "EXT_003" | "EXT_004" | "DB_001" | "DB_002" | "DB_003" | "INT_001" | "INT_002" | "NIMPL_001";
+export type ErrorCode = "AUTH_001" | "AUTH_002" | "AUTH_003" | "AUTH_004" | "AUTHZ_001" | "AUTHZ_002" | "AUTHZ_003" | "AUTHZ_004" | "AUTHZ_005" | "VAL_001" | "VAL_002" | "VAL_003" | "VAL_004" | "NF_001" | "NF_002" | "NF_003" | "NF_004" | "CONFLICT_001" | "CONFLICT_002" | "RATE_001" | "RATE_002" | "RATE_003" | "CONTENT_001" | "CONTENT_002" | "CONTENT_003" | "CONTENT_004" | "CONTENT_005" | "VERSION_001" | "DEPLOY_001" | "DEPLOY_002" | "DEPLOY_003" | "DEPLOY_004" | "SUBMIT_001" | "SUBMIT_002" | "SUBMIT_003" | "SUBMIT_004" | "SUBMIT_005" | "SUBMIT_006" | "SUBMIT_007" | "SUBMIT_008" | "TASK_001" | "TASK_002" | "TASK_003" | "TASK_004" | "GITLAB_001" | "GITLAB_002" | "GITLAB_003" | "GITLAB_004" | "GITLAB_005" | "GITLAB_006" | "GITLAB_007" | "GITLAB_008" | "EXT_001" | "EXT_002" | "EXT_003" | "EXT_004" | "EXT_005" | "DB_001" | "DB_002" | "DB_003" | "INT_001" | "INT_002" | "NIMPL_001";

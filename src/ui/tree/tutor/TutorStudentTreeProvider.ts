@@ -6,6 +6,7 @@ import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
 import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../utils/repositoryNaming';
+import { extractGraderName } from '../../../utils/gradingHelpers';
 import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 
@@ -783,6 +784,10 @@ class TutorContentItem extends vscode.TreeItem {
     }
     if (typeof grading === 'number') {
       tooltipLines.push(`Grading: ${(grading * 100).toFixed(2)}%`);
+    }
+    const graderName = extractGraderName(submission);
+    if (graderName) {
+      tooltipLines.push(`Graded by: ${graderName}`);
     }
     if (hasUnreviewed) {
       tooltipLines.push('Unreviewed assignment');

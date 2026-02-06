@@ -61,3 +61,11 @@ export interface RoleClaimQuery {
   claim_type?: string | null;
   claim_value?: string | null;
 }
+
+/**
+ * Request to assign a workspace role by email.
+ */
+export interface WorkspaceRoleAssign {
+  email: string;
+  role_id: string;
+}

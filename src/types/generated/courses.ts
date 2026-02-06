@@ -500,6 +500,7 @@ export interface SubmissionGroupStudentList {
   repository?: SubmissionGroupRepository | null;
   status?: string | null;
   grading?: number | null;
+  graded_by_course_member?: GradedByCourseMember | null;
   count?: number;
   max_submissions?: number | null;
   unread_message_count?: number;
@@ -519,6 +520,7 @@ export interface SubmissionGroupStudentGet {
   repository?: SubmissionGroupRepository | null;
   status?: string | null;
   grading?: number | null;
+  graded_by_course_member?: GradedByCourseMember | null;
   count?: number;
   max_submissions?: number | null;
   unread_message_count?: number;
@@ -710,6 +712,8 @@ export interface CourseMemberGradingNode {
   submissions_count?: number | null;
   /** Maximum allowed submissions for this assignment (from course_content or submission_group) */
   max_submissions?: number | null;
+  /** Information about who graded this assignment (only for submittable nodes that have been graded) */
+  graded_by_course_member?: GradedByCourseMember | null;
 }
 
 /**

@@ -13,6 +13,14 @@ import type { GitLabPATCredentials } from './common';
 
 
 /**
+ * Request to login to Coder.
+ */
+export interface CoderLoginRequest {
+  password: string;
+  redirect_url?: string | null;
+}
+
+/**
  * Query parameters for updating organization token.
  */
 export interface OrganizationUpdateTokenQuery {

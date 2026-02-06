@@ -11,3 +11,4 @@ export * from './organizations';
 export * from './roles';
 export * from './tasks';
 export * from './users';
+export * from './websocket';

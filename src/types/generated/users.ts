@@ -95,6 +95,18 @@ export interface AccountQuery {
 }
 
 /**
+ * A user with their workspace roles.
+ */
+export interface WorkspaceRoleUser {
+  user_id: string;
+  email: any;
+  username: any;
+  given_name: any;
+  family_name: any;
+  roles?: string[];
+}
+
+/**
  * User manager request to reset a user's password (sets to NULL).
  */
 export interface UserManagerResetPasswordRequest {

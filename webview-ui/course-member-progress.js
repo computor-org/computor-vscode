@@ -363,11 +363,15 @@
       }
 
       // Build tooltip text
+      const graderName = extractGraderName(node);
       const tooltipParts = [];
       if (isSubmittable) {
         tooltipParts.push(`Submitted: ${isSubmitted ? 'Yes' : 'No'}`);
         if (hasGrading) {
           tooltipParts.push(`Grade: ${gradingDisplay}`);
+        }
+        if (graderName) {
+          tooltipParts.push(`Graded by: ${graderName}`);
         }
         if (hasResult) {
           tooltipParts.push(`Result: ${resultDisplay}`);
@@ -607,6 +611,36 @@
   function clamp(value, min, max) {
     if (typeof value !== 'number' || !Number.isFinite(value)) return min;
     return Math.min(max, Math.max(min, value));
+  }
+
+  function extractGraderName(node) {
+    if (!node || typeof node !== 'object') return null;
+    const directMember = node.graded_by_course_member;
+    if (directMember?.user) {
+      const parts = [directMember.user.given_name, directMember.user.family_name].filter(Boolean);
+      if (parts.length > 0) return parts.join(' ');
+    }
+    if (directMember?.user_id) return directMember.user_id;
+    const gradings = node.gradings;
+    if (Array.isArray(gradings) && gradings.length > 0) {
+      const latest = gradings[gradings.length - 1];
+      const user = latest?.graded_by_course_member?.user;
+      if (user) {
+        const parts = [user.given_name, user.family_name].filter(Boolean);
+        if (parts.length > 0) return parts.join(' ');
+      }
+      if (latest?.graded_by_course_member?.user_id) return latest.graded_by_course_member.user_id;
+    }
+    const lg = node.latest_grading;
+    if (lg) {
+      const user = lg.graded_by_course_member?.user;
+      if (user) {
+        const parts = [user.given_name, user.family_name].filter(Boolean);
+        if (parts.length > 0) return parts.join(' ');
+      }
+    }
+    if (typeof node.graded_by_name === 'string' && node.graded_by_name.trim()) return node.graded_by_name.trim();
+    return null;
   }
 
   // Global handlers
