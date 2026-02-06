@@ -223,8 +223,12 @@ export class WebSocketService {
           handlers.onDisconnected?.();
         });
 
-        // Attempt reconnect if not intentionally closed
-        if (event.code !== 1000) {
+        // Attempt reconnect if not intentionally closed and not an auth failure
+        if (event.code === 1000 || event.code === 4001 || event.code === 4003) {
+          if (event.code !== 1000) {
+            console.warn(`[WebSocket] Authentication failed (${event.code}), not reconnecting`);
+          }
+        } else {
           this.scheduleReconnect();
         }
       };
