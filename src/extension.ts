@@ -10,6 +10,7 @@ import { ComputorApiService } from './services/ComputorApiService';
 // import { GitLabTokenManager } from './services/GitLabTokenManager';
 
 import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
+import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
 import { WebSocketService } from './services/WebSocketService';
 import { BackendConnectionService } from './services/BackendConnectionService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
@@ -217,11 +218,90 @@ interface AutoLoginResult {
  * Handles automatic login when .computor file is detected in workspace.
  * Consolidates duplicated auto-login logic from activation and workspace change handlers.
  */
+/**
+ * Attempt login using a pre-minted API token from the COMPUTOR_AUTH_TOKEN env var.
+ * Returns true if successful, false otherwise.
+ */
+async function attemptApiTokenLogin(
+  context: vscode.ExtensionContext,
+  baseUrl: string,
+  apiToken: string,
+  onProgress?: (message: string) => void
+): Promise<boolean> {
+  try {
+    const client = new ApiKeyHttpClient(baseUrl, apiToken, 'X-API-Token', '', 5000);
+
+    await ensureWorkspaceMarker(baseUrl);
+    const controller = new UnifiedController(context);
+
+    await controller.activate(client as any, onProgress);
+    backendConnectionService.startHealthCheck(baseUrl);
+
+    activeSession = {
+      deactivate: () => controller.dispose().then(async () => {
+        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+        await context.globalState.update('computor.tutor.selection', undefined);
+        backendConnectionService.stopHealthCheck();
+      }),
+      getActiveViews: () => controller.getActiveViews(),
+      getHttpClient: () => controller.getHttpClient()
+    };
+
+    if (extensionUpdateService) {
+      extensionUpdateService.checkForUpdates().catch(err => {
+        console.warn('Extension update check failed:', err);
+      });
+    }
+
+    return true;
+  } catch (error: any) {
+    console.error('API token login failed:', error);
+    return false;
+  }
+}
+
 async function handleComputorWorkspaceDetected(
   context: vscode.ExtensionContext,
   computorMarkerPath: string
 ): Promise<void> {
   const settings = new ComputorSettingsManager(context);
+
+  // Priority 1: Try API token from environment variable (Coder workspace injection)
+  const apiToken = process.env.COMPUTOR_AUTH_TOKEN;
+  if (apiToken) {
+    const marker = await readMarker(computorMarkerPath);
+    const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
+
+    if (baseUrl) {
+      const success = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Computor',
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ message: 'Connecting (workspace token)...' });
+        backendConnectionService.setBaseUrl(baseUrl);
+        const status = await backendConnectionService.checkBackendConnection(baseUrl);
+        if (!status.isReachable) {
+          return false;
+        }
+        progress.report({ message: 'Authenticating...' });
+        return await attemptApiTokenLogin(
+          context, baseUrl, apiToken,
+          (msg) => progress.report({ message: msg })
+        );
+      });
+
+      if (success) {
+        vscode.window.showInformationMessage(`Logged in (workspace token): ${baseUrl}`);
+        return;
+      }
+      console.warn('API token login failed, falling back to credential-based login');
+    }
+  }
+
+  // Priority 2: Stored credentials auto-login (existing flow)
   const autoLoginEnabled = await settings.isAutoLoginEnabled();
   const storedUsername = await context.secrets.get('computor.username');
   const storedPassword = await context.secrets.get('computor.password');

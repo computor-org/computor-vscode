@@ -75,6 +75,10 @@ export class ApiKeyHttpClient extends HttpClient {
     return this.apiKey;
   }
 
+  public getAccessToken(): string | null {
+    return this.apiKey || null;
+  }
+
   public getHeaderName(): string {
     return this.headerName;
   }
