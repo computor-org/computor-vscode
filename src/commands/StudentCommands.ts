@@ -235,8 +235,8 @@ export class StudentCommands {
           let resultId: string | undefined;
           let resultArtifacts: any[] | undefined;
 
-          // Get course content ID from the item
-          const courseContentId = item?.courseContent?.id;
+          // Get course content ID from the item (student tree uses courseContent, tutor tree uses content)
+          const courseContentId = item?.courseContent?.id || item?.content?.id;
 
           if (courseContentId) {
             // Fetch fresh data from API to get latest test results
@@ -255,7 +255,7 @@ export class StudentCommands {
             }
           } else {
             // Fallback to item data if no ID available
-            const courseContent = item?.courseContent as any;
+            const courseContent = (item?.courseContent || item?.content) as any;
             const result = courseContent?.result;
             if (result) {
               resultPayload = result.result_json ?? result;
