@@ -94,8 +94,6 @@ export interface TestJob {
   testing_service_type_path: string;
   module: Repository;
   reference?: Repository | null;
-  test_number?: number;
-  submission_number?: number;
 }
 
 /**

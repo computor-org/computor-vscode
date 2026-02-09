@@ -9,6 +9,7 @@ import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManag
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
+import { extractGraderName } from '../../../utils/gradingHelpers';
 import { buildStudentRepoRoot } from '../../../utils/repositoryNaming';
 
 interface ContentNode {
@@ -1173,6 +1174,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof rawGrade === 'number') {
             lines.push(`Grading: ${(rawGrade * 100).toFixed(2)}%`);
+        }
+        const graderName = extractGraderName(this.submissionGroup);
+        if (graderName) {
+            lines.push(`Graded by: ${graderName}`);
         }
 
         // Additional grading details and team members

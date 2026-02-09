@@ -901,7 +901,10 @@ class UnifiedController {
       const memberLabel = selection.getCurrentMemberLabel() || selection.getCurrentMemberId();
       tutorStatus.updateSelection(courseLabel, groupLabel, memberLabel);
     };
-    this.disposables.push(selection.onDidChangeSelection(() => { void updateStatus(); }));
+    this.disposables.push(selection.onDidChangeSelection(() => {
+      void updateStatus();
+      void vscode.commands.executeCommand('computor.results.clear');
+    }));
     void updateStatus();
 
     // Reset filters command

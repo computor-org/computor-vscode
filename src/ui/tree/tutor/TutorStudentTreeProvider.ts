@@ -6,6 +6,7 @@ import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
 import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../utils/repositoryNaming';
+import { extractGraderName } from '../../../utils/gradingHelpers';
 import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 
@@ -308,18 +309,52 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       this.pendingExpandVirtualFoldersForContentId = undefined;
     }
 
-    // Return two virtual folders: Submissions, References
+    // Fetch artifacts once for both Submissions and History
+    const submissionGroupId = element.content.submission_group?.id ?? undefined;
+    let sortedArtifacts: any[] = [];
+    if (submissionGroupId) {
+      try {
+        const artifacts = await this.api.listSubmissionArtifacts(submissionGroupId);
+        if (artifacts && artifacts.length > 0) {
+          sortedArtifacts = artifacts.sort((a, b) => {
+            const dateA = new Date(a.uploaded_at || a.created_at || '').getTime();
+            const dateB = new Date(b.uploaded_at || b.created_at || '').getTime();
+            return dateB - dateA;
+          });
+        }
+      } catch {
+        // Ignore fetch errors — nodes will show empty state
+      }
+    }
+
+    const latestArtifact = sortedArtifacts[0] || null;
+    let latestDescription: string | undefined;
+    if (latestArtifact) {
+      const timestamp = latestArtifact.uploaded_at || latestArtifact.created_at;
+      const dateStr = timestamp ? new Date(timestamp).toLocaleString() : latestArtifact.id;
+      const result = latestArtifact.latest_result?.result;
+      latestDescription = typeof result === 'number'
+        ? `${dateStr} ${(result * 100).toFixed(1)}%`
+        : dateStr;
+    }
+
     const items: vscode.TreeItem[] = [];
 
-    // 1. Submissions folder - expand and mark to expand latest submission
+    // 1. Submissions — shows latest submission files directly
     const subsFolderId = `tutorVirtualFolder:submissions:${contentId}:${courseId}:${memberId}`;
     if (isPendingExpand) {
       this.expandedVirtualFolderIds.add(subsFolderId);
     }
     const shouldExpandSubs = isPendingExpand || this.expandedVirtualFolderIds.has(subsFolderId);
-    items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId, undefined, undefined, shouldExpandSubs, isPendingExpand));
+    items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId, {
+      startExpanded: shouldExpandSubs,
+      latestArtifactId: latestArtifact?.id,
+      latestArtifactDescription: latestDescription,
+      submissionGroupId,
+      hasSubmissions: sortedArtifacts.length > 0,
+    }));
 
-    // 2. References folder (only if deployment exists)
+    // 2. References (only if deployment exists)
     if (element.content.deployment && element.content.deployment.example_version_id) {
       const workspaceStructure = WorkspaceStructureManager.getInstance();
       const exampleVersionId = element.content.deployment.example_version_id;
@@ -333,7 +368,24 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
         this.expandedVirtualFolderIds.add(refFolderId);
       }
       const shouldExpandRef = isPendingExpand || this.expandedVirtualFolderIds.has(refFolderId);
-      items.push(new TutorVirtualFolderItem(label, 'reference', element.content, courseId, memberId, undefined, referenceExists, shouldExpandRef));
+      items.push(new TutorVirtualFolderItem(label, 'reference', element.content, courseId, memberId, {
+        referenceExists,
+        startExpanded: shouldExpandRef,
+      }));
+    }
+
+    // 3. History — lists older submissions (only shown if there are 2+ artifacts)
+    if (sortedArtifacts.length > 1) {
+      const historyFolderId = `tutorVirtualFolder:history:${contentId}:${courseId}:${memberId}`;
+      if (isPendingExpand) {
+        this.expandedVirtualFolderIds.add(historyFolderId);
+      }
+      const shouldExpandHistory = this.expandedVirtualFolderIds.has(historyFolderId);
+      items.push(new TutorVirtualFolderItem('History', 'history', element.content, courseId, memberId, {
+        startExpanded: shouldExpandHistory,
+        artifacts: sortedArtifacts,
+        submissionGroupId,
+      }));
     }
 
     return items;
@@ -376,7 +428,9 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       case 'reference':
         return this.getReferenceChildren(element, workspaceStructure);
       case 'submissions':
-        return this.getSubmissionsChildren(element, workspaceStructure);
+        return this.getLatestSubmissionFiles(element, workspaceStructure);
+      case 'history':
+        return this.getHistoryChildren(element);
       default:
         return [];
     }
@@ -429,65 +483,104 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     return items.length > 0 ? items : [new MessageItem('Reference directory is empty.', 'info')];
   }
 
-  private async getSubmissionsChildren(element: TutorVirtualFolderItem, workspaceStructure: WorkspaceStructureManager): Promise<vscode.TreeItem[]> {
-    const submissionGroupId = element.content.submission_group?.id;
-    if (!submissionGroupId) {
-      return [new MessageItem('No submission group available.', 'info')];
+  private async getLatestSubmissionFiles(element: TutorVirtualFolderItem, workspaceStructure: WorkspaceStructureManager): Promise<vscode.TreeItem[]> {
+    const submissionGroupId = element.submissionGroupId;
+    const artifactId = element.latestArtifactId;
+    if (!submissionGroupId || !artifactId) {
+      return [new MessageItem('No submissions available for this assignment.', 'info')];
     }
 
-    // Fetch artifacts from API
-    try {
-      const artifacts = await this.api.listSubmissionArtifacts(submissionGroupId);
-      if (!artifacts || artifacts.length === 0) {
-        return [new MessageItem('No submissions available for this assignment.', 'info')];
-      }
+    const submissionPath = workspaceStructure.getReviewSubmissionPath(submissionGroupId, artifactId);
 
-      // Sort by created_at/uploaded_at descending (newest first)
-      const sortedArtifacts = artifacts.sort((a, b) => {
-        const dateA = new Date(a.uploaded_at || a.created_at || '').getTime();
-        const dateB = new Date(b.uploaded_at || b.created_at || '').getTime();
-        return dateB - dateA;
-      });
-
-      // Create tree items with formatted timestamps
-      const isPendingExpandLatest = element.expandLatestSubmission;
-      const items: vscode.TreeItem[] = sortedArtifacts.map((artifact, index) => {
-        const timestamp = artifact.uploaded_at || artifact.created_at;
-        const formattedDate = timestamp ? new Date(timestamp).toLocaleString() : artifact.id;
-        const isLatest = index === 0; // First item after sorting is the latest
-        const result = (artifact as any).latest_result?.result;
-        // Check if this submission should be expanded (pending trigger or cached)
-        const submissionBaseId = `tutorSubmission:${artifact.id}:${submissionGroupId}:${element.courseId}:${element.memberId}`;
-        if (isLatest && isPendingExpandLatest) {
-          this.expandedSubmissionIds.add(submissionBaseId);
+    // Auto-download the artifact if not present locally
+    if (!fs.existsSync(submissionPath)) {
+      try {
+        const buffer = await this.api.downloadSubmissionArtifact(artifactId);
+        if (!buffer) {
+          return [new MessageItem('Failed to download submission artifact.', 'warning')];
         }
-        const startExpanded = this.expandedSubmissionIds.has(submissionBaseId);
-        return new TutorSubmissionItem(
-          artifact.id,
-          submissionGroupId,
-          element.content,
-          element.courseId,
-          element.memberId,
-          formattedDate,
-          isLatest,
-          result,
-          startExpanded
-        );
-      });
-
-      return items;
-    } catch (error) {
-      console.error('Failed to fetch submission artifacts:', error);
-      return [new MessageItem('Failed to load submissions. Try refreshing.', 'error')];
+        const JSZip = require('jszip');
+        const zip = await JSZip.loadAsync(buffer);
+        await fs.promises.mkdir(submissionPath, { recursive: true });
+        for (const [filename, file] of Object.entries(zip.files)) {
+          const fileData = file as any;
+          if (!fileData.dir) {
+            const content = await fileData.async('nodebuffer');
+            const filePath = path.join(submissionPath, filename);
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.promises.writeFile(filePath, content);
+          }
+        }
+      } catch (error) {
+        console.warn('[TutorStudentTreeProvider] Failed to auto-download submission artifact:', error);
+        return [new MessageItem('Submission artifact not found locally.', 'warning')];
+      }
     }
+
+    const items = await this.readDirectoryItems(submissionPath, element.courseId, element.memberId, submissionPath, element.content, 'submission');
+    return items.length > 0 ? items : [new MessageItem('Submission directory is empty.', 'info')];
+  }
+
+  private getHistoryChildren(element: TutorVirtualFolderItem): vscode.TreeItem[] {
+    const artifacts = element.artifacts;
+    const submissionGroupId = element.submissionGroupId;
+    if (!artifacts || artifacts.length === 0 || !submissionGroupId) {
+      return [new MessageItem('No submissions available.', 'info')];
+    }
+
+    // Skip the latest (index 0) — it's already shown directly in the Submissions node
+    const olderArtifacts = artifacts.slice(1);
+    if (olderArtifacts.length === 0) {
+      return [new MessageItem('No older submissions.', 'info')];
+    }
+
+    return olderArtifacts.map((artifact) => {
+      const timestamp = artifact.uploaded_at || artifact.created_at;
+      const formattedDate = timestamp ? new Date(timestamp).toLocaleString() : artifact.id;
+      const result = (artifact as any).latest_result?.result;
+      const submissionBaseId = `tutorSubmission:${artifact.id}:${submissionGroupId}:${element.courseId}:${element.memberId}`;
+      const startExpanded = this.expandedSubmissionIds.has(submissionBaseId);
+      return new TutorSubmissionItem(
+        artifact.id,
+        submissionGroupId,
+        element.content,
+        element.courseId,
+        element.memberId,
+        formattedDate,
+        false,
+        result,
+        startExpanded
+      );
+    });
   }
 
   private async getSubmissionItemChildren(element: TutorSubmissionItem): Promise<vscode.TreeItem[]> {
     const workspaceStructure = WorkspaceStructureManager.getInstance();
     const submissionPath = workspaceStructure.getReviewSubmissionPath(element.submissionGroupId, element.artifactId);
 
+    // Auto-download the artifact if not present locally
     if (!fs.existsSync(submissionPath)) {
-      return [new MessageItem('Submission artifact not found locally.', 'warning')];
+      try {
+        const buffer = await this.api.downloadSubmissionArtifact(element.artifactId);
+        if (!buffer) {
+          return [new MessageItem('Failed to download submission artifact.', 'warning')];
+        }
+        const JSZip = require('jszip');
+        const zip = await JSZip.loadAsync(buffer);
+        await fs.promises.mkdir(submissionPath, { recursive: true });
+        for (const [filename, file] of Object.entries(zip.files)) {
+          const fileData = file as any;
+          if (!fileData.dir) {
+            const content = await fileData.async('nodebuffer');
+            const filePath = path.join(submissionPath, filename);
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.promises.writeFile(filePath, content);
+          }
+        }
+      } catch (error) {
+        console.warn('[TutorStudentTreeProvider] Failed to auto-download submission artifact:', error);
+        return [new MessageItem('Submission artifact not found locally.', 'warning')];
+      }
     }
 
     const items = await this.readDirectoryItems(submissionPath, element.courseId, element.memberId, submissionPath, element.content, 'submission');
@@ -784,6 +877,10 @@ class TutorContentItem extends vscode.TreeItem {
     if (typeof grading === 'number') {
       tooltipLines.push(`Grading: ${(grading * 100).toFixed(2)}%`);
     }
+    const graderName = extractGraderName(submission);
+    if (graderName) {
+      tooltipLines.push(`Graded by: ${graderName}`);
+    }
     if (hasUnreviewed) {
       tooltipLines.push('Unreviewed assignment');
     }
@@ -835,24 +932,44 @@ class TutorFsFileItem extends vscode.TreeItem {
 
 export class TutorVirtualFolderItem extends vscode.TreeItem {
   public readonly expandLatestSubmission: boolean;
+  public readonly latestArtifactId?: string;
+  public readonly artifactId?: string;
+  public readonly submissionGroupId?: string;
+  public readonly artifacts?: any[];
 
   constructor(
     label: string,
-    public folderType: 'repository' | 'reference' | 'submissions',
+    public folderType: 'repository' | 'reference' | 'submissions' | 'history',
     public content: CourseContentStudentList,
     public courseId: string,
     public memberId: string,
-    hasRepository?: boolean,
-    referenceExists?: boolean,
-    startExpanded: boolean = false,
-    expandLatestSubmission: boolean = false
+    options: {
+      hasRepository?: boolean;
+      referenceExists?: boolean;
+      startExpanded?: boolean;
+      expandLatestSubmission?: boolean;
+      latestArtifactId?: string;
+      latestArtifactDescription?: string;
+      submissionGroupId?: string;
+      artifacts?: any[];
+      hasSubmissions?: boolean;
+    } = {}
   ) {
-    super(label, startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
-    this.expandLatestSubmission = expandLatestSubmission;
+    const hasSubmissions = options.hasSubmissions !== false;
+    const startExpanded = options.startExpanded ?? false;
+    const collapsible = (folderType === 'submissions' && !hasSubmissions)
+      ? vscode.TreeItemCollapsibleState.None
+      : (startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+    super(label, collapsible);
+    this.expandLatestSubmission = options.expandLatestSubmission ?? false;
+    this.latestArtifactId = options.latestArtifactId;
+    this.artifactId = options.latestArtifactId;
+    this.submissionGroupId = options.submissionGroupId;
+    this.artifacts = options.artifacts;
 
     // Set context value based on folder type and repository status
     if (folderType === 'repository') {
-      this.contextValue = hasRepository ? 'tutorVirtualFolder.repository.hasRepo' : 'tutorVirtualFolder.repository.noRepo';
+      this.contextValue = options.hasRepository ? 'tutorVirtualFolder.repository.hasRepo' : 'tutorVirtualFolder.repository.noRepo';
     } else {
       this.contextValue = `tutorVirtualFolder.${folderType}`;
     }
@@ -861,23 +978,26 @@ export class TutorVirtualFolderItem extends vscode.TreeItem {
     const baseId = `tutorVirtualFolder:${folderType}:${content.id}:${courseId}:${memberId}`;
     this.id = startExpanded ? `${baseId}:expanded:${Date.now()}` : baseId;
 
+    // Set description for submissions (latest artifact info)
+    if (folderType === 'submissions' && options.latestArtifactDescription) {
+      this.description = options.latestArtifactDescription;
+    }
+
     // Set appropriate icons
     if (folderType === 'repository') {
       this.iconPath = new vscode.ThemeIcon('folder-library');
     } else if (folderType === 'reference') {
-      // Reference status icons
-      if (referenceExists === true) {
-        // ✅ Downloaded reference matches current version
+      if (options.referenceExists === true) {
         this.iconPath = new vscode.ThemeIcon('check-all', new vscode.ThemeColor('testing.iconPassed'));
-      } else if (referenceExists === false) {
-        // ⚠️ No reference downloaded yet
+      } else if (options.referenceExists === false) {
         this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('editorWarning.foreground'));
       } else {
-        // Default book icon if status is unknown
         this.iconPath = new vscode.ThemeIcon('book');
       }
     } else if (folderType === 'submissions') {
       this.iconPath = new vscode.ThemeIcon('archive');
+    } else if (folderType === 'history') {
+      this.iconPath = new vscode.ThemeIcon('history');
     }
   }
 }
