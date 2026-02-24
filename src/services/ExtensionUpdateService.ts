@@ -87,7 +87,7 @@ export class ExtensionUpdateService {
 
   private async fetchAvailableVersions(baseUrl: string): Promise<ExtensionVersionListItem[]> {
     try {
-      const url = new URL(`/extensions/${this.extensionId}/versions`, baseUrl);
+      const url = new URL(`${baseUrl}/extensions/${this.extensionId}/versions`);
       url.searchParams.set('include_yanked', 'false');
       url.searchParams.set('limit', '100');
 
@@ -156,7 +156,7 @@ export class ExtensionUpdateService {
 
   private async installVersion(baseUrl: string, versionInfo: ExtensionVersionListItem): Promise<void> {
     const versionLabel = versionInfo.version;
-    const downloadUrl = new URL(`/extensions/${this.extensionId}/download`, baseUrl);
+    const downloadUrl = new URL(`${baseUrl}/extensions/${this.extensionId}/download`);
     downloadUrl.searchParams.set('version', versionLabel);
 
     await vscode.window.withProgress({
@@ -205,19 +205,25 @@ export class ExtensionUpdateService {
   private async buildAuthHeaders(extraHeaders: Record<string, string> = {}): Promise<Record<string, string> | undefined> {
     try {
       const secretRaw = await this.context.secrets.get('computor.auth');
-      if (!secretRaw) {
-        return undefined;
-      }
-      const auth = JSON.parse(secretRaw) as { type?: string; username?: string; password?: string } | undefined;
-      if (!auth || auth.type !== 'basic' || !auth.username || !auth.password) {
-        return undefined;
+      if (secretRaw) {
+        const auth = JSON.parse(secretRaw) as { accessToken?: string } | undefined;
+        if (auth?.accessToken) {
+          return {
+            ...extraHeaders,
+            Authorization: `Bearer ${auth.accessToken}`
+          };
+        }
       }
 
-      const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
-      return {
-        ...extraHeaders,
-        Authorization: `Basic ${credentials}`
-      };
+      const apiToken = process.env.COMPUTOR_AUTH_TOKEN;
+      if (apiToken) {
+        return {
+          ...extraHeaders,
+          'X-API-Token': apiToken
+        };
+      }
+
+      return undefined;
     } catch (error) {
       console.warn('Failed to build auth headers for extension update check:', error);
       return undefined;
