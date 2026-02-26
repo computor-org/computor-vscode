@@ -63,6 +63,16 @@ export class ExtensionUpdateService {
         return;
       }
 
+      const choice = await vscode.window.showInformationMessage(
+        `Computor extension update available: ${currentVersion} → ${latest.version}`,
+        'Update Now',
+        'Later'
+      );
+
+      if (choice !== 'Update Now') {
+        return;
+      }
+
       attemptedInstall = true;
       await this.installVersion(baseUrl, latest);
     } catch (error) {
