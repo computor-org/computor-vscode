@@ -171,9 +171,19 @@ export class ExtensionUpdateService {
         throw new Error('Authentication required for extension download.');
       }
 
-      const response = await fetch(downloadUrl.toString(), { redirect: 'follow', headers });
+      const redirectResponse = await fetch(downloadUrl.toString(), { redirect: 'manual', headers });
+      if (redirectResponse.status !== 302) {
+        throw new Error(`Failed to download VSIX: ${redirectResponse.status}`);
+      }
+
+      const presignedUrl = redirectResponse.headers.get('location');
+      if (!presignedUrl) {
+        throw new Error('Download redirect missing location header');
+      }
+
+      const response = await fetch(presignedUrl, { redirect: 'follow' });
       if (!response.ok) {
-        throw new Error(`Failed to download VSIX: ${response.status}`);
+        throw new Error(`Failed to download VSIX from storage: ${response.status}`);
       }
 
       const arrayBuffer = await response.arrayBuffer();
