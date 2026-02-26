@@ -22,6 +22,10 @@ export class ExtensionUpdateService {
   }
 
   async checkForUpdates(): Promise<void> {
+    if (process.env.COMPUTOR_SUPPRESS_AUTO_UPDATE === 'true') {
+      return;
+    }
+
     if (this.checking) {
       return;
     }
