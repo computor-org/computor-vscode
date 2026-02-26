@@ -47,6 +47,10 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       }
     });
 
+    webviewView.onDidDispose(() => {
+      this.view = undefined;
+    });
+
     webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case 'createMessage':
@@ -100,6 +104,14 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     this.state.editingMessage = message;
     this.state.replyTo = undefined;
     this.postState();
+  }
+
+  public async reveal(): Promise<void> {
+    if (this.view) {
+      this.view.show(false);
+    } else {
+      await vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+    }
   }
 
   public clearReplyAndEdit(): void {

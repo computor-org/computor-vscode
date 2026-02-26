@@ -80,14 +80,11 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     if (this.inputPanel) {
       this.inputPanel.setTarget(target, rawMessages);
-      // Register this provider's refresh callback when showing messages
-      // Skip indicator update since sending a message shouldn't refresh the tree
       this.inputPanel.setOnMessageCreated(() => this.refreshMessages({ skipIndicatorUpdate: true }));
-      // Pass WebSocket channel to input panel for typing indicators
       if (target.wsChannel) {
         this.inputPanel.setWebSocketChannel(target.wsChannel);
       }
-      void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+      await this.inputPanel.reveal();
     }
   }
 
@@ -312,13 +309,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       case 'replyTo':
         if (this.inputPanel && message.data) {
           this.inputPanel.setReplyTo(message.data);
-          void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+          await this.inputPanel.reveal();
         }
         break;
       case 'editMessage':
         if (this.inputPanel && message.data) {
           this.inputPanel.setEditingMessage(message.data);
-          void vscode.commands.executeCommand('computor.messagesInputPanel.focus');
+          await this.inputPanel.reveal();
         }
         break;
       case 'confirmDeleteMessage':
