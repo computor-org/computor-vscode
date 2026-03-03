@@ -699,7 +699,8 @@ export class TutorCommands {
   private async downloadSubmissionArtifact(item: any): Promise<void> {
     try {
       // If called from TutorSubmissionItem, we have the artifact info
-      let artifactId = item?.artifactId || item?.artifact_id || item?.id;
+      // Note: Do NOT fall back to item.id — that's the tree item's internal ID (e.g. "tutorVirtualFolder:..."), not a UUID
+      let artifactId = item?.artifactId || item?.artifact_id;
       let submissionGroupId = item?.submissionGroupId || item?.submission_group_id;
 
       // If called from TutorVirtualFolderItem (Submissions folder), we need to get artifacts from API
