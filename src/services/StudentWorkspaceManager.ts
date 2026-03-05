@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
-import { execAsync } from '../utils/exec';
+import { execAsync, execAsyncWithTimeout } from '../utils/exec';
 import { GitLabTokenManager } from './GitLabTokenManager';
 
 interface CourseInfo {
@@ -271,7 +271,7 @@ export class StudentWorkspaceManager {
     return await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: `Cloning ${course.title || course.path}...`,
-      cancellable: false
+      cancellable: true
     }, async () => {
       try {
         // If target is not empty, clone to temp then move
@@ -280,20 +280,22 @@ export class StudentWorkspaceManager {
         
         if (isEmpty && fs.existsSync(targetPath)) {
           // Clone directly
-          await execAsync(`git clone "${authenticatedUrl}" .`, {
+          await execAsyncWithTimeout(`git clone "${authenticatedUrl}" .`, {
             cwd: targetPath,
             env: {
               ...process.env,
               GIT_TERMINAL_PROMPT: '0'
-            }
+            },
+            timeout: 40_000
           });
         } else {
           // Clone normally
-          await execAsync(`git clone "${authenticatedUrl}" "${targetPath}"`, {
+          await execAsyncWithTimeout(`git clone "${authenticatedUrl}" "${targetPath}"`, {
             env: {
               ...process.env,
               GIT_TERMINAL_PROMPT: '0'
-            }
+            },
+            timeout: 40_000
           });
         }
 

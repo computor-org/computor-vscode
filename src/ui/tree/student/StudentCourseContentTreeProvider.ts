@@ -11,6 +11,7 @@ import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { extractGraderName } from '../../../utils/gradingHelpers';
 import { buildStudentRepoRoot } from '../../../utils/repositoryNaming';
+import { GitCancelledError } from '../../../utils/exec';
 
 interface ContentNode {
     name?: string;
@@ -222,25 +223,36 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
                 const absDir = resolvePath(repoRoot, directory);
                 if (!absDir || !fs.existsSync(absDir)) {
-                    // Repository not set up yet - find the course ID and set it up
-                    if (courseId && this.repositoryManager) {
+                    // Only trigger setup if the course hasn't been set up yet this session
+                    // (avoids per-assignment popup spam on refresh when repos already exist)
+                    if (courseId && this.repositoryManager && !this.coursesSetupThisSession.has(courseId)) {
                         console.log('[StudentTree] Setting up repository for assignment:', element.courseContent.title);
                         
                         // Show progress while setting up
+                        let assignmentSetupCancelled = false;
                         await vscode.window.withProgress({
                             location: vscode.ProgressLocation.Notification,
                             title: `Setting up repository for ${element.courseContent.title}...`,
-                            cancellable: false
-                        }, async () => {
-                            await this.repositoryManager!.autoSetupRepositories(courseId);
-                            
+                            cancellable: true
+                        }, async (progress, token) => {
+                            void progress;
+                            try {
+                                await this.repositoryManager!.autoSetupRepositories(courseId, undefined, undefined, token);
+                            } catch (e) {
+                                if (e instanceof GitCancelledError) {
+                                    assignmentSetupCancelled = true;
+                                    return;
+                                }
+                                throw e;
+                            }
+
                             // Re-fetch course contents to get updated directory paths
                             const courseContents = await this.apiService.getStudentCourseContents(courseId, { force: true }) || [];
                             this.courseContentsCache.set(courseId, courseContents);
-                            
+
                             // Update directory paths for existing repositories
                             this.repositoryManager!.updateExistingRepositoryPaths(courseId, courseContents);
-                            
+
                             // Update the directory on the current element directly
                             const updatedContent = courseContents.find(c => c.id === element.courseContent.id);
                             if (updatedContent && updatedContent.directory) {
@@ -248,6 +260,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                                 directory = updatedContent.directory as any;
                             }
                         });
+                        if (assignmentSetupCancelled) {
+                            vscode.window.showInformationMessage('Repository setup was cancelled. Expand the assignment again to retry.');
+                        }
                         
                         // Now that directory is updated, continue to show files
                         // Re-check the directory after setup
@@ -316,14 +331,26 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                             // Get course ID and trigger repository update
                                 if (courseId && this.repositoryManager) {
                                 try {
+                                    let updateCancelled = false;
                                     await vscode.window.withProgress({
                                         location: vscode.ProgressLocation.Notification,
                                         title: `Updating ${element.courseContent.title} from template...`,
-                                        cancellable: false
-                                    }, async () => {
-                                        // Call the repository manager's auto-setup which includes fork sync
-                                        await this.repositoryManager!.autoSetupRepositories(courseId);
+                                        cancellable: true
+                                    }, async (progress, token) => {
+                                        void progress;
+                                        try {
+                                            await this.repositoryManager!.autoSetupRepositories(courseId, undefined, undefined, token);
+                                        } catch (e) {
+                                            if (e instanceof GitCancelledError) {
+                                                updateCancelled = true;
+                                                return;
+                                            }
+                                            throw e;
+                                        }
                                     });
+                                    if (updateCancelled) {
+                                        vscode.window.showInformationMessage('Repository update was cancelled.');
+                                    }
                                     
                                     // Re-read the directory after update
                                         const updatedFiles = await readdir(assignmentPath);
@@ -481,23 +508,35 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 // (first expansion of a course that wasn't expanded at startup)
                 if (this.repositoryManager && !this.coursesSetupThisSession.has(selectedCourseId)) {
                     console.log(`[StudentTree] First expansion of course ${selectedCourseId}, triggering repository setup`);
-                    this.coursesSetupThisSession.add(selectedCourseId);
 
+                    let setupCancelled = false;
                     await vscode.window.withProgress({
                         location: vscode.ProgressLocation.Notification,
                         title: `Setting up repositories for ${element.title}...`,
-                        cancellable: false
-                    }, async (progress) => {
+                        cancellable: true
+                    }, async (progress, token) => {
                         progress.report({ message: 'Starting...' });
                         try {
                             await this.repositoryManager!.autoSetupRepositories(
                                 selectedCourseId,
-                                (msg) => progress.report({ message: msg })
+                                (msg) => progress.report({ message: msg }),
+                                undefined,
+                                token
                             );
                         } catch (e) {
+                            if (e instanceof GitCancelledError) {
+                                setupCancelled = true;
+                                return;
+                            }
                             console.error(`[StudentTree] Repository setup failed for course ${selectedCourseId}:`, e);
                         }
                     });
+
+                    if (setupCancelled) {
+                        vscode.window.showInformationMessage('Repository setup was cancelled. Expand the course again to retry.');
+                    } else {
+                        this.coursesSetupThisSession.add(selectedCourseId);
+                    }
                 }
 
                 // Ensure kinds and contents
@@ -759,6 +798,16 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         const dirName = submissionGroup.repository.full_path.replace(/\//g, '.');
         console.log('[StudentTree] Derived repository directory name:', dirName);
         return buildStudentRepoRoot(workspaceRoot, dirName);
+    }
+
+    getExpandedCourseIds(): Set<string> {
+        const ids = new Set<string>();
+        for (const nodeId of Object.keys(this.expandedStates)) {
+            if (nodeId.startsWith('course-') && this.expandedStates[nodeId]) {
+                ids.add(nodeId.replace('course-', ''));
+            }
+        }
+        return ids;
     }
 
     private getExpandedState(nodeId: string): boolean {

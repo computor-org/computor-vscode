@@ -22,6 +22,10 @@ export class ExtensionUpdateService {
   }
 
   async checkForUpdates(): Promise<void> {
+    if (process.env.COMPUTOR_SUPPRESS_AUTO_UPDATE === 'true') {
+      return;
+    }
+
     if (this.checking) {
       return;
     }
@@ -63,6 +67,16 @@ export class ExtensionUpdateService {
         return;
       }
 
+      const choice = await vscode.window.showInformationMessage(
+        `Computor extension update available: ${currentVersion} → ${latest.version}`,
+        'Update Now',
+        'Later'
+      );
+
+      if (choice !== 'Update Now') {
+        return;
+      }
+
       attemptedInstall = true;
       await this.installVersion(baseUrl, latest);
     } catch (error) {
@@ -87,7 +101,7 @@ export class ExtensionUpdateService {
 
   private async fetchAvailableVersions(baseUrl: string): Promise<ExtensionVersionListItem[]> {
     try {
-      const url = new URL(`/extensions/${this.extensionId}/versions`, baseUrl);
+      const url = new URL(`${baseUrl}/extensions/${this.extensionId}/versions`);
       url.searchParams.set('include_yanked', 'false');
       url.searchParams.set('limit', '100');
 
@@ -156,7 +170,7 @@ export class ExtensionUpdateService {
 
   private async installVersion(baseUrl: string, versionInfo: ExtensionVersionListItem): Promise<void> {
     const versionLabel = versionInfo.version;
-    const downloadUrl = new URL(`/extensions/${this.extensionId}/download`, baseUrl);
+    const downloadUrl = new URL(`${baseUrl}/extensions/${this.extensionId}/download`);
     downloadUrl.searchParams.set('version', versionLabel);
 
     await vscode.window.withProgress({
@@ -171,9 +185,19 @@ export class ExtensionUpdateService {
         throw new Error('Authentication required for extension download.');
       }
 
-      const response = await fetch(downloadUrl.toString(), { redirect: 'follow', headers });
+      const redirectResponse = await fetch(downloadUrl.toString(), { redirect: 'manual', headers });
+      if (redirectResponse.status !== 302) {
+        throw new Error(`Failed to download VSIX: ${redirectResponse.status}`);
+      }
+
+      const presignedUrl = redirectResponse.headers.get('location');
+      if (!presignedUrl) {
+        throw new Error('Download redirect missing location header');
+      }
+
+      const response = await fetch(presignedUrl, { redirect: 'follow' });
       if (!response.ok) {
-        throw new Error(`Failed to download VSIX: ${response.status}`);
+        throw new Error(`Failed to download VSIX from storage: ${response.status}`);
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -205,19 +229,25 @@ export class ExtensionUpdateService {
   private async buildAuthHeaders(extraHeaders: Record<string, string> = {}): Promise<Record<string, string> | undefined> {
     try {
       const secretRaw = await this.context.secrets.get('computor.auth');
-      if (!secretRaw) {
-        return undefined;
-      }
-      const auth = JSON.parse(secretRaw) as { type?: string; username?: string; password?: string } | undefined;
-      if (!auth || auth.type !== 'basic' || !auth.username || !auth.password) {
-        return undefined;
+      if (secretRaw) {
+        const auth = JSON.parse(secretRaw) as { accessToken?: string } | undefined;
+        if (auth?.accessToken) {
+          return {
+            ...extraHeaders,
+            Authorization: `Bearer ${auth.accessToken}`
+          };
+        }
       }
 
-      const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
-      return {
-        ...extraHeaders,
-        Authorization: `Basic ${credentials}`
-      };
+      const apiToken = process.env.COMPUTOR_AUTH_TOKEN;
+      if (apiToken) {
+        return {
+          ...extraHeaders,
+          'X-API-Token': apiToken
+        };
+      }
+
+      return undefined;
     } catch (error) {
       console.warn('Failed to build auth headers for extension update check:', error);
       return undefined;

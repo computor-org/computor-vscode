@@ -193,18 +193,22 @@ export class StudentCommands {
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
           title: 'Refreshing student view...',
-          cancellable: false
-        }, async (progress) => {
-          // Update repositories (includes fork updates) if repository manager is available
+          cancellable: true
+        }, async (progress, token) => {
+          // Update repositories only for expanded courses
           if (this.repositoryManager) {
-            try {
-              await this.repositoryManager.autoSetupRepositories(
-                undefined, // All courses
-                (msg) => progress.report({ message: msg })
-              );
-            } catch (error) {
-              console.error('[StudentCommands] Failed during repository refresh:', error);
-              // Continue with tree refresh even if repository operations fail
+            const expandedCourseIds = this.treeDataProvider.getExpandedCourseIds();
+            if (expandedCourseIds.size > 0) {
+              try {
+                await this.repositoryManager.autoSetupRepositories(
+                  undefined,
+                  (msg) => progress.report({ message: msg }),
+                  expandedCourseIds,
+                  token
+                );
+              } catch (error) {
+                console.error('[StudentCommands] Failed during repository refresh:', error);
+              }
             }
           }
 
