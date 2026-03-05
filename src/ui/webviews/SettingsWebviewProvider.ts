@@ -5,63 +5,62 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { GitLabTokenManager } from '../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { GitEnvironmentService } from '../../services/GitEnvironmentService';
-import { SetPasswordRequest, PasswordOperationResponse } from '../../types/generated/common';
+import { ComputorApiService } from '../../services/ComputorApiService';
+import { UserPassword } from '../../types/generated';
 
 const execFileAsync = promisify(execFile);
-
-interface SignUpSubmitData {
-  backendUrl: string;
-  gitName: string;
-  gitEmail: string;
-  password: string;
-  gitlabUrl: string;
-  gitlabToken: string;
-}
 
 interface StoredGitLabToken {
   url: string;
   hasToken: boolean;
 }
 
-interface SignUpInitialState {
+interface SettingsInitialState {
   backendUrl: string;
   gitName: string;
   gitEmail: string;
   storedGitLabTokens: StoredGitLabToken[];
+  canChangePassword: boolean;
 }
 
-export class SignUpWebviewProvider extends BaseWebviewProvider {
+export class SettingsWebviewProvider extends BaseWebviewProvider {
   private gitLabTokenManager: GitLabTokenManager;
   private settingsManager: ComputorSettingsManager;
+  private apiService: ComputorApiService | undefined;
 
-  constructor(context: vscode.ExtensionContext) {
-    super(context, 'computor.signUpView');
+  constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
+    super(context, 'computor.settingsView');
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
+    this.apiService = apiService;
+  }
+
+  setApiService(apiService: ComputorApiService): void {
+    this.apiService = apiService;
   }
 
   async open(): Promise<void> {
     try {
       const initialState = await this.loadInitialState();
-      await this.show('Computor Sign Up', initialState);
+      await this.show('Computor Settings', initialState);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open sign-up: ${error?.message || error}`);
+      vscode.window.showErrorMessage(`Failed to open settings: ${error?.message || error}`);
     }
   }
 
-  protected async getWebviewContent(data?: SignUpInitialState): Promise<string> {
+  protected async getWebviewContent(data?: SettingsInitialState): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Sign Up', '<p>Loading...</p>');
+      return this.getBaseHtml('Settings', '<p>Loading...</p>');
     }
 
     const webview = this.panel.webview;
     const nonce = this.getNonce();
     const initialState = JSON.stringify(data ?? {});
     const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'sign-up.css');
+    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'settings-view.css');
     const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
     const validatorsJsUri = this.getWebviewUri(webview, 'webview-ui', 'validators.js');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'sign-up.js');
+    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'settings-view.js');
 
     return `<!DOCTYPE html>
     <html lang="en">
@@ -69,12 +68,12 @@ export class SignUpWebviewProvider extends BaseWebviewProvider {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-      <title>Computor Sign Up</title>
+      <title>Computor Settings</title>
       <link rel="stylesheet" href="${componentsCssUri}">
       <link rel="stylesheet" href="${stylesUri}">
     </head>
     <body>
-      <div id="app" class="sign-up-root"></div>
+      <div id="app" class="settings-root"></div>
       <script nonce="${nonce}">
         window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
         window.__INITIAL_STATE__ = ${initialState};
@@ -101,24 +100,37 @@ export class SignUpWebviewProvider extends BaseWebviewProvider {
       case 'validateGitLabToken':
         await this.handleValidateGitLabToken(message.data);
         break;
-      case 'resolveStoredToken':
-        await this.handleResolveStoredToken(message.data);
+      case 'saveGitLabToken':
+        await this.handleSaveGitLabToken(message.data);
         break;
-      case 'submit':
-        await this.handleSubmit(message.data);
+      case 'removeGitLabToken':
+        await this.handleRemoveGitLabToken(message.data);
+        break;
+      case 'changePassword':
+        await this.handleChangePassword(message.data);
         break;
       default:
         break;
     }
   }
 
-  private async loadInitialState(): Promise<SignUpInitialState> {
+  private async loadInitialState(): Promise<SettingsInitialState> {
     const backendUrl = await this.settingsManager.getBaseUrl() || '';
     const gitName = await this.getGitConfig('user.name') || '';
     const gitEmail = await this.getGitConfig('user.email') || '';
     const storedGitLabTokens = await this.loadStoredGitLabTokens();
 
-    return { backendUrl, gitName, gitEmail, storedGitLabTokens };
+    let canChangePassword = false;
+    try {
+      const username = await this.context.secrets.get('computor.username');
+      if (username) {
+        canChangePassword = true;
+      }
+    } catch {
+      // Not logged in or no password-based auth
+    }
+
+    return { backendUrl, gitName, gitEmail, storedGitLabTokens, canChangePassword };
   }
 
   private async loadStoredGitLabTokens(): Promise<StoredGitLabToken[]> {
@@ -201,109 +213,102 @@ export class SignUpWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private async handleResolveStoredToken(data: { url: string }): Promise<void> {
+  private async handleSaveGitLabToken(data: { url: string; token: string }): Promise<void> {
     if (!this.panel) {
       return;
     }
 
     try {
-      const token = await this.gitLabTokenManager.getToken(data.url);
+      await this.gitLabTokenManager.storeToken(data.url, data.token);
+      const storedGitLabTokens = await this.loadStoredGitLabTokens();
       this.panel.webview.postMessage({
-        command: 'storedTokenResolved',
-        data: { url: data.url, token: token || '' }
+        command: 'gitLabTokenSaved',
+        data: { url: data.url, storedGitLabTokens }
       });
+      this.postNotice('success', `GitLab token saved for ${data.url}.`);
     } catch (error: any) {
-      this.postNotice('error', `Failed to load stored token: ${error?.message || error}`);
+      this.postNotice('error', `Failed to save GitLab token: ${error?.message || error}`);
     }
   }
 
-  private async handleSubmit(data: SignUpSubmitData): Promise<void> {
+  private async handleRemoveGitLabToken(data: { url: string }): Promise<void> {
     if (!this.panel) {
       return;
     }
 
     try {
-      this.postProgress('backend', 'Saving backend URL...');
-      await this.settingsManager.setBaseUrl(data.backendUrl);
-
-      this.postProgress('git', 'Configuring git...');
-      await this.setGitConfig('user.name', data.gitName.trim());
-      await this.setGitConfig('user.email', data.gitEmail.trim());
-
-      this.postProgress('password', 'Setting password...');
-      await this.setInitialPassword(data);
-
-      this.postProgress('token', 'Storing GitLab token...');
-      await this.gitLabTokenManager.storeToken(data.gitlabUrl, data.gitlabToken);
-
+      await this.gitLabTokenManager.removeToken(data.url);
+      const storedGitLabTokens = await this.loadStoredGitLabTokens();
       this.panel.webview.postMessage({
-        command: 'submitResult',
-        data: { success: true }
+        command: 'gitLabTokenRemoved',
+        data: { url: data.url, storedGitLabTokens }
       });
-
-      vscode.window.showInformationMessage(
-        'Password set successfully! Please log in with your new credentials.'
-      );
-      await vscode.commands.executeCommand('computor.login');
+      this.postNotice('success', `GitLab token removed for ${data.url}.`);
     } catch (error: any) {
-      const errorMessage = error?.message || String(error);
-      console.error('[SignUpWebview] Submit error:', error);
-      this.panel?.webview.postMessage({
-        command: 'submitResult',
-        data: { success: false, error: errorMessage }
-      });
+      this.postNotice('error', `Failed to remove GitLab token: ${error?.message || error}`);
     }
   }
 
-  private async setInitialPassword(data: SignUpSubmitData): Promise<void> {
-    const payload: SetPasswordRequest = {
-      new_password: data.password,
-      confirm_password: data.password,
-      provider_auth: {
-        method: 'gitlab_pat',
-        credentials: {
-          access_token: data.gitlabToken,
-          gitlab_url: data.gitlabUrl
-        }
-      }
-    };
-
-    const url = `${data.backendUrl}/password/set`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.detail) {
-          errorMessage = errorJson.detail;
-        } else if (errorJson.message) {
-          errorMessage = errorJson.message;
-        }
-      } catch {
-        if (errorText) {
-          errorMessage = errorText;
-        }
-      }
-
-      throw new Error(errorMessage);
+  private async handleChangePassword(raw: any): Promise<void> {
+    if (!this.panel) {
+      return;
     }
 
-    const result: PasswordOperationResponse = await response.json();
-    console.log('[SignUpWebview] Password set successfully:', result);
+    const currentPassword = typeof raw?.currentPassword === 'string' ? raw.currentPassword : undefined;
+    const newPassword = typeof raw?.newPassword === 'string' ? raw.newPassword : undefined;
+    const confirmPassword = typeof raw?.confirmPassword === 'string' ? raw.confirmPassword : undefined;
+
+    if (!currentPassword) {
+      this.postNotice('error', 'Current password is required.');
+      return;
+    }
+    if (!newPassword) {
+      this.postNotice('error', 'New password cannot be empty.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      this.postNotice('error', 'New password and confirmation do not match.');
+      return;
+    }
+
+    if (!this.apiService) {
+      this.postNotice('error', 'Password changes require an active login session.');
+      return;
+    }
+
+    let username: string | undefined;
+    try {
+      username = await this.context.secrets.get('computor.username');
+    } catch {
+      username = undefined;
+    }
+
+    if (!username) {
+      this.postNotice('error', 'Password changes are only available for password-based authentication.');
+      return;
+    }
+
+    try {
+      const payload: UserPassword = {
+        password_old: currentPassword,
+        password: newPassword
+      };
+      await this.apiService.updateUserPassword(payload);
+      await this.updateStoredCredentials(username, newPassword);
+      this.postNotice('success', 'Password updated successfully.');
+    } catch (error: any) {
+      const detail = error?.message || error?.response?.data?.detail || String(error);
+      this.postNotice('error', `Failed to update password: ${detail}`);
+    }
   }
 
-  private postProgress(step: string, message: string): void {
-    this.panel?.webview.postMessage({
-      command: 'submitProgress',
-      data: { step, message }
-    });
+  private async updateStoredCredentials(username: string, newPassword: string): Promise<void> {
+    try {
+      await this.context.secrets.store('computor.username', username);
+      await this.context.secrets.store('computor.password', newPassword);
+    } catch (error) {
+      console.warn('[SettingsWebview] Failed to persist updated credentials:', error);
+    }
   }
 
   private postNotice(type: string, message: string): void {

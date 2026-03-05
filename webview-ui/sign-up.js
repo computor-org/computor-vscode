@@ -7,7 +7,12 @@
     gitName: '',
     gitEmail: '',
     storedGitLabTokens: [],
-    gitlabEntries: [],
+    gitlabSource: 'new',
+    selectedStoredUrl: '',
+    gitlabUrl: '',
+    gitlabToken: '',
+    gitlabValidationStatus: 'pending',
+    gitlabValidationMessage: '',
     password: '',
     confirmPassword: '',
     submitting: false,
@@ -16,7 +21,11 @@
   };
   Object.assign(state, window.__INITIAL_STATE__ || {});
 
-  var nextEntryId = 1;
+  if (state.storedGitLabTokens && state.storedGitLabTokens.length > 0) {
+    state.gitlabSource = 'stored';
+    state.selectedStoredUrl = state.storedGitLabTokens[0].url;
+  }
+
   var liveValidators = [];
 
   function escapeHtml(value) {
@@ -76,65 +85,72 @@
     post('saveGitConfig', { gitName: state.gitName.trim(), gitEmail: state.gitEmail.trim() });
   }
 
-  // --- GitLab entry management ---
+  // --- GitLab source switching ---
 
-  function addGitLabEntry() {
-    state.gitlabEntries.push({
-      id: nextEntryId++,
-      url: '',
-      token: '',
-      validationStatus: 'pending',
-      validationMessage: ''
-    });
+  function switchGitlabSource(source) {
+    state.gitlabSource = source;
+    state.gitlabValidationStatus = 'pending';
+    state.gitlabValidationMessage = '';
+    if (source === 'stored' && state.storedGitLabTokens.length > 0 && !state.selectedStoredUrl) {
+      state.selectedStoredUrl = state.storedGitLabTokens[0].url;
+    }
     render();
   }
 
-  function removeGitLabEntry(entryId) {
-    state.gitlabEntries = state.gitlabEntries.filter(function (e) { return e.id !== entryId; });
+  function selectStoredToken(url) {
+    state.selectedStoredUrl = url;
+    state.gitlabValidationStatus = 'pending';
+    state.gitlabValidationMessage = '';
     render();
   }
 
-  function removeStoredGitLabToken(url) {
-    post('removeGitLabToken', { url: url });
-  }
+  // --- GitLab token validation ---
 
-  function validateGitLabEntry(entryId) {
-    var entry = state.gitlabEntries.find(function (e) { return e.id === entryId; });
-    if (!entry) { return; }
+  function validateGitLabToken() {
+    if (state.gitlabSource === 'stored') {
+      if (!state.selectedStoredUrl) {
+        state.gitlabValidationStatus = 'invalid';
+        state.gitlabValidationMessage = 'Select a stored GitLab instance';
+        render();
+        return;
+      }
+      state.gitlabValidationStatus = 'validating';
+      state.gitlabValidationMessage = 'Loading stored token...';
+      render();
+      post('resolveStoredToken', { url: state.selectedStoredUrl });
+      return;
+    }
 
-    var urlError = V.url(entry.url, { label: 'GitLab URL' });
+    var urlError = V.url(state.gitlabUrl, { label: 'GitLab URL' });
     if (urlError) {
-      entry.validationStatus = 'invalid';
-      entry.validationMessage = urlError;
+      state.gitlabValidationStatus = 'invalid';
+      state.gitlabValidationMessage = urlError;
       render();
       return;
     }
 
-    if (!entry.token || entry.token.length < 10) {
-      entry.validationStatus = 'invalid';
-      entry.validationMessage = 'Token is too short';
+    if (!state.gitlabToken || state.gitlabToken.length < 10) {
+      state.gitlabValidationStatus = 'invalid';
+      state.gitlabValidationMessage = 'Token is too short';
       render();
       return;
     }
 
-    entry.validationStatus = 'validating';
-    entry.validationMessage = 'Validating...';
+    state.gitlabValidationStatus = 'validating';
+    state.gitlabValidationMessage = 'Validating...';
     render();
 
-    post('validateGitLabToken', { url: normalizeUrl(entry.url), token: entry.token });
-  }
-
-  function saveGitLabEntry(entryId) {
-    var entry = state.gitlabEntries.find(function (e) { return e.id === entryId; });
-    if (!entry || entry.validationStatus !== 'valid') {
-      state.notice = { type: 'error', message: 'Validate the token before saving.' };
-      render();
-      return;
-    }
-    post('saveGitLabToken', { url: normalizeUrl(entry.url), token: entry.token });
+    post('validateGitLabToken', { url: normalizeUrl(state.gitlabUrl), token: state.gitlabToken });
   }
 
   // --- Submit ---
+
+  function getEffectiveGitLab() {
+    if (state.gitlabSource === 'stored') {
+      return { url: state.selectedStoredUrl, token: state._resolvedStoredToken || '' };
+    }
+    return { url: normalizeUrl(state.gitlabUrl), token: state.gitlabToken };
+  }
 
   function handleSubmit() {
     var errors = [];
@@ -145,19 +161,28 @@
     if (nameErr) { errors.push(nameErr); }
     var emailErr = V.email(state.gitEmail);
     if (emailErr) { errors.push(emailErr); }
+
+    if (state.gitlabSource === 'stored') {
+      if (!state.selectedStoredUrl) {
+        errors.push('Select a GitLab instance');
+      }
+    } else {
+      var gitlabUrlErr = V.url(state.gitlabUrl, { label: 'GitLab URL' });
+      if (gitlabUrlErr) { errors.push(gitlabUrlErr); }
+      if (!state.gitlabToken || state.gitlabToken.length < 10) {
+        errors.push('GitLab token is required');
+      }
+    }
+
+    if (state.gitlabValidationStatus !== 'valid') {
+      errors.push('GitLab token must be validated before submitting');
+    }
+
     var pwErr = V.minLength(state.password, 12, { label: 'Password' });
     if (pwErr) { errors.push(pwErr); }
     var matchErr = V.matches(state.password, state.confirmPassword, { message: 'Passwords do not match' });
     if (matchErr) { errors.push(matchErr); }
 
-    var hasUnvalidated = state.gitlabEntries.some(function (e) {
-      return e.validationStatus !== 'valid';
-    });
-    if (state.gitlabEntries.length > 0 && hasUnvalidated) {
-      errors.push('All new GitLab tokens must be validated before submitting');
-    }
-
-    // Force-touch all live validators to show inline errors
     liveValidators.forEach(function (lv) { lv.validate(); });
 
     if (errors.length > 0) {
@@ -171,76 +196,77 @@
     state.progressMessage = '';
     render();
 
-    var gitlabEntries = state.gitlabEntries
-      .filter(function (e) { return e.validationStatus === 'valid'; })
-      .map(function (e) { return { url: normalizeUrl(e.url), token: e.token }; });
-
+    var gitlab = getEffectiveGitLab();
     post('submit', {
       backendUrl: state.backendUrl.trim(),
       gitName: state.gitName.trim(),
       gitEmail: state.gitEmail.trim(),
       password: state.password,
-      gitlabEntries: gitlabEntries
+      gitlabUrl: gitlab.url,
+      gitlabToken: gitlab.token
     });
   }
 
   // --- Rendering ---
 
-  function renderStoredTokens() {
-    if (!state.storedGitLabTokens || state.storedGitLabTokens.length === 0) {
-      return '<p class="section-description" style="margin-top: 4px;">No stored tokens yet.</p>';
-    }
-    var items = state.storedGitLabTokens.map(function (t) {
-      return '<div class="gitlab-stored-item">' +
-        '<span class="gitlab-stored-url">' + escapeHtml(t.url) + '</span>' +
-        '<span class="gitlab-stored-status">' + (t.hasToken ? 'Token stored' : 'No token') + '</span>' +
-        '<button type="button" class="btn btn-danger btn-sm gitlab-remove-stored-btn" data-url="' + escapeHtml(t.url) + '">Remove</button>' +
+  function renderGitLabSection() {
+    var hasStored = state.storedGitLabTokens && state.storedGitLabTokens.length > 0;
+
+    var html = '<div class="sign-up-section">' +
+      '<div class="section-header"><h2>GitLab Authentication</h2></div>' +
+      '<p class="section-description">Authenticate with your GitLab account. The token needs api, read_repository, and write_repository scopes.</p>';
+
+    if (hasStored) {
+      html += '<div class="gitlab-source-tabs">' +
+        '<button type="button" class="gitlab-source-tab' + (state.gitlabSource === 'stored' ? ' active' : '') + '" data-source="stored">Use Stored Token</button>' +
+        '<button type="button" class="gitlab-source-tab' + (state.gitlabSource === 'new' ? ' active' : '') + '" data-source="new">Enter New Token</button>' +
       '</div>';
-    });
-    return '<div class="gitlab-stored-list">' + items.join('') + '</div>';
-  }
-
-  function renderGitLabEntry(entry) {
-    var statusClass = entry.validationStatus;
-    var statusText = '';
-    switch (entry.validationStatus) {
-      case 'valid':      statusText = entry.validationMessage || 'Valid'; break;
-      case 'invalid':    statusText = entry.validationMessage || 'Invalid'; break;
-      case 'validating': statusText = 'Validating...'; break;
-      default:           statusText = 'Not validated'; break;
     }
-    var canSave = entry.validationStatus === 'valid';
 
-    return '<div class="gitlab-entry" data-entry-id="' + entry.id + '">' +
-      '<div class="gitlab-entry-header">' +
-        '<span>New GitLab Instance</span>' +
-        '<button type="button" class="btn-icon gitlab-remove-btn" data-entry-id="' + entry.id + '" title="Remove">&times;</button>' +
-      '</div>' +
-      '<div class="gitlab-entry-fields">' +
+    if (state.gitlabSource === 'stored' && hasStored) {
+      html += '<div class="form-field">' +
+        '<label for="gitlab-stored-select">GitLab Instance</label>' +
+        '<select id="gitlab-stored-select" class="form-select">';
+      state.storedGitLabTokens.forEach(function (t) {
+        html += '<option value="' + escapeHtml(t.url) + '"' +
+          (state.selectedStoredUrl === t.url ? ' selected' : '') + '>' +
+          escapeHtml(t.url) + (t.hasToken ? '' : ' (no token)') +
+        '</option>';
+      });
+      html += '</select></div>';
+    } else {
+      html += '<div class="form-row">' +
         '<div class="form-field">' +
-          '<label>GitLab URL</label>' +
-          '<input type="url" class="gitlab-url-input" data-entry-id="' + entry.id + '" ' +
-            'value="' + escapeHtml(entry.url) + '" placeholder="https://gitlab.example.com">' +
+          '<label for="gitlab-url">GitLab URL</label>' +
+          '<input type="url" id="gitlab-url" value="' + escapeHtml(state.gitlabUrl) + '" placeholder="https://gitlab.example.com">' +
           '<span class="field-error"></span>' +
         '</div>' +
         '<div class="form-field">' +
-          '<label>Personal Access Token</label>' +
-          '<input type="password" class="gitlab-token-input" data-entry-id="' + entry.id + '" ' +
-            'value="' + escapeHtml(entry.token) + '" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx">' +
+          '<label for="gitlab-token">Personal Access Token</label>' +
+          '<input type="password" id="gitlab-token" value="' + escapeHtml(state.gitlabToken) + '" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx">' +
           '<span class="field-error"></span>' +
         '</div>' +
-      '</div>' +
-      '<div class="gitlab-entry-actions">' +
-        '<button type="button" class="btn btn-secondary btn-sm gitlab-validate-btn" data-entry-id="' + entry.id + '">Validate</button>' +
-        '<button type="button" class="btn btn-primary btn-sm gitlab-save-btn" data-entry-id="' + entry.id + '"' +
-          (canSave ? '' : ' disabled') + '>Save Token</button>' +
-        '<span class="gitlab-validation-status ' + statusClass + '">' + escapeHtml(statusText) + '</span>' +
-      '</div>' +
-    '</div>';
+      '</div>';
+    }
+
+    var gitlabStatusClass = state.gitlabValidationStatus;
+    var gitlabStatusText = '';
+    switch (state.gitlabValidationStatus) {
+      case 'valid':      gitlabStatusText = state.gitlabValidationMessage || 'Valid'; break;
+      case 'invalid':    gitlabStatusText = state.gitlabValidationMessage || 'Invalid'; break;
+      case 'validating': gitlabStatusText = 'Validating...'; break;
+      default:           gitlabStatusText = 'Not validated'; break;
+    }
+
+    html += '<div class="gitlab-entry-actions">' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="validate-gitlab-btn">Validate</button>' +
+      '<span class="gitlab-validation-status ' + gitlabStatusClass + '">' + escapeHtml(gitlabStatusText) + '</span>' +
+    '</div></div>';
+
+    return html;
   }
 
   function render() {
-    // Tear down previous live validators
     liveValidators.forEach(function (lv) { lv.destroy(); });
     liveValidators = [];
 
@@ -257,8 +283,6 @@
     if (state.submitting && state.progressMessage) {
       progressHtml = '<div class="sign-up-progress">' + escapeHtml(state.progressMessage) + '</div>';
     }
-
-    var gitlabEntriesHtml = state.gitlabEntries.map(renderGitLabEntry).join('');
 
     root.innerHTML =
       '<h1>Computor Sign Up</h1>' +
@@ -298,19 +322,11 @@
         '</div>' +
       '</div>' +
 
-      '<div class="sign-up-section">' +
-        '<div class="section-header">' +
-          '<h2>GitLab Instances</h2>' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="add-gitlab-btn">+ Add</button>' +
-        '</div>' +
-        '<p class="section-description">Manage your GitLab personal access tokens. Tokens need api, read_repository, and write_repository scopes.</p>' +
-        renderStoredTokens() +
-        '<div id="gitlab-entries">' + gitlabEntriesHtml + '</div>' +
-      '</div>' +
+      renderGitLabSection() +
 
       '<div class="sign-up-section">' +
         '<div class="section-header"><h2>Set Password</h2></div>' +
-        '<p class="section-description">Set your initial password (minimum 12 characters). This cannot be changed later without an administrator reset.</p>' +
+        '<p class="section-description">Set your initial password (minimum 12 characters).</p>' +
         '<div class="form-row">' +
           '<div class="form-field">' +
             '<label for="password">Password</label>' +
@@ -343,63 +359,38 @@
     bindInput('backend-url', function (v) { state.backendUrl = v; });
     bindInput('git-name', function (v) { state.gitName = v; });
     bindInput('git-email', function (v) { state.gitEmail = v; });
+    bindInput('gitlab-url', function (v) {
+      state.gitlabUrl = v;
+      state.gitlabValidationStatus = 'pending';
+      state.gitlabValidationMessage = '';
+    });
+    bindInput('gitlab-token', function (v) {
+      state.gitlabToken = v;
+      state.gitlabValidationStatus = 'pending';
+      state.gitlabValidationMessage = '';
+    });
     bindInput('password', function (v) { state.password = v; });
     bindInput('confirm-password', function (v) { state.confirmPassword = v; });
 
     bindClick('save-backend-url-btn', saveBackendUrl);
     bindClick('save-git-config-btn', saveGitConfig);
-    bindClick('add-gitlab-btn', addGitLabEntry);
+    bindClick('validate-gitlab-btn', validateGitLabToken);
     bindClick('submit-btn', handleSubmit);
 
-    document.querySelectorAll('.gitlab-url-input').forEach(function (input) {
-      input.addEventListener('input', function (e) {
-        var entry = findEntryFromElement(e.target);
-        if (entry) {
-          entry.url = e.target.value;
-          entry.validationStatus = 'pending';
-          entry.validationMessage = '';
-        }
+    // GitLab source tabs
+    document.querySelectorAll('.gitlab-source-tab').forEach(function (tab) {
+      tab.addEventListener('click', function (e) {
+        switchGitlabSource(e.target.getAttribute('data-source'));
       });
     });
 
-    document.querySelectorAll('.gitlab-token-input').forEach(function (input) {
-      input.addEventListener('input', function (e) {
-        var entry = findEntryFromElement(e.target);
-        if (entry) {
-          entry.token = e.target.value;
-          entry.validationStatus = 'pending';
-          entry.validationMessage = '';
-        }
+    // Stored token selector
+    var selectEl = document.getElementById('gitlab-stored-select');
+    if (selectEl) {
+      selectEl.addEventListener('change', function (e) {
+        selectStoredToken(e.target.value);
       });
-    });
-
-    document.querySelectorAll('.gitlab-validate-btn').forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
-        var entryId = parseInt(e.target.getAttribute('data-entry-id'), 10);
-        validateGitLabEntry(entryId);
-      });
-    });
-
-    document.querySelectorAll('.gitlab-save-btn').forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
-        var entryId = parseInt(e.target.getAttribute('data-entry-id'), 10);
-        saveGitLabEntry(entryId);
-      });
-    });
-
-    document.querySelectorAll('.gitlab-remove-btn').forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
-        var entryId = parseInt(e.target.getAttribute('data-entry-id'), 10);
-        removeGitLabEntry(entryId);
-      });
-    });
-
-    document.querySelectorAll('.gitlab-remove-stored-btn').forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
-        var url = e.target.getAttribute('data-url');
-        removeStoredGitLabToken(url);
-      });
-    });
+    }
   }
 
   function attachValidation() {
@@ -415,6 +406,16 @@
       return V.email(v);
     });
 
+    if (state.gitlabSource === 'new') {
+      attachLive('gitlab-url', function (v) {
+        return V.url(v, { label: 'GitLab URL' });
+      });
+
+      attachLive('gitlab-token', function (v) {
+        return V.minLength(v, 10, { label: 'Token' });
+      });
+    }
+
     attachLive('password', function (v) {
       return V.minLength(v, 12, { label: 'Password' });
     });
@@ -422,18 +423,6 @@
     attachLive('confirm-password', function (v) {
       if (!v) { return 'Confirmation is required'; }
       return V.matches(v, state.password, { message: 'Passwords do not match' });
-    });
-
-    document.querySelectorAll('.gitlab-url-input').forEach(function (input) {
-      liveValidators.push(V.attachLiveValidation(input, function (v) {
-        return V.url(v, { label: 'GitLab URL' });
-      }));
-    });
-
-    document.querySelectorAll('.gitlab-token-input').forEach(function (input) {
-      liveValidators.push(V.attachLiveValidation(input, function (v) {
-        return V.minLength(v, 10, { label: 'Token' });
-      }));
     });
   }
 
@@ -458,11 +447,6 @@
     if (el) { el.addEventListener('click', handler); }
   }
 
-  function findEntryFromElement(el) {
-    var entryId = parseInt(el.getAttribute('data-entry-id'), 10);
-    return state.gitlabEntries.find(function (en) { return en.id === entryId; });
-  }
-
   // --- Message handling ---
 
   window.addEventListener('message', function (event) {
@@ -473,6 +457,9 @@
       case 'validationResult':
         handleValidationResult(message.data);
         break;
+      case 'storedTokenResolved':
+        handleStoredTokenResolved(message.data);
+        break;
       case 'submitResult':
         handleSubmitResult(message.data);
         break;
@@ -482,15 +469,6 @@
         break;
       case 'notice':
         handleNotice(message.data);
-        break;
-      case 'gitLabTokenSaved':
-        handleGitLabTokenSaved(message.data);
-        break;
-      case 'gitLabTokenRemoved':
-        handleGitLabTokenRemoved(message.data);
-        break;
-      case 'update':
-        if (message.data) { Object.assign(state, message.data); render(); }
         break;
     }
   });
@@ -505,9 +483,6 @@
       btnId = 'save-backend-url-btn';
     } else if (msg.indexOf('Git configuration saved') !== -1) {
       btnId = 'save-git-config-btn';
-    } else if (msg.indexOf('GitLab token saved') !== -1) {
-      // Handled by gitLabTokenSaved message, but show indicator too
-      btnId = null;
     }
 
     if (btnId) {
@@ -518,7 +493,6 @@
       }
     }
 
-    // Fallback: show as top-level notice for errors or unmatched messages
     if (data.type !== 'success') {
       state.notice = data;
       render();
@@ -526,37 +500,28 @@
   }
 
   function handleValidationResult(data) {
-    var entry = state.gitlabEntries.find(function (e) {
-      return normalizeUrl(e.url) === data.url;
-    });
-    if (!entry) { return; }
-
     if (data.valid) {
-      entry.validationStatus = 'valid';
-      entry.validationMessage = 'Authenticated as ' + (data.name || data.username || 'unknown');
+      state.gitlabValidationStatus = 'valid';
+      state.gitlabValidationMessage = 'Authenticated as ' + (data.name || data.username || 'unknown');
     } else {
-      entry.validationStatus = 'invalid';
-      entry.validationMessage = data.error || 'Validation failed';
+      state.gitlabValidationStatus = 'invalid';
+      state.gitlabValidationMessage = data.error || 'Validation failed';
     }
     render();
   }
 
-  function handleGitLabTokenSaved(data) {
-    state.storedGitLabTokens = data.storedGitLabTokens || state.storedGitLabTokens;
-    state.gitlabEntries = state.gitlabEntries.filter(function (e) {
-      return normalizeUrl(e.url) !== data.url;
-    });
-    render();
-    // Show inline indicator on the Add button
-    var addBtn = document.getElementById('add-gitlab-btn');
-    if (addBtn) {
-      V.showSaveIndicator(addBtn, { message: 'Token saved' });
+  function handleStoredTokenResolved(data) {
+    if (!data.token) {
+      state.gitlabValidationStatus = 'invalid';
+      state.gitlabValidationMessage = 'No token found for this instance';
+      render();
+      return;
     }
-  }
-
-  function handleGitLabTokenRemoved(data) {
-    state.storedGitLabTokens = data.storedGitLabTokens || state.storedGitLabTokens;
+    state._resolvedStoredToken = data.token;
+    state.gitlabValidationStatus = 'validating';
+    state.gitlabValidationMessage = 'Validating...';
     render();
+    post('validateGitLabToken', { url: data.url, token: data.token });
   }
 
   function handleSubmitResult(data) {
