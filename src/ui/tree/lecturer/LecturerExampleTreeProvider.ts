@@ -162,18 +162,31 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
   }
 }
 
+const PROTECTED_NAMES = new Set(['meta.yaml', 'test.yaml', 'content']);
+
 class FileSystemTreeItem extends vscode.TreeItem {
   constructor(
     public readonly filePath: string,
     public readonly isDirectory: boolean,
-    public readonly relativePath: string
+    public readonly relativePath: string,
+    public readonly isWorking: boolean = false
   ) {
     super(
       path.basename(filePath),
       isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     );
     this.id = `file-${filePath}`;
-    this.contextValue = isDirectory ? 'folder' : 'file';
+    const name = path.basename(filePath);
+    const isProtected = PROTECTED_NAMES.has(name);
+    if (isWorking) {
+      if (isDirectory) {
+        this.contextValue = isProtected ? 'workingFolderProtected' : 'workingFolder';
+      } else {
+        this.contextValue = isProtected ? 'workingFileProtected' : 'workingFile';
+      }
+    } else {
+      this.contextValue = isDirectory ? 'versionFolder' : 'versionFile';
+    }
     this.iconPath = new vscode.ThemeIcon(isDirectory ? 'folder' : 'file');
     this.tooltip = relativePath;
     this.resourceUri = vscode.Uri.file(filePath);
@@ -187,12 +200,14 @@ class FileSystemTreeItem extends vscode.TreeItem {
   }
 }
 
-export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.TreeDragAndDropController<ExampleTreeItem> {
+export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.TreeDragAndDropController<vscode.TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-  public readonly dropMimeTypes: string[] = [];
-  public readonly dragMimeTypes = ['application/vnd.code.tree.computorexample'];
+  private static readonly FS_MIME_TYPE = 'application/vnd.code.tree.computorfilesystem';
+
+  public readonly dropMimeTypes: string[] = [LecturerExampleTreeProvider.FS_MIME_TYPE];
+  public readonly dragMimeTypes = ['application/vnd.code.tree.computorexample', LecturerExampleTreeProvider.FS_MIME_TYPE];
 
   private apiService: ComputorApiService;
   private searchQuery: string = '';
@@ -251,12 +266,12 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       }
 
       if (element instanceof CheckedOutVersionTreeItem) {
-        return this.getFileSystemItems(element.version.fullPath);
+        return this.getFileSystemItems(element.version.fullPath, element.version.isWorking);
       }
 
       if (element instanceof FileSystemTreeItem) {
         if (element.isDirectory) {
-          return this.getFileSystemItems(element.filePath);
+          return this.getFileSystemItems(element.filePath, element.isWorking);
         }
       }
 
@@ -387,7 +402,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     );
   }
 
-  private getFileSystemItems(dirPath: string): vscode.TreeItem[] {
+  private getFileSystemItems(dirPath: string, isWorking: boolean = false): vscode.TreeItem[] {
     try {
       if (!fs.existsSync(dirPath)) { return []; }
 
@@ -399,7 +414,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
         const fullPath = path.join(dirPath, item);
         const stat = fs.statSync(fullPath);
         const relativePath = vscode.workspace.asRelativePath(fullPath);
-        treeItems.push(new FileSystemTreeItem(fullPath, stat.isDirectory(), relativePath));
+        treeItems.push(new FileSystemTreeItem(fullPath, stat.isDirectory(), relativePath, isWorking));
       }
 
       treeItems.sort((a, b) => {
@@ -465,25 +480,85 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
   }
 
-  public handleDrag(source: readonly ExampleTreeItem[], treeDataTransfer: vscode.DataTransfer, _token: vscode.CancellationToken): void | Thenable<void> {
-    const draggedExamples = source.map(item => ({
-      exampleId: item.example.id,
-      title: item.example.title,
-      description: null,
-      identifier: item.example.identifier,
-      repositoryId: item.example.example_repository_id
-    }));
+  public handleDrag(source: readonly vscode.TreeItem[], treeDataTransfer: vscode.DataTransfer, _token: vscode.CancellationToken): void | Thenable<void> {
+    const exampleItems = source.filter((s): s is ExampleTreeItem => s instanceof ExampleTreeItem);
+    if (exampleItems.length > 0) {
+      const draggedExamples = exampleItems.map(item => ({
+        exampleId: item.example.id,
+        title: item.example.title,
+        description: null,
+        identifier: item.example.identifier,
+        repositoryId: item.example.example_repository_id
+      }));
 
-    const dragDropManager = DragDropManager.getInstance();
-    dragDropManager.setDraggedData(draggedExamples);
+      const dragDropManager = DragDropManager.getInstance();
+      dragDropManager.setDraggedData(draggedExamples);
 
-    const jsonData = JSON.stringify(draggedExamples);
-    const item = new vscode.DataTransferItem(jsonData);
-    treeDataTransfer.set('application/vnd.code.tree.computorexample', item);
+      const jsonData = JSON.stringify(draggedExamples);
+      treeDataTransfer.set('application/vnd.code.tree.computorexample', new vscode.DataTransferItem(jsonData));
+    }
+
+    const fsItems = source.filter((s): s is FileSystemTreeItem => s instanceof FileSystemTreeItem && s.isWorking);
+    if (fsItems.length > 0) {
+      const paths = fsItems.map(item => item.filePath);
+      treeDataTransfer.set(LecturerExampleTreeProvider.FS_MIME_TYPE, new vscode.DataTransferItem(JSON.stringify(paths)));
+    }
   }
 
   public async handleDrop(target: vscode.TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
-    void target;
-    void dataTransfer;
+    const fsData = dataTransfer.get(LecturerExampleTreeProvider.FS_MIME_TYPE);
+    if (!fsData) { return; }
+
+    let targetDir: string | undefined;
+    if (target instanceof FileSystemTreeItem && target.isWorking) {
+      targetDir = target.isDirectory ? target.filePath : path.dirname(target.filePath);
+    } else if (target instanceof CheckedOutVersionTreeItem && target.version.isWorking) {
+      targetDir = target.version.fullPath;
+    }
+
+    if (!targetDir) { return; }
+
+    let sourcePaths: string[];
+    try {
+      sourcePaths = JSON.parse(fsData.value as string) as string[];
+    } catch {
+      return;
+    }
+
+    const moved: string[] = [];
+    for (const sourcePath of sourcePaths) {
+      const name = path.basename(sourcePath);
+      const dest = path.join(targetDir, name);
+
+      if (sourcePath === dest) { continue; }
+      if (dest.startsWith(sourcePath + path.sep)) {
+        vscode.window.showWarningMessage(`Cannot move "${name}" into itself.`);
+        continue;
+      }
+      if (PROTECTED_NAMES.has(name)) {
+        vscode.window.showWarningMessage(`Cannot move protected item "${name}".`);
+        continue;
+      }
+
+      if (fs.existsSync(dest)) {
+        const overwrite = await vscode.window.showWarningMessage(
+          `"${name}" already exists in the target folder. Overwrite?`,
+          { modal: true },
+          'Overwrite'
+        );
+        if (overwrite !== 'Overwrite') { continue; }
+      }
+
+      try {
+        fs.renameSync(sourcePath, dest);
+        moved.push(name);
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to move "${name}": ${error}`);
+      }
+    }
+
+    if (moved.length > 0) {
+      this.refresh();
+    }
   }
 }

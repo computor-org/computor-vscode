@@ -259,6 +259,36 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.compareFileWithWorking",
+        "title": "Compare with Working",
+        "icon": "$(diff)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.newFile",
+        "title": "New File",
+        "icon": "$(new-file)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.newFolder",
+        "title": "New Folder",
+        "icon": "$(new-folder)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.renameItem",
+        "title": "Rename",
+        "icon": "$(edit)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.deleteItem",
+        "title": "Delete",
+        "icon": "$(trash)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.checkoutAllFilteredExamples",
         "title": "Checkout All Filtered Examples",
         "icon": "$(cloud-download)",
@@ -1179,8 +1209,43 @@
           "group": "2_restore@2"
         },
         {
+          "command": "computor.lecturer.compareFileWithWorking",
+          "when": "view == computor.lecturer.examples && viewItem == versionFile",
+          "group": "1_compare@1"
+        },
+        {
           "command": "computor.lecturer.deleteCheckedOutVersion",
           "when": "view == computor.lecturer.examples && (viewItem == checkedOutWorking || viewItem == checkedOutVersion)",
+          "group": "3_danger@1"
+        },
+        {
+          "command": "computor.lecturer.newFile",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "computor.lecturer.newFolder",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
+          "group": "1_actions@4"
+        },
+        {
+          "command": "computor.lecturer.newFile",
+          "when": "view == computor.lecturer.examples && (viewItem == workingFolder || viewItem == workingFolderProtected)",
+          "group": "1_create@1"
+        },
+        {
+          "command": "computor.lecturer.newFolder",
+          "when": "view == computor.lecturer.examples && (viewItem == workingFolder || viewItem == workingFolderProtected)",
+          "group": "1_create@2"
+        },
+        {
+          "command": "computor.lecturer.renameItem",
+          "when": "view == computor.lecturer.examples && (viewItem == workingFile || viewItem == workingFolder)",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "computor.lecturer.deleteItem",
+          "when": "view == computor.lecturer.examples && (viewItem == workingFile || viewItem == workingFolder)",
           "group": "3_danger@1"
         },
         {

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
+import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, FileSystemTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
 import { writeExampleFiles } from '../utils/exampleFileWriter';
 import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
@@ -197,6 +197,35 @@ export class LecturerExampleCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.compareWithWorking', async (item: CheckedOutVersionTreeItem) => {
         await this.compareWithWorking(item);
+      })
+    );
+
+    // Compare a single version file with its working counterpart
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.compareFileWithWorking', async (item: FileSystemTreeItem) => {
+        await this.compareFileWithWorking(item);
+      })
+    );
+
+    // File management commands
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.newFile', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+        await this.createFileOrFolder(item, false);
+      })
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.newFolder', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+        await this.createFileOrFolder(item, true);
+      })
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.renameItem', async (item: FileSystemTreeItem) => {
+        await this.renameFileSystemItem(item);
+      })
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.deleteItem', async (item: FileSystemTreeItem) => {
+        await this.deleteFileSystemItem(item);
       })
     );
 
@@ -1534,6 +1563,47 @@ Explain how to use this example.
     );
   }
 
+  private async compareFileWithWorking(item: FileSystemTreeItem): Promise<void> {
+    if (!item || item.isDirectory) { return; }
+
+    const examplesDir = this.getExamplesDir();
+    if (!examplesDir) { return; }
+
+    const relativeToPExamples = path.relative(examplesDir, item.filePath);
+    const segments = relativeToPExamples.split(path.sep);
+    if (segments.length < 3) { return; }
+
+    const exampleDirectory = segments[0]!;
+    const relativeFile = segments.slice(2).join(path.sep);
+
+    const workingDir = getWorkingPath(examplesDir, exampleDirectory);
+    if (!fs.existsSync(workingDir)) {
+      vscode.window.showWarningMessage('No working copy found to compare against.');
+      return;
+    }
+
+    const workingFilePath = path.join(workingDir, relativeFile);
+    const versionUri = vscode.Uri.file(item.filePath);
+
+    if (!fs.existsSync(workingFilePath)) {
+      const action = await vscode.window.showWarningMessage(
+        `"${relativeFile}" does not exist in the working copy.`,
+        'Open Version File'
+      );
+      if (action === 'Open Version File') {
+        await vscode.commands.executeCommand('vscode.open', versionUri);
+      }
+      return;
+    }
+
+    const workingUri = vscode.Uri.file(workingFilePath);
+    const versionLabel = segments[1];
+    await vscode.commands.executeCommand('vscode.diff',
+      versionUri, workingUri,
+      `${relativeFile} (${versionLabel} ↔ working)`
+    );
+  }
+
   private collectFiles(dir: string, baseDir: string): string[] {
     const results: string[] = [];
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -1547,6 +1617,85 @@ Explain how to use this example.
       }
     }
     return results;
+  }
+
+  private async createFileOrFolder(item: FileSystemTreeItem | CheckedOutVersionTreeItem, isFolder: boolean): Promise<void> {
+    let targetDir: string;
+    if (item instanceof CheckedOutVersionTreeItem) {
+      targetDir = item.version.fullPath;
+    } else if (item.isDirectory) {
+      targetDir = item.filePath;
+    } else {
+      targetDir = path.dirname(item.filePath);
+    }
+
+    const name = await vscode.window.showInputBox({
+      prompt: isFolder ? 'Enter folder name' : 'Enter file name',
+      placeHolder: isFolder ? 'new-folder' : 'new-file.txt'
+    });
+    if (!name) { return; }
+
+    const targetPath = path.join(targetDir, name);
+    if (fs.existsSync(targetPath)) {
+      vscode.window.showErrorMessage(`"${name}" already exists.`);
+      return;
+    }
+
+    try {
+      if (isFolder) {
+        fs.mkdirSync(targetPath, { recursive: true });
+      } else {
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.writeFileSync(targetPath, '', 'utf8');
+        const doc = await vscode.workspace.openTextDocument(targetPath);
+        await vscode.window.showTextDocument(doc);
+      }
+      this.treeProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to create: ${error}`);
+    }
+  }
+
+  private async renameFileSystemItem(item: FileSystemTreeItem): Promise<void> {
+    if (!item) { return; }
+
+    const oldName = path.basename(item.filePath);
+    const newName = await vscode.window.showInputBox({
+      prompt: `Rename "${oldName}"`,
+      value: oldName
+    });
+    if (!newName || newName === oldName) { return; }
+
+    const newPath = path.join(path.dirname(item.filePath), newName);
+    if (fs.existsSync(newPath)) {
+      vscode.window.showErrorMessage(`"${newName}" already exists.`);
+      return;
+    }
+
+    try {
+      fs.renameSync(item.filePath, newPath);
+      this.treeProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to rename: ${error}`);
+    }
+  }
+
+  private async deleteFileSystemItem(item: FileSystemTreeItem): Promise<void> {
+    if (!item) { return; }
+
+    const name = path.basename(item.filePath);
+    const label = item.isDirectory ? `folder "${name}" and all its contents` : `file "${name}"`;
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete ${label}?`, 'Delete', 'Cancel'
+    );
+    if (confirm !== 'Delete') { return; }
+
+    try {
+      fs.rmSync(item.filePath, { recursive: true, force: true });
+      this.treeProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+    }
   }
 
   private async getNextPosition(courseId: string, parentPath: string | undefined, contents: CourseContentList[]): Promise<number> {
