@@ -313,7 +313,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       items.push(tagsItem);
     }
 
-    items.push(new RootSectionTreeItem('checkedOut', 'Checked Out', 'folder-library'));
+    items.push(new RootSectionTreeItem('checkedOut', 'Local Examples', 'folder-library'));
     items.push(new RootSectionTreeItem('repositories', 'Repositories', 'cloud'));
 
     return items;
@@ -337,9 +337,9 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
 
     if (this.checkedOutCache.length === 0) {
-      const empty = new vscode.TreeItem('No examples checked out', vscode.TreeItemCollapsibleState.None);
+      const empty = new vscode.TreeItem('No local examples', vscode.TreeItemCollapsibleState.None);
       empty.iconPath = new vscode.ThemeIcon('info');
-      empty.tooltip = 'Right-click an example in Repositories to check it out';
+      empty.tooltip = 'Check out an example from Repositories or create a new one';
       return [empty];
     }
 

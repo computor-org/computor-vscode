@@ -929,6 +929,11 @@
           "group": "1_actions@1"
         },
         {
+          "command": "computor.lecturer.createNewExample",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_checkedOut",
+          "group": "1_actions@1"
+        },
+        {
           "command": "computor.lecturer.uploadExamplesFromZip",
           "when": "view == computor.lecturer.examples && viewItem == exampleRepository",
           "group": "1_actions@2"

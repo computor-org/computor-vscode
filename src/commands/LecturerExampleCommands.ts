@@ -727,90 +727,94 @@ export class LecturerExampleCommands {
     }
   }
 
-  /**
-   * Create a new example
-   */
   private async createNewExample(): Promise<void> {
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
     const title = await vscode.window.showInputBox({
       prompt: 'Example Title',
       placeHolder: 'Enter a title for the new example'
     });
-
-    if (!title) {
-      return;
-    }
+    if (!title) { return; }
 
     const identifier = await vscode.window.showInputBox({
-      prompt: 'Example Identifier',
+      prompt: 'Example Identifier (ltree: letters, digits, dots, underscores)',
       placeHolder: 'e.g., hello.world.basic',
-      value: title.toLowerCase().replace(/\s+/g, '.')
+      value: title.toLowerCase().replace(/\s+/g, '.'),
+      validateInput: (value) => {
+        if (!/^[a-zA-Z0-9._]+$/.test(value)) {
+          return 'Only letters, digits, dots, and underscores allowed (ltree format)';
+        }
+        return undefined;
+      }
     });
+    if (!identifier) { return; }
 
-    if (!identifier) {
-      return;
-    }
-
-    const directory = await vscode.window.showInputBox({
-      prompt: 'Directory Name',
-      placeHolder: 'Directory name for the example',
-      value: identifier.replace(/\./g, '-')
-    });
-
-    if (!directory) {
-      return;
-    }
-
-    // Create example in workspace
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage('No workspace folder open');
-      return;
-    }
-
-    // Create example directly in workspace root
-    const examplePath = path.join(workspaceFolder.uri.fsPath, directory);
-    
     try {
-      // Check if directory already exists
-      if (fs.existsSync(examplePath)) {
-        vscode.window.showErrorMessage(`Directory '${directory}' already exists in workspace`);
+      const existingExamples = await this.apiService.getExamples();
+      if (existingExamples.some(e => e.identifier === identifier)) {
+        vscode.window.showErrorMessage(`Example identifier "${identifier}" is already in use.`);
         return;
       }
-      
-      // Create directory
-      fs.mkdirSync(examplePath, { recursive: true });
+    } catch {
+      const proceed = await vscode.window.showWarningMessage(
+        'Could not verify identifier uniqueness. Continue anyway?',
+        'Continue', 'Cancel'
+      );
+      if (proceed !== 'Continue') { return; }
+    }
 
-      // Create meta.yaml file
-      const metaContent = `title: ${title}
-identifier: ${identifier}
-directory: ${directory}
-category: ""
-tags: []
-description: |
-  Example description here
-`;
+    const directory = identifier;
 
-      fs.writeFileSync(path.join(examplePath, 'meta.yaml'), metaContent);
+    // Select target repository for future uploads
+    let repositoryId = '';
+    try {
+      const repositories = await this.apiService.getExampleRepositories();
+      if (repositories.length > 0) {
+        const picked = await vscode.window.showQuickPick(
+          repositories.map(r => ({ label: r.name, description: r.description || undefined, id: r.id })),
+          { placeHolder: 'Select target repository for this example' }
+        );
+        if (!picked) { return; }
+        repositoryId = picked.id;
+      }
+    } catch {
+      // Continue without repository — user can pick one on upload
+    }
 
-      // Create README.md
-      const readmeContent = `# ${title}
+    const workingDir = getWorkingPath(examplesPath, directory);
+    if (fs.existsSync(workingDir)) {
+      vscode.window.showErrorMessage(`Local example "${directory}" already exists.`);
+      return;
+    }
 
-## Description
-Add your example description here.
+    try {
+      fs.mkdirSync(workingDir, { recursive: true });
 
-## Usage
-Explain how to use this example.
-`;
+      const metaContent = `title: "${title}"\nidentifier: "${identifier}"\ndirectory: "${directory}"\nversion: "0.1.0"\ncategory: ""\ntags: []\ndescription: |\n  Example description here\n`;
+      fs.writeFileSync(path.join(workingDir, 'meta.yaml'), metaContent);
 
-      fs.writeFileSync(path.join(examplePath, 'README.md'), readmeContent);
+      fs.mkdirSync(path.join(workingDir, 'content'), { recursive: true });
+      fs.writeFileSync(path.join(workingDir, 'content', '.gitkeep'), '');
 
-      vscode.window.showInformationMessage(`Example '${title}' created at ${examplePath}`);
-      
-      // Open the meta.yaml file
-      const doc = await vscode.workspace.openTextDocument(path.join(examplePath, 'meta.yaml'));
+      const metadata: CheckoutMetadata = {
+        exampleId: '',
+        repositoryId,
+        directory,
+        versionId: '',
+        versionTag: '0.1.0',
+        versionNumber: 0,
+        checkedOutAt: new Date().toISOString()
+      };
+      writeCheckoutMetadata(workingDir, metadata);
+
+      this.treeProvider.refresh();
+
+      const doc = await vscode.workspace.openTextDocument(path.join(workingDir, 'meta.yaml'));
       await vscode.window.showTextDocument(doc);
+
+      vscode.window.showInformationMessage(`Created new example "${title}" in Local Examples`);
     } catch (error) {
-      console.error('Failed to create example:', error);
       vscode.window.showErrorMessage(`Failed to create example: ${error}`);
     }
   }
