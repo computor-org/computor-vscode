@@ -43,7 +43,7 @@ export class BackendConnectionService {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
-      const response = await fetch(`${baseUrl}/`, {
+      await fetch(`${baseUrl}/`, {
         method: 'HEAD',
         signal: controller.signal,
         headers: {
@@ -53,26 +53,14 @@ export class BackendConnectionService {
       
       clearTimeout(timeout);
       
-      if (response.ok) {
-        this.retryCount = 0;
-        const status: BackendStatus = {
-          isReachable: true,
-          lastCheckTime: new Date()
-        };
-        this.lastStatus = status;
-        this.updateStatusBar('connected');
-        return status;
-      }
-      
-      // Backend is reachable but returned an error
+      // Any HTTP response means the server is reachable
+      this.retryCount = 0;
       const status: BackendStatus = {
-        isReachable: false,
-        error: 'UNKNOWN',
-        message: `Backend returned ${response.status}: ${response.statusText}`,
+        isReachable: true,
         lastCheckTime: new Date()
       };
       this.lastStatus = status;
-      this.updateStatusBar('error');
+      this.updateStatusBar('connected');
       return status;
       
     } catch (error: any) {

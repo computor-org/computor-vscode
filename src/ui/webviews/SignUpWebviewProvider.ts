@@ -5,6 +5,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { GitLabTokenManager } from '../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { GitEnvironmentService } from '../../services/GitEnvironmentService';
+import { BackendConnectionService } from '../../services/BackendConnectionService';
 import { SetPasswordRequest, PasswordOperationResponse } from '../../types/generated/common';
 
 const execFileAsync = promisify(execFile);
@@ -98,6 +99,9 @@ export class SignUpWebviewProvider extends BaseWebviewProvider {
       case 'saveGitConfig':
         await this.handleSaveGitConfig(message.data);
         break;
+      case 'validateBackendUrl':
+        await this.handleValidateBackendUrl(message.data);
+        break;
       case 'validateGitLabToken':
         await this.handleValidateGitLabToken(message.data);
         break;
@@ -170,6 +174,21 @@ export class SignUpWebviewProvider extends BaseWebviewProvider {
     } catch (error: any) {
       this.postNotice('error', `Failed to save git config: ${error?.message || error}`);
     }
+  }
+
+  private async handleValidateBackendUrl(data: { url: string }): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+
+    const status = await BackendConnectionService.getInstance().checkBackendConnection(data.url.trim());
+    this.panel.webview.postMessage({
+      command: 'backendUrlValidationResult',
+      data: {
+        valid: status.isReachable,
+        error: status.message
+      }
+    });
   }
 
   private async handleValidateGitLabToken(data: { url: string; token: string }): Promise<void> {

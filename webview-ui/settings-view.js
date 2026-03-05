@@ -12,6 +12,8 @@
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
+    backendUrlValidationStatus: 'pending',
+    backendUrlValidationMessage: '',
     notice: null
   };
   Object.assign(state, window.__INITIAL_STATE__ || {});
@@ -99,8 +101,24 @@
     });
   }
 
+  function validateBackendUrl() {
+    var urlError = V.url(state.backendUrl, { label: 'Server URL' });
+    if (urlError) {
+      state.backendUrlValidationStatus = 'invalid';
+      state.backendUrlValidationMessage = urlError;
+      render();
+      return;
+    }
+    state.backendUrlValidationStatus = 'validating';
+    state.backendUrlValidationMessage = 'Checking...';
+    render();
+    post('validateBackendUrl', { url: state.backendUrl.trim() });
+  }
+
   function cancelBackendUrl() {
     state.backendUrl = initialValues.backendUrl;
+    state.backendUrlValidationStatus = 'pending';
+    state.backendUrlValidationMessage = '';
     render();
   }
 
@@ -365,7 +383,19 @@
             '<input type="url" id="backend-url" value="' + escapeHtml(state.backendUrl) + '" placeholder="http://localhost:8000">' +
             '<span class="field-error"></span>' +
           '</div>' +
+          (function () {
+            var cls = state.backendUrlValidationStatus;
+            var txt = '';
+            switch (state.backendUrlValidationStatus) {
+              case 'valid':      txt = 'Reachable'; break;
+              case 'invalid':    txt = state.backendUrlValidationMessage || 'Unreachable'; break;
+              case 'validating': txt = 'Checking...'; break;
+              default:           txt = ''; break;
+            }
+            return txt ? '<span class="gitlab-validation-status ' + cls + '">' + escapeHtml(txt) + '</span>' : '';
+          })() +
           '<div class="section-actions">' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="validate-backend-url-btn">Validate</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="cancel-backend-url-btn">Cancel</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="save-backend-url-btn">Save URL</button>' +
           '</div>' +
@@ -410,13 +440,18 @@
   // --- Event binding ---
 
   function attachEventListeners() {
-    bindInput('backend-url', function (v) { state.backendUrl = v; });
+    bindInput('backend-url', function (v) {
+      state.backendUrl = v;
+      state.backendUrlValidationStatus = 'pending';
+      state.backendUrlValidationMessage = '';
+    });
     bindInput('git-name', function (v) { state.gitName = v; });
     bindInput('git-email', function (v) { state.gitEmail = v; });
     bindInput('current-password', function (v) { state.currentPassword = v; });
     bindInput('new-password', function (v) { state.newPassword = v; });
     bindInput('confirm-new-password', function (v) { state.confirmPassword = v; });
 
+    bindClick('validate-backend-url-btn', validateBackendUrl);
     bindClick('save-backend-url-btn', saveBackendUrl);
     bindClick('cancel-backend-url-btn', cancelBackendUrl);
     bindClick('save-git-config-btn', saveGitConfig);
@@ -588,6 +623,9 @@
     if (!message) { return; }
 
     switch (message.command) {
+      case 'backendUrlValidationResult':
+        handleBackendUrlValidationResult(message.data);
+        break;
       case 'validationResult':
         handleValidationResult(message.data);
         break;
@@ -605,6 +643,12 @@
         break;
     }
   });
+
+  function handleBackendUrlValidationResult(data) {
+    state.backendUrlValidationStatus = data.valid ? 'valid' : 'invalid';
+    state.backendUrlValidationMessage = data.valid ? 'Reachable' : (data.error || 'Unreachable');
+    render();
+  }
 
   function handleNotice(data) {
     if (!data) { return; }
