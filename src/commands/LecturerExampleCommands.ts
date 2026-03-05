@@ -577,6 +577,11 @@ export class LecturerExampleCommands {
       uploadVersion = normalizeSemVer(custom);
     }
 
+    const confirm = await vscode.window.showInformationMessage(
+      `Upload "${title}" as version ${uploadVersion}?`, 'Upload', 'Cancel'
+    );
+    if (confirm !== 'Upload') { return; }
+
     // Update meta.yaml with the chosen version before uploading
     try {
       updateMetaYamlVersion(dirPath, uploadVersion);
