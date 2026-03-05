@@ -1457,7 +1457,7 @@ export class ComputorApiService {
 
   // Course Members API methods
   async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
-    const cacheKey = groupId ? `courseMembers-${courseId}-${groupId}` : `courseMembers-${courseId}`;
+    const cacheKey = groupId ? `courseMembers-${groupId}` : `courseMembers-${courseId}`;
 
     // Check cache first
     const cached = multiTierCache.get<CourseMemberList[]>(cacheKey);
@@ -1469,9 +1469,11 @@ export class ComputorApiService {
     const result = await errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
       const queryParams = new URLSearchParams();
-      queryParams.append('course_id', courseId);
+      queryParams.append('limit', '10000');
       if (groupId) {
         queryParams.append('course_group_id', groupId);
+      } else {
+        queryParams.append('course_id', courseId);
       }
 
       const response = await client.get<CourseMemberList[]>(`/course-members?${queryParams.toString()}`);
