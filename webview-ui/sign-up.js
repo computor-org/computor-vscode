@@ -1,7 +1,8 @@
 (function () {
-  const vscode = window.vscodeApi || acquireVsCodeApi();
+  var V = window.Validators;
+  var vscode = window.vscodeApi || acquireVsCodeApi();
 
-  const state = {
+  var state = {
     backendUrl: '',
     gitName: '',
     gitEmail: '',
@@ -11,11 +12,12 @@
     confirmPassword: '',
     submitting: false,
     progressMessage: '',
-    notice: null,
-    ...(window.__INITIAL_STATE__ || {})
+    notice: null
   };
+  Object.assign(state, window.__INITIAL_STATE__ || {});
 
-  let nextEntryId = 1;
+  var nextEntryId = 1;
+  var liveValidators = [];
 
   function escapeHtml(value) {
     if (value === undefined || value === null) {
@@ -30,64 +32,44 @@
   }
 
   function post(command, data) {
-    vscode.postMessage({ command, data });
+    vscode.postMessage({ command: command, data: data });
   }
 
   function normalizeUrl(url) {
-    try {
-      return new URL(url).origin;
-    } catch (e) {
-      return url;
-    }
-  }
-
-  function validateUrl(value) {
-    if (!value) {
-      return 'URL is required';
-    }
-    try {
-      var url = new URL(value);
-      if (!url.protocol.startsWith('http')) {
-        return 'URL must start with http:// or https://';
-      }
-      return null;
-    } catch (e) {
-      return 'Enter a valid URL';
-    }
-  }
-
-  function validateEmail(value) {
-    if (!value || !value.trim()) {
-      return 'Email is required';
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
-      return 'Enter a valid email address';
-    }
-    return null;
+    try { return new URL(url).origin; } catch (e) { return url; }
   }
 
   // --- Individual save handlers ---
 
   function saveBackendUrl() {
-    if (validateUrl(state.backendUrl)) {
-      state.notice = { type: 'error', message: 'Backend URL is invalid.' };
-      render();
-      return;
+    var urlValidator = liveValidators.find(function (lv) { return lv._fieldId === 'backend-url'; });
+    if (urlValidator) {
+      var err = urlValidator.validate();
+      if (err) { return; }
+    } else {
+      var error = V.url(state.backendUrl, { label: 'Server URL' });
+      if (error) {
+        state.notice = { type: 'error', message: error };
+        render();
+        return;
+      }
     }
     post('saveBackendUrl', { backendUrl: state.backendUrl.trim() });
   }
 
   function saveGitConfig() {
-    var errors = [];
-    if (!state.gitName || state.gitName.trim().length < 2) {
-      errors.push('Name must be at least 2 characters');
-    }
-    var emailError = validateEmail(state.gitEmail);
-    if (emailError) {
-      errors.push(emailError);
-    }
-    if (errors.length > 0) {
-      state.notice = { type: 'error', message: errors.join('. ') };
+    var hasErrors = false;
+    liveValidators.forEach(function (lv) {
+      if (lv._fieldId === 'git-name' || lv._fieldId === 'git-email') {
+        if (lv.validate()) { hasErrors = true; }
+      }
+    });
+    if (hasErrors) { return; }
+
+    var nameErr = V.minLength(state.gitName, 2, { label: 'Name' });
+    var emailErr = V.email(state.gitEmail);
+    if (nameErr || emailErr) {
+      state.notice = { type: 'error', message: [nameErr, emailErr].filter(Boolean).join('. ') };
       render();
       return;
     }
@@ -118,11 +100,9 @@
 
   function validateGitLabEntry(entryId) {
     var entry = state.gitlabEntries.find(function (e) { return e.id === entryId; });
-    if (!entry) {
-      return;
-    }
+    if (!entry) { return; }
 
-    var urlError = validateUrl(entry.url);
+    var urlError = V.url(entry.url, { label: 'GitLab URL' });
     if (urlError) {
       entry.validationStatus = 'invalid';
       entry.validationMessage = urlError;
@@ -154,41 +134,31 @@
     post('saveGitLabToken', { url: normalizeUrl(entry.url), token: entry.token });
   }
 
-  // --- Password submit ---
-
-  function validatePasswordFields() {
-    var errors = [];
-    if (!state.password || state.password.length < 12) {
-      errors.push('Password must be at least 12 characters');
-    }
-    if (state.password !== state.confirmPassword) {
-      errors.push('Passwords do not match');
-    }
-    return errors;
-  }
+  // --- Submit ---
 
   function handleSubmit() {
     var errors = [];
 
-    if (validateUrl(state.backendUrl)) {
-      errors.push('Backend URL is invalid');
-    }
-    if (!state.gitName || state.gitName.trim().length < 2) {
-      errors.push('Git name must be at least 2 characters');
-    }
-    var emailError = validateEmail(state.gitEmail);
-    if (emailError) {
-      errors.push(emailError);
-    }
-    var passwordErrors = validatePasswordFields();
-    errors = errors.concat(passwordErrors);
+    var urlErr = V.url(state.backendUrl, { label: 'Backend URL' });
+    if (urlErr) { errors.push(urlErr); }
+    var nameErr = V.minLength(state.gitName, 2, { label: 'Git name' });
+    if (nameErr) { errors.push(nameErr); }
+    var emailErr = V.email(state.gitEmail);
+    if (emailErr) { errors.push(emailErr); }
+    var pwErr = V.minLength(state.password, 12, { label: 'Password' });
+    if (pwErr) { errors.push(pwErr); }
+    var matchErr = V.matches(state.password, state.confirmPassword, { message: 'Passwords do not match' });
+    if (matchErr) { errors.push(matchErr); }
 
-    var hasUnvalidatedEntries = state.gitlabEntries.some(function (e) {
+    var hasUnvalidated = state.gitlabEntries.some(function (e) {
       return e.validationStatus !== 'valid';
     });
-    if (state.gitlabEntries.length > 0 && hasUnvalidatedEntries) {
+    if (state.gitlabEntries.length > 0 && hasUnvalidated) {
       errors.push('All new GitLab tokens must be validated before submitting');
     }
+
+    // Force-touch all live validators to show inline errors
+    liveValidators.forEach(function (lv) { lv.validate(); });
 
     if (errors.length > 0) {
       state.notice = { type: 'error', message: errors.join('. ') };
@@ -220,7 +190,6 @@
     if (!state.storedGitLabTokens || state.storedGitLabTokens.length === 0) {
       return '<p class="section-description" style="margin-top: 4px;">No stored tokens yet.</p>';
     }
-
     var items = state.storedGitLabTokens.map(function (t) {
       return '<div class="gitlab-stored-item">' +
         '<span class="gitlab-stored-url">' + escapeHtml(t.url) + '</span>' +
@@ -228,7 +197,6 @@
         '<button type="button" class="btn btn-danger btn-sm gitlab-remove-stored-btn" data-url="' + escapeHtml(t.url) + '">Remove</button>' +
       '</div>';
     });
-
     return '<div class="gitlab-stored-list">' + items.join('') + '</div>';
   }
 
@@ -236,20 +204,11 @@
     var statusClass = entry.validationStatus;
     var statusText = '';
     switch (entry.validationStatus) {
-      case 'valid':
-        statusText = entry.validationMessage || 'Valid';
-        break;
-      case 'invalid':
-        statusText = entry.validationMessage || 'Invalid';
-        break;
-      case 'validating':
-        statusText = 'Validating...';
-        break;
-      default:
-        statusText = 'Not validated';
-        break;
+      case 'valid':      statusText = entry.validationMessage || 'Valid'; break;
+      case 'invalid':    statusText = entry.validationMessage || 'Invalid'; break;
+      case 'validating': statusText = 'Validating...'; break;
+      default:           statusText = 'Not validated'; break;
     }
-
     var canSave = entry.validationStatus === 'valid';
 
     return '<div class="gitlab-entry" data-entry-id="' + entry.id + '">' +
@@ -262,11 +221,13 @@
           '<label>GitLab URL</label>' +
           '<input type="url" class="gitlab-url-input" data-entry-id="' + entry.id + '" ' +
             'value="' + escapeHtml(entry.url) + '" placeholder="https://gitlab.example.com">' +
+          '<span class="field-error"></span>' +
         '</div>' +
         '<div class="form-field">' +
           '<label>Personal Access Token</label>' +
           '<input type="password" class="gitlab-token-input" data-entry-id="' + entry.id + '" ' +
             'value="' + escapeHtml(entry.token) + '" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx">' +
+          '<span class="field-error"></span>' +
         '</div>' +
       '</div>' +
       '<div class="gitlab-entry-actions">' +
@@ -279,10 +240,12 @@
   }
 
   function render() {
+    // Tear down previous live validators
+    liveValidators.forEach(function (lv) { lv.destroy(); });
+    liveValidators = [];
+
     var root = document.getElementById('app');
-    if (!root) {
-      return;
-    }
+    if (!root) { return; }
 
     var noticeHtml = '';
     if (state.notice) {
@@ -297,21 +260,11 @@
 
     var gitlabEntriesHtml = state.gitlabEntries.map(renderGitLabEntry).join('');
 
-    var passwordError = '';
-    if (state.password && state.password.length > 0 && state.password.length < 12) {
-      passwordError = 'Password must be at least 12 characters';
-    }
-    var confirmError = '';
-    if (state.confirmPassword && state.password !== state.confirmPassword) {
-      confirmError = 'Passwords do not match';
-    }
-
     root.innerHTML =
       '<h1>Computor Sign Up</h1>' +
       '<p class="subtitle">Set your initial password and configure your environment.</p>' +
       noticeHtml +
 
-      // Two-column row: Backend URL | Git Config
       '<div class="sign-up-grid">' +
         '<div class="sign-up-section">' +
           '<div class="section-header"><h2>Backend URL</h2></div>' +
@@ -319,6 +272,7 @@
           '<div class="form-field">' +
             '<label for="backend-url">Server URL</label>' +
             '<input type="url" id="backend-url" value="' + escapeHtml(state.backendUrl) + '" placeholder="http://localhost:8000">' +
+            '<span class="field-error"></span>' +
           '</div>' +
           '<div class="section-actions">' +
             '<button type="button" class="btn btn-secondary btn-sm" id="save-backend-url-btn">Save URL</button>' +
@@ -331,10 +285,12 @@
           '<div class="form-field">' +
             '<label for="git-name">Name</label>' +
             '<input type="text" id="git-name" value="' + escapeHtml(state.gitName) + '" placeholder="John Doe">' +
+            '<span class="field-error"></span>' +
           '</div>' +
           '<div class="form-field">' +
             '<label for="git-email">Email</label>' +
             '<input type="email" id="git-email" value="' + escapeHtml(state.gitEmail) + '" placeholder="you@example.com">' +
+            '<span class="field-error"></span>' +
           '</div>' +
           '<div class="section-actions">' +
             '<button type="button" class="btn btn-secondary btn-sm" id="save-git-config-btn">Save Git Config</button>' +
@@ -342,7 +298,6 @@
         '</div>' +
       '</div>' +
 
-      // Full-width: GitLab Instances
       '<div class="sign-up-section">' +
         '<div class="section-header">' +
           '<h2>GitLab Instances</h2>' +
@@ -353,7 +308,6 @@
         '<div id="gitlab-entries">' + gitlabEntriesHtml + '</div>' +
       '</div>' +
 
-      // Full-width: Password + Submit
       '<div class="sign-up-section">' +
         '<div class="section-header"><h2>Set Password</h2></div>' +
         '<p class="section-description">Set your initial password (minimum 12 characters). This cannot be changed later without an administrator reset.</p>' +
@@ -361,12 +315,12 @@
           '<div class="form-field">' +
             '<label for="password">Password</label>' +
             '<input type="password" id="password" value="' + escapeHtml(state.password) + '" placeholder="Min 12 characters">' +
-            '<span class="field-error">' + escapeHtml(passwordError) + '</span>' +
+            '<span class="field-error"></span>' +
           '</div>' +
           '<div class="form-field">' +
             '<label for="confirm-password">Confirm Password</label>' +
             '<input type="password" id="confirm-password" value="' + escapeHtml(state.confirmPassword) + '" placeholder="Confirm password">' +
-            '<span class="field-error">' + escapeHtml(confirmError) + '</span>' +
+            '<span class="field-error"></span>' +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -380,7 +334,10 @@
       '</div>';
 
     attachEventListeners();
+    attachValidation();
   }
+
+  // --- Event binding ---
 
   function attachEventListeners() {
     bindInput('backend-url', function (v) { state.backendUrl = v; });
@@ -445,6 +402,50 @@
     });
   }
 
+  function attachValidation() {
+    attachLive('backend-url', function (v) {
+      return V.url(v, { label: 'Server URL' });
+    });
+
+    attachLive('git-name', function (v) {
+      return V.minLength(v, 2, { label: 'Name' });
+    });
+
+    attachLive('git-email', function (v) {
+      return V.email(v);
+    });
+
+    attachLive('password', function (v) {
+      return V.minLength(v, 12, { label: 'Password' });
+    });
+
+    attachLive('confirm-password', function (v) {
+      if (!v) { return 'Confirmation is required'; }
+      return V.matches(v, state.password, { message: 'Passwords do not match' });
+    });
+
+    document.querySelectorAll('.gitlab-url-input').forEach(function (input) {
+      liveValidators.push(V.attachLiveValidation(input, function (v) {
+        return V.url(v, { label: 'GitLab URL' });
+      }));
+    });
+
+    document.querySelectorAll('.gitlab-token-input').forEach(function (input) {
+      liveValidators.push(V.attachLiveValidation(input, function (v) {
+        return V.minLength(v, 10, { label: 'Token' });
+      }));
+    });
+  }
+
+  function attachLive(id, validatorFn) {
+    var el = document.getElementById(id);
+    if (el) {
+      var lv = V.attachLiveValidation(el, validatorFn);
+      lv._fieldId = id;
+      liveValidators.push(lv);
+    }
+  }
+
   function bindInput(id, setter) {
     var el = document.getElementById(id);
     if (el) {
@@ -454,9 +455,7 @@
 
   function bindClick(id, handler) {
     var el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('click', handler);
-    }
+    if (el) { el.addEventListener('click', handler); }
   }
 
   function findEntryFromElement(el) {
@@ -468,9 +467,7 @@
 
   window.addEventListener('message', function (event) {
     var message = event.data;
-    if (!message) {
-      return;
-    }
+    if (!message) { return; }
 
     switch (message.command) {
       case 'validationResult':
@@ -484,8 +481,7 @@
         render();
         break;
       case 'notice':
-        state.notice = message.data;
-        render();
+        handleNotice(message.data);
         break;
       case 'gitLabTokenSaved':
         handleGitLabTokenSaved(message.data);
@@ -494,23 +490,46 @@
         handleGitLabTokenRemoved(message.data);
         break;
       case 'update':
-        if (message.data) {
-          Object.assign(state, message.data);
-          render();
-        }
-        break;
-      default:
+        if (message.data) { Object.assign(state, message.data); render(); }
         break;
     }
   });
+
+  function handleNotice(data) {
+    if (!data) { return; }
+
+    var btnId = null;
+    var msg = data.message || '';
+
+    if (msg.indexOf('Backend URL saved') !== -1) {
+      btnId = 'save-backend-url-btn';
+    } else if (msg.indexOf('Git configuration saved') !== -1) {
+      btnId = 'save-git-config-btn';
+    } else if (msg.indexOf('GitLab token saved') !== -1) {
+      // Handled by gitLabTokenSaved message, but show indicator too
+      btnId = null;
+    }
+
+    if (btnId) {
+      var btn = document.getElementById(btnId);
+      if (btn) {
+        V.showSaveIndicator(btn, { message: data.type === 'success' ? 'Saved' : msg, type: data.type });
+        return;
+      }
+    }
+
+    // Fallback: show as top-level notice for errors or unmatched messages
+    if (data.type !== 'success') {
+      state.notice = data;
+      render();
+    }
+  }
 
   function handleValidationResult(data) {
     var entry = state.gitlabEntries.find(function (e) {
       return normalizeUrl(e.url) === data.url;
     });
-    if (!entry) {
-      return;
-    }
+    if (!entry) { return; }
 
     if (data.valid) {
       entry.validationStatus = 'valid';
@@ -528,6 +547,11 @@
       return normalizeUrl(e.url) !== data.url;
     });
     render();
+    // Show inline indicator on the Add button
+    var addBtn = document.getElementById('add-gitlab-btn');
+    if (addBtn) {
+      V.showSaveIndicator(addBtn, { message: 'Token saved' });
+    }
   }
 
   function handleGitLabTokenRemoved(data) {
@@ -538,7 +562,6 @@
   function handleSubmitResult(data) {
     state.submitting = false;
     state.progressMessage = '';
-
     if (data.success) {
       state.notice = { type: 'success', message: 'Sign-up successful! Redirecting to login...' };
     } else {

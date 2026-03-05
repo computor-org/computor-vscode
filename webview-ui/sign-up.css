@@ -104,12 +104,31 @@
 
 .form-field input.invalid {
   border-color: var(--vscode-inputValidation-errorBorder);
+  background-color: var(--vscode-inputValidation-errorBackground, rgba(211, 47, 47, 0.08));
+  box-shadow: inset 0 1px 2px rgba(211, 47, 47, 0.15);
+}
+
+.form-field input.valid {
+  border-color: var(--vscode-testing-iconPassed, #388e3c);
+  box-shadow: inset 0 1px 2px rgba(56, 142, 60, 0.12);
 }
 
 .form-field .field-error {
   font-size: 11px;
   color: var(--vscode-errorForeground);
+  min-height: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+  margin-top: 0;
+}
+
+.form-field .field-error.visible {
   min-height: 14px;
+  max-height: 28px;
+  opacity: 1;
+  margin-top: 2px;
 }
 
 .form-row {
@@ -334,4 +353,40 @@
   font-size: 13px;
   color: var(--vscode-descriptionForeground);
   font-style: italic;
+}
+
+/* Save indicator (inline success/error flash) */
+.save-indicator {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  vertical-align: middle;
+}
+
+.save-indicator.visible {
+  opacity: 1;
+}
+
+.save-indicator-success {
+  color: var(--vscode-testing-iconPassed, #388e3c);
+}
+
+.save-indicator-success::before {
+  content: '\2713';
+  margin-right: 4px;
+  font-size: 14px;
+}
+
+.save-indicator-error {
+  color: var(--vscode-errorForeground);
+}
+
+.save-indicator-error::before {
+  content: '\2717';
+  margin-right: 4px;
+  font-size: 14px;
 }

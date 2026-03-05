@@ -64,6 +64,7 @@ export class SignUpWebviewProvider extends BaseWebviewProvider {
     const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
     const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'sign-up.css');
     const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
+    const validatorsJsUri = this.getWebviewUri(webview, 'webview-ui', 'validators.js');
     const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'sign-up.js');
 
     return `<!DOCTYPE html>
@@ -83,6 +84,7 @@ export class SignUpWebviewProvider extends BaseWebviewProvider {
         window.__INITIAL_STATE__ = ${initialState};
       </script>
       <script nonce="${nonce}" src="${componentsJsUri}"></script>
+      <script nonce="${nonce}" src="${validatorsJsUri}"></script>
       <script nonce="${nonce}" src="${scriptUri}"></script>
     </body>
     </html>`;
