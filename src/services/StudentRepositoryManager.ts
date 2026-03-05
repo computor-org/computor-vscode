@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
-import { execAsync } from '../utils/exec';
+import { execAsync, execAsyncWithTimeout, GitTimeoutError } from '../utils/exec';
 import { CTGit } from '../git/CTGit';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
@@ -48,7 +48,8 @@ export class StudentRepositoryManager {
   async autoSetupRepositories(
     courseId?: string,
     onProgress?: (message: string) => void,
-    expandedCourseIds?: Set<string>
+    expandedCourseIds?: Set<string>,
+    cancellationToken?: vscode.CancellationToken
   ): Promise<void> {
     const report = onProgress || (() => {});
     console.log('[StudentRepositoryManager] Starting auto-setup of repositories');
@@ -94,13 +95,18 @@ export class StudentRepositoryManager {
       
       // Process each course's repositories
       for (const [courseIdForRepo, repos] of reposByCourse) {
+        if (cancellationToken?.isCancellationRequested) {
+          console.log('[StudentRepositoryManager] Repository setup cancelled by user');
+          report('Cancelled');
+          return;
+        }
         // Skip courses not in the expanded set (if provided)
         if (expandedCourseIds && !expandedCourseIds.has(courseIdForRepo)) {
           console.log(`[StudentRepositoryManager] Skipping course ${courseIdForRepo} (not expanded)`);
           continue;
         }
         report(`Processing repositories for course ${courseIdForRepo} (${repos.length})`);
-        await this.processRepositoriesForCourse(courseIdForRepo, repos, courseContents, report);
+        await this.processRepositoriesForCourse(courseIdForRepo, repos, courseContents, report, cancellationToken);
       }
       
       console.log('[StudentRepositoryManager] Repository setup completed');
@@ -165,10 +171,11 @@ export class StudentRepositoryManager {
    * Process repositories for a specific course
    */
   private async processRepositoriesForCourse(
-    courseId: string, 
+    courseId: string,
     repositories: RepositoryInfo[],
     courseContents: any[],
-    onProgress?: (message: string) => void
+    onProgress?: (message: string) => void,
+    cancellationToken?: vscode.CancellationToken
   ): Promise<void> {
     const report = onProgress || (() => {});
     if (repositories.length === 0) return;
@@ -224,6 +231,10 @@ export class StudentRepositoryManager {
 
     // Clone/update each unique repository only once
     for (const [, repoInfos] of uniqueRepos) {
+      if (cancellationToken?.isCancellationRequested) {
+        console.log('[StudentRepositoryManager] Repository setup cancelled by user');
+        return;
+      }
       const firstRepo = repoInfos[0];
       if (firstRepo && (firstRepo as any).fullPath) {
         const cloneUrl = firstRepo.cloneUrl;
@@ -284,12 +295,13 @@ export class StudentRepositoryManager {
         report('Upstream updates merged; pushing to origin...');
         // Push the update to origin
         try {
-          await execAsync('git push origin', {
+          await execAsyncWithTimeout('git push origin', {
             cwd: repoPath,
             env: {
               ...process.env,
               GIT_TERMINAL_PROMPT: '0'
-            }
+            },
+            timeout: 30_000
           });
           console.log('[StudentRepositoryManager] Pushed fork update to origin');
         } catch (error) {
@@ -544,12 +556,13 @@ export class StudentRepositoryManager {
       await execAsync(`git remote set-url upstream "${remoteUrl}"`, { cwd: repoPath });
     }
 
-    await execAsync('git fetch upstream', {
+    await execAsyncWithTimeout('git fetch upstream', {
       cwd: repoPath,
       env: {
         ...process.env,
         GIT_TERMINAL_PROMPT: '0'
-      }
+      },
+      timeout: 30_000
     });
 
     return upstreamExists;
@@ -591,12 +604,13 @@ export class StudentRepositoryManager {
 
   private async getUpstreamDefaultBranch(repoPath: string): Promise<string | undefined> {
     try {
-      const { stdout } = await execAsync('git remote show upstream', {
+      const { stdout } = await execAsyncWithTimeout('git remote show upstream', {
         cwd: repoPath,
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: '0'
-        }
+        },
+        timeout: 30_000
       });
 
       const match = stdout.match(/HEAD branch:\s*(.+)/);
@@ -644,13 +658,27 @@ export class StudentRepositoryManager {
   private async cloneRepository(repoPath: string, cloneUrl: string, token: string): Promise<string> {
     const attemptClone = async (activeToken: string): Promise<void> => {
       const authenticatedUrl = addTokenToGitUrl(cloneUrl, activeToken);
-      await execAsync(`git clone "${authenticatedUrl}" "${repoPath}"`, {
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: '0'
+      try {
+        await execAsyncWithTimeout(`git clone "${authenticatedUrl}" "${repoPath}"`, {
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: '0'
+          },
+          timeout: 40_000
+        });
+        console.log(`[StudentRepositoryManager] Successfully cloned to ${repoPath}`);
+      } catch (error) {
+        // Clean up partial clone directory on any failure
+        try {
+          if (fs.existsSync(repoPath)) {
+            await fs.promises.rm(repoPath, { recursive: true, force: true });
+            console.log(`[StudentRepositoryManager] Cleaned up partial clone at ${repoPath}`);
+          }
+        } catch (cleanupError) {
+          console.warn('[StudentRepositoryManager] Failed to clean up partial clone:', cleanupError);
         }
-      });
-      console.log(`[StudentRepositoryManager] Successfully cloned to ${repoPath}`);
+        throw error;
+      }
     };
 
     try {
@@ -659,7 +687,7 @@ export class StudentRepositoryManager {
     } catch (error: any) {
       console.error('[StudentRepositoryManager] Clone failed:', error);
 
-      if (!this.isAuthenticationError(error)) {
+      if (error instanceof GitTimeoutError || !this.isAuthenticationError(error)) {
         throw error;
       }
 
@@ -686,12 +714,13 @@ export class StudentRepositoryManager {
     report: (message: string) => void
   ): Promise<string> {
     try {
-      await execAsync('git fetch --all', {
+      await execAsyncWithTimeout('git fetch --all', {
         cwd: repoPath,
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: '0'
-        }
+        },
+        timeout: 30_000
       });
 
       const { stdout: branch } = await execAsync('git symbolic-ref --short HEAD 2>/dev/null || echo "DETACHED"', {
@@ -699,12 +728,13 @@ export class StudentRepositoryManager {
       });
 
       if (branch.trim() !== 'DETACHED') {
-        await execAsync('git pull --ff-only', {
+        await execAsyncWithTimeout('git pull --ff-only', {
           cwd: repoPath,
           env: {
             ...process.env,
             GIT_TERMINAL_PROMPT: '0'
-          }
+          },
+          timeout: 30_000
         });
       }
       return token;

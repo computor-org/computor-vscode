@@ -230,9 +230,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                         await vscode.window.withProgress({
                             location: vscode.ProgressLocation.Notification,
                             title: `Setting up repository for ${element.courseContent.title}...`,
-                            cancellable: false
-                        }, async () => {
-                            await this.repositoryManager!.autoSetupRepositories(courseId);
+                            cancellable: true
+                        }, async (progress, token) => {
+                            void progress;
+                            await this.repositoryManager!.autoSetupRepositories(courseId, undefined, undefined, token);
                             
                             // Re-fetch course contents to get updated directory paths
                             const courseContents = await this.apiService.getStudentCourseContents(courseId, { force: true }) || [];
@@ -319,10 +320,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                                     await vscode.window.withProgress({
                                         location: vscode.ProgressLocation.Notification,
                                         title: `Updating ${element.courseContent.title} from template...`,
-                                        cancellable: false
-                                    }, async () => {
-                                        // Call the repository manager's auto-setup which includes fork sync
-                                        await this.repositoryManager!.autoSetupRepositories(courseId);
+                                        cancellable: true
+                                    }, async (progress, token) => {
+                                        void progress;
+                                        await this.repositoryManager!.autoSetupRepositories(courseId, undefined, undefined, token);
                                     });
                                     
                                     // Re-read the directory after update
@@ -486,13 +487,15 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     await vscode.window.withProgress({
                         location: vscode.ProgressLocation.Notification,
                         title: `Setting up repositories for ${element.title}...`,
-                        cancellable: false
-                    }, async (progress) => {
+                        cancellable: true
+                    }, async (progress, token) => {
                         progress.report({ message: 'Starting...' });
                         try {
                             await this.repositoryManager!.autoSetupRepositories(
                                 selectedCourseId,
-                                (msg) => progress.report({ message: msg })
+                                (msg) => progress.report({ message: msg }),
+                                undefined,
+                                token
                             );
                         } catch (e) {
                             console.error(`[StudentTree] Repository setup failed for course ${selectedCourseId}:`, e);

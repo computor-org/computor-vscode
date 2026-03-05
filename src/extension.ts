@@ -702,10 +702,10 @@ class UnifiedController {
     // Courses that were never expanded will be set up lazily when first expanded
     if (expandedCourseIds.size > 0) {
       // Use external progress if available, otherwise show own popup
-      const setupRepositories = async (progressReport: (msg: string) => void) => {
+      const setupRepositories = async (progressReport: (msg: string) => void, cancellationToken?: vscode.CancellationToken) => {
         progressReport('Preparing repositories...');
         try {
-          await repositoryManager.autoSetupRepositories(undefined, progressReport, expandedCourseIds);
+          await repositoryManager.autoSetupRepositories(undefined, progressReport, expandedCourseIds, cancellationToken);
         } catch (e) {
           console.error('[initializeStudentView] Repository auto-setup failed:', e);
         }
@@ -718,9 +718,9 @@ class UnifiedController {
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
           title: 'Preparing course repositories...',
-          cancellable: false
-        }, async (progress) => {
-          await setupRepositories((msg) => progress.report({ message: msg }));
+          cancellable: true
+        }, async (progress, token) => {
+          await setupRepositories((msg) => progress.report({ message: msg }), token);
         });
       }
     } else {

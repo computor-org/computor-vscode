@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execAsync } from '../utils/exec';
+import { execAsyncWithTimeout } from '../utils/exec';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { ComputorApiService } from './ComputorApiService';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
@@ -69,11 +69,11 @@ export class LecturerRepositoryManager {
 
     if (!exists) {
       report(`Cloning course ${courseId} assignments...`);
-      await execAsync(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+      await execAsyncWithTimeout(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 40_000 });
     } else {
       report(`Pulling course ${courseId} assignments...`);
       try {
-        await execAsync('git pull --ff-only', { cwd: target, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+        await execAsyncWithTimeout('git pull --ff-only', { cwd: target, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 30_000 });
       } catch (error: any) {
         if (!isHistoryRewriteError(error)) {
           console.warn(`[LecturerRepo] Failed to pull course ${courseId}:`, error);
@@ -102,7 +102,7 @@ export class LecturerRepositoryManager {
 
         report(`Recreating course ${courseId} from origin...`);
         try {
-          await execAsync(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+          await execAsyncWithTimeout(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 40_000 });
         } catch (cloneError) {
           console.error(`[LecturerRepo] Re-clone failed for course ${courseId}:`, cloneError);
           vscode.window.showErrorMessage(`Computor could not recreate the assignments repository. Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
