@@ -2,10 +2,11 @@ import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerExampleTreeProvider } from '../tree/lecturer/LecturerExampleTreeProvider';
-import { LecturerRepositoryManager } from '../../services/LecturerRepositoryManager';
 import { writeExampleFiles } from '../../utils/exampleFileWriter';
 import { bumpVersion, normalizeSemVer } from '../../utils/versionHelpers';
 import { readMetaYamlVersion, updateMetaYamlVersion } from '../../utils/metaYamlHelpers';
+import { writeCheckoutMetadata } from '../../utils/checkedOutExampleManager';
+import { WorkspaceStructureManager } from '../../utils/workspaceStructure';
 import type { ExampleList, ExampleRepositoryList, ExampleVersionList } from '../../types/generated';
 import type { BumpPart } from '../../utils/versionHelpers';
 import * as fs from 'fs';
@@ -126,46 +127,60 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
     }
   }
 
+  private getExamplesPath(): string | undefined {
+    try {
+      return WorkspaceStructureManager.getInstance().getExamplesPath();
+    } catch {
+      return undefined;
+    }
+  }
+
   private async handleCheckout(versionId?: string): Promise<void> {
     const data = this.currentData as ExampleDetailData | undefined;
     if (!data) { return; }
 
-    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-    const assignmentsRoot = await repoManager.resolveAssignmentsRoot();
-    if (!assignmentsRoot) {
-      vscode.window.showErrorMessage('Assignments repository not found.');
+    const examplesPath = this.getExamplesPath();
+    if (!examplesPath) {
+      vscode.window.showErrorMessage('No workspace folder open.');
       return;
     }
 
     try {
-      const examplePath = path.join(assignmentsRoot, data.example.directory);
+      const examplePath = path.join(examplesPath, data.example.directory);
       if (fs.existsSync(examplePath)) {
         const overwrite = await vscode.window.showWarningMessage(
-          `Directory '${data.example.directory}' already exists. Overwrite?`, 'Yes', 'No'
+          `'${data.example.directory}' already exists in examples/. Overwrite?`, 'Yes', 'No'
         );
         if (overwrite !== 'Yes') { return; }
         fs.rmSync(examplePath, { recursive: true, force: true });
       }
 
-      let exampleData;
-      if (versionId) {
-        exampleData = await this.apiService.downloadExampleVersion(versionId);
-      } else {
-        exampleData = await this.apiService.downloadExample(data.example.id, false);
-      }
+      const exampleData = versionId
+        ? await this.apiService.downloadExampleVersion(versionId)
+        : await this.apiService.downloadExample(data.example.id, false);
 
       if (!exampleData) {
         vscode.window.showErrorMessage('Failed to download example');
         return;
       }
 
+      fs.mkdirSync(examplePath, { recursive: true });
       writeExampleFiles(exampleData.files, examplePath);
-      this.treeProvider.markExampleAsDownloaded(data.example.id, examplePath, exampleData.version_tag);
+
+      writeCheckoutMetadata(examplePath, {
+        exampleId: data.example.id,
+        repositoryId: data.repository.id,
+        versionId: versionId || exampleData.version_id || '',
+        versionTag: exampleData.version_tag,
+        versionNumber: 0,
+        checkedOutAt: new Date().toISOString()
+      });
 
       data.isDownloaded = true;
       data.downloadPath = examplePath;
       data.currentVersion = exampleData.version_tag;
 
+      this.treeProvider.refresh();
       vscode.window.showInformationMessage(`Checked out '${data.example.title}' [${exampleData.version_tag}]`);
       await this.refreshData();
     } catch (error) {
@@ -190,6 +205,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       const newVersion = bumpVersion(currentVersion, part);
       updateMetaYamlVersion(data.downloadPath, newVersion);
 
+      this.treeProvider.refresh();
       vscode.window.showInformationMessage(`Version bumped: ${normalizeSemVer(currentVersion)} -> ${newVersion}`);
       await this.refreshData();
     } catch (error) {

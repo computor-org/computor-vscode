@@ -3,14 +3,29 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { DragDropManager } from '../../../services/DragDropManager';
-import { 
+import {
   ExampleRepositoryList,
   ExampleList
 } from '../../../types/generated';
-import { LecturerRepositoryManager } from '../../../services/LecturerRepositoryManager';
+import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
+import { scanCheckedOutExamples } from '../../../utils/checkedOutExampleManager';
+import type { CheckedOutExample } from '../../../utils/checkedOutExampleManager';
 
 // Export tree items for use in commands
-export { ExampleRepositoryTreeItem, ExampleTreeItem, FileSystemTreeItem };
+export { ExampleRepositoryTreeItem, ExampleTreeItem, CheckedOutExampleTreeItem, FileSystemTreeItem, RootSectionTreeItem };
+
+class RootSectionTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly section: 'repositories' | 'checkedOut',
+    label: string,
+    icon: string
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.Expanded);
+    this.id = `root-${section}`;
+    this.contextValue = `rootSection_${section}`;
+    this.iconPath = new vscode.ThemeIcon(icon);
+  }
+}
 
 // Tree items for example view
 class ExampleRepositoryTreeItem extends vscode.TreeItem {
@@ -31,22 +46,15 @@ class ExampleTreeItem extends vscode.TreeItem {
   constructor(
     public readonly example: ExampleList,
     public readonly repository: ExampleRepositoryList,
-    public readonly isDownloaded: boolean = false,
-    public readonly downloadPath?: string,
-    public readonly version?: string
+    public readonly isCheckedOut: boolean = false
   ) {
-    super(
-      example.title, 
-      isDownloaded ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
-    );
+    super(example.title, vscode.TreeItemCollapsibleState.None);
     this.id = `example-${example.id}`;
-    this.contextValue = isDownloaded ? 'exampleDownloaded' : 'example';
-    this.iconPath = new vscode.ThemeIcon(isDownloaded ? 'folder-library' : 'file-code');
+    this.contextValue = isCheckedOut ? 'exampleCheckedOut' : 'example';
+    this.iconPath = new vscode.ThemeIcon(isCheckedOut ? 'check' : 'file-code');
     this.tooltip = this.getTooltip();
     this.description = this.getDescription();
-    
-    // Make it draggable for drag & drop to course content
-    this.command = undefined; // No default action on click
+    this.command = undefined;
   }
 
   private getTooltip(): string {
@@ -54,43 +62,59 @@ class ExampleTreeItem extends vscode.TreeItem {
       `Title: ${this.example.title}`,
       `Identifier: ${this.example.identifier}`
     ];
-    
-    if (this.example.subject) {
-      parts.push(`Subject: ${this.example.subject}`);
-    }
-    
-    if (this.example.category) {
-      parts.push(`Category: ${this.example.category}`);
-    }
-    
+    if (this.example.subject) { parts.push(`Subject: ${this.example.subject}`); }
+    if (this.example.category) { parts.push(`Category: ${this.example.category}`); }
     if (this.example.tags && this.example.tags.length > 0) {
       parts.push(`Tags: ${this.example.tags.join(', ')}`);
     }
-    
+    if (this.isCheckedOut) { parts.push('Status: Checked out locally'); }
     return parts.join('\n');
   }
 
   private getDescription(): string {
     const parts = [];
-
-    if (this.isDownloaded) {
-      if (this.version) {
-        parts.push(`[${this.version}] checked out`);
-      } else {
-        parts.push('checked out');
-      }
-    }
-
-    if (this.example.category) {
-      parts.push(this.example.category);
-    }
-
+    if (this.isCheckedOut) { parts.push('checked out'); }
+    if (this.example.category) { parts.push(this.example.category); }
     if (this.example.tags && this.example.tags.length > 0) {
       const tagStr = this.example.tags.slice(0, 2).join(', ');
       parts.push(`[${tagStr}${this.example.tags.length > 2 ? '...' : ''}]`);
     }
-
     return parts.join(' ');
+  }
+}
+
+class CheckedOutExampleTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly checkedOut: CheckedOutExample
+  ) {
+    super(checkedOut.directory, vscode.TreeItemCollapsibleState.Collapsed);
+    this.id = `checked-out-${checkedOut.metadata.exampleId}`;
+    this.contextValue = 'checkedOutExample';
+    this.iconPath = new vscode.ThemeIcon('folder-library');
+    this.tooltip = this.getTooltip();
+    this.description = this.getDescription();
+  }
+
+  private getTooltip(): string {
+    const m = this.checkedOut.metadata;
+    const parts = [
+      `Directory: ${this.checkedOut.directory}`,
+      `Example ID: ${m.exampleId}`,
+      `Checked out version: ${m.versionTag} (#${m.versionNumber})`,
+    ];
+    if (this.checkedOut.localVersion) {
+      parts.push(`Local meta.yaml version: ${this.checkedOut.localVersion}`);
+    }
+    parts.push(`Checked out: ${new Date(m.checkedOutAt).toLocaleString()}`);
+    return parts.join('\n');
+  }
+
+  private getDescription(): string {
+    const m = this.checkedOut.metadata;
+    if (this.checkedOut.localVersion && this.checkedOut.localVersion !== m.versionTag) {
+      return `${m.versionTag} -> ${this.checkedOut.localVersion} (modified)`;
+    }
+    return `v${m.versionTag}`;
   }
 }
 
@@ -110,8 +134,6 @@ class FileSystemTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon(isDirectory ? 'folder' : 'file');
     this.tooltip = relativePath;
     this.resourceUri = vscode.Uri.file(filePath);
-    
-    // Allow opening files on click
     if (!isDirectory) {
       this.command = {
         command: 'vscode.open',
@@ -134,27 +156,23 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   private searchQuery: string = '';
   private selectedCategory: string | undefined;
   private selectedTags: string[] = [];
-  
+
   // Caches
   private repositoriesCache: ExampleRepositoryList[] | null = null;
   private examplesCache: Map<string, ExampleList[]> = new Map();
-  
-  // Track downloaded examples with version information
-  private downloadedExamples: Map<string, { path: string; version?: string }> = new Map();
-  private context: vscode.ExtensionContext;
+  private checkedOutCache: CheckedOutExample[] | null = null;
 
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
-    this.context = context;
     this.apiService = providedApiService || new ComputorApiService(context);
   }
 
   refresh(): void {
-    // Clear caches
     this.repositoriesCache = null;
     this.examplesCache.clear();
+    this.checkedOutCache = null;
     this._onDidChangeTreeData.fire(undefined);
   }
 
@@ -169,78 +187,27 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     try {
       if (!element) {
-        // Root level - show search filter if active, then example repositories
-        const items: vscode.TreeItem[] = [];
-        
-        // Add search filter indicator if search is active
-        if (this.searchQuery) {
-          const searchItem = new vscode.TreeItem(
-            `🔍 Search: "${this.searchQuery}"`,
-            vscode.TreeItemCollapsibleState.None
-          );
-          searchItem.contextValue = 'searchFilter';
-          searchItem.tooltip = `Current search filter: ${this.searchQuery}\nClick to clear`;
-          searchItem.command = {
-            command: 'computor.lecturer.clearSearch',
-            title: 'Clear Search',
-            arguments: []
-          };
-          items.push(searchItem);
+        return this.getRootItems();
+      }
+
+      if (element instanceof RootSectionTreeItem) {
+        if (element.section === 'repositories') {
+          return this.getRepositorySectionItems();
         }
-        
-        // Add category filter indicator if active
-        if (this.selectedCategory) {
-          const categoryItem = new vscode.TreeItem(
-            `📁 Category: ${this.selectedCategory}`,
-            vscode.TreeItemCollapsibleState.None
-          );
-          categoryItem.contextValue = 'categoryFilter';
-          categoryItem.tooltip = `Current category filter: ${this.selectedCategory}\nClick to clear`;
-          categoryItem.command = {
-            command: 'computor.lecturer.clearCategoryFilter',
-            title: 'Clear Category Filter',
-            arguments: []
-          };
-          items.push(categoryItem);
+        if (element.section === 'checkedOut') {
+          return this.getCheckedOutItems();
         }
-        
-        // Add tags filter indicator if active
-        if (this.selectedTags.length > 0) {
-          const tagsItem = new vscode.TreeItem(
-            `🏷️ Tags: ${this.selectedTags.join(', ')}`,
-            vscode.TreeItemCollapsibleState.None
-          );
-          tagsItem.contextValue = 'tagsFilter';
-          tagsItem.tooltip = `Current tags filter: ${this.selectedTags.join(', ')}\nClick to clear`;
-          tagsItem.command = {
-            command: 'computor.lecturer.clearTagsFilter',
-            title: 'Clear Tags Filter',
-            arguments: []
-          };
-          items.push(tagsItem);
-        }
-        
-        // Add repositories
-        const repositories = await this.getExampleRepositories();
-        items.push(...repositories);
-        
-        return items;
       }
 
       if (element instanceof ExampleRepositoryTreeItem) {
-        // Show examples in this repository
         return this.getExamplesForRepository(element.repository);
       }
 
-      if (element instanceof ExampleTreeItem) {
-        // Show file structure for downloaded examples
-        if (element.isDownloaded && element.downloadPath) {
-          return this.getFileSystemItems(element.downloadPath);
-        }
+      if (element instanceof CheckedOutExampleTreeItem) {
+        return this.getFileSystemItems(element.checkedOut.fullPath);
       }
 
       if (element instanceof FileSystemTreeItem) {
-        // Show subdirectory contents
         if (element.isDirectory) {
           return this.getFileSystemItems(element.filePath);
         }
@@ -254,46 +221,104 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
   }
 
-  private async getExampleRepositories(): Promise<ExampleRepositoryTreeItem[]> {
+  private getRootItems(): vscode.TreeItem[] {
+    const items: vscode.TreeItem[] = [];
+
+    // Add active filter indicators
+    if (this.searchQuery) {
+      const searchItem = new vscode.TreeItem(
+        `Search: "${this.searchQuery}"`,
+        vscode.TreeItemCollapsibleState.None
+      );
+      searchItem.iconPath = new vscode.ThemeIcon('search');
+      searchItem.contextValue = 'searchFilter';
+      searchItem.tooltip = `Current search filter: ${this.searchQuery}\nClick to clear`;
+      searchItem.command = { command: 'computor.lecturer.clearSearch', title: 'Clear Search', arguments: [] };
+      items.push(searchItem);
+    }
+
+    if (this.selectedCategory) {
+      const categoryItem = new vscode.TreeItem(
+        `Category: ${this.selectedCategory}`,
+        vscode.TreeItemCollapsibleState.None
+      );
+      categoryItem.iconPath = new vscode.ThemeIcon('filter');
+      categoryItem.contextValue = 'categoryFilter';
+      categoryItem.tooltip = `Current category filter: ${this.selectedCategory}\nClick to clear`;
+      categoryItem.command = { command: 'computor.lecturer.clearCategoryFilter', title: 'Clear Category Filter', arguments: [] };
+      items.push(categoryItem);
+    }
+
+    if (this.selectedTags.length > 0) {
+      const tagsItem = new vscode.TreeItem(
+        `Tags: ${this.selectedTags.join(', ')}`,
+        vscode.TreeItemCollapsibleState.None
+      );
+      tagsItem.iconPath = new vscode.ThemeIcon('tag');
+      tagsItem.contextValue = 'tagsFilter';
+      tagsItem.tooltip = `Current tags filter: ${this.selectedTags.join(', ')}\nClick to clear`;
+      tagsItem.command = { command: 'computor.lecturer.clearTagsFilter', title: 'Clear Tags Filter', arguments: [] };
+      items.push(tagsItem);
+    }
+
+    items.push(new RootSectionTreeItem('checkedOut', 'Checked Out', 'folder-library'));
+    items.push(new RootSectionTreeItem('repositories', 'Repositories', 'cloud'));
+
+    return items;
+  }
+
+  private async getRepositorySectionItems(): Promise<ExampleRepositoryTreeItem[]> {
     if (!this.repositoriesCache) {
       try {
-        // Fetch example repositories from API
         this.repositoriesCache = await this.apiService.getExampleRepositories();
-        console.log(`Loaded ${this.repositoriesCache.length} example repositories`);
       } catch (error) {
         console.error('Failed to load example repositories:', error);
-        vscode.window.showErrorMessage(`Failed to load example repositories: ${error}`);
         this.repositoriesCache = [];
       }
     }
+    return this.repositoriesCache.map(repo => new ExampleRepositoryTreeItem(repo));
+  }
 
-    return this.repositoriesCache.map(repo => 
-      new ExampleRepositoryTreeItem(repo)
-    );
+  private getCheckedOutItems(): vscode.TreeItem[] {
+    if (!this.checkedOutCache) {
+      this.checkedOutCache = scanCheckedOutExamples();
+    }
+
+    if (this.checkedOutCache.length === 0) {
+      const empty = new vscode.TreeItem('No examples checked out', vscode.TreeItemCollapsibleState.None);
+      empty.iconPath = new vscode.ThemeIcon('info');
+      empty.tooltip = 'Right-click an example in Repositories to check it out';
+      return [empty];
+    }
+
+    return this.checkedOutCache.map(co => new CheckedOutExampleTreeItem(co));
+  }
+
+  private getCheckedOutExampleIds(): Set<string> {
+    if (!this.checkedOutCache) {
+      this.checkedOutCache = scanCheckedOutExamples();
+    }
+    return new Set(this.checkedOutCache.map(co => co.metadata.exampleId));
   }
 
   private async getExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleTreeItem[]> {
     const cacheKey = repository.id;
-    
+
     if (!this.examplesCache.has(cacheKey)) {
       try {
-        // Fetch examples for this repository from API
         const examples = await this.apiService.getExamples(repository.id);
-        console.log(`Loaded ${examples.length} examples for repository ${repository.name}`);
         this.examplesCache.set(cacheKey, examples);
       } catch (error) {
         console.error(`Failed to load examples for repository ${repository.name}:`, error);
-        vscode.window.showErrorMessage(`Failed to load examples: ${error}`);
         this.examplesCache.set(cacheKey, []);
       }
     }
 
     const examples = this.examplesCache.get(cacheKey) || [];
-    const assignmentsRoot = await this.getAssignmentsRoot();
-    
-    // Apply filters if any
+    const checkedOutIds = this.getCheckedOutExampleIds();
+
     let filteredExamples = examples;
-    
+
     if (this.searchQuery) {
       const query = this.searchQuery.toLowerCase();
       filteredExamples = filteredExamples.filter(ex =>
@@ -303,82 +328,40 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
         (ex.tags && ex.tags.some(tag => tag.toLowerCase().includes(query)))
       );
     }
-    
+
     if (this.selectedCategory) {
-      filteredExamples = filteredExamples.filter(ex =>
-        ex.category === this.selectedCategory
-      );
+      filteredExamples = filteredExamples.filter(ex => ex.category === this.selectedCategory);
     }
-    
+
     if (this.selectedTags.length > 0) {
       filteredExamples = filteredExamples.filter(ex =>
         ex.tags && this.selectedTags.every(tag => ex.tags?.includes(tag))
       );
     }
 
-    return filteredExamples.map(example => {
-      const downloadInfo = this.downloadedExamples.get(example.id);
-
-      // Check if the example is downloaded by checking if directory exists
-      let isDownloaded = false;
-      let actualPath: string | undefined;
-      let version: string | undefined;
-      
-      if (assignmentsRoot) {
-        const expectedPath = path.join(assignmentsRoot, example.directory);
-        if (fs.existsSync(expectedPath)) {
-          isDownloaded = true;
-          actualPath = expectedPath;
-          if (!downloadInfo) {
-            this.downloadedExamples.set(example.id, { path: expectedPath });
-          } else {
-            version = downloadInfo.version;
-          }
-        }
-      }
-
-      if (!isDownloaded && downloadInfo) {
-        if (fs.existsSync(downloadInfo.path)) {
-          isDownloaded = true;
-          actualPath = downloadInfo.path;
-          version = downloadInfo.version;
-        } else {
-          this.downloadedExamples.delete(example.id);
-        }
-      }
-      
-      return new ExampleTreeItem(example, repository, isDownloaded, actualPath, version);
-    });
-  }
-
-  private async getAssignmentsRoot(): Promise<string | undefined> {
-    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-    return repoManager.resolveAssignmentsRoot();
+    return filteredExamples.map(example =>
+      new ExampleTreeItem(example, repository, checkedOutIds.has(example.id))
+    );
   }
 
   private getFileSystemItems(dirPath: string): vscode.TreeItem[] {
     try {
-      if (!fs.existsSync(dirPath)) {
-        return [];
-      }
+      if (!fs.existsSync(dirPath)) { return []; }
 
       const items = fs.readdirSync(dirPath);
       const treeItems: vscode.TreeItem[] = [];
 
       for (const item of items) {
+        if (item === '.computor-example.json') { continue; }
         const fullPath = path.join(dirPath, item);
         const stat = fs.statSync(fullPath);
         const relativePath = vscode.workspace.asRelativePath(fullPath);
-        
         treeItems.push(new FileSystemTreeItem(fullPath, stat.isDirectory(), relativePath));
       }
 
-      // Sort: directories first, then files
       treeItems.sort((a, b) => {
         if (a instanceof FileSystemTreeItem && b instanceof FileSystemTreeItem) {
-          if (a.isDirectory !== b.isDirectory) {
-            return a.isDirectory ? -1 : 1;
-          }
+          if (a.isDirectory !== b.isDirectory) { return a.isDirectory ? -1 : 1; }
           return a.label!.toString().localeCompare(b.label!.toString());
         }
         return 0;
@@ -392,9 +375,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   }
 
   // Search and filter methods
-  getSearchQuery(): string {
-    return this.searchQuery;
-  }
+  getSearchQuery(): string { return this.searchQuery; }
 
   setSearchQuery(query: string): void {
     this.searchQuery = query;
@@ -406,9 +387,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this._onDidChangeTreeData.fire(undefined);
   }
 
-  getSelectedCategory(): string | undefined {
-    return this.selectedCategory;
-  }
+  getSelectedCategory(): string | undefined { return this.selectedCategory; }
 
   setCategory(category: string | undefined): void {
     this.selectedCategory = category;
@@ -420,9 +399,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this._onDidChangeTreeData.fire(undefined);
   }
 
-  getSelectedTags(): string[] {
-    return this.selectedTags;
-  }
+  getSelectedTags(): string[] { return this.selectedTags; }
 
   setTags(tags: string[]): void {
     this.selectedTags = tags;
@@ -434,47 +411,37 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this._onDidChangeTreeData.fire(undefined);
   }
 
-  // Public method to get filtered examples for a repository
   async getFilteredExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleTreeItem[]> {
     return this.getExamplesForRepository(repository);
   }
 
-  // Mark an example as downloaded and refresh the tree
-  markExampleAsDownloaded(exampleId: string, downloadPath: string, version?: string): void {
-    this.downloadedExamples.set(exampleId, { path: downloadPath, version });
-    // Refresh just the affected repository to show the example as downloaded
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
-  getDownloadInfo(exampleId: string): { path: string; version?: string } | undefined {
-    return this.downloadedExamples.get(exampleId);
+  getExamplesPath(): string | undefined {
+    try {
+      return WorkspaceStructureManager.getInstance().getExamplesPath();
+    } catch {
+      return undefined;
+    }
   }
 
   // Drag and drop implementation
   public handleDrag(source: readonly ExampleTreeItem[], treeDataTransfer: vscode.DataTransfer, _token: vscode.CancellationToken): void | Thenable<void> {
-    // Prepare example data for drag
     const draggedExamples = source.map(item => ({
       exampleId: item.example.id,
       title: item.example.title,
-      description: null, // ExampleList doesn't have description field
+      description: null,
       identifier: item.example.identifier,
       repositoryId: item.example.example_repository_id
     }));
-    
-    // Store in shared manager as a workaround for VS Code DataTransfer limitations
+
     const dragDropManager = DragDropManager.getInstance();
     dragDropManager.setDraggedData(draggedExamples);
-    
-    // Still set data on transfer for compatibility (even though it may come through empty)
+
     const jsonData = JSON.stringify(draggedExamples);
     const item = new vscode.DataTransferItem(jsonData);
     treeDataTransfer.set('application/vnd.code.tree.computorexample', item);
-    
-    console.log('Drag initiated - data stored in DragDropManager');
   }
 
   public async handleDrop(target: vscode.TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
-    // Examples tree doesn't accept drops
     void target;
     void dataTransfer;
   }

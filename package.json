@@ -212,8 +212,32 @@
       },
       {
         "command": "computor.lecturer.checkoutExample",
-        "title": "Checkout Example",
+        "title": "Checkout Latest",
         "icon": "$(cloud-download)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.checkoutExampleVersion",
+        "title": "Checkout Version...",
+        "icon": "$(versions)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.bumpExampleVersion",
+        "title": "Bump Version",
+        "icon": "$(arrow-up)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.revealCheckedOutInExplorer",
+        "title": "Reveal in Explorer",
+        "icon": "$(folder)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.deleteCheckedOutExample",
+        "title": "Delete Checkout",
+        "icon": "$(trash)",
         "category": "Computor Examples"
       },
       {
@@ -1098,8 +1122,13 @@
         },
         {
           "command": "computor.lecturer.checkoutExample",
-          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
+          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleCheckedOut)",
           "group": "1_actions@1"
+        },
+        {
+          "command": "computor.lecturer.checkoutExampleVersion",
+          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleCheckedOut)",
+          "group": "1_actions@2"
         },
         {
           "command": "computor.lecturer.checkoutAllFilteredExamples",
@@ -1108,23 +1137,38 @@
         },
         {
           "command": "computor.lecturer.uploadExample",
-          "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutExample",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "computor.lecturer.bumpExampleVersion",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutExample",
           "group": "1_actions@2"
         },
         {
+          "command": "computor.lecturer.revealCheckedOutInExplorer",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutExample",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "computor.lecturer.deleteCheckedOutExample",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutExample",
+          "group": "3_danger@1"
+        },
+        {
           "command": "computor.lecturer.createCourseContentFromExample",
-          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
+          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleCheckedOut)",
           "group": "2_course@1"
         },
         {
           "command": "computor.lecturer.revealExampleInExplorer",
-          "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
-          "group": "1_actions@3"
+          "when": "view == computor.lecturer.examples && viewItem == exampleCheckedOut",
+          "group": "1_actions@4"
         },
         {
           "command": "computor.lecturer.showExampleDetails",
-          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
-          "group": "1_actions@4"
+          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleCheckedOut)",
+          "group": "1_actions@5"
         },
         {
           "command": "computor.student.showMessages",

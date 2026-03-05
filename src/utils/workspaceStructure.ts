@@ -10,6 +10,7 @@ export interface WorkspaceDirectories {
   reviewReference: string;
   reviewSubmissions: string;
   reference: string;
+  examples: string;
   tmp: string;
   tmpArtifacts: string;
 }
@@ -47,6 +48,7 @@ export class WorkspaceStructureManager {
       reviewReference: path.join(review, 'reference'),
       reviewSubmissions: path.join(review, 'submissions'),
       reference: path.join(this.workspaceRoot, 'reference'),
+      examples: path.join(this.workspaceRoot, 'examples'),
       tmp,
       tmpArtifacts: path.join(tmp, 'artifacts')
     };
@@ -63,6 +65,7 @@ export class WorkspaceStructureManager {
     await fs.promises.mkdir(dirs.reviewReference, { recursive: true });
     await fs.promises.mkdir(dirs.reviewSubmissions, { recursive: true });
     await fs.promises.mkdir(dirs.reference, { recursive: true });
+    await fs.promises.mkdir(dirs.examples, { recursive: true });
     await fs.promises.mkdir(dirs.tmp, { recursive: true });
     await fs.promises.mkdir(dirs.tmpArtifacts, { recursive: true });
   }
@@ -142,6 +145,14 @@ export class WorkspaceStructureManager {
       JSON.stringify({ backendUrl }, null, 2),
       'utf8'
     );
+  }
+
+  getExamplesPath(): string {
+    return this.getDirectories().examples;
+  }
+
+  getExampleCheckoutPath(directory: string): string {
+    return path.join(this.getDirectories().examples, directory);
   }
 
   /**
