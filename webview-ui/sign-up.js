@@ -26,6 +26,12 @@
     state.selectedStoredUrl = state.storedGitLabTokens[0].url;
   }
 
+  var initialValues = {
+    backendUrl: state.backendUrl,
+    gitName: state.gitName,
+    gitEmail: state.gitEmail
+  };
+
   var liveValidators = [];
 
   function escapeHtml(value) {
@@ -83,6 +89,17 @@
       return;
     }
     post('saveGitConfig', { gitName: state.gitName.trim(), gitEmail: state.gitEmail.trim() });
+  }
+
+  function cancelBackendUrl() {
+    state.backendUrl = initialValues.backendUrl;
+    render();
+  }
+
+  function cancelGitConfig() {
+    state.gitName = initialValues.gitName;
+    state.gitEmail = initialValues.gitEmail;
+    render();
   }
 
   // --- GitLab source switching ---
@@ -299,6 +316,7 @@
             '<span class="field-error"></span>' +
           '</div>' +
           '<div class="section-actions">' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="cancel-backend-url-btn">Cancel</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="save-backend-url-btn">Save URL</button>' +
           '</div>' +
         '</div>' +
@@ -317,6 +335,7 @@
             '<span class="field-error"></span>' +
           '</div>' +
           '<div class="section-actions">' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="cancel-git-config-btn">Cancel</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="save-git-config-btn">Save Git Config</button>' +
           '</div>' +
         '</div>' +
@@ -373,7 +392,9 @@
     bindInput('confirm-password', function (v) { state.confirmPassword = v; });
 
     bindClick('save-backend-url-btn', saveBackendUrl);
+    bindClick('cancel-backend-url-btn', cancelBackendUrl);
     bindClick('save-git-config-btn', saveGitConfig);
+    bindClick('cancel-git-config-btn', cancelGitConfig);
     bindClick('validate-gitlab-btn', validateGitLabToken);
     bindClick('submit-btn', handleSubmit);
 
@@ -481,8 +502,10 @@
 
     if (msg.indexOf('Backend URL saved') !== -1) {
       btnId = 'save-backend-url-btn';
+      if (data.type === 'success') { initialValues.backendUrl = state.backendUrl; }
     } else if (msg.indexOf('Git configuration saved') !== -1) {
       btnId = 'save-git-config-btn';
+      if (data.type === 'success') { initialValues.gitName = state.gitName; initialValues.gitEmail = state.gitEmail; }
     }
 
     if (btnId) {
