@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IconGenerator } from './utils/IconGenerator';
+import { GitCancelledError } from './utils/exec';
 import { errorCatalog } from './exceptions/ErrorCatalog';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
@@ -707,7 +708,11 @@ class UnifiedController {
         try {
           await repositoryManager.autoSetupRepositories(undefined, progressReport, expandedCourseIds, cancellationToken);
         } catch (e) {
-          console.error('[initializeStudentView] Repository auto-setup failed:', e);
+          if (e instanceof GitCancelledError) {
+            vscode.window.showInformationMessage('Repository setup was cancelled. Repositories will be set up when you expand a course.');
+          } else {
+            console.error('[initializeStudentView] Repository auto-setup failed:', e);
+          }
         }
         tree.refresh();
       };

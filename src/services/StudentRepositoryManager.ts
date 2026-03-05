@@ -113,9 +113,11 @@ export class StudentRepositoryManager {
       report('Repository setup completed');
       
     } catch (error) {
+      if (error instanceof GitCancelledError) {
+        console.log('[StudentRepositoryManager] Repository setup cancelled by user');
+        throw error;
+      }
       console.error('[StudentRepositoryManager] Failed to auto-setup repositories:', error);
-      // Don't show error to user - this is a background operation
-      // They can still manually clone if needed
     }
   }
 
