@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
-import { execAsync, execAsyncWithTimeout, GitTimeoutError } from '../utils/exec';
+import { execAsync, execAsyncWithTimeout, GitTimeoutError, GitCancelledError } from '../utils/exec';
 import { CTGit } from '../git/CTGit';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
@@ -241,7 +241,7 @@ export class StudentRepositoryManager {
         const fullPath = (firstRepo as any).fullPath;
         const repoName = firstRepo.assignmentTitle || fullPath;
         report(`Setting up ${repoName}...`);
-        token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress);
+        token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress, cancellationToken);
       }
     }
     
@@ -261,7 +261,8 @@ export class StudentRepositoryManager {
     token: string,
     courseContents: any[],
     upstreamUrl?: string,
-    onProgress?: (message: string) => void
+    onProgress?: (message: string) => void,
+    cancellationToken?: vscode.CancellationToken
   ): Promise<string> {
     void courseId; // Only used for logging
     const report = onProgress || (() => {});
@@ -276,11 +277,11 @@ export class StudentRepositoryManager {
     if (!repoExists) {
       console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
       report(`Cloning ${repoName}...`);
-      effectiveToken = await this.cloneRepository(repoPath, cloneUrl, effectiveToken);
+      effectiveToken = await this.cloneRepository(repoPath, cloneUrl, effectiveToken, cancellationToken);
     } else {
       console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
       report(`Updating ${repoName}...`);
-      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken, repoName, report);
+      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken, repoName, report, cancellationToken);
     }
 
     // Sync fork with upstream if available
@@ -301,7 +302,8 @@ export class StudentRepositoryManager {
               ...process.env,
               GIT_TERMINAL_PROMPT: '0'
             },
-            timeout: 30_000
+            timeout: 30_000,
+            cancellationToken
           });
           console.log('[StudentRepositoryManager] Pushed fork update to origin');
         } catch (error) {
@@ -655,7 +657,7 @@ export class StudentRepositoryManager {
     }
   }
   
-  private async cloneRepository(repoPath: string, cloneUrl: string, token: string): Promise<string> {
+  private async cloneRepository(repoPath: string, cloneUrl: string, token: string, cancellationToken?: vscode.CancellationToken): Promise<string> {
     const attemptClone = async (activeToken: string): Promise<void> => {
       const authenticatedUrl = addTokenToGitUrl(cloneUrl, activeToken);
       try {
@@ -664,7 +666,8 @@ export class StudentRepositoryManager {
             ...process.env,
             GIT_TERMINAL_PROMPT: '0'
           },
-          timeout: 40_000
+          timeout: 40_000,
+          cancellationToken
         });
         console.log(`[StudentRepositoryManager] Successfully cloned to ${repoPath}`);
       } catch (error) {
@@ -687,7 +690,7 @@ export class StudentRepositoryManager {
     } catch (error: any) {
       console.error('[StudentRepositoryManager] Clone failed:', error);
 
-      if (error instanceof GitTimeoutError || !this.isAuthenticationError(error)) {
+      if (error instanceof GitTimeoutError || error instanceof GitCancelledError || !this.isAuthenticationError(error)) {
         throw error;
       }
 
@@ -711,7 +714,8 @@ export class StudentRepositoryManager {
     cloneUrl: string,
     token: string,
     repoName: string,
-    report: (message: string) => void
+    report: (message: string) => void,
+    cancellationToken?: vscode.CancellationToken
   ): Promise<string> {
     try {
       await execAsyncWithTimeout('git fetch --all', {
@@ -720,7 +724,8 @@ export class StudentRepositoryManager {
           ...process.env,
           GIT_TERMINAL_PROMPT: '0'
         },
-        timeout: 30_000
+        timeout: 30_000,
+        cancellationToken
       });
 
       const { stdout: branch } = await execAsync('git symbolic-ref --short HEAD 2>/dev/null || echo "DETACHED"', {
@@ -734,7 +739,8 @@ export class StudentRepositoryManager {
             ...process.env,
             GIT_TERMINAL_PROMPT: '0'
           },
-          timeout: 30_000
+          timeout: 30_000,
+          cancellationToken
         });
       }
       return token;
