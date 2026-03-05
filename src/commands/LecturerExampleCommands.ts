@@ -193,6 +193,13 @@ export class LecturerExampleCommands {
       })
     );
 
+    // Compare version with working copy
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.compareWithWorking', async (item: CheckedOutVersionTreeItem) => {
+        await this.compareWithWorking(item);
+      })
+    );
+
     // Create new example
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.createNewExample', async () => {
@@ -1386,6 +1393,72 @@ Explain how to use this example.
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to restore: ${error}`);
     }
+  }
+
+  private async compareWithWorking(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version || item.version.isWorking) { return; }
+
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
+    const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
+    if (!fs.existsSync(workingDir)) {
+      vscode.window.showWarningMessage('No working copy found to compare against.');
+      return;
+    }
+
+    const versionDir = item.version.fullPath;
+    const files = this.collectFiles(versionDir, versionDir);
+
+    if (files.length === 0) {
+      vscode.window.showInformationMessage('No files found in version snapshot.');
+      return;
+    }
+
+    const picks = files.map(relativePath => {
+      const workingFile = path.join(workingDir, relativePath);
+      const exists = fs.existsSync(workingFile);
+      return {
+        label: relativePath,
+        description: exists ? '' : '(not in working copy)',
+        relativePath
+      };
+    });
+
+    const selected = await vscode.window.showQuickPick(picks, {
+      placeHolder: 'Select a file to compare with working copy',
+      title: `Compare ${item.version.versionTag} with working`
+    });
+
+    if (!selected) { return; }
+
+    const versionFile = vscode.Uri.file(path.join(versionDir, selected.relativePath));
+    const workingFile = vscode.Uri.file(path.join(workingDir, selected.relativePath));
+
+    if (!fs.existsSync(workingFile.fsPath)) {
+      vscode.window.showWarningMessage(`File "${selected.relativePath}" does not exist in working copy.`);
+      return;
+    }
+
+    await vscode.commands.executeCommand('vscode.diff',
+      versionFile, workingFile,
+      `${selected.relativePath} (${item.version.versionTag} ↔ working)`
+    );
+  }
+
+  private collectFiles(dir: string, baseDir: string): string[] {
+    const results: string[] = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === '.computor-example.json') { continue; }
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...this.collectFiles(fullPath, baseDir));
+      } else {
+        results.push(path.relative(baseDir, fullPath));
+      }
+    }
+    return results;
   }
 
   private async getNextPosition(courseId: string, parentPath: string | undefined, contents: CourseContentList[]): Promise<number> {

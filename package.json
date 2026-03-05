@@ -253,6 +253,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.compareWithWorking",
+        "title": "Compare with Working",
+        "icon": "$(diff)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.checkoutAllFilteredExamples",
         "title": "Checkout All Filtered Examples",
         "icon": "$(cloud-download)",
@@ -1171,6 +1177,11 @@
           "command": "computor.lecturer.restoreVersionToWorking",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutVersion",
           "group": "2_restore@1"
+        },
+        {
+          "command": "computor.lecturer.compareWithWorking",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutVersion",
+          "group": "2_restore@2"
         },
         {
           "command": "computor.lecturer.deleteCheckedOutVersion",
