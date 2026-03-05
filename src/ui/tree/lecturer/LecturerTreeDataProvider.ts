@@ -23,7 +23,8 @@ import {
   NoGroupTreeItem,
   CourseMemberTreeItem,
   LoadMoreTreeItem,
-  CourseContentAssignmentInfo
+  CourseContentAssignmentInfo,
+  compareMembersByName
 } from './LecturerTreeItems';
 import type {
   CourseContentList,
@@ -32,6 +33,8 @@ import type {
   CourseContentUpdate,
   CourseContentGet,
   CourseList,
+  CourseFamilyList,
+  OrganizationList,
   CourseContentTypeList,
   CourseGroupList,
   CourseMemberList,
@@ -102,6 +105,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private repositoryManager: LecturerRepositoryManager;
   private assignmentIdentifierCache: Map<string, string | null> = new Map();
   private fullCourseCache: Map<string, any> = new Map();
+  private rolesTitleCache: Map<string, string> = new Map();
 
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
     // Use provided apiService or create a new one
@@ -127,6 +131,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.paginationState.clear();
     this.assignmentIdentifierCache.clear();
     this.fullCourseCache.clear();
+    this.rolesTitleCache.clear();
     
     // Clear all virtual scrolling services
     for (const service of this.virtualScrollServices.values()) {
@@ -760,39 +765,32 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
 
       if (element instanceof CourseGroupTreeItem) {
-        // Show members in this group
         const members = await this.getCourseMembers(element.course.id, element.group.id);
-        
-        // Use virtual scrolling for large member lists (> 100)
-        if (members.length > 100) {
+        const sorted = [...members].sort(compareMembersByName);
+
+        if (sorted.length > 100) {
           const virtualKey = `members-${element.course.id}-${element.group.id}`;
-          
+
           let virtualService = this.virtualScrollServices.get(virtualKey);
           if (!virtualService) {
             virtualService = new VirtualScrollingService(
               async (page: number, pageSize: number) => {
                 const start = page * pageSize;
-                const items = members.slice(start, start + pageSize);
-                
-                const treeItems = items.map((member: CourseMemberList) => new CourseMemberTreeItem(
-                  member,
-                  element.course,
-                  element.courseFamily,
-                  element.organization,
-                  element.group
-                ));
-                
-                return { items: treeItems, total: members.length };
+                const pageMembers = sorted.slice(start, start + pageSize);
+                const treeItems = await this.buildSortedMemberTreeItems(
+                  pageMembers, element.course, element.courseFamily, element.organization, element.group
+                );
+                return { items: treeItems, total: sorted.length };
               },
               { pageSize: 50, preloadPages: 1, maxCachedPages: 5 }
             );
-            
+
             this.virtualScrollServices.set(virtualKey, virtualService);
           }
-          
+
           const items = await virtualService.getItems(0, 50);
-          
-          if (members.length > items.length) {
+
+          if (sorted.length > items.length) {
             items.push(new LoadMoreTreeItem(
               element.group.id,
               'members',
@@ -800,16 +798,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               50
             ));
           }
-          
+
           return items;
         } else {
-          return members.map((member: CourseMemberList) => new CourseMemberTreeItem(
-            member,
-            element.course,
-            element.courseFamily,
-            element.organization,
-            element.group
-          ));
+          return this.buildSortedMemberTreeItems(sorted, element.course, element.courseFamily, element.organization, element.group);
         }
       }
 
@@ -817,36 +809,32 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         // Show members not in any group
         const members = await this.getCourseMembers(element.course.id);
         const ungroupedMembers = members.filter((m: CourseMemberList) => !m.course_group_id);
-        
+        const sorted = [...ungroupedMembers].sort(compareMembersByName);
+
         // Use virtual scrolling for large member lists (> 100)
-        if (ungroupedMembers.length > 100) {
+        if (sorted.length > 100) {
           const virtualKey = `members-${element.course.id}-ungrouped`;
-          
+
           let virtualService = this.virtualScrollServices.get(virtualKey);
           if (!virtualService) {
             virtualService = new VirtualScrollingService(
               async (page: number, pageSize: number) => {
                 const start = page * pageSize;
-                const items = ungroupedMembers.slice(start, start + pageSize);
-                
-                const treeItems = items.map((member: CourseMemberList) => new CourseMemberTreeItem(
-                  member,
-                  element.course,
-                  element.courseFamily,
-                  element.organization
-                ));
-                
-                return { items: treeItems, total: ungroupedMembers.length };
+                const pageMembers = sorted.slice(start, start + pageSize);
+                const treeItems = await this.buildSortedMemberTreeItems(
+                  pageMembers, element.course, element.courseFamily, element.organization
+                );
+                return { items: treeItems, total: sorted.length };
               },
               { pageSize: 50, preloadPages: 1, maxCachedPages: 5 }
             );
-            
+
             this.virtualScrollServices.set(virtualKey, virtualService);
           }
-          
+
           const items = await virtualService.getItems(0, 50);
-          
-          if (ungroupedMembers.length > items.length) {
+
+          if (sorted.length > items.length) {
             items.push(new LoadMoreTreeItem(
               element.course.id,
               'members-ungrouped',
@@ -854,15 +842,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
               50
             ));
           }
-          
+
           return items;
         } else {
-          return ungroupedMembers.map((member: CourseMemberList) => new CourseMemberTreeItem(
-            member,
-            element.course,
-            element.courseFamily,
-            element.organization
-          ));
+          return this.buildSortedMemberTreeItems(sorted, element.course, element.courseFamily, element.organization);
         }
       }
 
@@ -1196,9 +1179,43 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   private async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
-    // Always fetch fresh data from API
     const members = await this.apiService.getCourseMembers(courseId, groupId);
     return members || [];
+  }
+
+  private async getRoleTitle(roleId: string): Promise<string | undefined> {
+    if (this.rolesTitleCache.has(roleId)) {
+      return this.rolesTitleCache.get(roleId);
+    }
+    try {
+      const roles = await this.apiService.getCourseRoles();
+      for (const role of roles) {
+        if (role.title) {
+          this.rolesTitleCache.set(role.id, role.title);
+        }
+      }
+    } catch {
+      // Role resolution is best-effort
+    }
+    return this.rolesTitleCache.get(roleId);
+  }
+
+  private async buildSortedMemberTreeItems(
+    sortedMembers: CourseMemberList[],
+    course: CourseList,
+    courseFamily: CourseFamilyList,
+    organization: OrganizationList,
+    group?: CourseGroupList
+  ): Promise<CourseMemberTreeItem[]> {
+    const roleTitles = new Map<string, string | undefined>();
+    for (const member of sortedMembers) {
+      if (!roleTitles.has(member.course_role_id)) {
+        roleTitles.set(member.course_role_id, await this.getRoleTitle(member.course_role_id));
+      }
+    }
+    return sortedMembers.map(member => new CourseMemberTreeItem(
+      member, course, courseFamily, organization, group, roleTitles.get(member.course_role_id)
+    ));
   }
 
   private getRootContents(contents: CourseContentLecturerList[]): CourseContentLecturerList[] {

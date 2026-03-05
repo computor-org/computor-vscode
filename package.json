@@ -283,6 +283,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.showExampleDetails",
+        "title": "Show Details",
+        "icon": "$(info)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -1114,6 +1120,11 @@
           "command": "computor.lecturer.revealExampleInExplorer",
           "when": "view == computor.lecturer.examples && viewItem == exampleDownloaded",
           "group": "1_actions@3"
+        },
+        {
+          "command": "computor.lecturer.showExampleDetails",
+          "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleDownloaded)",
+          "group": "1_actions@4"
         },
         {
           "command": "computor.student.showMessages",

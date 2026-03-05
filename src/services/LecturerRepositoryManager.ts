@@ -146,6 +146,37 @@ export class LecturerRepositoryManager {
     return path.join(root, deploymentPath || '');
   }
 
+  public async resolveAssignmentsRoot(): Promise<string | undefined> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      return undefined;
+    }
+
+    const markerPath = path.join(workspaceFolder.uri.fsPath, '.computor');
+    let courseId: string | undefined;
+    try {
+      const raw = await fs.promises.readFile(markerPath, 'utf8');
+      const marker = JSON.parse(raw);
+      if (marker && typeof marker.courseId === 'string') {
+        courseId = marker.courseId;
+      }
+    } catch {
+      return undefined;
+    }
+
+    if (!courseId) {
+      return undefined;
+    }
+
+    const course = await this.api.getCourse(courseId);
+    if (!course) {
+      return undefined;
+    }
+
+    const root = this.getAssignmentsRepoRoot(course);
+    return root && fs.existsSync(root) ? root : undefined;
+  }
+
   public getAssignmentsRepoRoot(course: any): string | null {
     const courseId = course.id || course.course_id || course.courseId;
     if (!courseId) return null;

@@ -32,6 +32,8 @@ import {
   ExampleRepositoryList,
   ExampleRepositoryGet,
   ExampleGet,
+  ExampleVersionGet,
+  ExampleVersionList,
   ExampleUploadRequest,
   ExampleDownloadResponse,
   CourseGroupList,
@@ -703,33 +705,41 @@ export class ComputorApiService {
     }
   }
 
-  async getExampleVersion(exampleVersionId: string): Promise<any | undefined> {
+  async getExampleVersion(exampleVersionId: string): Promise<ExampleVersionGet | undefined> {
     const cacheKey = `exampleVersion-${exampleVersionId}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<any>(cacheKey);
+
+    const cached = multiTierCache.get<ExampleVersionGet>(cacheKey);
     if (cached) {
       return cached;
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        // Use the correct endpoint for fetching a specific example version
-        const response = await client.get<any>(`/examples/versions/${exampleVersionId}`);
+        const response = await client.get<ExampleVersionGet>(`/examples/versions/${exampleVersionId}`);
         return response.data;
       }, {
         maxRetries: 2,
         exponentialBackoff: true
       });
-      
-      // Cache in warm tier if we got a result
+
       if (result) {
         multiTierCache.set(cacheKey, result, 'warm');
       }
       return result;
     } catch (error) {
       console.error('Failed to get example version:', error);
+      return undefined;
+    }
+  }
+
+  async downloadExampleVersion(versionId: string): Promise<ExampleDownloadResponse | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<ExampleDownloadResponse>(`/examples/download/${versionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to download example version:', error);
       return undefined;
     }
   }
@@ -1088,13 +1098,13 @@ export class ComputorApiService {
    * @param exampleId The example ID
    * @param versionTag Optional version tag to filter for a specific version
    */
-  async getExampleVersions(exampleId: string, versionTag?: string): Promise<any[]> {
+  async getExampleVersions(exampleId: string, versionTag?: string): Promise<ExampleVersionList[]> {
     try {
       const client = await this.getHttpClient();
       const url = versionTag
         ? `/examples/${exampleId}/versions?version_tag=${encodeURIComponent(versionTag)}`
         : `/examples/${exampleId}/versions`;
-      const response = await client.get<any[]>(url);
+      const response = await client.get<ExampleVersionList[]>(url);
       return response.data || [];
     } catch (error) {
       console.error('Failed to get example versions:', error);

@@ -7,20 +7,23 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { ExampleTreeItem, ExampleRepositoryTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
+import { writeExampleFiles } from '../utils/exampleFileWriter';
+import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
 
 /**
  * Simplified example commands for the lecturer view
  */
 export class LecturerExampleCommands {
+  private exampleDetailProvider: ExampleDetailWebviewProvider;
+
   constructor(
     private context: vscode.ExtensionContext,
     private apiService: ComputorApiService,
     private treeProvider: LecturerExampleTreeProvider
   ) {
+    this.exampleDetailProvider = new ExampleDetailWebviewProvider(context, apiService, treeProvider);
     this.registerCommands();
   }
-  private assignmentsRootCache: { courseId: string; path: string } | null = null;
-
   private registerCommands(): void {
     // Search examples - already registered in extension.ts but we'll override with better implementation
     this.context.subscriptions.push(
@@ -192,6 +195,13 @@ export class LecturerExampleCommands {
         await this.revealExampleInExplorer(item);
       })
     );
+
+    // Show example details in webview side panel
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showExampleDetails', async (item: ExampleTreeItem) => {
+        await this.showExampleDetails(item);
+      })
+    );
   }
 
   /**
@@ -233,54 +243,8 @@ export class LecturerExampleCommands {
         return;
       }
 
-      // Create directory
-      fs.mkdirSync(examplePath, { recursive: true });
+      writeExampleFiles(exampleData.files, examplePath);
 
-      // Write all files from the download response
-      for (const [filename, content] of Object.entries(exampleData.files)) {
-        const filePath = path.join(examplePath, filename);
-        const fileDir = path.dirname(filePath);
-        
-        // Create subdirectories if needed
-        if (!fs.existsSync(fileDir)) {
-          fs.mkdirSync(fileDir, { recursive: true });
-        }
-        
-        // Write file content (handle binary vs text)
-        try {
-          const ext = path.extname(filename).toLowerCase();
-          const binaryExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.webp']);
-          if (typeof content === 'string' && content.startsWith('data:') && content.includes(';base64,')) {
-            const base64 = content.split(';base64,')[1] || '';
-            const buffer = Buffer.from(base64, 'base64');
-            fs.writeFileSync(filePath, buffer);
-          } else if (binaryExtensions.has(ext)) {
-            // Attempt to decode as base64 for known binary extensions
-            const maybeBase64 = content as string;
-            const isProbablyBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(maybeBase64) && (maybeBase64.replace(/\s+/g, '').length % 4 === 0);
-            if (isProbablyBase64) {
-              const buffer = Buffer.from(maybeBase64, 'base64');
-              fs.writeFileSync(filePath, buffer);
-            } else {
-              // Fallback: write raw bytes from utf8 string (may still corrupt if misidentified)
-              fs.writeFileSync(filePath, maybeBase64);
-            }
-          } else {
-            fs.writeFileSync(filePath, content, 'utf8');
-          }
-        } catch (e) {
-          // Fallback to text write on any errors
-          fs.writeFileSync(filePath, content, 'utf8');
-        }
-        
-        // If this is meta.yaml, also create a .meta.yaml copy as source of truth
-        if (filename === 'meta.yaml') {
-          const hiddenMetaPath = path.join(examplePath, '.meta.yaml');
-          fs.writeFileSync(hiddenMetaPath, content, 'utf8');
-        }
-      }
-
-      // Mark example as downloaded and refresh tree with version information
       this.treeProvider.markExampleAsDownloaded(item.example.id, examplePath, exampleData.version_tag);
 
       const relativePath = path.relative(assignmentsRoot, examplePath) || '.';
@@ -371,51 +335,8 @@ export class LecturerExampleCommands {
               continue;
             }
 
-            // Create directory
-            fs.mkdirSync(examplePath, { recursive: true });
+            writeExampleFiles(exampleData.files, examplePath);
 
-            // Write all files from the download response
-            for (const [filename, content] of Object.entries(exampleData.files)) {
-              const filePath = path.join(examplePath, filename);
-              const fileDir = path.dirname(filePath);
-              
-              // Create subdirectories if needed
-              if (!fs.existsSync(fileDir)) {
-                fs.mkdirSync(fileDir, { recursive: true });
-              }
-              
-              // Write file content (handle binary vs text)
-              try {
-                const ext = path.extname(filename).toLowerCase();
-                const binaryExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.webp']);
-                if (typeof content === 'string' && content.startsWith('data:') && content.includes(';base64,')) {
-                  const base64 = content.split(';base64,')[1] || '';
-                  const buffer = Buffer.from(base64, 'base64');
-                  fs.writeFileSync(filePath, buffer);
-                } else if (binaryExtensions.has(ext)) {
-                  const maybeBase64 = content as string;
-                  const isProbablyBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(maybeBase64) && (maybeBase64.replace(/\s+/g, '').length % 4 === 0);
-                  if (isProbablyBase64) {
-                    const buffer = Buffer.from(maybeBase64, 'base64');
-                    fs.writeFileSync(filePath, buffer);
-                  } else {
-                    fs.writeFileSync(filePath, maybeBase64);
-                  }
-                } else {
-                  fs.writeFileSync(filePath, content, 'utf8');
-                }
-              } catch (e) {
-                fs.writeFileSync(filePath, content, 'utf8');
-              }
-              
-              // If this is meta.yaml, also create a .meta.yaml copy as source of truth
-              if (filename === 'meta.yaml') {
-                const hiddenMetaPath = path.join(examplePath, '.meta.yaml');
-                fs.writeFileSync(hiddenMetaPath, content, 'utf8');
-              }
-            }
-
-            // Mark example as downloaded with version information
             this.treeProvider.markExampleAsDownloaded(exampleItem.example.id, examplePath, exampleData.version_tag);
 
             successCount++;
@@ -450,52 +371,13 @@ export class LecturerExampleCommands {
   }
 
   private async getAssignmentsRoot(): Promise<string | undefined> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage('No workspace folder open');
-      return undefined;
-    }
-
-    const markerPath = path.join(workspaceFolder.uri.fsPath, '.computor');
-    let courseId: string | undefined;
-
-    try {
-      const raw = await fs.promises.readFile(markerPath, 'utf8');
-      const marker = JSON.parse(raw);
-      if (marker && typeof marker.courseId === 'string') {
-        courseId = marker.courseId;
-      }
-    } catch (error) {
-      console.warn('[LecturerExampleCommands] Failed to read course marker:', error);
-    }
-
-    if (!courseId) {
-      vscode.window.showErrorMessage('Active course not found. Please run "Computor: Login" again.');
-      return undefined;
-    }
-
-    if (this.assignmentsRootCache && this.assignmentsRootCache.courseId === courseId) {
-      if (fs.existsSync(this.assignmentsRootCache.path)) {
-        return this.assignmentsRootCache.path;
-      }
-      this.assignmentsRootCache = null;
-    }
-
-    const course = await this.apiService.getCourse(courseId);
-    if (!course) {
-      vscode.window.showErrorMessage('Unable to fetch course information.');
-      return undefined;
-    }
-
     const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-    const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
-    if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
-      vscode.window.showErrorMessage('Assignments repository not found. Run "Computor: Sync Assignments" first.');
+    const root = await repoManager.resolveAssignmentsRoot();
+    if (!root) {
+      vscode.window.showErrorMessage('Assignments repository not found. Ensure you are logged in and have synced assignments.');
       return undefined;
     }
-
-    this.assignmentsRootCache = { courseId, path: assignmentsRoot };
-    return assignmentsRoot;
+    return root;
   }
 
   /**
@@ -718,9 +600,6 @@ Explain how to use this example.
     }
     
     vscode.window.showInformationMessage(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`);
-    
-    // TODO: Read meta.yaml, package the example, and upload
-    // IMPORTANT: When packaging, exclude .meta.yaml file (it's only for local version tracking)
   }
 
   /**
@@ -1313,5 +1192,38 @@ Explain how to use this example.
     // Find the highest position and add 1
     const maxPosition = sameLevelContents.reduce((max, c) => Math.max(max, c.position || 0), 0);
     return maxPosition + 1;
+  }
+
+  private async showExampleDetails(item: ExampleTreeItem): Promise<void> {
+    if (!item?.example) {
+      vscode.window.showErrorMessage('Invalid example item');
+      return;
+    }
+
+    const downloadInfo = this.treeProvider.getDownloadInfo(item.example.id);
+    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
+    const assignmentsRoot = await repoManager.resolveAssignmentsRoot();
+
+    let downloadPath: string | undefined;
+    let isDownloaded = false;
+
+    if (downloadInfo) {
+      downloadPath = downloadInfo.path;
+      isDownloaded = true;
+    } else if (assignmentsRoot) {
+      const expectedPath = path.join(assignmentsRoot, item.example.directory);
+      if (fs.existsSync(expectedPath)) {
+        downloadPath = expectedPath;
+        isDownloaded = true;
+      }
+    }
+
+    await this.exampleDetailProvider.show(`Example: ${item.example.title}`, {
+      example: item.example,
+      repository: item.repository,
+      isDownloaded,
+      downloadPath,
+      currentVersion: downloadInfo?.version
+    });
   }
 }
