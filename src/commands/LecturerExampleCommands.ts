@@ -507,7 +507,10 @@ export class LecturerExampleCommands {
     }
 
     const metadata = readCheckoutMetadata(workingDir);
-    await this.uploadFromDirectory(workingDir, metadata?.directory || item.example.directory, item.repository.id, item.example.title);
+    await this.uploadFromDirectory(
+      workingDir, metadata?.directory || item.example.directory,
+      item.repository.id, item.example.title, metadata?.exampleId || item.example.id
+    );
   }
 
   private async uploadCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
@@ -517,29 +520,75 @@ export class LecturerExampleCommands {
     }
 
     const v = item.version;
-    await this.uploadFromDirectory(v.fullPath, v.metadata.directory, v.metadata.repositoryId, item.groupDirectory);
+    await this.uploadFromDirectory(
+      v.fullPath, v.metadata.directory, v.metadata.repositoryId,
+      item.groupDirectory, v.metadata.exampleId
+    );
   }
 
-  private async uploadFromDirectory(dirPath: string, directory: string, repositoryId: string, title: string): Promise<void> {
+  private async uploadFromDirectory(
+    dirPath: string, directory: string, repositoryId: string, title: string, exampleId: string
+  ): Promise<void> {
     if (!fs.existsSync(dirPath)) {
       vscode.window.showErrorMessage(`Directory not found: ${dirPath}`);
       return;
     }
 
-    const { readMetaYamlVersion } = await import('../utils/metaYamlHelpers');
-    const localVersion = readMetaYamlVersion(dirPath);
+    const { readMetaYamlVersion, updateMetaYamlVersion } = await import('../utils/metaYamlHelpers');
+    const { bumpVersion, normalizeSemVer } = await import('../utils/versionHelpers');
 
-    const confirmMsg = localVersion
-      ? `Upload "${title}" version ${localVersion}?`
-      : `Upload "${title}" from local directory?`;
+    // Fetch latest remote version for bump proposals
+    let latestRemoteVersion: string | undefined;
+    try {
+      const versions = await this.apiService.getExampleVersions(exampleId);
+      if (versions.length > 0) {
+        const latest = versions.reduce((a, b) => b.version_number > a.version_number ? b : a);
+        latestRemoteVersion = normalizeSemVer(latest.version_tag);
+      }
+    } catch {
+      // If we can't fetch versions, continue without remote version info
+    }
 
-    const confirm = await vscode.window.showInformationMessage(confirmMsg, 'Yes', 'No');
-    if (confirm !== 'Yes') { return; }
+    const baseVersion = latestRemoteVersion || normalizeSemVer(readMetaYamlVersion(dirPath) || '0.0.0');
+
+    const patchBump = bumpVersion(baseVersion, 'patch');
+    const minorBump = bumpVersion(baseVersion, 'minor');
+    const majorBump = bumpVersion(baseVersion, 'major');
+
+    const remoteLabel = latestRemoteVersion ? `Latest remote: ${latestRemoteVersion}` : 'No remote versions found';
+
+    const picked = await vscode.window.showQuickPick([
+      { label: `Patch: ${patchBump}`, description: remoteLabel, version: patchBump },
+      { label: `Minor: ${minorBump}`, description: remoteLabel, version: minorBump },
+      { label: `Major: ${majorBump}`, description: remoteLabel, version: majorBump },
+      { label: 'Custom version...', description: remoteLabel, version: '' }
+    ], { placeHolder: `Select version for "${title}" upload` });
+
+    if (!picked) { return; }
+
+    let uploadVersion = picked.version;
+    if (!uploadVersion) {
+      const custom = await vscode.window.showInputBox({
+        prompt: 'Enter version tag',
+        placeHolder: 'e.g., 1.2.3',
+        value: patchBump
+      });
+      if (!custom) { return; }
+      uploadVersion = normalizeSemVer(custom);
+    }
+
+    // Update meta.yaml with the chosen version before uploading
+    try {
+      updateMetaYamlVersion(dirPath, uploadVersion);
+    } catch (e) {
+      vscode.window.showErrorMessage(`Failed to update meta.yaml version: ${e}`);
+      return;
+    }
 
     try {
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Uploading: ${title}`,
+        title: `Uploading: ${title} [${uploadVersion}]`,
         cancellable: false
       }, async (progress) => {
         progress.report({ increment: 10, message: 'Packaging as zip...' });
@@ -562,7 +611,7 @@ export class LecturerExampleCommands {
         addToZip(dirPath, dirPath);
 
         const base64Zip = await zipper.generateAsync({ type: 'base64', compression: 'DEFLATE' });
-        progress.report({ increment: 40, message: 'Uploading...' });
+        progress.report({ increment: 30, message: 'Uploading...' });
 
         const zipName = `${directory}.zip`;
         const uploadRequest: ExampleUploadRequest = {
@@ -572,37 +621,71 @@ export class LecturerExampleCommands {
         };
 
         const result = await this.apiService.uploadExample(uploadRequest);
-        if (result) {
-          progress.report({ increment: 30, message: 'Creating version snapshot...' });
+        if (!result) {
+          throw new Error('Upload failed - no response from server');
+        }
 
-          // Snapshot working/ to versioned directory on successful upload
-          if (localVersion) {
-            const examplesPath = this.getExamplesDir();
-            if (examplesPath) {
-              try {
-                const snapshotDir = snapshotWorkingToVersion(examplesPath, directory, localVersion);
-                // Update snapshot metadata
+        progress.report({ increment: 20, message: 'Downloading version snapshot...' });
+
+        // Download the newly created version from the API to create a clean snapshot
+        const examplesPath = this.getExamplesDir();
+        if (examplesPath) {
+          try {
+            // Find the version we just uploaded
+            const updatedVersions = await this.apiService.getExampleVersions(exampleId);
+            const uploadedVersion = updatedVersions.find(v => normalizeSemVer(v.version_tag) === uploadVersion);
+
+            if (uploadedVersion) {
+              const downloadedData = await this.apiService.downloadExampleVersion(uploadedVersion.id);
+              if (downloadedData) {
+                const versionDir = getVersionPath(examplesPath, directory, uploadVersion);
+                if (fs.existsSync(versionDir)) {
+                  fs.rmSync(versionDir, { recursive: true, force: true });
+                }
+                fs.mkdirSync(versionDir, { recursive: true });
+                writeExampleFiles(downloadedData.files, versionDir);
+
                 const existingMeta = readCheckoutMetadata(dirPath);
                 if (existingMeta) {
-                  writeCheckoutMetadata(snapshotDir, {
+                  writeCheckoutMetadata(versionDir, {
                     ...existingMeta,
-                    versionTag: localVersion,
+                    versionTag: uploadVersion,
+                    versionId: uploadedVersion.id,
+                    versionNumber: uploadedVersion.version_number,
                     checkedOutAt: new Date().toISOString()
                   });
                 }
-              } catch (snapError) {
-                console.warn('Failed to create version snapshot:', snapError);
+              }
+            } else {
+              // Fallback: snapshot from local files
+              const snapshotDir = snapshotWorkingToVersion(examplesPath, directory, uploadVersion);
+              const existingMeta = readCheckoutMetadata(dirPath);
+              if (existingMeta) {
+                writeCheckoutMetadata(snapshotDir, {
+                  ...existingMeta,
+                  versionTag: uploadVersion,
+                  checkedOutAt: new Date().toISOString()
+                });
               }
             }
+          } catch (snapError) {
+            console.warn('Failed to create version snapshot:', snapError);
           }
 
-          progress.report({ increment: 20, message: 'Complete!' });
-          const versionInfo = localVersion ? ` [${localVersion}]` : '';
-          vscode.window.showInformationMessage(`Successfully uploaded: ${title}${versionInfo}`);
-          this.treeProvider.refresh();
-        } else {
-          throw new Error('Upload failed - no response from server');
+          // Update working copy metadata to reflect uploaded version
+          const existingMeta = readCheckoutMetadata(dirPath);
+          if (existingMeta) {
+            writeCheckoutMetadata(dirPath, {
+              ...existingMeta,
+              versionTag: uploadVersion,
+              checkedOutAt: new Date().toISOString()
+            });
+          }
         }
+
+        progress.report({ increment: 20, message: 'Complete!' });
+        vscode.window.showInformationMessage(`Successfully uploaded: ${title} [${uploadVersion}]`);
+        this.treeProvider.refresh();
       });
     } catch (error) {
       console.error('Failed to upload example:', error);

@@ -1159,14 +1159,9 @@
           "group": "1_actions@1"
         },
         {
-          "command": "computor.lecturer.bumpExampleVersion",
-          "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
-          "group": "1_actions@2"
-        },
-        {
           "command": "computor.lecturer.revealCheckedOutInExplorer",
           "when": "view == computor.lecturer.examples && (viewItem == checkedOutWorking || viewItem == checkedOutVersion || viewItem == checkedOutGroup)",
-          "group": "1_actions@3"
+          "group": "1_actions@2"
         },
         {
           "command": "computor.lecturer.deleteCheckedOutExample",
