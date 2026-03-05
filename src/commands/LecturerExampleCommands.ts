@@ -4,12 +4,12 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutExampleTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
+import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
 import { writeExampleFiles } from '../utils/exampleFileWriter';
 import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
-import { writeCheckoutMetadata, readCheckoutMetadata } from '../utils/checkedOutExampleManager';
+import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersionPath, snapshotWorkingToVersion } from '../utils/checkedOutExampleManager';
 import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
 
 /**
@@ -146,36 +146,50 @@ export class LecturerExampleCommands {
       })
     );
 
-    // Upload example (from checked-out tree item)
+    // Upload working copy
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item: ExampleTreeItem | CheckedOutExampleTreeItem) => {
-        if (item instanceof CheckedOutExampleTreeItem) {
-          await this.uploadCheckedOutExample(item);
+      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item: ExampleTreeItem | CheckedOutVersionTreeItem) => {
+        if (item instanceof CheckedOutVersionTreeItem) {
+          await this.uploadCheckedOutVersion(item);
         } else {
           await this.uploadExample(item);
         }
       })
     );
 
-    // Bump version on checked-out example
+    // Bump version on working copy
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.bumpExampleVersion', async (item: CheckedOutExampleTreeItem) => {
+      vscode.commands.registerCommand('computor.lecturer.bumpExampleVersion', async (item: CheckedOutVersionTreeItem) => {
         await this.bumpCheckedOutVersion(item);
       })
     );
 
-    // Reveal checked-out example in explorer
+    // Reveal checked-out version in explorer
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.revealCheckedOutInExplorer', async (item: CheckedOutExampleTreeItem) => {
-        if (!item?.checkedOut?.fullPath) { return; }
-        await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(item.checkedOut.fullPath));
+      vscode.commands.registerCommand('computor.lecturer.revealCheckedOutInExplorer', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem) => {
+        const p = item instanceof CheckedOutVersionTreeItem ? item.version.fullPath : item.group.fullPath;
+        await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p));
       })
     );
 
-    // Delete checked-out example
+    // Delete entire checked-out example group
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutExampleTreeItem) => {
-        await this.deleteCheckedOutExample(item);
+      vscode.commands.registerCommand('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem) => {
+        await this.deleteCheckedOutGroup(item);
+      })
+    );
+
+    // Delete single checked-out version
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.deleteCheckedOutVersion', async (item: CheckedOutVersionTreeItem) => {
+        await this.deleteCheckedOutVersion(item);
+      })
+    );
+
+    // Restore version to working copy
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.restoreVersionToWorking', async (item: CheckedOutVersionTreeItem) => {
+        await this.restoreVersionToWorking(item);
       })
     );
 
@@ -262,7 +276,7 @@ export class LecturerExampleCommands {
         const sorted = versions.slice().sort((a, b) => b.version_number - a.version_number);
         const picked = await vscode.window.showQuickPick(
           sorted.map(v => ({
-            label: `v${v.version_tag}`,
+            label: v.version_tag,
             description: `#${v.version_number}${v.created_at ? ' — ' + new Date(v.created_at).toLocaleDateString() : ''}`,
             versionId: v.id,
             versionTag: v.version_tag,
@@ -276,16 +290,6 @@ export class LecturerExampleCommands {
         versionNumber = picked.versionNumber;
       }
 
-      const examplePath = path.join(examplesPath, item.example.directory);
-
-      if (fs.existsSync(examplePath)) {
-        const overwrite = await vscode.window.showWarningMessage(
-          `'${item.example.directory}' already exists in examples/. Overwrite?`, 'Yes', 'No'
-        );
-        if (overwrite !== 'Yes') { return; }
-        fs.rmSync(examplePath, { recursive: true, force: true });
-      }
-
       const exampleData = versionId
         ? await this.apiService.downloadExampleVersion(versionId)
         : await this.apiService.downloadExample(item.example.id, false);
@@ -295,22 +299,68 @@ export class LecturerExampleCommands {
         return;
       }
 
-      writeExampleFiles(exampleData.files, examplePath);
+      const resolvedTag = versionTag || exampleData.version_tag;
 
       const metadata: CheckoutMetadata = {
         exampleId: item.example.id,
         repositoryId: item.repository.id,
+        directory: item.example.directory,
         versionId: versionId || exampleData.version_id || '',
-        versionTag: versionTag || exampleData.version_tag,
+        versionTag: resolvedTag,
         versionNumber: versionNumber ?? 0,
         checkedOutAt: new Date().toISOString()
       };
-      writeCheckoutMetadata(examplePath, metadata);
 
-      this.treeProvider.refresh();
-      vscode.window.showInformationMessage(
-        `Checked out '${item.example.title}' [${metadata.versionTag}] to examples/${item.example.directory}`
-      );
+      if (pickVersion) {
+        // Specific version: only create version snapshot
+        const versionDir = getVersionPath(examplesPath, item.example.directory, resolvedTag);
+        const versionLabel = `examples/${item.example.directory}/${resolvedTag}`;
+
+        if (fs.existsSync(versionDir)) {
+          const overwrite = await vscode.window.showWarningMessage(
+            `'${versionLabel}' already exists. Overwrite?`, 'Yes', 'No'
+          );
+          if (overwrite !== 'Yes') { return; }
+          fs.rmSync(versionDir, { recursive: true, force: true });
+        }
+
+        fs.mkdirSync(versionDir, { recursive: true });
+        writeExampleFiles(exampleData.files, versionDir);
+        writeCheckoutMetadata(versionDir, metadata);
+
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(
+          `Checked out '${item.example.title}' [${resolvedTag}] to ${versionLabel}`
+        );
+      } else {
+        // Latest: create both working/ and version snapshot
+        const workingDir = getWorkingPath(examplesPath, item.example.directory);
+        const versionDir = getVersionPath(examplesPath, item.example.directory, resolvedTag);
+
+        if (fs.existsSync(workingDir)) {
+          const overwrite = await vscode.window.showWarningMessage(
+            `Working copy of '${item.example.directory}' already exists. Overwrite?`, 'Yes', 'No'
+          );
+          if (overwrite !== 'Yes') { return; }
+          fs.rmSync(workingDir, { recursive: true, force: true });
+        }
+
+        // Create working directory
+        fs.mkdirSync(workingDir, { recursive: true });
+        writeExampleFiles(exampleData.files, workingDir);
+        writeCheckoutMetadata(workingDir, metadata);
+
+        // Create version snapshot alongside (overwrite silently if exists)
+        if (fs.existsSync(versionDir)) {
+          fs.rmSync(versionDir, { recursive: true, force: true });
+        }
+        fs.cpSync(workingDir, versionDir, { recursive: true });
+
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(
+          `Checked out '${item.example.title}' [${resolvedTag}] to working/ and ${resolvedTag}/`
+        );
+      }
     } catch (error) {
       console.error('Failed to checkout example:', error);
       vscode.window.showErrorMessage(`Failed to checkout example: ${error}`);
@@ -365,10 +415,10 @@ export class LecturerExampleCommands {
           });
 
           try {
-            const examplePath = path.join(examplesPath, exampleItem.example.directory);
+            const workingDir = getWorkingPath(examplesPath, exampleItem.example.directory);
 
-            if (fs.existsSync(examplePath)) {
-              errors.push(`${exampleItem.example.title}: Already exists`);
+            if (fs.existsSync(workingDir)) {
+              errors.push(`${exampleItem.example.title}: working/ already exists`);
               continue;
             }
 
@@ -378,17 +428,26 @@ export class LecturerExampleCommands {
               continue;
             }
 
-            writeExampleFiles(exampleData.files, examplePath);
+            fs.mkdirSync(workingDir, { recursive: true });
+            writeExampleFiles(exampleData.files, workingDir);
 
             const metadata: CheckoutMetadata = {
               exampleId: exampleItem.example.id,
               repositoryId: exampleItem.repository.id,
+              directory: exampleItem.example.directory,
               versionId: exampleData.version_id || '',
               versionTag: exampleData.version_tag,
               versionNumber: 0,
               checkedOutAt: new Date().toISOString()
             };
-            writeCheckoutMetadata(examplePath, metadata);
+            writeCheckoutMetadata(workingDir, metadata);
+
+            // Also create version snapshot for diff comparison
+            const versionDir = getVersionPath(examplesPath, exampleItem.example.directory, exampleData.version_tag);
+            if (fs.existsSync(versionDir)) {
+              fs.rmSync(versionDir, { recursive: true, force: true });
+            }
+            fs.cpSync(workingDir, versionDir, { recursive: true });
 
             successCount++;
           } catch (error) {
@@ -431,27 +490,27 @@ export class LecturerExampleCommands {
       return;
     }
 
-    // Check if there's a checked-out version in examples/
     const examplesPath = this.getExamplesDir();
     if (!examplesPath) { return; }
 
-    const examplePath = path.join(examplesPath, item.example.directory);
-    if (!fs.existsSync(examplePath)) {
-      vscode.window.showErrorMessage(`Example not checked out. Check it out first to examples/${item.example.directory}`);
+    const workingDir = getWorkingPath(examplesPath, item.example.directory);
+    if (!fs.existsSync(workingDir)) {
+      vscode.window.showErrorMessage(`No working copy found. Check out the example first.`);
       return;
     }
 
-    await this.uploadFromDirectory(examplePath, item.example.directory, item.repository.id, item.example.title);
+    const metadata = readCheckoutMetadata(workingDir);
+    await this.uploadFromDirectory(workingDir, metadata?.directory || item.example.directory, item.repository.id, item.example.title);
   }
 
-  private async uploadCheckedOutExample(item: CheckedOutExampleTreeItem): Promise<void> {
-    if (!item?.checkedOut) {
-      vscode.window.showErrorMessage('Invalid checked-out example');
+  private async uploadCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version) {
+      vscode.window.showErrorMessage('Invalid checked-out version');
       return;
     }
 
-    const co = item.checkedOut;
-    await this.uploadFromDirectory(co.fullPath, co.directory, co.metadata.repositoryId, co.directory);
+    const v = item.version;
+    await this.uploadFromDirectory(v.fullPath, v.metadata.directory, v.metadata.repositoryId, item.groupDirectory);
   }
 
   private async uploadFromDirectory(dirPath: string, directory: string, repositoryId: string, title: string): Promise<void> {
@@ -460,9 +519,14 @@ export class LecturerExampleCommands {
       return;
     }
 
-    const confirm = await vscode.window.showInformationMessage(
-      `Upload example "${title}" from local directory?`, 'Yes', 'No'
-    );
+    const { readMetaYamlVersion } = await import('../utils/metaYamlHelpers');
+    const localVersion = readMetaYamlVersion(dirPath);
+
+    const confirmMsg = localVersion
+      ? `Upload "${title}" version ${localVersion}?`
+      : `Upload "${title}" from local directory?`;
+
+    const confirm = await vscode.window.showInformationMessage(confirmMsg, 'Yes', 'No');
     if (confirm !== 'Yes') { return; }
 
     try {
@@ -502,8 +566,32 @@ export class LecturerExampleCommands {
 
         const result = await this.apiService.uploadExample(uploadRequest);
         if (result) {
-          progress.report({ increment: 50, message: 'Complete!' });
-          vscode.window.showInformationMessage(`Successfully uploaded: ${title}`);
+          progress.report({ increment: 30, message: 'Creating version snapshot...' });
+
+          // Snapshot working/ to versioned directory on successful upload
+          if (localVersion) {
+            const examplesPath = this.getExamplesDir();
+            if (examplesPath) {
+              try {
+                const snapshotDir = snapshotWorkingToVersion(examplesPath, directory, localVersion);
+                // Update snapshot metadata
+                const existingMeta = readCheckoutMetadata(dirPath);
+                if (existingMeta) {
+                  writeCheckoutMetadata(snapshotDir, {
+                    ...existingMeta,
+                    versionTag: localVersion,
+                    checkedOutAt: new Date().toISOString()
+                  });
+                }
+              } catch (snapError) {
+                console.warn('Failed to create version snapshot:', snapError);
+              }
+            }
+          }
+
+          progress.report({ increment: 20, message: 'Complete!' });
+          const versionInfo = localVersion ? ` [${localVersion}]` : '';
+          vscode.window.showInformationMessage(`Successfully uploaded: ${title}${versionInfo}`);
           this.treeProvider.refresh();
         } else {
           throw new Error('Upload failed - no response from server');
@@ -1198,21 +1286,21 @@ Explain how to use this example.
     if (!item?.example) { return; }
     const examplesPath = this.getExamplesDir();
     if (!examplesPath) { return; }
-    const examplePath = path.join(examplesPath, item.example.directory);
-    if (!fs.existsSync(examplePath)) {
+    const workingPath = getWorkingPath(examplesPath, item.example.directory);
+    if (!fs.existsSync(workingPath)) {
       vscode.window.showErrorMessage('Example is not checked out');
       return;
     }
-    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(examplePath));
+    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(workingPath));
   }
 
-  private async bumpCheckedOutVersion(item: CheckedOutExampleTreeItem): Promise<void> {
-    if (!item?.checkedOut) { return; }
+  private async bumpCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version) { return; }
 
     const { readMetaYamlVersion, updateMetaYamlVersion } = await import('../utils/metaYamlHelpers');
     const { bumpVersion, normalizeSemVer } = await import('../utils/versionHelpers');
 
-    const currentVersion = readMetaYamlVersion(item.checkedOut.fullPath);
+    const currentVersion = readMetaYamlVersion(item.version.fullPath);
     if (!currentVersion) {
       vscode.window.showErrorMessage('No version field found in meta.yaml');
       return;
@@ -1231,26 +1319,72 @@ Explain how to use this example.
 
     if (!picked) { return; }
 
-    updateMetaYamlVersion(item.checkedOut.fullPath, picked.newVersion);
+    updateMetaYamlVersion(item.version.fullPath, picked.newVersion);
     vscode.window.showInformationMessage(`Version bumped: ${normalized} -> ${picked.newVersion}`);
     this.treeProvider.refresh();
   }
 
-  private async deleteCheckedOutExample(item: CheckedOutExampleTreeItem): Promise<void> {
-    if (!item?.checkedOut) { return; }
+  private async deleteCheckedOutGroup(item: CheckedOutGroupTreeItem): Promise<void> {
+    if (!item?.group) { return; }
 
     const confirm = await vscode.window.showWarningMessage(
-      `Delete checked-out example "${item.checkedOut.directory}"? This removes the local files.`,
+      `Delete all versions of "${item.group.directory}"? This removes the entire local directory.`,
       'Delete', 'Cancel'
     );
     if (confirm !== 'Delete') { return; }
 
     try {
-      fs.rmSync(item.checkedOut.fullPath, { recursive: true, force: true });
+      fs.rmSync(item.group.fullPath, { recursive: true, force: true });
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(`Deleted: ${item.checkedOut.directory}`);
+      vscode.window.showInformationMessage(`Deleted: ${item.group.directory}`);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+    }
+  }
+
+  private async deleteCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version) { return; }
+
+    const label = item.version.isWorking ? 'working copy' : `version ${item.version.versionTag}`;
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete ${label} of "${item.groupDirectory}"?`,
+      'Delete', 'Cancel'
+    );
+    if (confirm !== 'Delete') { return; }
+
+    try {
+      fs.rmSync(item.version.fullPath, { recursive: true, force: true });
+      this.treeProvider.refresh();
+      vscode.window.showInformationMessage(`Deleted ${label}`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+    }
+  }
+
+  private async restoreVersionToWorking(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version || item.version.isWorking) { return; }
+
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
+    const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
+
+    const confirm = await vscode.window.showWarningMessage(
+      `Restore version ${item.version.versionTag} to working copy of "${item.groupDirectory}"? Any unsaved changes in the working directory will be lost.`,
+      'Restore', 'Cancel'
+    );
+    if (confirm !== 'Restore') { return; }
+
+    try {
+      if (fs.existsSync(workingDir)) {
+        fs.rmSync(workingDir, { recursive: true, force: true });
+      }
+      fs.cpSync(item.version.fullPath, workingDir, { recursive: true });
+
+      this.treeProvider.refresh();
+      vscode.window.showInformationMessage(`Restored ${item.version.versionTag} to working copy`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to restore: ${error}`);
     }
   }
 
@@ -1281,11 +1415,11 @@ Explain how to use this example.
     let currentVersion: string | undefined;
 
     if (examplesPath) {
-      const expectedPath = path.join(examplesPath, item.example.directory);
-      if (fs.existsSync(expectedPath)) {
-        downloadPath = expectedPath;
+      const workingPath = getWorkingPath(examplesPath, item.example.directory);
+      if (fs.existsSync(workingPath)) {
+        downloadPath = workingPath;
         isDownloaded = true;
-        const metadata = readCheckoutMetadata(expectedPath);
+        const metadata = readCheckoutMetadata(workingPath);
         currentVersion = metadata?.versionTag;
       }
     }

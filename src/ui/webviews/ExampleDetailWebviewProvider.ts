@@ -5,12 +5,11 @@ import { LecturerExampleTreeProvider } from '../tree/lecturer/LecturerExampleTre
 import { writeExampleFiles } from '../../utils/exampleFileWriter';
 import { bumpVersion, normalizeSemVer } from '../../utils/versionHelpers';
 import { readMetaYamlVersion, updateMetaYamlVersion } from '../../utils/metaYamlHelpers';
-import { writeCheckoutMetadata } from '../../utils/checkedOutExampleManager';
+import { writeCheckoutMetadata, getWorkingPath, getVersionPath } from '../../utils/checkedOutExampleManager';
 import { WorkspaceStructureManager } from '../../utils/workspaceStructure';
 import type { ExampleList, ExampleRepositoryList, ExampleVersionList } from '../../types/generated';
 import type { BumpPart } from '../../utils/versionHelpers';
 import * as fs from 'fs';
-import * as path from 'path';
 
 interface ExampleDetailData {
   example: ExampleList;
@@ -146,15 +145,6 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
     }
 
     try {
-      const examplePath = path.join(examplesPath, data.example.directory);
-      if (fs.existsSync(examplePath)) {
-        const overwrite = await vscode.window.showWarningMessage(
-          `'${data.example.directory}' already exists in examples/. Overwrite?`, 'Yes', 'No'
-        );
-        if (overwrite !== 'Yes') { return; }
-        fs.rmSync(examplePath, { recursive: true, force: true });
-      }
-
       const exampleData = versionId
         ? await this.apiService.downloadExampleVersion(versionId)
         : await this.apiService.downloadExample(data.example.id, false);
@@ -164,24 +154,44 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
         return;
       }
 
-      fs.mkdirSync(examplePath, { recursive: true });
-      writeExampleFiles(exampleData.files, examplePath);
-
-      writeCheckoutMetadata(examplePath, {
+      const resolvedTag = exampleData.version_tag;
+      const metadata = {
         exampleId: data.example.id,
         repositoryId: data.repository.id,
+        directory: data.example.directory,
         versionId: versionId || exampleData.version_id || '',
-        versionTag: exampleData.version_tag,
+        versionTag: resolvedTag,
         versionNumber: 0,
         checkedOutAt: new Date().toISOString()
-      });
+      };
+
+      // Create working directory
+      const workingDir = getWorkingPath(examplesPath, data.example.directory);
+      if (fs.existsSync(workingDir)) {
+        const overwrite = await vscode.window.showWarningMessage(
+          `Working copy of '${data.example.directory}' already exists. Overwrite?`, 'Yes', 'No'
+        );
+        if (overwrite !== 'Yes') { return; }
+        fs.rmSync(workingDir, { recursive: true, force: true });
+      }
+
+      fs.mkdirSync(workingDir, { recursive: true });
+      writeExampleFiles(exampleData.files, workingDir);
+      writeCheckoutMetadata(workingDir, metadata);
+
+      // Also create version snapshot for diff comparison
+      const versionDir = getVersionPath(examplesPath, data.example.directory, resolvedTag);
+      if (fs.existsSync(versionDir)) {
+        fs.rmSync(versionDir, { recursive: true, force: true });
+      }
+      fs.cpSync(workingDir, versionDir, { recursive: true });
 
       data.isDownloaded = true;
-      data.downloadPath = examplePath;
-      data.currentVersion = exampleData.version_tag;
+      data.downloadPath = workingDir;
+      data.currentVersion = resolvedTag;
 
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(`Checked out '${data.example.title}' [${exampleData.version_tag}]`);
+      vscode.window.showInformationMessage(`Checked out '${data.example.title}' [${resolvedTag}]`);
       await this.refreshData();
     } catch (error) {
       vscode.window.showErrorMessage(`Checkout failed: ${error}`);
