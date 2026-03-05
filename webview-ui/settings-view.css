@@ -179,6 +179,15 @@
   white-space: nowrap;
 }
 
+/* GitLab update token panel */
+.gitlab-update-panel {
+  padding: 10px 10px 10px 16px;
+  border-left: 2px solid var(--vscode-focusBorder);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* GitLab entries (new/edit) */
 .gitlab-entry {
   border: 1px solid var(--vscode-editorWidget-border);
