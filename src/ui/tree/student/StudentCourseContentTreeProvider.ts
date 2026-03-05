@@ -223,8 +223,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
                 const absDir = resolvePath(repoRoot, directory);
                 if (!absDir || !fs.existsSync(absDir)) {
-                    // Repository not set up yet - find the course ID and set it up
-                    if (courseId && this.repositoryManager) {
+                    // Only trigger setup if the course hasn't been set up yet this session
+                    // (avoids per-assignment popup spam on refresh when repos already exist)
+                    if (courseId && this.repositoryManager && !this.coursesSetupThisSession.has(courseId)) {
                         console.log('[StudentTree] Setting up repository for assignment:', element.courseContent.title);
                         
                         // Show progress while setting up
@@ -797,6 +798,16 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         const dirName = submissionGroup.repository.full_path.replace(/\//g, '.');
         console.log('[StudentTree] Derived repository directory name:', dirName);
         return buildStudentRepoRoot(workspaceRoot, dirName);
+    }
+
+    getExpandedCourseIds(): Set<string> {
+        const ids = new Set<string>();
+        for (const nodeId of Object.keys(this.expandedStates)) {
+            if (nodeId.startsWith('course-') && this.expandedStates[nodeId]) {
+                ids.add(nodeId.replace('course-', ''));
+            }
+        }
+        return ids;
     }
 
     private getExpandedState(nodeId: string): boolean {
