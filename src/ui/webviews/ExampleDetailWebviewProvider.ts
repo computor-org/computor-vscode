@@ -134,6 +134,14 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
     }
   }
 
+  private getVersionsPath(): string | undefined {
+    try {
+      return WorkspaceStructureManager.getInstance().getExampleVersionsPath();
+    } catch {
+      return undefined;
+    }
+  }
+
   private async handleCheckout(versionId?: string): Promise<void> {
     const data = this.currentData as ExampleDetailData | undefined;
     if (!data) { return; }
@@ -179,12 +187,16 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       writeExampleFiles(exampleData.files, workingDir);
       writeCheckoutMetadata(workingDir, metadata);
 
-      // Also create version snapshot for diff comparison
-      const versionDir = getVersionPath(examplesPath, data.example.directory, resolvedTag);
-      if (fs.existsSync(versionDir)) {
-        fs.rmSync(versionDir, { recursive: true, force: true });
+      // Also create version snapshot in example_versions/
+      const versionsPath = this.getVersionsPath();
+      if (versionsPath) {
+        const versionDir = getVersionPath(versionsPath, data.example.directory, resolvedTag);
+        if (fs.existsSync(versionDir)) {
+          fs.rmSync(versionDir, { recursive: true, force: true });
+        }
+        fs.mkdirSync(versionDir, { recursive: true });
+        fs.cpSync(workingDir, versionDir, { recursive: true });
       }
-      fs.cpSync(workingDir, versionDir, { recursive: true });
 
       data.isDownloaded = true;
       data.downloadPath = workingDir;

@@ -331,6 +331,8 @@ export class LecturerExampleCommands {
 
     const examplesPath = this.getExamplesDir();
     if (!examplesPath) { return; }
+    const versionsPath = this.getVersionsDir();
+    if (!versionsPath) { return; }
 
     try {
       let versionId: string | undefined;
@@ -382,9 +384,9 @@ export class LecturerExampleCommands {
       };
 
       if (pickVersion) {
-        // Specific version: only create version snapshot
-        const versionDir = getVersionPath(examplesPath, item.example.directory, resolvedTag);
-        const versionLabel = `examples/${item.example.directory}/${resolvedTag}`;
+        // Specific version: only create version snapshot in example_versions/
+        const versionDir = getVersionPath(versionsPath, item.example.directory, resolvedTag);
+        const versionLabel = `example_versions/${item.example.directory}/${resolvedTag}`;
 
         if (fs.existsSync(versionDir)) {
           const overwrite = await vscode.window.showWarningMessage(
@@ -403,9 +405,9 @@ export class LecturerExampleCommands {
           `Checked out '${item.example.title}' [${resolvedTag}] to ${versionLabel}`
         );
       } else {
-        // Latest: create both working/ and version snapshot
+        // Latest: create working copy in examples/ and version snapshot in example_versions/
         const workingDir = getWorkingPath(examplesPath, item.example.directory);
-        const versionDir = getVersionPath(examplesPath, item.example.directory, resolvedTag);
+        const versionDir = getVersionPath(versionsPath, item.example.directory, resolvedTag);
 
         if (fs.existsSync(workingDir)) {
           const overwrite = await vscode.window.showWarningMessage(
@@ -415,20 +417,21 @@ export class LecturerExampleCommands {
           fs.rmSync(workingDir, { recursive: true, force: true });
         }
 
-        // Create working directory
+        // Create working directory (flat: examples/<identifier>/files)
         fs.mkdirSync(workingDir, { recursive: true });
         writeExampleFiles(exampleData.files, workingDir);
         writeCheckoutMetadata(workingDir, metadata);
 
-        // Create version snapshot alongside (overwrite silently if exists)
+        // Create version snapshot in example_versions/
         if (fs.existsSync(versionDir)) {
           fs.rmSync(versionDir, { recursive: true, force: true });
         }
+        fs.mkdirSync(versionDir, { recursive: true });
         fs.cpSync(workingDir, versionDir, { recursive: true });
 
         this.treeProvider.refresh();
         vscode.window.showInformationMessage(
-          `Checked out '${item.example.title}' [${resolvedTag}] to working/ and ${resolvedTag}/`
+          `Checked out '${item.example.title}' [${resolvedTag}]`
         );
       }
     } catch (error) {
@@ -445,6 +448,8 @@ export class LecturerExampleCommands {
 
     const examplesPath = this.getExamplesDir();
     if (!examplesPath) { return; }
+    const versionsPath = this.getVersionsDir();
+    if (!versionsPath) { return; }
 
     try {
       const filteredExamples = await this.treeProvider.getFilteredExamplesForRepository(item.repository);
@@ -488,7 +493,7 @@ export class LecturerExampleCommands {
             const workingDir = getWorkingPath(examplesPath, exampleItem.example.directory);
 
             if (fs.existsSync(workingDir)) {
-              errors.push(`${exampleItem.example.title}: working/ already exists`);
+              errors.push(`${exampleItem.example.title}: already exists`);
               continue;
             }
 
@@ -512,11 +517,12 @@ export class LecturerExampleCommands {
             };
             writeCheckoutMetadata(workingDir, metadata);
 
-            // Also create version snapshot for diff comparison
-            const versionDir = getVersionPath(examplesPath, exampleItem.example.directory, exampleData.version_tag);
+            // Also create version snapshot in example_versions/
+            const versionDir = getVersionPath(versionsPath, exampleItem.example.directory, exampleData.version_tag);
             if (fs.existsSync(versionDir)) {
               fs.rmSync(versionDir, { recursive: true, force: true });
             }
+            fs.mkdirSync(path.dirname(versionDir), { recursive: true });
             fs.cpSync(workingDir, versionDir, { recursive: true });
 
             successCount++;
@@ -548,6 +554,18 @@ export class LecturerExampleCommands {
       const examplesPath = wsManager.getExamplesPath();
       fs.mkdirSync(examplesPath, { recursive: true });
       return examplesPath;
+    } catch {
+      vscode.window.showErrorMessage('No workspace folder open');
+      return undefined;
+    }
+  }
+
+  private getVersionsDir(): string | undefined {
+    try {
+      const wsManager = WorkspaceStructureManager.getInstance();
+      const versionsPath = wsManager.getExampleVersionsPath();
+      fs.mkdirSync(versionsPath, { recursive: true });
+      return versionsPath;
     } catch {
       vscode.window.showErrorMessage('No workspace folder open');
       return undefined;
@@ -711,7 +729,8 @@ export class LecturerExampleCommands {
 
         // Download the newly created version from the API to create a clean snapshot
         const examplesPath = this.getExamplesDir();
-        if (examplesPath) {
+        const versionsPath = this.getVersionsDir();
+        if (examplesPath && versionsPath) {
           try {
             // Find the version we just uploaded
             const updatedVersions = await this.apiService.getExampleVersions(exampleId);
@@ -720,7 +739,7 @@ export class LecturerExampleCommands {
             if (uploadedVersion) {
               const downloadedData = await this.apiService.downloadExampleVersion(uploadedVersion.id);
               if (downloadedData) {
-                const versionDir = getVersionPath(examplesPath, directory, uploadVersion);
+                const versionDir = getVersionPath(versionsPath, directory, uploadVersion);
                 if (fs.existsSync(versionDir)) {
                   fs.rmSync(versionDir, { recursive: true, force: true });
                 }
@@ -740,7 +759,7 @@ export class LecturerExampleCommands {
               }
             } else {
               // Fallback: snapshot from local files
-              const snapshotDir = snapshotWorkingToVersion(examplesPath, directory, uploadVersion);
+              const snapshotDir = snapshotWorkingToVersion(examplesPath, versionsPath, directory, uploadVersion);
               const existingMeta = readCheckoutMetadata(dirPath);
               if (existingMeta) {
                 writeCheckoutMetadata(snapshotDir, {
@@ -1540,13 +1559,24 @@ export class LecturerExampleCommands {
     if (!item?.group) { return; }
 
     const confirm = await vscode.window.showWarningMessage(
-      `Delete all versions of "${item.group.directory}"? This removes the entire local directory.`,
+      `Delete all local data of "${item.group.directory}"? This removes the working copy and all version snapshots.`,
       'Delete', 'Cancel'
     );
     if (confirm !== 'Delete') { return; }
 
     try {
-      fs.rmSync(item.group.fullPath, { recursive: true, force: true });
+      // Delete working copy from examples/
+      if (fs.existsSync(item.group.fullPath)) {
+        fs.rmSync(item.group.fullPath, { recursive: true, force: true });
+      }
+      // Delete version snapshots from example_versions/
+      const versionsPath = this.getVersionsDir();
+      if (versionsPath) {
+        const versionsDir = path.join(versionsPath, item.group.directory);
+        if (fs.existsSync(versionsDir)) {
+          fs.rmSync(versionsDir, { recursive: true, force: true });
+        }
+      }
       this.treeProvider.refresh();
       vscode.window.showInformationMessage(`Deleted: ${item.group.directory}`);
     } catch (error) {
@@ -1656,9 +1686,12 @@ export class LecturerExampleCommands {
 
     const examplesDir = this.getExamplesDir();
     if (!examplesDir) { return; }
+    const versionsDir = this.getVersionsDir();
+    if (!versionsDir) { return; }
 
-    const relativeToPExamples = path.relative(examplesDir, item.filePath);
-    const segments = relativeToPExamples.split(path.sep);
+    // Version files are in example_versions/<id>/<tag>/file
+    const relativeToVersions = path.relative(versionsDir, item.filePath);
+    const segments = relativeToVersions.split(path.sep);
     if (segments.length < 3) { return; }
 
     const exampleDirectory = segments[0]!;

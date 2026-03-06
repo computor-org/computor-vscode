@@ -235,9 +235,9 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     if (!examplesPath) { return; }
 
     const patterns = [
-      new vscode.RelativePattern(examplesPath, '**/working/meta.yaml'),
-      new vscode.RelativePattern(examplesPath, '**/working/test.yaml'),
-      new vscode.RelativePattern(examplesPath, '**/working/content/**'),
+      new vscode.RelativePattern(examplesPath, '**/meta.yaml'),
+      new vscode.RelativePattern(examplesPath, '**/test.yaml'),
+      new vscode.RelativePattern(examplesPath, '**/content/**'),
     ];
 
     for (const pattern of patterns) {
