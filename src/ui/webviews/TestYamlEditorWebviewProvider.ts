@@ -215,6 +215,17 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
 }
 
 const EDITOR_STYLES = `
+  /* Input styling override — make fields stand out */
+  input, textarea, select {
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+  }
+
   /* Test Editor specific styles */
   .toolbar {
     display: flex;
@@ -389,6 +400,34 @@ const EDITOR_STYLES = `
     margin-bottom: 12px;
   }
 
+  .move-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 10px;
+    border-radius: 3px;
+    line-height: 1;
+  }
+  .move-btn:hover {
+    color: var(--vscode-foreground);
+    background: var(--vscode-list-hoverBackground);
+  }
+  .move-btn-sm {
+    font-size: 8px;
+    padding: 1px 4px;
+  }
+  .test-order-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex-shrink: 0;
+    min-width: 18px;
+    align-items: center;
+    padding-top: 4px;
+  }
+
   .array-field {
     display: flex;
     flex-direction: column;
@@ -410,6 +449,8 @@ const EDITOR_SCRIPT = `
   var suite = STATE.testSuite || {};
   var currentLangId = STATE.detectedLanguage || (suite.type) || null;
   var isDirty = false;
+  var collapsedCollections = {};
+  var selectedAddType = null;
 
   function getLang(langId) {
     if (!langId) return null;
@@ -522,12 +563,13 @@ const EDITOR_SCRIPT = `
       if (action === 'addCollection') {
         var sel = document.getElementById('add-type-select');
         if (!sel) return;
+        selectedAddType = sel.value;
         suite = buildSuiteData();
         if (!suite.properties) suite.properties = {};
         if (!suite.properties.tests) suite.properties.tests = [];
         var lang = getLang(currentLangId);
-        var tt = getTestType(lang, sel.value);
-        suite.properties.tests.push({ type: sel.value, name: tt ? tt.name : sel.value, tests: [] });
+        var tt = getTestType(lang, selectedAddType);
+        suite.properties.tests.push({ type: selectedAddType, name: tt ? tt.name : selectedAddType, tests: [] });
         markDirty();
         render();
         return;
@@ -538,6 +580,7 @@ const EDITOR_SCRIPT = `
         var chevron = document.getElementById('chevron-' + idx);
         if (body) { body.classList.toggle('collapsed'); }
         if (chevron) { chevron.classList.toggle('open'); }
+        collapsedCollections[idx] = body ? body.classList.contains('collapsed') : false;
         return;
       }
       if (action === 'removeCollection') {
@@ -546,6 +589,14 @@ const EDITOR_SCRIPT = `
         suite = buildSuiteData();
         if (suite.properties && suite.properties.tests) {
           suite.properties.tests.splice(ci, 1);
+          // Shift collapse state for indices after removed one
+          var newCollapsed = {};
+          Object.keys(collapsedCollections).forEach(function(k) {
+            var ki = parseInt(k);
+            if (ki < ci) { newCollapsed[ki] = collapsedCollections[ki]; }
+            else if (ki > ci) { newCollapsed[ki - 1] = collapsedCollections[ki]; }
+          });
+          collapsedCollections = newCollapsed;
         }
         markDirty();
         render();
@@ -567,6 +618,46 @@ const EDITOR_SCRIPT = `
         suite = buildSuiteData();
         if (suite.properties && suite.properties.tests && suite.properties.tests[rci]) {
           suite.properties.tests[rci].tests.splice(rti, 1);
+        }
+        markDirty();
+        render();
+        return;
+      }
+      if (action === 'moveCollectionUp' || action === 'moveCollectionDown') {
+        e.stopPropagation();
+        var mci = parseInt(target.dataset.ci);
+        var dir = action === 'moveCollectionUp' ? -1 : 1;
+        suite = buildSuiteData();
+        if (suite.properties && suite.properties.tests) {
+          var arr = suite.properties.tests;
+          var swapIdx = mci + dir;
+          if (swapIdx >= 0 && swapIdx < arr.length) {
+            var tmp = arr[mci];
+            arr[mci] = arr[swapIdx];
+            arr[swapIdx] = tmp;
+            // Swap collapse state
+            var cOld = collapsedCollections[mci];
+            collapsedCollections[mci] = collapsedCollections[swapIdx];
+            collapsedCollections[swapIdx] = cOld;
+          }
+        }
+        markDirty();
+        render();
+        return;
+      }
+      if (action === 'moveTestUp' || action === 'moveTestDown') {
+        var mtci = parseInt(target.dataset.ci);
+        var mti = parseInt(target.dataset.ti);
+        var tdir = action === 'moveTestUp' ? -1 : 1;
+        suite = buildSuiteData();
+        if (suite.properties && suite.properties.tests && suite.properties.tests[mtci]) {
+          var tarr = suite.properties.tests[mtci].tests;
+          var tSwap = mti + tdir;
+          if (tarr && tSwap >= 0 && tSwap < tarr.length) {
+            var ttmp = tarr[mti];
+            tarr[mti] = tarr[tSwap];
+            tarr[tSwap] = ttmp;
+          }
         }
         markDirty();
         render();
@@ -602,8 +693,11 @@ const EDITOR_SCRIPT = `
       var target = e.target;
       if (target && target.id === 'lang-select') {
         currentLangId = target.value || null;
+        selectedAddType = null;
         markDirty();
         render();
+      } else if (target && target.id === 'add-type-select') {
+        selectedAddType = target.value;
       } else if (target) {
         markDirty();
       }
@@ -650,7 +744,8 @@ const EDITOR_SCRIPT = `
     if (lang) {
       html += '<select id="add-type-select" style="width:160px">';
       lang.test_types.forEach(function(tt) {
-        html += '<option value="' + esc(tt.id) + '">' + esc(tt.name) + '</option>';
+        var isSel = selectedAddType === tt.id ? ' selected' : '';
+        html += '<option value="' + esc(tt.id) + '"' + isSel + '>' + esc(tt.name) + '</option>';
       });
       html += '</select>';
       html += '<button data-action="addCollection" class="btn-sm">+ Add Collection</button>';
@@ -658,10 +753,14 @@ const EDITOR_SCRIPT = `
     html += '</div>';
 
     if (collections.length === 0) {
-      html += '<div class="empty-collections">No test collections yet. Select a test type and click "+ Add Collection".</div>';
+      if (!lang) {
+        html += '<div class="empty-collections">Select a language above to add test collections.</div>';
+      } else {
+        html += '<div class="empty-collections">No test collections yet. Select a test type and click "+ Add Collection".</div>';
+      }
     } else {
       collections.forEach(function(col, ci) {
-        html += renderCollection(col, ci, lang);
+        html += renderCollection(col, ci, lang, collections.length);
       });
     }
     html += '</div>';
@@ -683,22 +782,25 @@ const EDITOR_SCRIPT = `
     return cur != null ? String(cur) : (def != null ? String(def) : '');
   }
 
-  function renderCollection(col, index, lang) {
+  function renderCollection(col, index, lang, totalCollections) {
     var tt = getTestType(lang, col.type);
     var typeName = tt ? tt.name : col.type;
     var tests = col.tests || [];
+    var isCollapsed = collapsedCollections[index] === true;
 
     var html = '<div class="collection-card" data-index="' + index + '" data-type="' + esc(col.type) + '">';
 
     html += '<div class="collection-header" data-action="toggleCollection">';
-    html += '<span class="chevron open" id="chevron-' + index + '">&#9654;</span>';
+    html += '<span class="chevron' + (isCollapsed ? '' : ' open') + '" id="chevron-' + index + '">&#9654;</span>';
     html += '<span class="title">' + esc(col.name || 'Collection ' + (index + 1)) + '</span>';
     html += '<span class="type-badge">' + esc(typeName) + '</span>';
     html += '<span style="font-size:11px;color:var(--vscode-descriptionForeground)">' + tests.length + ' test' + (tests.length !== 1 ? 's' : '') + '</span>';
+    if (index > 0) { html += '<button class="move-btn" data-action="moveCollectionUp" data-ci="' + index + '" title="Move up">&#9650;</button>'; }
+    if (index < totalCollections - 1) { html += '<button class="move-btn" data-action="moveCollectionDown" data-ci="' + index + '" title="Move down">&#9660;</button>'; }
     html += '<button class="remove-btn" data-action="removeCollection" data-ci="' + index + '" title="Remove collection">&#10005;</button>';
     html += '</div>';
 
-    html += '<div class="collection-body" id="col-body-' + index + '">';
+    html += '<div class="collection-body' + (isCollapsed ? ' collapsed' : '') + '" id="col-body-' + index + '">';
 
     html += '<div class="collection-fields">';
     html += fg('Name', '<input type="text" data-col-field="name" value="' + esc(col.name || '') + '" placeholder="Collection name">');
@@ -734,7 +836,7 @@ const EDITOR_SCRIPT = `
     var qualifications = (tt && tt.qualifications) || [];
 
     tests.forEach(function(test, ti) {
-      html += renderTestRow(test, index, ti, qualifications, tt);
+      html += renderTestRow(test, index, ti, qualifications, tt, tests.length);
     });
 
     if (tests.length === 0) {
@@ -767,8 +869,12 @@ const EDITOR_SCRIPT = `
     return html;
   }
 
-  function renderTestRow(test, colIndex, testIndex, qualifications, testType) {
+  function renderTestRow(test, colIndex, testIndex, qualifications, testType, totalTests) {
     var html = '<div class="test-row" data-col="' + colIndex + '" data-test="' + testIndex + '">';
+    html += '<div class="test-order-btns">';
+    if (testIndex > 0) { html += '<button class="move-btn move-btn-sm" data-action="moveTestUp" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move up">&#9650;</button>'; }
+    if (testIndex < totalTests - 1) { html += '<button class="move-btn move-btn-sm" data-action="moveTestDown" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move down">&#9660;</button>'; }
+    html += '</div>';
     html += '<div class="test-fields">';
 
     html += '<input type="text" class="field-name" data-test-field="name" value="' + esc(test.name || '') + '" placeholder="Test name">';
