@@ -301,16 +301,26 @@
     return html;
   }
 
-  // Render file list with autocomplete from example files
+  // Render file list with dropdown from example files
   function renderFileList(prefix, items, placeholder) {
     var html = '<div class="list-container" data-list="' + prefix + '">';
     items.forEach(function(item, i) {
       html += '<div class="list-item string-row">';
-      html += '<input type="text" list="file-suggestions" placeholder="' + esc(placeholder || 'filename') + '" value="' + esc(item) + '" />';
+      html += '<input type="text" placeholder="' + esc(placeholder || 'filename') + '" value="' + esc(item) + '" />';
       html += '<button class="remove-btn" data-action="remove-string" data-prefix="' + prefix + '" data-index="' + i + '" title="Remove">&times;</button>';
       html += '</div>';
     });
-    html += '<button class="btn-add" data-action="add-string" data-prefix="' + prefix + '">+ Add File</button>';
+    if (exampleFiles.length > 0) {
+      html += '<div class="file-add-row">';
+      html += '<select class="file-picker" data-prefix="' + prefix + '">';
+      html += '<option value="">Select a file to add...</option>';
+      exampleFiles.forEach(function(f) {
+        html += '<option value="' + esc(f) + '">' + esc(f) + '</option>';
+      });
+      html += '</select>';
+      html += '</div>';
+    }
+    html += '<button class="btn-add" data-action="add-string" data-prefix="' + prefix + '">+ Add Custom Entry</button>';
     html += '</div>';
     return html;
   }
@@ -357,10 +367,12 @@
     html += '</div>';
     html += '<div class="form-group full-width">';
     html += '<label for="meta-description">Description</label>';
+    html += '<div class="hint section-hint">A short, concise description of the example content (one or a few lines).</div>';
     html += '<textarea id="meta-description" rows="3" placeholder="Describe this example">' + esc(meta.description || '') + '</textarea>';
     html += '</div>';
-    html += '<div class="form-group">';
+    html += '<div class="form-group full-width">';
     html += '<label for="meta-language">Language</label>';
+    html += '<div class="hint section-hint">The main language of this example.</div>';
     html += '<select id="meta-language">';
     var currentLang = meta.language || '';
     var langFound = false;
@@ -377,7 +389,7 @@
     }
     html += '</select>';
     html += '</div>';
-    html += '<div class="form-group">';
+    html += '<div class="form-group full-width">';
     html += '<label for="meta-license">License</label>';
     html += '<input id="meta-license" type="text" value="' + esc(meta.license || '') + '" placeholder="e.g. MIT" />';
     html += '</div>';
@@ -482,12 +494,6 @@
     html += '<div class="yaml-preview-content' + (yamlPreviewOpen ? '' : ' collapsed') + '" id="yaml-content"></div>';
     html += '</div>';
 
-    // File suggestions datalist
-    html += '<datalist id="file-suggestions">';
-    exampleFiles.forEach(function(f) {
-      html += '<option value="' + esc(f) + '">';
-    });
-    html += '</datalist>';
 
     app.innerHTML = html;
     bindEvents();
@@ -530,6 +536,27 @@
         if (yamlPreviewOpen) { updateYamlPreview(); }
       });
     }
+
+    // File picker selects
+    var filePickers = app.querySelectorAll('.file-picker');
+    filePickers.forEach(function(picker) {
+      picker.addEventListener('change', function() {
+        var val = picker.value;
+        if (!val) { return; }
+        var prefix = picker.dataset.prefix;
+        meta = collectMeta();
+        if (!meta.properties) { meta.properties = {}; }
+        var list = ensureArray(meta.properties[prefix]);
+        if (list.indexOf(val) === -1) {
+          list.push(val);
+          meta.properties[prefix] = list;
+          markDirty();
+          render();
+          doSave();
+        }
+        picker.value = '';
+      });
+    });
 
     // Mark dirty on any input change
     app.addEventListener('input', function() {
@@ -628,6 +655,7 @@
         }
         markDirty();
         render();
+        doSave();
       }
     });
   }

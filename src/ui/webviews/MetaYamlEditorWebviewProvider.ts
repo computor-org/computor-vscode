@@ -46,7 +46,8 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
 
   private listExampleFiles(exampleDir: string): string[] {
     const results: string[] = [];
-    const contentDir = path.join(exampleDir, 'content');
+    const excludeDirs = new Set(['content', '.git', 'node_modules']);
+    const excludeFiles = new Set(['meta.yaml', 'test.yaml']);
     try {
       const scanDir = (dir: string, prefix: string) => {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -54,14 +55,16 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
           if (entry.name.startsWith('.')) { continue; }
           const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
           if (entry.isDirectory()) {
+            if (!prefix && excludeDirs.has(entry.name)) { continue; }
             scanDir(path.join(dir, entry.name), rel);
           } else {
+            if (!prefix && excludeFiles.has(entry.name)) { continue; }
             results.push(rel);
           }
         }
       };
-      if (fs.existsSync(contentDir)) {
-        scanDir(contentDir, '');
+      if (fs.existsSync(exampleDir)) {
+        scanDir(exampleDir, '');
       }
     } catch {
       // Directory might not exist

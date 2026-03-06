@@ -191,6 +191,14 @@ button:disabled {
 /* String rows */
 .string-row input { flex: 1; }
 
+/* File picker */
+.file-add-row {
+  margin-top: 2px;
+}
+.file-picker {
+  font-size: 12px;
+}
+
 /* Chip input */
 .chip-input-container {
   border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
