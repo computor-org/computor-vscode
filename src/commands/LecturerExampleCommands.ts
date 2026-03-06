@@ -5,7 +5,7 @@ import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, FileSystemTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
-import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
+import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList, CodeAbilityMeta } from '../types/generated';
 import { writeExampleFiles } from '../utils/exampleFileWriter';
 import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
 import { TestYamlEditorWebviewProvider } from '../ui/webviews/TestYamlEditorWebviewProvider';
@@ -801,7 +801,26 @@ export class LecturerExampleCommands {
     try {
       fs.mkdirSync(workingDir, { recursive: true });
 
-      const metaContent = `title: "${title}"\nidentifier: "${identifier}"\ndirectory: "${directory}"\nversion: "0.1.0"\ncategory: ""\ntags: []\ndescription: |\n  Example description here\n`;
+      const meta: CodeAbilityMeta = {
+        slug: identifier,
+        version: '0.1.0',
+        title,
+        description: 'Example description here',
+        language: 'en',
+        license: 'MIT',
+        authors: [],
+        maintainers: [],
+        links: [],
+        supportingMaterial: [],
+        keywords: [],
+        properties: {
+          studentSubmissionFiles: [],
+          additionalFiles: [],
+          testFiles: [],
+          studentTemplates: []
+        }
+      };
+      const metaContent = yaml.dump(meta, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false, quotingType: "'", forceQuotes: false });
       fs.writeFileSync(path.join(workingDir, 'meta.yaml'), metaContent);
 
       fs.mkdirSync(path.join(workingDir, 'content'), { recursive: true });

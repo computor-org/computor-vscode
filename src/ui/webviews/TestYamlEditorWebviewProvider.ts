@@ -14,15 +14,20 @@ interface TestYamlEditorData {
 interface BlockRegistryLanguage {
   id: string;
   name: string;
+  description?: string;
   file_extensions: string[];
+  icon?: string;
   test_types: BlockRegistryTestType[];
   qualifications?: BlockRegistryQualification[];
+  defaults?: Record<string, unknown>;
+  config_fields?: BlockRegistryField[];
 }
 
 interface BlockRegistryTestType {
   id: string;
   name: string;
   description: string;
+  icon?: string;
   category?: string;
   qualifications: string[];
   default_qualification?: string;
@@ -35,10 +40,14 @@ interface BlockRegistryQualification {
   id: string;
   name: string;
   description: string;
+  category?: string;
   uses_value?: boolean;
   uses_pattern?: boolean;
   uses_tolerance?: boolean;
+  uses_line_number?: boolean;
+  uses_count?: boolean;
   extra_fields?: BlockRegistryField[];
+  example?: Record<string, unknown>;
 }
 
 interface BlockRegistryField {
@@ -51,6 +60,9 @@ interface BlockRegistryField {
   array_item_type?: string | null;
   min_value?: number | null;
   max_value?: number | null;
+  min_length?: number | null;
+  max_length?: number | null;
+  pattern?: string | null;
   placeholder?: string | null;
   examples?: unknown[] | null;
 }

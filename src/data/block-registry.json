@@ -687,6 +687,254 @@
           }
         },
         {
+          "id": "warning",
+          "name": "Warning",
+          "description": "Check for expected warnings",
+          "icon": "warning",
+          "category": "output",
+          "qualifications": [
+            "regexp",
+            "contains"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "pattern",
+              "type": "pattern",
+              "description": "Pattern for matching (string or regex)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., Sum: \\d+",
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Warning Check",
+            "type": "warning",
+            "tests": [
+              {
+                "name": "deprecation_warning",
+                "pattern": "DeprecationWarning"
+              }
+            ]
+          }
+        },
+        {
+          "id": "graphics",
+          "name": "Graphics",
+          "description": "Check matplotlib plot/figure properties",
+          "icon": "chart",
+          "category": "variable",
+          "qualifications": [
+            "verifyEqual"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "timeout",
+              "type": "number",
+              "description": "Maximum execution time in seconds",
+              "required": false,
+              "default": 30.0,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": 0.1,
+              "max_value": 600.0,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            },
+            {
+              "name": "storeGraphicsArtifacts",
+              "type": "boolean",
+              "description": "Save figure images as artifacts",
+              "required": false,
+              "default": false,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "string",
+              "description": "Expected value to compare against",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "Expected output or value",
+              "examples": null
+            },
+            {
+              "name": "relativeTolerance",
+              "type": "number",
+              "description": "Relative tolerance for numeric comparison",
+              "required": false,
+              "default": 1e-12,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": 0.0,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Plot Tests",
+            "type": "graphics",
+            "entryPoint": "plot_data.py",
+            "tests": [
+              {
+                "name": "gcf().axes[0].get_xlabel()",
+                "value": "Time"
+              },
+              {
+                "name": "gcf().axes[0].get_title()",
+                "value": "Data Plot"
+              }
+            ]
+          }
+        },
+        {
           "id": "linting",
           "name": "Linting",
           "description": "Check code style with flake8/pylint",
@@ -3152,6 +3400,207 @@
               }
             ]
           }
+        },
+        {
+          "id": "error",
+          "name": "Error",
+          "description": "Check for expected errors in R output",
+          "icon": "error",
+          "category": "output",
+          "qualifications": [
+            "regexp",
+            "contains"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "pattern",
+              "type": "pattern",
+              "description": "Pattern for matching (string or regex)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., Sum: \\d+",
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Error Handling",
+            "type": "error",
+            "entryPoint": "solution.R",
+            "tests": [
+              {
+                "name": "raises_error"
+              },
+              {
+                "name": "specific_error",
+                "pattern": "object .* not found"
+              }
+            ]
+          }
+        },
+        {
+          "id": "warning",
+          "name": "Warning",
+          "description": "Check for expected warnings in R output",
+          "icon": "warning",
+          "category": "output",
+          "qualifications": [
+            "regexp",
+            "contains"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "pattern",
+              "type": "pattern",
+              "description": "Pattern for matching (string or regex)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., Sum: \\d+",
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Warning Check",
+            "type": "warning",
+            "entryPoint": "solution.R",
+            "tests": [
+              {
+                "name": "coercion_warning",
+                "pattern": "NAs introduced by coercion"
+              }
+            ]
+          }
         }
       ],
       "qualifications": [
@@ -3685,6 +4134,207 @@
                   1,
                   10
                 ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "error",
+          "name": "Error",
+          "description": "Check for expected errors in Julia output",
+          "icon": "error",
+          "category": "output",
+          "qualifications": [
+            "regexp",
+            "contains"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "pattern",
+              "type": "pattern",
+              "description": "Pattern for matching (string or regex)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., Sum: \\d+",
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Error Handling",
+            "type": "error",
+            "entryPoint": "solution.jl",
+            "tests": [
+              {
+                "name": "raises_error"
+              },
+              {
+                "name": "specific_error",
+                "pattern": "UndefVarError"
+              }
+            ]
+          }
+        },
+        {
+          "id": "warning",
+          "name": "Warning",
+          "description": "Check for expected warnings in Julia output",
+          "icon": "warning",
+          "category": "output",
+          "qualifications": [
+            "regexp",
+            "contains"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "pattern",
+              "type": "pattern",
+              "description": "Pattern for matching (string or regex)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., Sum: \\d+",
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Warning Check",
+            "type": "warning",
+            "entryPoint": "solution.jl",
+            "tests": [
+              {
+                "name": "deprecation_warning",
+                "pattern": "deprecated"
               }
             ]
           }
@@ -4443,6 +5093,207 @@
               }
             ]
           }
+        },
+        {
+          "id": "error",
+          "name": "Error",
+          "description": "Check for expected runtime errors",
+          "icon": "error",
+          "category": "output",
+          "qualifications": [
+            "regexp",
+            "contains"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "pattern",
+              "type": "pattern",
+              "description": "Pattern for matching (string or regex)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., Sum: \\d+",
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Error Handling",
+            "type": "error",
+            "entryPoint": "main.f90",
+            "tests": [
+              {
+                "name": "runtime_error"
+              },
+              {
+                "name": "specific_error",
+                "pattern": "SIGFPE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "warning",
+          "name": "Warning",
+          "description": "Check for expected compiler/runtime warnings",
+          "icon": "warning",
+          "category": "output",
+          "qualifications": [
+            "regexp",
+            "contains"
+          ],
+          "default_qualification": null,
+          "collection_fields": [
+            {
+              "name": "entryPoint",
+              "type": "filePath",
+              "description": "Main file to execute",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., main.py",
+              "examples": null
+            },
+            {
+              "name": "inputAnswers",
+              "type": "array",
+              "description": "Input lines to send to stdin",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "string",
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  "5",
+                  "3"
+                ],
+                [
+                  "yes"
+                ]
+              ]
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "pattern",
+              "type": "pattern",
+              "description": "Pattern for matching (string or regex)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., Sum: \\d+",
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Warning Check",
+            "type": "warning",
+            "entryPoint": "main.f90",
+            "tests": [
+              {
+                "name": "unused_var",
+                "pattern": "unused variable"
+              }
+            ]
+          }
         }
       ],
       "qualifications": [
@@ -4676,22 +5527,6 @@
               "name": "file",
               "type": "filePath",
               "description": "Document file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., essay.md",
-              "examples": null
-            },
-            {
-              "name": "entryPoint",
-              "type": "filePath",
-              "description": "Document file to analyze (alternative to file)",
               "required": false,
               "default": null,
               "enum_values": null,
@@ -5217,7 +6052,7 @@
             {
               "name": "file",
               "type": "filePath",
-              "description": "Markdown file to analyze",
+              "description": "Document file to analyze",
               "required": false,
               "default": null,
               "enum_values": null,
@@ -5301,6 +6136,703 @@
                   3,
                   10
                 ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "uniquewords",
+          "name": "Unique Words",
+          "description": "Check unique word count (vocabulary)",
+          "icon": "layers",
+          "category": "metric",
+          "qualifications": [
+            "verifyEqual",
+            "count"
+          ],
+          "default_qualification": "verifyEqual",
+          "collection_fields": [
+            {
+              "name": "file",
+              "type": "filePath",
+              "description": "Document file to analyze",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "integer",
+              "description": "Expected unique word count",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "allowedOccuranceRange",
+              "type": "array",
+              "description": "Allowed occurrence count [min, max]",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "integer",
+              "min_value": null,
+              "max_value": null,
+              "min_length": 2,
+              "max_length": 2,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  1,
+                  5
+                ],
+                [
+                  0,
+                  0
+                ]
+              ]
+            }
+          ],
+          "example": {
+            "name": "Unique Words",
+            "type": "uniquewords",
+            "file": "essay.md",
+            "tests": [
+              {
+                "name": "unique",
+                "allowedOccuranceRange": [
+                  200,
+                  0
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "linkcount",
+          "name": "Link Count",
+          "description": "Check markdown link count",
+          "icon": "link",
+          "category": "metric",
+          "qualifications": [
+            "verifyEqual",
+            "count"
+          ],
+          "default_qualification": "verifyEqual",
+          "collection_fields": [
+            {
+              "name": "file",
+              "type": "filePath",
+              "description": "Document file to analyze",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "integer",
+              "description": "Expected link count",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "allowedOccuranceRange",
+              "type": "array",
+              "description": "Allowed occurrence count [min, max]",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "integer",
+              "min_value": null,
+              "max_value": null,
+              "min_length": 2,
+              "max_length": 2,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  1,
+                  5
+                ],
+                [
+                  0,
+                  0
+                ]
+              ]
+            }
+          ],
+          "example": {
+            "name": "Link Count",
+            "type": "linkcount",
+            "file": "report.md",
+            "tests": [
+              {
+                "name": "references",
+                "allowedOccuranceRange": [
+                  5,
+                  0
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "imagecount",
+          "name": "Image Count",
+          "description": "Check markdown image count",
+          "icon": "image",
+          "category": "metric",
+          "qualifications": [
+            "verifyEqual",
+            "count"
+          ],
+          "default_qualification": "verifyEqual",
+          "collection_fields": [
+            {
+              "name": "file",
+              "type": "filePath",
+              "description": "Document file to analyze",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "integer",
+              "description": "Expected image count",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "allowedOccuranceRange",
+              "type": "array",
+              "description": "Allowed occurrence count [min, max]",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "integer",
+              "min_value": null,
+              "max_value": null,
+              "min_length": 2,
+              "max_length": 2,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  1,
+                  5
+                ],
+                [
+                  0,
+                  0
+                ]
+              ]
+            }
+          ],
+          "example": {
+            "name": "Image Count",
+            "type": "imagecount",
+            "file": "report.md",
+            "tests": [
+              {
+                "name": "figures",
+                "allowedOccuranceRange": [
+                  2,
+                  10
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "codeblockcount",
+          "name": "Code Block Count",
+          "description": "Check markdown code block count",
+          "icon": "code",
+          "category": "metric",
+          "qualifications": [
+            "verifyEqual",
+            "count"
+          ],
+          "default_qualification": "verifyEqual",
+          "collection_fields": [
+            {
+              "name": "file",
+              "type": "filePath",
+              "description": "Document file to analyze",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "integer",
+              "description": "Expected code block count",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "allowedOccuranceRange",
+              "type": "array",
+              "description": "Allowed occurrence count [min, max]",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "integer",
+              "min_value": null,
+              "max_value": null,
+              "min_length": 2,
+              "max_length": 2,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  1,
+                  5
+                ],
+                [
+                  0,
+                  0
+                ]
+              ]
+            }
+          ],
+          "example": {
+            "name": "Code Block Count",
+            "type": "codeblockcount",
+            "file": "tutorial.md",
+            "tests": [
+              {
+                "name": "examples",
+                "allowedOccuranceRange": [
+                  3,
+                  0
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "listitemcount",
+          "name": "List Item Count",
+          "description": "Check markdown list item count",
+          "icon": "list",
+          "category": "metric",
+          "qualifications": [
+            "verifyEqual",
+            "count"
+          ],
+          "default_qualification": "verifyEqual",
+          "collection_fields": [
+            {
+              "name": "file",
+              "type": "filePath",
+              "description": "Document file to analyze",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "integer",
+              "description": "Expected list item count",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "allowedOccuranceRange",
+              "type": "array",
+              "description": "Allowed occurrence count [min, max]",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": "integer",
+              "min_value": null,
+              "max_value": null,
+              "min_length": 2,
+              "max_length": 2,
+              "pattern": null,
+              "placeholder": null,
+              "examples": [
+                [
+                  1,
+                  5
+                ],
+                [
+                  0,
+                  0
+                ]
+              ]
+            }
+          ],
+          "example": {
+            "name": "List Item Count",
+            "type": "listitemcount",
+            "file": "checklist.md",
+            "tests": [
+              {
+                "name": "items",
+                "allowedOccuranceRange": [
+                  5,
+                  20
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "avgwordlength",
+          "name": "Average Word Length",
+          "description": "Check average word length",
+          "icon": "bar-chart",
+          "category": "quality",
+          "qualifications": [
+            "verifyEqual"
+          ],
+          "default_qualification": "verifyEqual",
+          "collection_fields": [
+            {
+              "name": "file",
+              "type": "filePath",
+              "description": "Document file to analyze",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "number",
+              "description": "Expected average word length",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "absoluteTolerance",
+              "type": "number",
+              "description": "Absolute tolerance for numeric comparison",
+              "required": false,
+              "default": 0.0001,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": 0.0,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Average Word Length",
+            "type": "avgwordlength",
+            "file": "essay.md",
+            "tests": [
+              {
+                "name": "avg",
+                "value": 5.5,
+                "absoluteTolerance": 0.5
+              }
+            ]
+          }
+        },
+        {
+          "id": "avgsentencelength",
+          "name": "Average Sentence Length",
+          "description": "Check average sentence length (words per sentence)",
+          "icon": "bar-chart-2",
+          "category": "quality",
+          "qualifications": [
+            "verifyEqual"
+          ],
+          "default_qualification": "verifyEqual",
+          "collection_fields": [
+            {
+              "name": "file",
+              "type": "filePath",
+              "description": "Document file to analyze",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "test_fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Test name (displayed in results)",
+              "required": true,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": "e.g., check_sum_result",
+              "examples": null
+            },
+            {
+              "name": "value",
+              "type": "number",
+              "description": "Expected average sentence length (words)",
+              "required": false,
+              "default": null,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": null,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            },
+            {
+              "name": "absoluteTolerance",
+              "type": "number",
+              "description": "Absolute tolerance for numeric comparison",
+              "required": false,
+              "default": 0.0001,
+              "enum_values": null,
+              "array_item_type": null,
+              "min_value": 0.0,
+              "max_value": null,
+              "min_length": null,
+              "max_length": null,
+              "pattern": null,
+              "placeholder": null,
+              "examples": null
+            }
+          ],
+          "example": {
+            "name": "Average Sentence Length",
+            "type": "avgsentencelength",
+            "file": "essay.md",
+            "tests": [
+              {
+                "name": "avg",
+                "value": 15.0,
+                "absoluteTolerance": 3.0
               }
             ]
           }
@@ -5644,703 +7176,6 @@
               {
                 "name": "url_pattern",
                 "pattern": "https?://[^\\s]+"
-              }
-            ]
-          }
-        },
-        {
-          "id": "uniquewords",
-          "name": "Unique Words",
-          "description": "Check unique word count (vocabulary)",
-          "icon": "layers",
-          "category": "metric",
-          "qualifications": [
-            "verifyEqual",
-            "count"
-          ],
-          "default_qualification": "verifyEqual",
-          "collection_fields": [
-            {
-              "name": "file",
-              "type": "filePath",
-              "description": "Document file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "test_fields": [
-            {
-              "name": "name",
-              "type": "string",
-              "description": "Test name (displayed in results)",
-              "required": true,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., check_sum_result",
-              "examples": null
-            },
-            {
-              "name": "value",
-              "type": "integer",
-              "description": "Expected unique word count",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            },
-            {
-              "name": "allowedOccuranceRange",
-              "type": "array",
-              "description": "Allowed occurrence count [min, max]",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": "integer",
-              "min_value": null,
-              "max_value": null,
-              "min_length": 2,
-              "max_length": 2,
-              "pattern": null,
-              "placeholder": null,
-              "examples": [
-                [
-                  1,
-                  5
-                ],
-                [
-                  0,
-                  0
-                ]
-              ]
-            }
-          ],
-          "example": {
-            "name": "Vocabulary",
-            "type": "uniquewords",
-            "file": "essay.md",
-            "tests": [
-              {
-                "name": "unique",
-                "allowedOccuranceRange": [
-                  200,
-                  0
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": "avgwordlength",
-          "name": "Average Word Length",
-          "description": "Check average word length",
-          "icon": "bar-chart",
-          "category": "quality",
-          "qualifications": [
-            "verifyEqual"
-          ],
-          "default_qualification": "verifyEqual",
-          "collection_fields": [
-            {
-              "name": "file",
-              "type": "filePath",
-              "description": "Document file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "test_fields": [
-            {
-              "name": "name",
-              "type": "string",
-              "description": "Test name (displayed in results)",
-              "required": true,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., check_sum_result",
-              "examples": null
-            },
-            {
-              "name": "value",
-              "type": "number",
-              "description": "Expected average word length",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            },
-            {
-              "name": "absoluteTolerance",
-              "type": "number",
-              "description": "Absolute tolerance for numeric comparison",
-              "required": false,
-              "default": 0.0001,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": 0.0,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "example": {
-            "name": "Word Length",
-            "type": "avgwordlength",
-            "file": "essay.md",
-            "tests": [
-              {
-                "name": "avg",
-                "value": 5.5,
-                "absoluteTolerance": 0.5
-              }
-            ]
-          }
-        },
-        {
-          "id": "avgsentencelength",
-          "name": "Average Sentence Length",
-          "description": "Check average sentence length (words per sentence)",
-          "icon": "bar-chart-2",
-          "category": "quality",
-          "qualifications": [
-            "verifyEqual"
-          ],
-          "default_qualification": "verifyEqual",
-          "collection_fields": [
-            {
-              "name": "file",
-              "type": "filePath",
-              "description": "Document file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "test_fields": [
-            {
-              "name": "name",
-              "type": "string",
-              "description": "Test name (displayed in results)",
-              "required": true,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., check_sum_result",
-              "examples": null
-            },
-            {
-              "name": "value",
-              "type": "number",
-              "description": "Expected average sentence length (words)",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            },
-            {
-              "name": "absoluteTolerance",
-              "type": "number",
-              "description": "Absolute tolerance for numeric comparison",
-              "required": false,
-              "default": 0.0001,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": 0.0,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "example": {
-            "name": "Sentence Length",
-            "type": "avgsentencelength",
-            "file": "essay.md",
-            "tests": [
-              {
-                "name": "avg",
-                "value": 15.0,
-                "absoluteTolerance": 3.0
-              }
-            ]
-          }
-        },
-        {
-          "id": "linkcount",
-          "name": "Link Count",
-          "description": "Check markdown link count",
-          "icon": "link",
-          "category": "metric",
-          "qualifications": [
-            "verifyEqual",
-            "count"
-          ],
-          "default_qualification": "verifyEqual",
-          "collection_fields": [
-            {
-              "name": "file",
-              "type": "filePath",
-              "description": "Markdown file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "test_fields": [
-            {
-              "name": "name",
-              "type": "string",
-              "description": "Test name (displayed in results)",
-              "required": true,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., check_sum_result",
-              "examples": null
-            },
-            {
-              "name": "value",
-              "type": "integer",
-              "description": "Expected link count",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            },
-            {
-              "name": "allowedOccuranceRange",
-              "type": "array",
-              "description": "Allowed occurrence count [min, max]",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": "integer",
-              "min_value": null,
-              "max_value": null,
-              "min_length": 2,
-              "max_length": 2,
-              "pattern": null,
-              "placeholder": null,
-              "examples": [
-                [
-                  1,
-                  5
-                ],
-                [
-                  0,
-                  0
-                ]
-              ]
-            }
-          ],
-          "example": {
-            "name": "Links",
-            "type": "linkcount",
-            "file": "report.md",
-            "tests": [
-              {
-                "name": "references",
-                "allowedOccuranceRange": [
-                  5,
-                  0
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": "imagecount",
-          "name": "Image Count",
-          "description": "Check markdown image count",
-          "icon": "image",
-          "category": "metric",
-          "qualifications": [
-            "verifyEqual",
-            "count"
-          ],
-          "default_qualification": "verifyEqual",
-          "collection_fields": [
-            {
-              "name": "file",
-              "type": "filePath",
-              "description": "Markdown file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "test_fields": [
-            {
-              "name": "name",
-              "type": "string",
-              "description": "Test name (displayed in results)",
-              "required": true,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., check_sum_result",
-              "examples": null
-            },
-            {
-              "name": "value",
-              "type": "integer",
-              "description": "Expected image count",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            },
-            {
-              "name": "allowedOccuranceRange",
-              "type": "array",
-              "description": "Allowed occurrence count [min, max]",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": "integer",
-              "min_value": null,
-              "max_value": null,
-              "min_length": 2,
-              "max_length": 2,
-              "pattern": null,
-              "placeholder": null,
-              "examples": [
-                [
-                  1,
-                  5
-                ],
-                [
-                  0,
-                  0
-                ]
-              ]
-            }
-          ],
-          "example": {
-            "name": "Images",
-            "type": "imagecount",
-            "file": "report.md",
-            "tests": [
-              {
-                "name": "figures",
-                "allowedOccuranceRange": [
-                  2,
-                  10
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": "codeblockcount",
-          "name": "Code Block Count",
-          "description": "Check markdown code block count",
-          "icon": "code",
-          "category": "metric",
-          "qualifications": [
-            "verifyEqual",
-            "count"
-          ],
-          "default_qualification": "verifyEqual",
-          "collection_fields": [
-            {
-              "name": "file",
-              "type": "filePath",
-              "description": "Markdown file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "test_fields": [
-            {
-              "name": "name",
-              "type": "string",
-              "description": "Test name (displayed in results)",
-              "required": true,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., check_sum_result",
-              "examples": null
-            },
-            {
-              "name": "value",
-              "type": "integer",
-              "description": "Expected code block count",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            },
-            {
-              "name": "allowedOccuranceRange",
-              "type": "array",
-              "description": "Allowed occurrence count [min, max]",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": "integer",
-              "min_value": null,
-              "max_value": null,
-              "min_length": 2,
-              "max_length": 2,
-              "pattern": null,
-              "placeholder": null,
-              "examples": [
-                [
-                  1,
-                  5
-                ],
-                [
-                  0,
-                  0
-                ]
-              ]
-            }
-          ],
-          "example": {
-            "name": "Code Blocks",
-            "type": "codeblockcount",
-            "file": "tutorial.md",
-            "tests": [
-              {
-                "name": "examples",
-                "allowedOccuranceRange": [
-                  3,
-                  0
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "id": "listitemcount",
-          "name": "List Item Count",
-          "description": "Check markdown list item count",
-          "icon": "list",
-          "category": "metric",
-          "qualifications": [
-            "verifyEqual",
-            "count"
-          ],
-          "default_qualification": "verifyEqual",
-          "collection_fields": [
-            {
-              "name": "file",
-              "type": "filePath",
-              "description": "Markdown file to analyze",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            }
-          ],
-          "test_fields": [
-            {
-              "name": "name",
-              "type": "string",
-              "description": "Test name (displayed in results)",
-              "required": true,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": "e.g., check_sum_result",
-              "examples": null
-            },
-            {
-              "name": "value",
-              "type": "integer",
-              "description": "Expected list item count",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": null,
-              "min_value": null,
-              "max_value": null,
-              "min_length": null,
-              "max_length": null,
-              "pattern": null,
-              "placeholder": null,
-              "examples": null
-            },
-            {
-              "name": "allowedOccuranceRange",
-              "type": "array",
-              "description": "Allowed occurrence count [min, max]",
-              "required": false,
-              "default": null,
-              "enum_values": null,
-              "array_item_type": "integer",
-              "min_value": null,
-              "max_value": null,
-              "min_length": 2,
-              "max_length": 2,
-              "pattern": null,
-              "placeholder": null,
-              "examples": [
-                [
-                  1,
-                  5
-                ],
-                [
-                  0,
-                  0
-                ]
-              ]
-            }
-          ],
-          "example": {
-            "name": "List Items",
-            "type": "listitemcount",
-            "file": "checklist.md",
-            "tests": [
-              {
-                "name": "items",
-                "allowedOccuranceRange": [
-                  5,
-                  20
-                ]
               }
             ]
           }
