@@ -224,6 +224,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   private examplesCache: Map<string, ExampleList[]> = new Map();
   private checkedOutCache: CheckedOutExampleGroup[] | null = null;
   private fileWatchers: vscode.Disposable[] = [];
+  private expandDirectory: string | undefined;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -273,6 +274,11 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  refreshAndExpand(directory: string): void {
+    this.expandDirectory = directory;
+    this.refresh();
+  }
+
   refreshNode(element?: vscode.TreeItem): void {
     this._onDidChangeTreeData.fire(element);
   }
@@ -301,9 +307,14 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       }
 
       if (element instanceof CheckedOutGroupTreeItem) {
-        return element.group.versions.map(v =>
-          new CheckedOutVersionTreeItem(v, element.group.directory)
-        );
+        const shouldExpand = element.collapsibleState === vscode.TreeItemCollapsibleState.Expanded;
+        return element.group.versions.map(v => {
+          const item = new CheckedOutVersionTreeItem(v, element.group.directory);
+          if (shouldExpand && v.isWorking) {
+            item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+          }
+          return item;
+        });
       }
 
       if (element instanceof CheckedOutVersionTreeItem) {
@@ -384,7 +395,15 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       return [empty];
     }
 
-    return this.checkedOutCache.map(group => new CheckedOutGroupTreeItem(group));
+    const expandDir = this.expandDirectory;
+    this.expandDirectory = undefined;
+    return this.checkedOutCache.map(group => {
+      const item = new CheckedOutGroupTreeItem(group);
+      if (expandDir && group.directory === expandDir) {
+        item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      }
+      return item;
+    });
   }
 
   private getCheckedOutExampleIds(): Set<string> {

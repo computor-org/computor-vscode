@@ -42,7 +42,7 @@
     m.maintainers = collectPersonList('maintainers');
     m.links = collectLinkList('links');
     m.supportingMaterial = collectLinkList('supportingMaterial');
-    m.keywords = collectStringList('keywords');
+    m.keywords = collectChips('keywords');
 
     m.properties = {};
     m.properties.studentSubmissionFiles = collectStringList('studentSubmissionFiles');
@@ -104,6 +104,61 @@
       }
     });
     return items;
+  }
+
+  // Chip input helpers
+  function collectChips(prefix) {
+    var container = document.querySelector('[data-chips="' + prefix + '"]');
+    if (!container) { return []; }
+    var chips = container.querySelectorAll('.chip');
+    var items = [];
+    chips.forEach(function(chip) {
+      var val = chip.dataset.value;
+      if (val) { items.push(val); }
+    });
+    return items;
+  }
+
+  function renderChipInput(prefix, items, placeholder) {
+    var html = '<div class="chip-input-container" data-chips="' + prefix + '">';
+    html += '<div class="chip-list">';
+    items.forEach(function(item) {
+      html += '<span class="chip" data-value="' + esc(item) + '">';
+      html += esc(item);
+      html += '<button class="chip-remove" data-action="remove-chip" data-prefix="' + prefix + '" data-value="' + esc(item) + '">&times;</button>';
+      html += '</span>';
+    });
+    html += '<input class="chip-text-input" type="text" data-prefix="' + prefix + '" placeholder="' + esc(placeholder || 'Type and press Enter') + '" />';
+    html += '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  function addChip(prefix, value) {
+    value = value.trim();
+    if (!value) { return; }
+    meta = collectMeta();
+    var list = ensureArray(meta[prefix]);
+    if (list.indexOf(value) >= 0) { return; }
+    list.push(value);
+    meta[prefix] = list;
+    render();
+    doSave();
+    // Focus the input after re-render
+    setTimeout(function() {
+      var input = document.querySelector('[data-chips="' + prefix + '"] .chip-text-input');
+      if (input) { input.focus(); }
+    }, 0);
+  }
+
+  function removeChip(prefix, value) {
+    meta = collectMeta();
+    var list = ensureArray(meta[prefix]);
+    var idx = list.indexOf(value);
+    if (idx >= 0) { list.splice(idx, 1); }
+    meta[prefix] = list;
+    render();
+    doSave();
   }
 
   // YAML preview serializer
@@ -347,7 +402,7 @@
     html += '<div class="section">';
     html += '<h2>Keywords</h2>';
     html += '<div class="hint section-hint">Tags for discovery and categorization</div>';
-    html += renderStringList('keywords', keywords, 'keyword');
+    html += renderChipInput('keywords', keywords, 'Add keyword...');
     html += '</div>';
 
     // Links
@@ -455,6 +510,14 @@
     var openBtn = document.getElementById('btn-open-file');
     if (openBtn) { openBtn.addEventListener('click', openInEditor); }
 
+    // Auto-save on language change
+    var langSelect = document.getElementById('meta-language');
+    if (langSelect) {
+      langSelect.addEventListener('change', function() {
+        doSave();
+      });
+    }
+
     // YAML preview toggle
     var yamlToggle = document.getElementById('yaml-toggle');
     if (yamlToggle) {
@@ -482,6 +545,23 @@
       }
     });
 
+    // Chip input keydown (Enter/comma to add, Backspace to remove last)
+    app.addEventListener('keydown', function(e) {
+      var target = e.target;
+      if (!target || !target.classList.contains('chip-text-input')) { return; }
+      var prefix = target.dataset.prefix;
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        var val = target.value.replace(/,/g, '').trim();
+        if (val) { addChip(prefix, val); }
+      } else if (e.key === 'Backspace' && target.value === '') {
+        var chips = collectChips(prefix);
+        if (chips.length > 0) {
+          removeChip(prefix, chips[chips.length - 1]);
+        }
+      }
+    });
+
     // Delegated click events for add/remove buttons
     app.addEventListener('click', function(e) {
       var target = e.target;
@@ -491,7 +571,9 @@
 
       var prefix = target.dataset.prefix;
 
-      if (action === 'add-person') {
+      if (action === 'remove-chip') {
+        removeChip(prefix, target.dataset.value);
+      } else if (action === 'add-person') {
         meta = collectMeta();
         var personList = ensureArray(meta[prefix]);
         personList.push({ name: '', email: '', affiliation: '' });

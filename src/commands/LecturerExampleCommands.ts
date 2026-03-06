@@ -867,6 +867,7 @@ export class LecturerExampleCommands {
       fs.writeFileSync(path.join(workingDir, 'meta.yaml'), metaContent);
 
       fs.mkdirSync(path.join(workingDir, 'content'), { recursive: true });
+      fs.mkdirSync(path.join(workingDir, 'content', 'mediaFiles'), { recursive: true });
       fs.writeFileSync(path.join(workingDir, 'content', `index_${pickedLang.langCode}.md`), `# ${title}\n`, 'utf8');
 
       const metadata: CheckoutMetadata = {
@@ -880,10 +881,7 @@ export class LecturerExampleCommands {
       };
       writeCheckoutMetadata(workingDir, metadata);
 
-      this.treeProvider.refresh();
-
-      const doc = await vscode.workspace.openTextDocument(path.join(workingDir, 'meta.yaml'));
-      await vscode.window.showTextDocument(doc);
+      this.treeProvider.refreshAndExpand(directory);
 
       vscode.window.showInformationMessage(`Created new example "${title}" in Local Examples`);
     } catch (error) {
