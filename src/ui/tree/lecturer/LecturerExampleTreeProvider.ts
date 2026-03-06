@@ -181,6 +181,8 @@ class FileSystemTreeItem extends vscode.TreeItem {
     if (isWorking) {
       if (isDirectory) {
         this.contextValue = isProtected ? 'workingFolderProtected' : 'workingFolder';
+      } else if (name === 'test.yaml') {
+        this.contextValue = 'workingFileTestYaml';
       } else {
         this.contextValue = isProtected ? 'workingFileProtected' : 'workingFile';
       }

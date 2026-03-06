@@ -1,0 +1,2150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BlockRegistry",
+  "description": "Registry of all language blocks",
+  "definitions": {
+    "FieldType": {
+      "enum": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "array",
+        "object",
+        "enum",
+        "pattern",
+        "code",
+        "filePath"
+      ]
+    },
+    "FieldDefinition": {
+      "$defs": {
+        "FieldType": {
+          "description": "Data types for test configuration fields",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object",
+            "enum",
+            "pattern",
+            "code",
+            "filePath"
+          ],
+          "title": "FieldType",
+          "type": "string"
+        }
+      },
+      "description": "Definition of a single configuration field",
+      "properties": {
+        "name": {
+          "description": "Field name (camelCase)",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/FieldType",
+          "description": "Data type"
+        },
+        "description": {
+          "description": "Human-readable description",
+          "title": "Description",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "description": "Is this field required?",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default value",
+          "title": "Default"
+        },
+        "enum_values": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Allowed values for enum type",
+          "title": "Enum Values"
+        },
+        "array_item_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FieldType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Item type for arrays"
+        },
+        "min_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum value for numbers",
+          "title": "Min Value"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum value for numbers",
+          "title": "Max Value"
+        },
+        "min_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum length for strings/arrays",
+          "title": "Min Length"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum length for strings/arrays",
+          "title": "Max Length"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Regex pattern for validation",
+          "title": "Pattern"
+        },
+        "placeholder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Placeholder text for UI",
+          "title": "Placeholder"
+        },
+        "examples": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Example values",
+          "title": "Examples"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "description"
+      ],
+      "title": "FieldDefinition",
+      "type": "object"
+    },
+    "QualificationBlock": {
+      "$defs": {
+        "FieldDefinition": {
+          "description": "Definition of a single configuration field",
+          "properties": {
+            "name": {
+              "description": "Field name (camelCase)",
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/$defs/FieldType",
+              "description": "Data type"
+            },
+            "description": {
+              "description": "Human-readable description",
+              "title": "Description",
+              "type": "string"
+            },
+            "required": {
+              "default": false,
+              "description": "Is this field required?",
+              "title": "Required",
+              "type": "boolean"
+            },
+            "default": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Default value",
+              "title": "Default"
+            },
+            "enum_values": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Allowed values for enum type",
+              "title": "Enum Values"
+            },
+            "array_item_type": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FieldType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Item type for arrays"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum value for numbers",
+              "title": "Min Value"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum value for numbers",
+              "title": "Max Value"
+            },
+            "min_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum length for strings/arrays",
+              "title": "Min Length"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum length for strings/arrays",
+              "title": "Max Length"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Regex pattern for validation",
+              "title": "Pattern"
+            },
+            "placeholder": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Placeholder text for UI",
+              "title": "Placeholder"
+            },
+            "examples": {
+              "anyOf": [
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example values",
+              "title": "Examples"
+            }
+          },
+          "required": [
+            "name",
+            "type",
+            "description"
+          ],
+          "title": "FieldDefinition",
+          "type": "object"
+        },
+        "FieldType": {
+          "description": "Data types for test configuration fields",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object",
+            "enum",
+            "pattern",
+            "code",
+            "filePath"
+          ],
+          "title": "FieldType",
+          "type": "string"
+        }
+      },
+      "description": "Definition of a qualification/comparison type",
+      "properties": {
+        "id": {
+          "description": "Unique identifier (e.g., 'verifyEqual')",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name (e.g., 'Verify Equal')",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "What this qualification does",
+          "title": "Description",
+          "type": "string"
+        },
+        "category": {
+          "default": "comparison",
+          "description": "Category: comparison, pattern, numeric, structural",
+          "title": "Category",
+          "type": "string"
+        },
+        "uses_value": {
+          "default": false,
+          "description": "Uses 'value' field for expected value",
+          "title": "Uses Value",
+          "type": "boolean"
+        },
+        "uses_pattern": {
+          "default": false,
+          "description": "Uses 'pattern' field for matching",
+          "title": "Uses Pattern",
+          "type": "boolean"
+        },
+        "uses_tolerance": {
+          "default": false,
+          "description": "Uses numeric tolerance fields",
+          "title": "Uses Tolerance",
+          "type": "boolean"
+        },
+        "uses_line_number": {
+          "default": false,
+          "description": "Uses line number field",
+          "title": "Uses Line Number",
+          "type": "boolean"
+        },
+        "uses_count": {
+          "default": false,
+          "description": "Uses count/range fields",
+          "title": "Uses Count",
+          "type": "boolean"
+        },
+        "extra_fields": {
+          "default": [],
+          "description": "Additional fields",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Extra Fields",
+          "type": "array"
+        },
+        "example": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Example configuration",
+          "title": "Example"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description"
+      ],
+      "title": "QualificationBlock",
+      "type": "object"
+    },
+    "TestTypeBlock": {
+      "$defs": {
+        "FieldDefinition": {
+          "description": "Definition of a single configuration field",
+          "properties": {
+            "name": {
+              "description": "Field name (camelCase)",
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/$defs/FieldType",
+              "description": "Data type"
+            },
+            "description": {
+              "description": "Human-readable description",
+              "title": "Description",
+              "type": "string"
+            },
+            "required": {
+              "default": false,
+              "description": "Is this field required?",
+              "title": "Required",
+              "type": "boolean"
+            },
+            "default": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Default value",
+              "title": "Default"
+            },
+            "enum_values": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Allowed values for enum type",
+              "title": "Enum Values"
+            },
+            "array_item_type": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FieldType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Item type for arrays"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum value for numbers",
+              "title": "Min Value"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum value for numbers",
+              "title": "Max Value"
+            },
+            "min_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum length for strings/arrays",
+              "title": "Min Length"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum length for strings/arrays",
+              "title": "Max Length"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Regex pattern for validation",
+              "title": "Pattern"
+            },
+            "placeholder": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Placeholder text for UI",
+              "title": "Placeholder"
+            },
+            "examples": {
+              "anyOf": [
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example values",
+              "title": "Examples"
+            }
+          },
+          "required": [
+            "name",
+            "type",
+            "description"
+          ],
+          "title": "FieldDefinition",
+          "type": "object"
+        },
+        "FieldType": {
+          "description": "Data types for test configuration fields",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object",
+            "enum",
+            "pattern",
+            "code",
+            "filePath"
+          ],
+          "title": "FieldType",
+          "type": "string"
+        }
+      },
+      "description": "Definition of a test type (e.g., stdout, variable, structural)",
+      "properties": {
+        "id": {
+          "description": "Unique identifier (e.g., 'stdout')",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name (e.g., 'Standard Output')",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "What this test type checks",
+          "title": "Description",
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Icon name for UI",
+          "title": "Icon"
+        },
+        "category": {
+          "default": "output",
+          "description": "Category: output, variable, structure, compilation",
+          "title": "Category",
+          "type": "string"
+        },
+        "qualifications": {
+          "description": "List of qualification IDs supported",
+          "items": {
+            "type": "string"
+          },
+          "title": "Qualifications",
+          "type": "array"
+        },
+        "default_qualification": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default qualification",
+          "title": "Default Qualification"
+        },
+        "collection_fields": {
+          "default": [],
+          "description": "Fields for test collection",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Collection Fields",
+          "type": "array"
+        },
+        "test_fields": {
+          "default": [],
+          "description": "Fields for individual tests",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Test Fields",
+          "type": "array"
+        },
+        "example": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Example test.yaml snippet",
+          "title": "Example"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "qualifications"
+      ],
+      "title": "TestTypeBlock",
+      "type": "object"
+    },
+    "LanguageBlocks": {
+      "$defs": {
+        "FieldDefinition": {
+          "description": "Definition of a single configuration field",
+          "properties": {
+            "name": {
+              "description": "Field name (camelCase)",
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/$defs/FieldType",
+              "description": "Data type"
+            },
+            "description": {
+              "description": "Human-readable description",
+              "title": "Description",
+              "type": "string"
+            },
+            "required": {
+              "default": false,
+              "description": "Is this field required?",
+              "title": "Required",
+              "type": "boolean"
+            },
+            "default": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Default value",
+              "title": "Default"
+            },
+            "enum_values": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Allowed values for enum type",
+              "title": "Enum Values"
+            },
+            "array_item_type": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FieldType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Item type for arrays"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum value for numbers",
+              "title": "Min Value"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum value for numbers",
+              "title": "Max Value"
+            },
+            "min_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum length for strings/arrays",
+              "title": "Min Length"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum length for strings/arrays",
+              "title": "Max Length"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Regex pattern for validation",
+              "title": "Pattern"
+            },
+            "placeholder": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Placeholder text for UI",
+              "title": "Placeholder"
+            },
+            "examples": {
+              "anyOf": [
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example values",
+              "title": "Examples"
+            }
+          },
+          "required": [
+            "name",
+            "type",
+            "description"
+          ],
+          "title": "FieldDefinition",
+          "type": "object"
+        },
+        "FieldType": {
+          "description": "Data types for test configuration fields",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object",
+            "enum",
+            "pattern",
+            "code",
+            "filePath"
+          ],
+          "title": "FieldType",
+          "type": "string"
+        },
+        "QualificationBlock": {
+          "description": "Definition of a qualification/comparison type",
+          "properties": {
+            "id": {
+              "description": "Unique identifier (e.g., 'verifyEqual')",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name (e.g., 'Verify Equal')",
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "description": "What this qualification does",
+              "title": "Description",
+              "type": "string"
+            },
+            "category": {
+              "default": "comparison",
+              "description": "Category: comparison, pattern, numeric, structural",
+              "title": "Category",
+              "type": "string"
+            },
+            "uses_value": {
+              "default": false,
+              "description": "Uses 'value' field for expected value",
+              "title": "Uses Value",
+              "type": "boolean"
+            },
+            "uses_pattern": {
+              "default": false,
+              "description": "Uses 'pattern' field for matching",
+              "title": "Uses Pattern",
+              "type": "boolean"
+            },
+            "uses_tolerance": {
+              "default": false,
+              "description": "Uses numeric tolerance fields",
+              "title": "Uses Tolerance",
+              "type": "boolean"
+            },
+            "uses_line_number": {
+              "default": false,
+              "description": "Uses line number field",
+              "title": "Uses Line Number",
+              "type": "boolean"
+            },
+            "uses_count": {
+              "default": false,
+              "description": "Uses count/range fields",
+              "title": "Uses Count",
+              "type": "boolean"
+            },
+            "extra_fields": {
+              "default": [],
+              "description": "Additional fields",
+              "items": {
+                "$ref": "#/$defs/FieldDefinition"
+              },
+              "title": "Extra Fields",
+              "type": "array"
+            },
+            "example": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example configuration",
+              "title": "Example"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description"
+          ],
+          "title": "QualificationBlock",
+          "type": "object"
+        },
+        "TestTypeBlock": {
+          "description": "Definition of a test type (e.g., stdout, variable, structural)",
+          "properties": {
+            "id": {
+              "description": "Unique identifier (e.g., 'stdout')",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name (e.g., 'Standard Output')",
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "description": "What this test type checks",
+              "title": "Description",
+              "type": "string"
+            },
+            "icon": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Icon name for UI",
+              "title": "Icon"
+            },
+            "category": {
+              "default": "output",
+              "description": "Category: output, variable, structure, compilation",
+              "title": "Category",
+              "type": "string"
+            },
+            "qualifications": {
+              "description": "List of qualification IDs supported",
+              "items": {
+                "type": "string"
+              },
+              "title": "Qualifications",
+              "type": "array"
+            },
+            "default_qualification": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Default qualification",
+              "title": "Default Qualification"
+            },
+            "collection_fields": {
+              "default": [],
+              "description": "Fields for test collection",
+              "items": {
+                "$ref": "#/$defs/FieldDefinition"
+              },
+              "title": "Collection Fields",
+              "type": "array"
+            },
+            "test_fields": {
+              "default": [],
+              "description": "Fields for individual tests",
+              "items": {
+                "$ref": "#/$defs/FieldDefinition"
+              },
+              "title": "Test Fields",
+              "type": "array"
+            },
+            "example": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example test.yaml snippet",
+              "title": "Example"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "qualifications"
+          ],
+          "title": "TestTypeBlock",
+          "type": "object"
+        }
+      },
+      "description": "All test blocks available for a programming language",
+      "properties": {
+        "id": {
+          "description": "Language identifier (e.g., 'python', 'c')",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name (e.g., 'Python', 'C/C++')",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "Language description",
+          "title": "Description",
+          "type": "string"
+        },
+        "file_extensions": {
+          "description": "File extensions (e.g., ['.py'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "File Extensions",
+          "type": "array"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Icon name for UI",
+          "title": "Icon"
+        },
+        "test_types": {
+          "description": "Available test types",
+          "items": {
+            "$ref": "#/$defs/TestTypeBlock"
+          },
+          "title": "Test Types",
+          "type": "array"
+        },
+        "qualifications": {
+          "description": "Available qualifications",
+          "items": {
+            "$ref": "#/$defs/QualificationBlock"
+          },
+          "title": "Qualifications",
+          "type": "array"
+        },
+        "config_fields": {
+          "default": [],
+          "description": "Language-specific config",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Config Fields",
+          "type": "array"
+        },
+        "defaults": {
+          "additionalProperties": true,
+          "default": {},
+          "description": "Default configuration values",
+          "title": "Defaults",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "file_extensions",
+        "test_types",
+        "qualifications"
+      ],
+      "title": "LanguageBlocks",
+      "type": "object"
+    },
+    "BlockRegistry": {
+      "$defs": {
+        "FieldDefinition": {
+          "description": "Definition of a single configuration field",
+          "properties": {
+            "name": {
+              "description": "Field name (camelCase)",
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/$defs/FieldType",
+              "description": "Data type"
+            },
+            "description": {
+              "description": "Human-readable description",
+              "title": "Description",
+              "type": "string"
+            },
+            "required": {
+              "default": false,
+              "description": "Is this field required?",
+              "title": "Required",
+              "type": "boolean"
+            },
+            "default": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Default value",
+              "title": "Default"
+            },
+            "enum_values": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Allowed values for enum type",
+              "title": "Enum Values"
+            },
+            "array_item_type": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FieldType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Item type for arrays"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum value for numbers",
+              "title": "Min Value"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum value for numbers",
+              "title": "Max Value"
+            },
+            "min_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Minimum length for strings/arrays",
+              "title": "Min Length"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Maximum length for strings/arrays",
+              "title": "Max Length"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Regex pattern for validation",
+              "title": "Pattern"
+            },
+            "placeholder": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Placeholder text for UI",
+              "title": "Placeholder"
+            },
+            "examples": {
+              "anyOf": [
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example values",
+              "title": "Examples"
+            }
+          },
+          "required": [
+            "name",
+            "type",
+            "description"
+          ],
+          "title": "FieldDefinition",
+          "type": "object"
+        },
+        "FieldType": {
+          "description": "Data types for test configuration fields",
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object",
+            "enum",
+            "pattern",
+            "code",
+            "filePath"
+          ],
+          "title": "FieldType",
+          "type": "string"
+        },
+        "LanguageBlocks": {
+          "description": "All test blocks available for a programming language",
+          "properties": {
+            "id": {
+              "description": "Language identifier (e.g., 'python', 'c')",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name (e.g., 'Python', 'C/C++')",
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "description": "Language description",
+              "title": "Description",
+              "type": "string"
+            },
+            "file_extensions": {
+              "description": "File extensions (e.g., ['.py'])",
+              "items": {
+                "type": "string"
+              },
+              "title": "File Extensions",
+              "type": "array"
+            },
+            "icon": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Icon name for UI",
+              "title": "Icon"
+            },
+            "test_types": {
+              "description": "Available test types",
+              "items": {
+                "$ref": "#/$defs/TestTypeBlock"
+              },
+              "title": "Test Types",
+              "type": "array"
+            },
+            "qualifications": {
+              "description": "Available qualifications",
+              "items": {
+                "$ref": "#/$defs/QualificationBlock"
+              },
+              "title": "Qualifications",
+              "type": "array"
+            },
+            "config_fields": {
+              "default": [],
+              "description": "Language-specific config",
+              "items": {
+                "$ref": "#/$defs/FieldDefinition"
+              },
+              "title": "Config Fields",
+              "type": "array"
+            },
+            "defaults": {
+              "additionalProperties": true,
+              "default": {},
+              "description": "Default configuration values",
+              "title": "Defaults",
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "file_extensions",
+            "test_types",
+            "qualifications"
+          ],
+          "title": "LanguageBlocks",
+          "type": "object"
+        },
+        "QualificationBlock": {
+          "description": "Definition of a qualification/comparison type",
+          "properties": {
+            "id": {
+              "description": "Unique identifier (e.g., 'verifyEqual')",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name (e.g., 'Verify Equal')",
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "description": "What this qualification does",
+              "title": "Description",
+              "type": "string"
+            },
+            "category": {
+              "default": "comparison",
+              "description": "Category: comparison, pattern, numeric, structural",
+              "title": "Category",
+              "type": "string"
+            },
+            "uses_value": {
+              "default": false,
+              "description": "Uses 'value' field for expected value",
+              "title": "Uses Value",
+              "type": "boolean"
+            },
+            "uses_pattern": {
+              "default": false,
+              "description": "Uses 'pattern' field for matching",
+              "title": "Uses Pattern",
+              "type": "boolean"
+            },
+            "uses_tolerance": {
+              "default": false,
+              "description": "Uses numeric tolerance fields",
+              "title": "Uses Tolerance",
+              "type": "boolean"
+            },
+            "uses_line_number": {
+              "default": false,
+              "description": "Uses line number field",
+              "title": "Uses Line Number",
+              "type": "boolean"
+            },
+            "uses_count": {
+              "default": false,
+              "description": "Uses count/range fields",
+              "title": "Uses Count",
+              "type": "boolean"
+            },
+            "extra_fields": {
+              "default": [],
+              "description": "Additional fields",
+              "items": {
+                "$ref": "#/$defs/FieldDefinition"
+              },
+              "title": "Extra Fields",
+              "type": "array"
+            },
+            "example": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example configuration",
+              "title": "Example"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description"
+          ],
+          "title": "QualificationBlock",
+          "type": "object"
+        },
+        "TestTypeBlock": {
+          "description": "Definition of a test type (e.g., stdout, variable, structural)",
+          "properties": {
+            "id": {
+              "description": "Unique identifier (e.g., 'stdout')",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name (e.g., 'Standard Output')",
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "description": "What this test type checks",
+              "title": "Description",
+              "type": "string"
+            },
+            "icon": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Icon name for UI",
+              "title": "Icon"
+            },
+            "category": {
+              "default": "output",
+              "description": "Category: output, variable, structure, compilation",
+              "title": "Category",
+              "type": "string"
+            },
+            "qualifications": {
+              "description": "List of qualification IDs supported",
+              "items": {
+                "type": "string"
+              },
+              "title": "Qualifications",
+              "type": "array"
+            },
+            "default_qualification": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Default qualification",
+              "title": "Default Qualification"
+            },
+            "collection_fields": {
+              "default": [],
+              "description": "Fields for test collection",
+              "items": {
+                "$ref": "#/$defs/FieldDefinition"
+              },
+              "title": "Collection Fields",
+              "type": "array"
+            },
+            "test_fields": {
+              "default": [],
+              "description": "Fields for individual tests",
+              "items": {
+                "$ref": "#/$defs/FieldDefinition"
+              },
+              "title": "Test Fields",
+              "type": "array"
+            },
+            "example": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Example test.yaml snippet",
+              "title": "Example"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "qualifications"
+          ],
+          "title": "TestTypeBlock",
+          "type": "object"
+        }
+      },
+      "description": "Registry of all language blocks",
+      "properties": {
+        "version": {
+          "default": "1.0",
+          "description": "Schema version",
+          "title": "Version",
+          "type": "string"
+        },
+        "languages": {
+          "description": "All language definitions",
+          "items": {
+            "$ref": "#/$defs/LanguageBlocks"
+          },
+          "title": "Languages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "languages"
+      ],
+      "title": "BlockRegistry",
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "FieldDefinition": {
+      "description": "Definition of a single configuration field",
+      "properties": {
+        "name": {
+          "description": "Field name (camelCase)",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/FieldType",
+          "description": "Data type"
+        },
+        "description": {
+          "description": "Human-readable description",
+          "title": "Description",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "description": "Is this field required?",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default value",
+          "title": "Default"
+        },
+        "enum_values": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Allowed values for enum type",
+          "title": "Enum Values"
+        },
+        "array_item_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FieldType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Item type for arrays"
+        },
+        "min_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum value for numbers",
+          "title": "Min Value"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum value for numbers",
+          "title": "Max Value"
+        },
+        "min_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum length for strings/arrays",
+          "title": "Min Length"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum length for strings/arrays",
+          "title": "Max Length"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Regex pattern for validation",
+          "title": "Pattern"
+        },
+        "placeholder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Placeholder text for UI",
+          "title": "Placeholder"
+        },
+        "examples": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Example values",
+          "title": "Examples"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "description"
+      ],
+      "title": "FieldDefinition",
+      "type": "object"
+    },
+    "FieldType": {
+      "description": "Data types for test configuration fields",
+      "enum": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "array",
+        "object",
+        "enum",
+        "pattern",
+        "code",
+        "filePath"
+      ],
+      "title": "FieldType",
+      "type": "string"
+    },
+    "LanguageBlocks": {
+      "description": "All test blocks available for a programming language",
+      "properties": {
+        "id": {
+          "description": "Language identifier (e.g., 'python', 'c')",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name (e.g., 'Python', 'C/C++')",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "Language description",
+          "title": "Description",
+          "type": "string"
+        },
+        "file_extensions": {
+          "description": "File extensions (e.g., ['.py'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "File Extensions",
+          "type": "array"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Icon name for UI",
+          "title": "Icon"
+        },
+        "test_types": {
+          "description": "Available test types",
+          "items": {
+            "$ref": "#/$defs/TestTypeBlock"
+          },
+          "title": "Test Types",
+          "type": "array"
+        },
+        "qualifications": {
+          "description": "Available qualifications",
+          "items": {
+            "$ref": "#/$defs/QualificationBlock"
+          },
+          "title": "Qualifications",
+          "type": "array"
+        },
+        "config_fields": {
+          "default": [],
+          "description": "Language-specific config",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Config Fields",
+          "type": "array"
+        },
+        "defaults": {
+          "additionalProperties": true,
+          "default": {},
+          "description": "Default configuration values",
+          "title": "Defaults",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "file_extensions",
+        "test_types",
+        "qualifications"
+      ],
+      "title": "LanguageBlocks",
+      "type": "object"
+    },
+    "QualificationBlock": {
+      "description": "Definition of a qualification/comparison type",
+      "properties": {
+        "id": {
+          "description": "Unique identifier (e.g., 'verifyEqual')",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name (e.g., 'Verify Equal')",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "What this qualification does",
+          "title": "Description",
+          "type": "string"
+        },
+        "category": {
+          "default": "comparison",
+          "description": "Category: comparison, pattern, numeric, structural",
+          "title": "Category",
+          "type": "string"
+        },
+        "uses_value": {
+          "default": false,
+          "description": "Uses 'value' field for expected value",
+          "title": "Uses Value",
+          "type": "boolean"
+        },
+        "uses_pattern": {
+          "default": false,
+          "description": "Uses 'pattern' field for matching",
+          "title": "Uses Pattern",
+          "type": "boolean"
+        },
+        "uses_tolerance": {
+          "default": false,
+          "description": "Uses numeric tolerance fields",
+          "title": "Uses Tolerance",
+          "type": "boolean"
+        },
+        "uses_line_number": {
+          "default": false,
+          "description": "Uses line number field",
+          "title": "Uses Line Number",
+          "type": "boolean"
+        },
+        "uses_count": {
+          "default": false,
+          "description": "Uses count/range fields",
+          "title": "Uses Count",
+          "type": "boolean"
+        },
+        "extra_fields": {
+          "default": [],
+          "description": "Additional fields",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Extra Fields",
+          "type": "array"
+        },
+        "example": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Example configuration",
+          "title": "Example"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description"
+      ],
+      "title": "QualificationBlock",
+      "type": "object"
+    },
+    "TestTypeBlock": {
+      "description": "Definition of a test type (e.g., stdout, variable, structural)",
+      "properties": {
+        "id": {
+          "description": "Unique identifier (e.g., 'stdout')",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name (e.g., 'Standard Output')",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "What this test type checks",
+          "title": "Description",
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Icon name for UI",
+          "title": "Icon"
+        },
+        "category": {
+          "default": "output",
+          "description": "Category: output, variable, structure, compilation",
+          "title": "Category",
+          "type": "string"
+        },
+        "qualifications": {
+          "description": "List of qualification IDs supported",
+          "items": {
+            "type": "string"
+          },
+          "title": "Qualifications",
+          "type": "array"
+        },
+        "default_qualification": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default qualification",
+          "title": "Default Qualification"
+        },
+        "collection_fields": {
+          "default": [],
+          "description": "Fields for test collection",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Collection Fields",
+          "type": "array"
+        },
+        "test_fields": {
+          "default": [],
+          "description": "Fields for individual tests",
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Test Fields",
+          "type": "array"
+        },
+        "example": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Example test.yaml snippet",
+          "title": "Example"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "qualifications"
+      ],
+      "title": "TestTypeBlock",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "version": {
+      "default": "1.0",
+      "description": "Schema version",
+      "title": "Version",
+      "type": "string"
+    },
+    "languages": {
+      "description": "All language definitions",
+      "items": {
+        "$ref": "#/$defs/LanguageBlocks"
+      },
+      "title": "Languages",
+      "type": "array"
+    }
+  },
+  "required": [
+    "languages"
+  ],
+  "type": "object"
+}

@@ -8,6 +8,7 @@ import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, Ch
 import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
 import { writeExampleFiles } from '../utils/exampleFileWriter';
 import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
+import { TestYamlEditorWebviewProvider } from '../ui/webviews/TestYamlEditorWebviewProvider';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersionPath, snapshotWorkingToVersion } from '../utils/checkedOutExampleManager';
 import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
@@ -17,6 +18,7 @@ import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
  */
 export class LecturerExampleCommands {
   private exampleDetailProvider: ExampleDetailWebviewProvider;
+  private testYamlEditorProvider: TestYamlEditorWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -24,6 +26,7 @@ export class LecturerExampleCommands {
     private treeProvider: LecturerExampleTreeProvider
   ) {
     this.exampleDetailProvider = new ExampleDetailWebviewProvider(context, apiService, treeProvider);
+    this.testYamlEditorProvider = new TestYamlEditorWebviewProvider(context);
     this.registerCommands();
   }
   private registerCommands(): void {
@@ -285,6 +288,13 @@ export class LecturerExampleCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.showExampleDetails', async (item: ExampleTreeItem) => {
         await this.showExampleDetails(item);
+      })
+    );
+
+    // Open test.yaml editor
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.editTestYaml', async (item: FileSystemTreeItem) => {
+        await this.editTestYaml(item);
       })
     );
   }
@@ -1745,5 +1755,35 @@ export class LecturerExampleCommands {
       downloadPath,
       currentVersion
     });
+  }
+
+  private async editTestYaml(item: FileSystemTreeItem): Promise<void> {
+    if (!item?.filePath) {
+      vscode.window.showErrorMessage('Invalid file item');
+      return;
+    }
+
+    const exampleDir = path.dirname(item.filePath);
+    const metaYamlPath = path.join(exampleDir, 'meta.yaml');
+    let exampleTitle: string | undefined;
+
+    if (fs.existsSync(metaYamlPath)) {
+      try {
+        const metaContent = fs.readFileSync(metaYamlPath, 'utf8');
+        const metaData = yaml.load(metaContent) as Record<string, unknown>;
+        exampleTitle = metaData?.title as string;
+      } catch {
+        // Ignore meta.yaml parse errors
+      }
+    }
+
+    await this.testYamlEditorProvider.show(
+      `Test Editor: ${exampleTitle || path.basename(exampleDir)}`,
+      {
+        filePath: item.filePath,
+        exampleDir,
+        exampleTitle
+      }
+    );
   }
 }

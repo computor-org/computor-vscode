@@ -361,6 +361,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.editTestYaml",
+        "title": "Edit Test Configuration",
+        "icon": "$(beaker)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -1267,6 +1273,11 @@
           "command": "computor.lecturer.showExampleDetails",
           "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleCheckedOut)",
           "group": "1_actions@5"
+        },
+        {
+          "command": "computor.lecturer.editTestYaml",
+          "when": "view == computor.lecturer.examples && viewItem == workingFileTestYaml",
+          "group": "1_actions@1"
         },
         {
           "command": "computor.student.showMessages",
