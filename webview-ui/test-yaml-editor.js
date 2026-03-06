@@ -9,6 +9,7 @@
   var isDirty = false;
   var collapsedCollections = {};
   var selectedAddType = null;
+  var yamlPreviewOpen = false;
 
   function getLang(langId) {
     if (!langId) return null;
@@ -18,6 +19,11 @@
   function getTestType(lang, typeId) {
     if (!lang) return null;
     return lang.test_types.find(function(t) { return t.id === typeId; }) || null;
+  }
+
+  function getQualification(lang, qualId) {
+    if (!lang || !lang.qualifications) return null;
+    return lang.qualifications.find(function(q) { return q.id === qualId; }) || null;
   }
 
   function markDirty() {
@@ -31,6 +37,112 @@
     var div = document.createElement('div');
     div.textContent = String(text);
     return div.innerHTML;
+  }
+
+  // Build a new collection with defaults from the registry
+  function buildNewCollection(testType) {
+    var col = { type: testType.id, name: testType.name, tests: [] };
+    if (testType.collection_fields) {
+      testType.collection_fields.forEach(function(f) {
+        if (f.default != null && f.name !== 'timeout') {
+          col[f.name] = f.default;
+        }
+      });
+    }
+    // Set default timeout from registry
+    var timeoutField = (testType.collection_fields || []).find(function(f) { return f.name === 'timeout'; });
+    if (timeoutField && timeoutField.default != null) {
+      col.timeout = timeoutField.default;
+    }
+    return col;
+  }
+
+  // Build a new test with defaults from the registry
+  function buildNewTest(testType, lang) {
+    var test = { name: '' };
+    if (testType && testType.default_qualification) {
+      test.qualification = testType.default_qualification;
+    }
+    if (testType && testType.test_fields) {
+      testType.test_fields.forEach(function(f) {
+        if (f.default != null && f.name !== 'name' && f.name !== 'qualification') {
+          test[f.name] = f.default;
+        }
+      });
+    }
+    return test;
+  }
+
+  // Validate suite data and return errors
+  function validateSuite(data) {
+    var errors = [];
+    var collections = (data.properties && data.properties.tests) || [];
+    collections.forEach(function(col, ci) {
+      var tests = col.tests || [];
+      if (tests.length === 0) {
+        errors.push({ type: 'collection', ci: ci, message: 'Collection has no tests' });
+      }
+      tests.forEach(function(test, ti) {
+        if (!test.name || !test.name.trim()) {
+          errors.push({ type: 'test', ci: ci, ti: ti, field: 'name', message: 'Test name is required' });
+        }
+      });
+    });
+    return errors;
+  }
+
+  // Simple YAML serializer for preview (no external dependency in webview)
+  function toYaml(obj, indent) {
+    indent = indent || 0;
+    var pad = '';
+    for (var p = 0; p < indent; p++) pad += '  ';
+    var lines = [];
+
+    if (Array.isArray(obj)) {
+      if (obj.length === 0) return ' []';
+      obj.forEach(function(item) {
+        if (typeof item === 'object' && item !== null) {
+          lines.push(pad + '-');
+          var subLines = toYamlObj(item, indent + 1);
+          lines.push(subLines);
+        } else {
+          lines.push(pad + '- ' + formatYamlValue(item));
+        }
+      });
+      return '\n' + lines.join('\n');
+    }
+
+    if (typeof obj === 'object' && obj !== null) {
+      return '\n' + toYamlObj(obj, indent);
+    }
+
+    return ' ' + formatYamlValue(obj);
+  }
+
+  function toYamlObj(obj, indent) {
+    var pad = '';
+    for (var p = 0; p < indent; p++) pad += '  ';
+    var lines = [];
+    Object.keys(obj).forEach(function(key) {
+      var val = obj[key];
+      if (val == null) return;
+      if (typeof val === 'object') {
+        lines.push(pad + key + ':' + toYaml(val, indent + 1));
+      } else {
+        lines.push(pad + key + ': ' + formatYamlValue(val));
+      }
+    });
+    return lines.join('\n');
+  }
+
+  function formatYamlValue(val) {
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'boolean') return val ? 'true' : 'false';
+    var s = String(val);
+    if (s === '' || s === 'true' || s === 'false' || s === 'null' || /[:{}\[\],&*?|>!%@`#]/.test(s) || /^\s|\s$/.test(s) || /^\d/.test(s)) {
+      return "'" + s.replace(/'/g, "''") + "'";
+    }
+    return s;
   }
 
   function buildSuiteData() {
@@ -110,6 +222,11 @@
 
       if (action === 'save') {
         var data = buildSuiteData();
+        var errors = validateSuite(data);
+        if (errors.length > 0) {
+          highlightErrors(errors);
+          return;
+        }
         vscode.postMessage({ command: 'save', data: { filePath: state.filePath, testSuite: data } });
         return;
       }
@@ -126,7 +243,8 @@
         if (!suite.properties.tests) suite.properties.tests = [];
         var lang = getLang(currentLangId);
         var tt = getTestType(lang, selectedAddType);
-        suite.properties.tests.push({ type: selectedAddType, name: tt ? tt.name : selectedAddType, tests: [] });
+        var newCol = tt ? buildNewCollection(tt) : { type: selectedAddType, name: selectedAddType, tests: [] };
+        suite.properties.tests.push(newCol);
         markDirty();
         render();
         return;
@@ -162,7 +280,10 @@
         var ci2 = parseInt(target.dataset.ci);
         suite = buildSuiteData();
         if (suite.properties && suite.properties.tests && suite.properties.tests[ci2]) {
-          suite.properties.tests[ci2].tests.push({ name: '' });
+          var lang2 = getLang(currentLangId);
+          var tt2 = getTestType(lang2, suite.properties.tests[ci2].type);
+          var newTest = buildNewTest(tt2, lang2);
+          suite.properties.tests[ci2].tests.push(newTest);
         }
         markDirty();
         render();
@@ -241,6 +362,15 @@
         if (item) { item.remove(); markDirty(); }
         return;
       }
+      if (action === 'toggleYamlPreview') {
+        yamlPreviewOpen = !yamlPreviewOpen;
+        var previewContent = document.getElementById('yaml-preview-content');
+        var previewChevron = document.getElementById('yaml-preview-chevron');
+        if (previewContent) { previewContent.classList.toggle('collapsed', !yamlPreviewOpen); }
+        if (previewChevron) { previewChevron.classList.toggle('open', yamlPreviewOpen); }
+        if (yamlPreviewOpen) { updateYamlPreview(); }
+        return;
+      }
     });
 
     app.addEventListener('change', function(e) {
@@ -254,8 +384,66 @@
         selectedAddType = target.value;
       } else if (target) {
         markDirty();
+        if (yamlPreviewOpen) { updateYamlPreview(); }
+        clearFieldError(target);
       }
     });
+
+    app.addEventListener('input', function(e) {
+      if (yamlPreviewOpen) { updateYamlPreview(); }
+    });
+  }
+
+  function highlightErrors(errors) {
+    // Clear previous errors
+    document.querySelectorAll('.invalid').forEach(function(el) { el.classList.remove('invalid'); });
+    document.querySelectorAll('.validation-error').forEach(function(el) { el.remove(); });
+    document.querySelectorAll('.has-error').forEach(function(el) { el.classList.remove('has-error'); });
+
+    var firstErrorEl = null;
+
+    errors.forEach(function(err) {
+      if (err.type === 'test' && err.field === 'name') {
+        var rows = document.querySelectorAll('.collection-card[data-index="' + err.ci + '"] .test-row');
+        var row = rows[err.ti];
+        if (row) {
+          row.classList.add('has-error');
+          var nameInput = row.querySelector('[data-test-field="name"]');
+          if (nameInput) {
+            nameInput.classList.add('invalid');
+            if (!firstErrorEl) firstErrorEl = nameInput;
+          }
+        }
+        // Ensure collection is expanded
+        var body = document.getElementById('col-body-' + err.ci);
+        var chevron = document.getElementById('chevron-' + err.ci);
+        if (body && body.classList.contains('collapsed')) {
+          body.classList.remove('collapsed');
+          if (chevron) chevron.classList.add('open');
+          collapsedCollections[err.ci] = false;
+        }
+      }
+    });
+
+    if (firstErrorEl) {
+      firstErrorEl.focus();
+      firstErrorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function clearFieldError(el) {
+    if (el.classList.contains('invalid') && el.value.trim()) {
+      el.classList.remove('invalid');
+      var row = el.closest('.test-row');
+      if (row) row.classList.remove('has-error');
+    }
+  }
+
+  function updateYamlPreview() {
+    var previewEl = document.getElementById('yaml-preview-code');
+    if (!previewEl) return;
+    var data = buildSuiteData();
+    previewEl.textContent = toYamlObj(data, 0);
   }
 
   function render() {
@@ -283,12 +471,12 @@
     html += '<div class="section">';
     html += '<h2>Suite Properties</h2>';
     html += '<div class="suite-meta">';
-    html += fg('Name', '<input type="text" id="suite-name" value="' + esc(suite.name || '') + '" placeholder="Test suite name">');
-    html += fg('Version', '<input type="text" id="suite-version" value="' + esc(suite.version || '1.0') + '" placeholder="1.0">');
-    html += fg('Description', '<input type="text" id="suite-description" value="' + esc(suite.description || '') + '" placeholder="Description">', true);
-    html += fg('Timeout', '<input type="number" id="suite-timeout" value="' + esc(np(suite, 'properties.timeout', '')) + '" placeholder="30" step="1" min="1">');
-    html += fg('Relative Tolerance', '<input type="number" id="suite-relativeTolerance" value="' + esc(np(suite, 'properties.relativeTolerance', '')) + '" placeholder="1e-12" step="any">');
-    html += fg('Absolute Tolerance', '<input type="number" id="suite-absoluteTolerance" value="' + esc(np(suite, 'properties.absoluteTolerance', '')) + '" placeholder="0.0001" step="any">');
+    html += fgHint('Name', '<input type="text" id="suite-name" value="' + esc(suite.name || '') + '" placeholder="Test suite name">', 'Display name for the test suite');
+    html += fgHint('Version', '<input type="text" id="suite-version" value="' + esc(suite.version || '1.0') + '" placeholder="1.0">', 'Suite version number');
+    html += fgHint('Description', '<input type="text" id="suite-description" value="' + esc(suite.description || '') + '" placeholder="Description">', 'Brief description of what this suite tests', true);
+    html += fgHint('Timeout (s)', '<input type="number" id="suite-timeout" value="' + esc(np(suite, 'properties.timeout', '')) + '" placeholder="30" step="1" min="1">', 'Global timeout for all tests in seconds');
+    html += fgHint('Relative Tolerance', '<input type="number" id="suite-relativeTolerance" value="' + esc(np(suite, 'properties.relativeTolerance', '')) + '" placeholder="1e-12" step="any">', 'Global relative tolerance for numeric comparisons');
+    html += fgHint('Absolute Tolerance', '<input type="number" id="suite-absoluteTolerance" value="' + esc(np(suite, 'properties.absoluteTolerance', '')) + '" placeholder="0.0001" step="any">', 'Global absolute tolerance for numeric comparisons');
     html += '</div></div>';
 
     // Test collections
@@ -296,12 +484,7 @@
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
     html += '<h2 style="margin:0;flex:1">Test Collections</h2>';
     if (lang) {
-      html += '<select id="add-type-select" style="width:160px">';
-      lang.test_types.forEach(function(tt) {
-        var isSel = selectedAddType === tt.id ? ' selected' : '';
-        html += '<option value="' + esc(tt.id) + '"' + isSel + '>' + esc(tt.name) + '</option>';
-      });
-      html += '</select>';
+      html += renderTestTypeSelect(lang);
       html += '<button data-action="addCollection" class="btn-sm">+ Add Collection</button>';
     }
     html += '</div>';
@@ -319,7 +502,66 @@
     }
     html += '</div>';
 
+    // YAML preview
+    html += '<div class="section yaml-preview">';
+    html += '<div class="yaml-preview-header" data-action="toggleYamlPreview">';
+    html += '<span class="chevron' + (yamlPreviewOpen ? ' open' : '') + '" id="yaml-preview-chevron">&#9654;</span>';
+    html += '<h2>YAML Preview</h2>';
+    html += '</div>';
+    html += '<div class="yaml-preview-content' + (yamlPreviewOpen ? '' : ' collapsed') + '" id="yaml-preview-content">';
+    html += '<code id="yaml-preview-code"></code>';
+    html += '</div>';
+    html += '</div>';
+
     app.innerHTML = html;
+
+    if (yamlPreviewOpen) { updateYamlPreview(); }
+  }
+
+  // Test type dropdown grouped by category
+  function renderTestTypeSelect(lang) {
+    var grouped = {};
+    var ungrouped = [];
+    lang.test_types.forEach(function(tt) {
+      if (tt.category) {
+        if (!grouped[tt.category]) grouped[tt.category] = [];
+        grouped[tt.category].push(tt);
+      } else {
+        ungrouped.push(tt);
+      }
+    });
+
+    var html = '<select id="add-type-select" style="width:200px">';
+
+    var categories = Object.keys(grouped).sort();
+    categories.forEach(function(cat) {
+      var label = cat.charAt(0).toUpperCase() + cat.slice(1);
+      html += '<optgroup label="' + esc(label) + '">';
+      grouped[cat].forEach(function(tt) {
+        var isSel = selectedAddType === tt.id ? ' selected' : '';
+        html += '<option value="' + esc(tt.id) + '"' + isSel + ' title="' + esc(tt.description) + '">' + esc(tt.name) + '</option>';
+      });
+      html += '</optgroup>';
+    });
+
+    if (ungrouped.length > 0) {
+      ungrouped.forEach(function(tt) {
+        var isSel = selectedAddType === tt.id ? ' selected' : '';
+        html += '<option value="' + esc(tt.id) + '"' + isSel + ' title="' + esc(tt.description) + '">' + esc(tt.name) + '</option>';
+      });
+    }
+
+    html += '</select>';
+    return html;
+  }
+
+  function fgHint(label, inputHtml, hint, fullWidth) {
+    var html = '<div class="form-group' + (fullWidth ? ' full-width' : '') + '">';
+    html += '<label>' + esc(label) + '</label>';
+    html += inputHtml;
+    if (hint) { html += '<div class="hint">' + esc(hint) + '</div>'; }
+    html += '</div>';
+    return html;
   }
 
   function fg(label, inputHtml, fullWidth) {
@@ -348,6 +590,7 @@
     html += '<span class="chevron' + (isCollapsed ? '' : ' open') + '" id="chevron-' + index + '">&#9654;</span>';
     html += '<span class="title">' + esc(col.name || 'Collection ' + (index + 1)) + '</span>';
     html += '<span class="type-badge">' + esc(typeName) + '</span>';
+    if (tt && tt.category) { html += '<span class="cat-badge">' + esc(tt.category) + '</span>'; }
     html += '<span style="font-size:11px;color:var(--vscode-descriptionForeground)">' + tests.length + ' test' + (tests.length !== 1 ? 's' : '') + '</span>';
     if (index > 0) { html += '<button class="move-btn" data-action="moveCollectionUp" data-ci="' + index + '" title="Move up">&#9650;</button>'; }
     if (index < totalCollections - 1) { html += '<button class="move-btn" data-action="moveCollectionDown" data-ci="' + index + '" title="Move down">&#9660;</button>'; }
@@ -356,27 +599,44 @@
 
     html += '<div class="collection-body' + (isCollapsed ? ' collapsed' : '') + '" id="col-body-' + index + '">';
 
-    html += '<div class="collection-fields">';
-    html += fg('Name', '<input type="text" data-col-field="name" value="' + esc(col.name || '') + '" placeholder="Collection name">');
-    html += fg('Entry Point', '<input type="text" data-col-field="entryPoint" value="' + esc(col.entryPoint || '') + '" placeholder="e.g., main.py">');
-    html += fg('Timeout', '<input type="number" data-col-field="timeout" value="' + esc(col.timeout || '') + '" placeholder="30" step="1" min="1">');
-    html += fg('ID', '<input type="text" data-col-field="id" value="' + esc(col.id || '') + '" placeholder="Unique ID">');
+    // Show test type description
+    if (tt && tt.description) {
+      html += '<div class="collection-desc">' + esc(tt.description) + '</div>';
+    }
 
-    html += renderArrayField('inputAnswers', 'Input Answers', col.inputAnswers || []);
-    html += renderArrayField('setUpCode', 'Setup Code', col.setUpCode || []);
-    html += renderArrayField('successDependency', 'Success Dependency', col.successDependency || []);
+    html += '<div class="collection-fields">';
+    html += fgHint('Name', '<input type="text" data-col-field="name" value="' + esc(col.name || '') + '" placeholder="Collection name">', 'Display name for this test collection');
+    html += renderCollectionField('entryPoint', col, tt);
+    html += renderCollectionField('timeout', col, tt);
+    html += fgHint('ID', '<input type="text" data-col-field="id" value="' + esc(col.id || '') + '" placeholder="Unique ID">', 'Optional unique identifier for referencing this collection');
+
+    html += renderArrayFieldWithHint('inputAnswers', 'Input Answers', col.inputAnswers || [], 'Input lines to send to stdin during execution');
+    html += renderArrayFieldWithHint('setUpCode', 'Setup Code', col.setUpCode || [], 'Code to run before each test in this collection');
+    html += renderArrayFieldWithHint('successDependency', 'Success Dependency', col.successDependency || [], 'IDs of collections that must pass before this one runs');
 
     if (tt && tt.collection_fields) {
       tt.collection_fields.forEach(function(f) {
-        if (['entryPoint', 'timeout', 'inputAnswers', 'setUpCode'].indexOf(f.name) >= 0) return;
+        if (['entryPoint', 'timeout', 'inputAnswers', 'setUpCode', 'name', 'id', 'successDependency'].indexOf(f.name) >= 0) return;
         if (f.type === 'array') {
-          html += renderArrayField(f.name, f.description || f.name, col[f.name] || []);
+          html += renderArrayFieldWithHint(f.name, f.description || f.name, col[f.name] || [], f.description);
         } else {
           var val = col[f.name] != null ? String(col[f.name]) : '';
           var inputType = f.type === 'number' || f.type === 'integer' ? 'number' : 'text';
-          html += fg(f.description || f.name,
-            '<input type="' + inputType + '" data-col-field="' + esc(f.name) + '" value="' + esc(val) + '"' +
-            (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') + '>');
+          var attrs = 'type="' + inputType + '" data-col-field="' + esc(f.name) + '" value="' + esc(val) + '"';
+          if (f.placeholder) { attrs += ' placeholder="' + esc(f.placeholder) + '"'; }
+          if (f.min_value != null) { attrs += ' min="' + f.min_value + '"'; }
+          if (f.max_value != null) { attrs += ' max="' + f.max_value + '"'; }
+          if (f.enum_values && f.enum_values.length > 0) {
+            var selectHtml = '<select data-col-field="' + esc(f.name) + '">';
+            selectHtml += '<option value="">—</option>';
+            f.enum_values.forEach(function(ev) {
+              selectHtml += '<option value="' + esc(ev) + '"' + (ev === val ? ' selected' : '') + '>' + esc(ev) + '</option>';
+            });
+            selectHtml += '</select>';
+            html += fgHint(f.description || f.name, selectHtml, f.description);
+          } else {
+            html += fgHint(f.description || f.name, '<input ' + attrs + '>', f.description);
+          }
         }
       });
     }
@@ -390,15 +650,33 @@
     var qualifications = (tt && tt.qualifications) || [];
 
     tests.forEach(function(test, ti) {
-      html += renderTestRow(test, index, ti, qualifications, tt, tests.length);
+      html += renderTestRow(test, index, ti, qualifications, tt, tests.length, lang);
     });
 
     if (tests.length === 0) {
-      html += '<div style="text-align:center;padding:12px;color:var(--vscode-descriptionForeground);font-size:12px">No tests yet</div>';
+      html += '<div style="text-align:center;padding:12px;color:var(--vscode-descriptionForeground);font-size:12px">No tests yet. Click "+ Add Test" to add one.</div>';
     }
 
     html += '</div></div>';
     return html;
+  }
+
+  function renderCollectionField(fieldName, col, tt) {
+    var fieldDef = null;
+    if (tt && tt.collection_fields) {
+      fieldDef = tt.collection_fields.find(function(f) { return f.name === fieldName; });
+    }
+    if (fieldName === 'entryPoint') {
+      var ph = (fieldDef && fieldDef.placeholder) ? fieldDef.placeholder : 'e.g., main.py';
+      var hint = (fieldDef && fieldDef.description) ? fieldDef.description : 'Main file to execute';
+      return fgHint('Entry Point', '<input type="text" data-col-field="entryPoint" value="' + esc(col.entryPoint || '') + '" placeholder="' + esc(ph) + '">', hint);
+    }
+    if (fieldName === 'timeout') {
+      var defVal = (fieldDef && fieldDef.default != null) ? fieldDef.default : 30;
+      var hint2 = (fieldDef && fieldDef.description) ? fieldDef.description : 'Maximum execution time in seconds';
+      return fgHint('Timeout (s)', '<input type="number" data-col-field="timeout" value="' + esc(col.timeout || '') + '" placeholder="' + defVal + '" step="1" min="1">', hint2);
+    }
+    return '';
   }
 
   function toArray(val) {
@@ -407,10 +685,11 @@
     return [val];
   }
 
-  function renderArrayField(name, label, items) {
+  function renderArrayFieldWithHint(name, label, items, hint) {
     items = toArray(items);
     var html = '<div class="form-group full-width">';
     html += '<label>' + esc(label) + '</label>';
+    if (hint) { html += '<div class="hint">' + esc(hint) + '</div>'; }
     html += '<div class="array-field" data-array-name="' + esc(name) + '">';
     items.forEach(function(item) {
       html += '<div class="array-item">';
@@ -423,46 +702,58 @@
     return html;
   }
 
-  function renderTestRow(test, colIndex, testIndex, qualifications, testType, totalTests) {
-    var html = '<div class="test-row" data-col="' + colIndex + '" data-test="' + testIndex + '">';
+  function renderTestRow(test, colIndex, testIndex, qualifications, testType, totalTests, lang) {
+    var hasNameError = !test.name || !String(test.name).trim();
+    var html = '<div class="test-row' + (hasNameError && test.name === '' ? '' : '') + '" data-col="' + colIndex + '" data-test="' + testIndex + '">';
     html += '<div class="test-order-btns">';
     if (testIndex > 0) { html += '<button class="move-btn move-btn-sm" data-action="moveTestUp" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move up">&#9650;</button>'; }
     if (testIndex < totalTests - 1) { html += '<button class="move-btn move-btn-sm" data-action="moveTestDown" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move down">&#9660;</button>'; }
     html += '</div>';
     html += '<div class="test-fields">';
 
-    html += '<input type="text" class="field-name" data-test-field="name" value="' + esc(test.name || '') + '" placeholder="Test name">';
+    html += '<input type="text" class="field-name" data-test-field="name" value="' + esc(test.name || '') + '" placeholder="Test name (required)" title="Test name displayed in results">';
 
     if (qualifications.length > 0) {
-      html += '<select class="field-qual" data-test-field="qualification">';
+      html += '<select class="field-qual" data-test-field="qualification" title="Comparison method">';
       html += '<option value="">Default</option>';
       qualifications.forEach(function(qId) {
+        var qual = getQualification(lang, qId);
+        var qLabel = qual ? qual.name : qId;
+        var qTitle = qual ? qual.description : '';
         var sel = test.qualification === qId ? ' selected' : '';
-        html += '<option value="' + esc(qId) + '"' + sel + '>' + esc(qId) + '</option>';
+        html += '<option value="' + esc(qId) + '"' + sel + ' title="' + esc(qTitle) + '">' + esc(qLabel) + '</option>';
       });
       html += '</select>';
     }
 
-    html += '<input type="text" class="field-value" data-test-field="value" value="' + esc(test.value != null ? String(test.value) : '') + '" placeholder="Expected value">';
+    // Show fields based on selected qualification
+    var selectedQual = test.qualification ? getQualification(lang, test.qualification) : null;
+    var showValue = !selectedQual || selectedQual.uses_value !== false;
+    var showPattern = selectedQual ? selectedQual.uses_pattern === true : (testType && testType.test_fields && testType.test_fields.some(function(f) { return f.name === 'pattern'; }));
+    var showTolerance = selectedQual ? selectedQual.uses_tolerance === true : false;
 
-    if (testType && testType.test_fields && testType.test_fields.some(function(f) { return f.name === 'pattern'; })) {
-      html += '<input type="text" class="field-value" data-test-field="pattern" value="' + esc(test.pattern || '') + '" placeholder="Pattern">';
+    if (showValue) {
+      html += '<input type="text" class="field-value" data-test-field="value" value="' + esc(test.value != null ? String(test.value) : '') + '" placeholder="Expected value" title="Expected value to compare against">';
     }
 
-    if (test.relativeTolerance != null) {
-      html += '<input type="number" class="field-small" data-test-field="relativeTolerance" value="' + esc(String(test.relativeTolerance)) + '" placeholder="relTol" step="any" title="Relative Tolerance">';
+    if (showPattern) {
+      html += '<input type="text" class="field-value" data-test-field="pattern" value="' + esc(test.pattern || '') + '" placeholder="Pattern" title="Pattern for matching (string or regex)">';
     }
-    if (test.absoluteTolerance != null) {
-      html += '<input type="number" class="field-small" data-test-field="absoluteTolerance" value="' + esc(String(test.absoluteTolerance)) + '" placeholder="absTol" step="any" title="Absolute Tolerance">';
+
+    if (showTolerance || test.relativeTolerance != null) {
+      html += '<input type="number" class="field-small" data-test-field="relativeTolerance" value="' + esc(test.relativeTolerance != null ? String(test.relativeTolerance) : '') + '" placeholder="relTol" step="any" title="Relative tolerance for numeric comparison">';
+    }
+    if (showTolerance || test.absoluteTolerance != null) {
+      html += '<input type="number" class="field-small" data-test-field="absoluteTolerance" value="' + esc(test.absoluteTolerance != null ? String(test.absoluteTolerance) : '') + '" placeholder="absTol" step="any" title="Absolute tolerance for numeric comparison">';
     }
 
     if (test.allowedOccuranceRange) {
-      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMin" value="' + (test.allowedOccuranceRange[0] || 0) + '" placeholder="min" title="Min Occurrences">';
-      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMax" value="' + (test.allowedOccuranceRange[1] || 0) + '" placeholder="max" title="Max Occurrences">';
+      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMin" value="' + (test.allowedOccuranceRange[0] || 0) + '" placeholder="min" title="Minimum allowed occurrences">';
+      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMax" value="' + (test.allowedOccuranceRange[1] || 0) + '" placeholder="max" title="Maximum allowed occurrences">';
     }
 
     if (test.evalString != null) {
-      html += '<input type="text" class="field-value" data-test-field="evalString" value="' + esc(test.evalString) + '" placeholder="Eval expression">';
+      html += '<input type="text" class="field-value" data-test-field="evalString" value="' + esc(test.evalString) + '" placeholder="Eval expression" title="Expression to evaluate before comparison">';
     }
 
     html += '</div>';
