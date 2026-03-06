@@ -6,6 +6,7 @@
   var meta = state.meta || {};
   var filePath = state.filePath;
   var exampleFiles = state.exampleFiles || [];
+  var languages = state.languages || [];
   var isDirty = false;
   var yamlPreviewOpen = false;
 
@@ -305,8 +306,21 @@
     html += '</div>';
     html += '<div class="form-group">';
     html += '<label for="meta-language">Language</label>';
-    html += '<input id="meta-language" type="text" value="' + esc(meta.language || '') + '" placeholder="e.g. en" />';
-    html += '<div class="hint">ISO language code (en, de, ...)</div>';
+    html += '<select id="meta-language">';
+    var currentLang = meta.language || '';
+    var langFound = false;
+    languages.forEach(function(l) {
+      var sel = l.code === currentLang ? ' selected' : '';
+      if (l.code === currentLang) { langFound = true; }
+      html += '<option value="' + esc(l.code) + '"' + sel + '>' + esc(l.name) + ' (' + esc(l.code) + ')</option>';
+    });
+    if (currentLang && !langFound) {
+      html += '<option value="' + esc(currentLang) + '" selected>' + esc(currentLang) + '</option>';
+    }
+    if (!currentLang && languages.length === 0) {
+      html += '<option value="">-- Select language --</option>';
+    }
+    html += '</select>';
     html += '</div>';
     html += '<div class="form-group">';
     html += '<label for="meta-license">License</label>';
@@ -548,6 +562,7 @@
       if (msg.data.meta) { meta = msg.data.meta; }
       if (msg.data.filePath) { filePath = msg.data.filePath; }
       if (msg.data.exampleFiles) { exampleFiles = msg.data.exampleFiles; }
+      if (msg.data.languages) { languages = msg.data.languages; }
       isDirty = false;
       render();
     }

@@ -8,6 +8,7 @@ interface MetaYamlEditorData {
   filePath: string;
   exampleDir: string;
   exampleTitle?: string;
+  languages?: { code: string; name: string }[];
 }
 
 export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
@@ -86,7 +87,8 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
       filePath: data.filePath,
       exampleDir: data.exampleDir,
       exampleTitle: data.exampleTitle || path.basename(data.exampleDir),
-      exampleFiles
+      exampleFiles,
+      languages: data.languages || []
     });
 
     return `<!DOCTYPE html>

@@ -314,6 +314,13 @@ export class LecturerExampleCommands {
         await this.editMetaYaml(item);
       })
     );
+
+    // Create new readme in content directory
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.newReadme', async (item: FileSystemTreeItem) => {
+        await this.createNewReadme(item);
+      })
+    );
   }
 
   private async checkoutExample(item: ExampleTreeItem, pickVersion: boolean = false): Promise<void> {
@@ -809,6 +816,25 @@ export class LecturerExampleCommands {
       // Continue without repository — user can pick one on upload
     }
 
+    // Select language
+    let languages: { code: string; name: string }[];
+    try {
+      languages = await this.apiService.getLanguages();
+    } catch {
+      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+    }
+
+    const hasEnglish = languages.some(l => l.code === 'en');
+    const sortedLanguages = hasEnglish
+      ? [languages.find(l => l.code === 'en')!, ...languages.filter(l => l.code !== 'en')]
+      : languages;
+
+    const pickedLang = await vscode.window.showQuickPick(
+      sortedLanguages.map(l => ({ label: l.name, description: l.code, langCode: l.code })),
+      { placeHolder: 'Select language for this example' }
+    );
+    if (!pickedLang) { return; }
+
     const workingDir = getWorkingPath(examplesPath, directory);
     if (fs.existsSync(workingDir)) {
       vscode.window.showErrorMessage(`Local example "${directory}" already exists.`);
@@ -823,7 +849,7 @@ export class LecturerExampleCommands {
         version: '0.1.0',
         title,
         description: 'Example description here',
-        language: 'en',
+        language: pickedLang.langCode,
         license: 'MIT',
         authors: [],
         maintainers: [],
@@ -841,6 +867,7 @@ export class LecturerExampleCommands {
       fs.writeFileSync(path.join(workingDir, 'meta.yaml'), metaContent);
 
       fs.mkdirSync(path.join(workingDir, 'content'), { recursive: true });
+      fs.writeFileSync(path.join(workingDir, 'content', `index_${pickedLang.langCode}.md`), `# ${title}\n`, 'utf8');
 
       const metadata: CheckoutMetadata = {
         exampleId: '',
@@ -1914,13 +1941,71 @@ export class LecturerExampleCommands {
       // Ignore parse errors
     }
 
+    let languages: { code: string; name: string }[];
+    try {
+      languages = await this.apiService.getLanguages();
+    } catch {
+      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+    }
+
     await this.metaYamlEditorProvider.show(
       `Meta Editor: ${exampleTitle || path.basename(exampleDir)}`,
       {
         filePath: metaYamlPath,
         exampleDir,
-        exampleTitle
+        exampleTitle,
+        languages
       }
     );
+  }
+
+  private async createNewReadme(item: FileSystemTreeItem): Promise<void> {
+    if (!item?.filePath || !item.isDirectory) {
+      vscode.window.showErrorMessage('Invalid content directory');
+      return;
+    }
+
+    let languages: { code: string; name: string }[];
+    try {
+      languages = await this.apiService.getLanguages();
+    } catch {
+      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+    }
+
+    // Find existing readmes to filter them out
+    const existingFiles = fs.readdirSync(item.filePath);
+    const existingLangs = new Set(
+      existingFiles
+        .filter(f => /^index_[a-z]{2}\.md$/.test(f))
+        .map(f => f.replace('index_', '').replace('.md', ''))
+    );
+
+    const availableLanguages = languages.filter(l => !existingLangs.has(l.code));
+    if (availableLanguages.length === 0) {
+      vscode.window.showInformationMessage('Readmes for all available languages already exist');
+      return;
+    }
+
+    // Default to 'en' if available
+    const hasEnglish = availableLanguages.some(l => l.code === 'en');
+    const sortedLanguages = hasEnglish
+      ? [availableLanguages.find(l => l.code === 'en')!, ...availableLanguages.filter(l => l.code !== 'en')]
+      : availableLanguages;
+
+    const picked = await vscode.window.showQuickPick(
+      sortedLanguages.map(l => ({ label: l.name, description: l.code, langCode: l.code })),
+      { placeHolder: 'Select language for the readme' }
+    );
+
+    if (!picked) { return; }
+
+    const filename = `index_${picked.langCode}.md`;
+    const filePath = path.join(item.filePath, filename);
+
+    fs.writeFileSync(filePath, `# \n`, 'utf8');
+    this.treeProvider.refresh();
+
+    const doc = await vscode.workspace.openTextDocument(filePath);
+    await vscode.window.showTextDocument(doc);
   }
 }

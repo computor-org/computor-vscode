@@ -379,6 +379,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.newReadme",
+        "title": "New Readme",
+        "icon": "$(markdown)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -1252,14 +1258,19 @@
           "group": "1_files@2"
         },
         {
-          "command": "computor.lecturer.newFile",
-          "when": "view == computor.lecturer.examples && (viewItem == workingFolder || viewItem == workingFolderProtected)",
+          "command": "computor.lecturer.newReadme",
+          "when": "view == computor.lecturer.examples && viewItem == workingFolderContent",
           "group": "1_create@1"
         },
         {
-          "command": "computor.lecturer.newFolder",
-          "when": "view == computor.lecturer.examples && (viewItem == workingFolder || viewItem == workingFolderProtected)",
+          "command": "computor.lecturer.newFile",
+          "when": "view == computor.lecturer.examples && (viewItem == workingFolder || viewItem == workingFolderProtected || viewItem == workingFolderContent)",
           "group": "1_create@2"
+        },
+        {
+          "command": "computor.lecturer.newFolder",
+          "when": "view == computor.lecturer.examples && (viewItem == workingFolder || viewItem == workingFolderProtected || viewItem == workingFolderContent)",
+          "group": "1_create@3"
         },
         {
           "command": "computor.lecturer.renameItem",
