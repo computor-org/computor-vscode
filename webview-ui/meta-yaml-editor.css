@@ -1,0 +1,280 @@
+body {
+  font-family: var(--vscode-font-family);
+  padding: 20px;
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+  margin: 0;
+}
+
+.header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.header h1 {
+  margin: 0 0 4px 0;
+  font-size: 22px;
+  color: var(--vscode-foreground);
+}
+.header p {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+}
+
+.section {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  padding: 16px 20px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.section h2 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: var(--vscode-foreground);
+}
+
+.subsection {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+.subsection:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+.subsection h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--vscode-foreground);
+}
+
+/* Form styles */
+.form-group {
+  margin-bottom: 14px;
+}
+.form-group label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+.form-group .hint,
+.hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 2px;
+}
+.section-hint {
+  margin-bottom: 10px;
+}
+
+input, textarea, select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border-radius: 4px;
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+  box-sizing: border-box;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* Validation */
+input.invalid, select.invalid {
+  border-color: var(--vscode-editorError-foreground, #d13438);
+  box-shadow: inset 0 1px 2px rgba(209, 52, 56, 0.15);
+}
+.validation-error {
+  font-size: 11px;
+  color: var(--vscode-editorError-foreground, #d13438);
+  margin-top: 2px;
+}
+
+/* Meta grid */
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.meta-grid .form-group { margin-bottom: 0; }
+.meta-grid .form-group.full-width { grid-column: 1 / -1; }
+
+/* Buttons */
+button, .btn {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 6px 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: var(--vscode-font-family);
+}
+button:hover, .btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn-secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+.btn-secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.toolbar-spacer { flex: 1; }
+
+/* Dirty indicator */
+.dirty-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vscode-editorWarning-foreground);
+  margin-left: 4px;
+}
+.dirty-indicator.hidden { display: none; }
+
+/* List containers */
+.list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.list-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.list-item input {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+/* Person rows */
+.person-row .person-name { flex: 2; }
+.person-row .person-email { flex: 2; }
+.person-row .person-affiliation { flex: 1.5; }
+
+/* Link rows */
+.link-row .link-description { flex: 1; }
+.link-row .link-url { flex: 2; }
+
+/* String rows */
+.string-row input { flex: 1; }
+
+/* Remove button */
+.remove-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+.remove-btn:hover {
+  color: #d13438;
+  background: rgba(209, 52, 56, 0.1);
+}
+
+/* Add button */
+.btn-add {
+  background: none;
+  border: 1px dashed var(--vscode-panel-border);
+  color: var(--vscode-textLink-foreground);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  width: 100%;
+  text-align: center;
+}
+.btn-add:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-focusBorder);
+}
+
+/* Info rows (read-only display) */
+.info-row {
+  font-size: 12px;
+  padding: 4px 0;
+  color: var(--vscode-foreground);
+}
+.info-label {
+  color: var(--vscode-descriptionForeground);
+  margin-right: 8px;
+}
+.info-value {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+/* YAML preview */
+.yaml-preview {
+  margin-top: 16px;
+}
+.yaml-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 0;
+}
+.yaml-preview-header h2 {
+  margin: 0;
+  flex: 1;
+}
+.yaml-preview-header .chevron {
+  font-size: 10px;
+  transition: transform 0.15s;
+  color: var(--vscode-descriptionForeground);
+}
+.yaml-preview-header .chevron.open {
+  transform: rotate(90deg);
+}
+.yaml-preview-content {
+  background: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.yaml-preview-content.collapsed {
+  display: none;
+}

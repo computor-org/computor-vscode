@@ -367,6 +367,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.editMetaYaml",
+        "title": "Edit Meta Configuration",
+        "icon": "$(note)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.addTests",
         "title": "Add Tests",
         "icon": "$(beaker)",
@@ -1203,12 +1209,12 @@
         {
           "command": "computor.lecturer.uploadExample",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
-          "group": "1_actions@1"
+          "group": "3_upload@1"
         },
         {
           "command": "computor.lecturer.revealCheckedOutInExplorer",
           "when": "view == computor.lecturer.examples && (viewItem == checkedOutWorking || viewItem == checkedOutVersion || viewItem == checkedOutGroup)",
-          "group": "1_actions@2"
+          "group": "1_files@3"
         },
         {
           "command": "computor.lecturer.deleteCheckedOutExample",
@@ -1238,12 +1244,12 @@
         {
           "command": "computor.lecturer.newFile",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
-          "group": "1_actions@3"
+          "group": "1_files@1"
         },
         {
           "command": "computor.lecturer.newFolder",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
-          "group": "1_actions@4"
+          "group": "1_files@2"
         },
         {
           "command": "computor.lecturer.newFile",
@@ -1281,14 +1287,24 @@
           "group": "1_actions@5"
         },
         {
+          "command": "computor.lecturer.editMetaYaml",
+          "when": "view == computor.lecturer.examples && viewItem == workingFileMetaYaml",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "computor.lecturer.editMetaYaml",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
+          "group": "2_config@1"
+        },
+        {
           "command": "computor.lecturer.editTestYaml",
           "when": "view == computor.lecturer.examples && viewItem == workingFileTestYaml",
           "group": "1_actions@1"
         },
         {
-          "command": "computor.lecturer.addTests",
+          "command": "computor.lecturer.editTestYaml",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
-          "group": "1_actions@5"
+          "group": "2_config@2"
         },
         {
           "command": "computor.student.showMessages",
