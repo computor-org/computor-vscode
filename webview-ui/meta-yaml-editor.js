@@ -667,6 +667,10 @@
       isDirty = false;
       var indicator = document.querySelector('.dirty-indicator');
       if (indicator) { indicator.classList.add('hidden'); }
+    } else if (msg.command === 'updateFiles' && msg.files) {
+      meta = collectMeta();
+      exampleFiles = msg.files;
+      render();
     } else if (msg.command === 'update' && msg.data) {
       // Re-initialize with new data
       if (msg.data.meta) { meta = msg.data.meta; }

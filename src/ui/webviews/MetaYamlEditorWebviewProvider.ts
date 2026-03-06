@@ -12,6 +12,8 @@ interface MetaYamlEditorData {
 }
 
 export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
+  private fileWatcher: vscode.FileSystemWatcher | undefined;
+
   constructor(context: vscode.ExtensionContext) {
     super(context, 'computor.metaYamlEditor');
   }
@@ -94,6 +96,8 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
       languages: data.languages || []
     });
 
+    this.setupFileWatcher(data.exampleDir);
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -139,6 +143,33 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to save meta.yaml: ${error}`);
     }
+  }
+
+  private setupFileWatcher(exampleDir: string): void {
+    this.disposeFileWatcher();
+    const pattern = new vscode.RelativePattern(exampleDir, '**/*');
+    this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+    const sendUpdate = () => {
+      if (this.panel) {
+        const files = this.listExampleFiles(exampleDir);
+        this.panel.webview.postMessage({ command: 'updateFiles', files });
+      }
+    };
+
+    this.fileWatcher.onDidCreate(sendUpdate);
+    this.fileWatcher.onDidDelete(sendUpdate);
+  }
+
+  private disposeFileWatcher(): void {
+    if (this.fileWatcher) {
+      this.fileWatcher.dispose();
+      this.fileWatcher = undefined;
+    }
+  }
+
+  protected override onPanelDisposed(): void {
+    this.disposeFileWatcher();
   }
 
   private async handleOpenFile(filePath: string): Promise<void> {
