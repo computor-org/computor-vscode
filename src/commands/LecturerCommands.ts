@@ -740,11 +740,12 @@ export class LecturerCommands {
       }
 
       try {
-        await this.apiService.assignExampleSourceToCourseContent(
+        await this.apiService.lecturerAssignExample(
           createdContent.id,
-          ltreeIdentifier,
-          versionTag,
-          undefined
+          {
+            example_identifier: ltreeIdentifier,
+            version_tag: versionTag
+          }
         );
       } catch (error) {
         console.warn('Failed to assign example source to new assignment:', error);

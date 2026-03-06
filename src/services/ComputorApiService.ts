@@ -886,32 +886,6 @@ export class ComputorApiService {
    * Assign example to course content (non-lecturer endpoint)
    * Uses the /course-contents/{id}/assign-example endpoint
    */
-  async assignExampleSourceToCourseContent(
-    contentId: string,
-    exampleIdentifier: string,
-    versionTag: string,
-    deploymentMessage?: string
-  ): Promise<CourseContentGet> {
-    return errorRecoveryService.executeWithRecovery(async () => {
-      const client = await this.getHttpClient();
-      const response = await client.post<CourseContentGet>(
-        `/course-contents/${contentId}/assign-example`,
-        {
-          example_identifier: exampleIdentifier,
-          version_tag: versionTag,
-          deployment_message: deploymentMessage
-        }
-      );
-
-      multiTierCache.delete(`courseContent-${contentId}-true`);
-      multiTierCache.delete(`courseContent-${contentId}-false`);
-
-      return response.data;
-    }, {
-      maxRetries: 2,
-      exponentialBackoff: true
-    });
-  }
 
   async unassignExampleFromCourseContent(courseId: string, contentId: string): Promise<CourseContentGet> {
     // Note: courseId is kept for API consistency but not used in the endpoint
