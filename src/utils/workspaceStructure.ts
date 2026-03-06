@@ -160,6 +160,10 @@ export class WorkspaceStructureManager {
     return path.join(this.getDirectories().examples, directory);
   }
 
+  getToolsPath(): string {
+    return path.join(this.workspaceRoot, '.computor-tools');
+  }
+
   /**
    * Check if a repository exists
    */

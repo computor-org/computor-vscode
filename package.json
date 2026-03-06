@@ -385,6 +385,30 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.installTestingTools",
+        "title": "Install Testing Tools",
+        "icon": "$(desktop-download)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.updateTestingTools",
+        "title": "Update Testing Tools",
+        "icon": "$(sync)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.uninstallTestingTools",
+        "title": "Uninstall Testing Tools",
+        "icon": "$(trash)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.runExampleTests",
+        "title": "Run Tests",
+        "icon": "$(play)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -944,6 +968,21 @@
           "command": "computor.lecturer.filterExamplesByTags",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@4"
+        },
+        {
+          "command": "computor.lecturer.installTestingTools",
+          "when": "view == computor.lecturer.examples",
+          "group": "2_tools@1"
+        },
+        {
+          "command": "computor.lecturer.updateTestingTools",
+          "when": "view == computor.lecturer.examples",
+          "group": "2_tools@2"
+        },
+        {
+          "command": "computor.lecturer.uninstallTestingTools",
+          "when": "view == computor.lecturer.examples",
+          "group": "2_tools@3"
         }
       ],
       "view/item/context": [
@@ -1316,6 +1355,11 @@
           "command": "computor.lecturer.editTestYaml",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
           "group": "2_config@2"
+        },
+        {
+          "command": "computor.lecturer.runExampleTests",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
+          "group": "2_config@3"
         },
         {
           "command": "computor.student.showMessages",

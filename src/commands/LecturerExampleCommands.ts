@@ -13,6 +13,7 @@ import { MetaYamlEditorWebviewProvider } from '../ui/webviews/MetaYamlEditorWebv
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersionPath, snapshotWorkingToVersion } from '../utils/checkedOutExampleManager';
 import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
+import { ComputorTestingInstaller } from '../services/ComputorTestingInstaller';
 
 /**
  * Simplified example commands for the lecturer view
@@ -319,6 +320,37 @@ export class LecturerExampleCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.newReadme', async (item: FileSystemTreeItem) => {
         await this.createNewReadme(item);
+      })
+    );
+
+    // Install computor-testing tools
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.installTestingTools', async () => {
+        const installer = ComputorTestingInstaller.getInstance();
+        await installer.install();
+      })
+    );
+
+    // Update computor-testing tools
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.updateTestingTools', async () => {
+        const installer = ComputorTestingInstaller.getInstance();
+        await installer.update();
+      })
+    );
+
+    // Uninstall computor-testing tools
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.uninstallTestingTools', async () => {
+        const installer = ComputorTestingInstaller.getInstance();
+        await installer.uninstall();
+      })
+    );
+
+    // Run tests on checked-out example
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.runExampleTests', async (item: CheckedOutVersionTreeItem) => {
+        await this.runExampleTests(item);
       })
     );
   }
@@ -2052,5 +2084,20 @@ export class LecturerExampleCommands {
 
     const doc = await vscode.workspace.openTextDocument(filePath);
     await vscode.window.showTextDocument(doc);
+  }
+
+  private async runExampleTests(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version?.fullPath) {
+      vscode.window.showErrorMessage('Invalid example item');
+      return;
+    }
+
+    if (!fs.existsSync(item.version.fullPath)) {
+      vscode.window.showErrorMessage('Example directory not found.');
+      return;
+    }
+
+    const installer = ComputorTestingInstaller.getInstance();
+    await installer.runTests(item.version.fullPath);
   }
 }
