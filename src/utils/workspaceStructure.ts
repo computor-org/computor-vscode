@@ -67,8 +67,6 @@ export class WorkspaceStructureManager {
     await fs.promises.mkdir(dirs.reviewReference, { recursive: true });
     await fs.promises.mkdir(dirs.reviewSubmissions, { recursive: true });
     await fs.promises.mkdir(dirs.reference, { recursive: true });
-    await fs.promises.mkdir(dirs.examples, { recursive: true });
-    await fs.promises.mkdir(dirs.exampleVersions, { recursive: true });
     await fs.promises.mkdir(dirs.tmp, { recursive: true });
     await fs.promises.mkdir(dirs.tmpArtifacts, { recursive: true });
   }
