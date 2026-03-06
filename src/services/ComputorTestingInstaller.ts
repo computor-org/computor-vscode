@@ -212,16 +212,100 @@ export class ComputorTestingInstaller {
       if (!success) { return; }
     }
 
+    const language = this.readTestYamlLanguage(exampleDir);
+    if (!language) {
+      vscode.window.showErrorMessage('Could not determine language from test.yaml. Make sure test.yaml exists and has a "type" field.');
+      return;
+    }
+
+    const target = await this.pickTestTarget(exampleDir);
+    if (!target) { return; }
+
+    const tmpDir = this.createTestRunDir(exampleDir, target);
+
+    const command = `computor-test ${language} run -T test.yaml`;
+
     const terminal = vscode.window.createTerminal({
       name: 'Computor Test',
-      cwd: exampleDir,
+      cwd: tmpDir,
       env: {
         PATH: `${path.join(this.getVenvDir(), 'bin')}:${process.env['PATH'] || ''}`,
         VIRTUAL_ENV: this.getVenvDir()
       }
     });
     terminal.show();
-    terminal.sendText('computor-test check');
+    terminal.sendText(command);
+  }
+
+  private createTestRunDir(exampleDir: string, target: string): string {
+    const dirs = WorkspaceStructureManager.getInstance().getDirectories();
+    const exampleName = path.basename(exampleDir);
+    const tmpDir = path.join(dirs.tmp, `test-run-${exampleName}`);
+
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+    fs.cpSync(exampleDir, tmpDir, { recursive: true });
+
+    if (target !== '.') {
+      const targetSourceDir = path.join(exampleDir, target);
+      const entries = fs.readdirSync(targetSourceDir);
+      for (const entry of entries) {
+        fs.cpSync(
+          path.join(targetSourceDir, entry),
+          path.join(tmpDir, entry),
+          { recursive: true, force: true }
+        );
+      }
+    }
+
+    return tmpDir;
+  }
+
+  private readTestYamlLanguage(exampleDir: string): string | undefined {
+    const testYamlPath = path.join(exampleDir, 'test.yaml');
+    if (!fs.existsSync(testYamlPath)) { return undefined; }
+    try {
+      const yaml = require('js-yaml');
+      const content = fs.readFileSync(testYamlPath, 'utf8');
+      const data = yaml.load(content) as Record<string, unknown>;
+      return typeof data?.type === 'string' ? data.type : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async pickTestTarget(exampleDir: string): Promise<string | undefined> {
+    const items: vscode.QuickPickItem[] = [
+      { label: 'Example Root', description: 'Run tests against files in the example directory', detail: '.' }
+    ];
+
+    const localTestsDir = path.join(exampleDir, 'localTests');
+    if (fs.existsSync(localTestsDir)) {
+      try {
+        const entries = fs.readdirSync(localTestsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            items.push({
+              label: entry.name,
+              description: `localTests/${entry.name}`,
+              detail: `localTests/${entry.name}`
+            });
+          }
+        }
+      } catch {
+        // ignore read errors
+      }
+    }
+
+    if (items.length === 1) {
+      return items[0]!.detail;
+    }
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select test target'
+    });
+    return picked?.detail;
   }
 
   async uninstall(): Promise<void> {
