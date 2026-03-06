@@ -297,6 +297,13 @@ export class LecturerExampleCommands {
         await this.editTestYaml(item);
       })
     );
+
+    // Add test.yaml to working example
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.addTests', async (item: CheckedOutVersionTreeItem) => {
+        await this.addTests(item);
+      })
+    );
   }
 
   private async checkoutExample(item: ExampleTreeItem, pickVersion: boolean = false): Promise<void> {
@@ -1801,6 +1808,45 @@ export class LecturerExampleCommands {
       {
         filePath: item.filePath,
         exampleDir,
+        exampleTitle
+      }
+    );
+  }
+
+  private async addTests(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version?.isWorking) {
+      vscode.window.showErrorMessage('Tests can only be added to working copies');
+      return;
+    }
+
+    const workingDir = item.version.fullPath;
+    const testYamlPath = path.join(workingDir, 'test.yaml');
+
+    if (fs.existsSync(testYamlPath)) {
+      await this.editTestYaml(new FileSystemTreeItem(testYamlPath, false, 'test.yaml', true));
+      return;
+    }
+
+    let exampleTitle: string | undefined;
+    const metaYamlPath = path.join(workingDir, 'meta.yaml');
+    if (fs.existsSync(metaYamlPath)) {
+      try {
+        const metaContent = fs.readFileSync(metaYamlPath, 'utf8');
+        const metaData = yaml.load(metaContent) as Record<string, unknown>;
+        exampleTitle = metaData?.title as string;
+      } catch {
+        // Ignore meta.yaml parse errors
+      }
+    }
+
+    fs.writeFileSync(testYamlPath, '');
+    this.treeProvider.refresh();
+
+    await this.testYamlEditorProvider.show(
+      `Test Editor: ${exampleTitle || path.basename(workingDir)}`,
+      {
+        filePath: testYamlPath,
+        exampleDir: workingDir,
         exampleTitle
       }
     );
