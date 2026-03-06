@@ -602,30 +602,44 @@ export class LecturerExampleCommands {
 
     // Fetch latest remote version for bump proposals
     let latestRemoteVersion: string | undefined;
-    try {
-      const versions = await this.apiService.getExampleVersions(exampleId);
-      if (versions.length > 0) {
-        const latest = versions.reduce((a, b) => b.version_number > a.version_number ? b : a);
-        latestRemoteVersion = normalizeSemVer(latest.version_tag);
+    const isFirstUpload = !exampleId;
+    if (!isFirstUpload) {
+      try {
+        const versions = await this.apiService.getExampleVersions(exampleId);
+        if (versions.length > 0) {
+          const latest = versions.reduce((a, b) => b.version_number > a.version_number ? b : a);
+          latestRemoteVersion = normalizeSemVer(latest.version_tag);
+        }
+      } catch {
+        // If we can't fetch versions, continue without remote version info
       }
-    } catch {
-      // If we can't fetch versions, continue without remote version info
     }
 
-    const baseVersion = latestRemoteVersion || normalizeSemVer(readMetaYamlVersion(dirPath) || '0.0.0');
+    const localVersion = normalizeSemVer(readMetaYamlVersion(dirPath) || '0.1.0');
+    const baseVersion = latestRemoteVersion || localVersion;
 
     const patchBump = bumpVersion(baseVersion, 'patch');
     const minorBump = bumpVersion(baseVersion, 'minor');
     const majorBump = bumpVersion(baseVersion, 'major');
 
-    const remoteLabel = latestRemoteVersion ? `Latest remote: ${latestRemoteVersion}` : 'No remote versions found';
-
-    const picked = await vscode.window.showQuickPick([
-      { label: `Patch: ${patchBump}`, description: remoteLabel, version: patchBump },
-      { label: `Minor: ${minorBump}`, description: remoteLabel, version: minorBump },
-      { label: `Major: ${majorBump}`, description: remoteLabel, version: majorBump },
-      { label: 'Custom version...', description: remoteLabel, version: '' }
-    ], { placeHolder: `Select version for "${title}" upload` });
+    let picked;
+    if (isFirstUpload || !latestRemoteVersion) {
+      picked = await vscode.window.showQuickPick([
+        { label: `Use current: ${localVersion}`, description: 'First upload', version: localVersion },
+        { label: `Patch: ${patchBump}`, description: `From ${baseVersion}`, version: patchBump },
+        { label: `Minor: ${minorBump}`, description: `From ${baseVersion}`, version: minorBump },
+        { label: `Major: ${majorBump}`, description: `From ${baseVersion}`, version: majorBump },
+        { label: 'Custom version...', description: '', version: '' }
+      ], { placeHolder: `Select version for first upload of "${title}"` });
+    } else {
+      const remoteLabel = `Latest remote: ${latestRemoteVersion}`;
+      picked = await vscode.window.showQuickPick([
+        { label: `Patch: ${patchBump}`, description: remoteLabel, version: patchBump },
+        { label: `Minor: ${minorBump}`, description: remoteLabel, version: minorBump },
+        { label: `Major: ${majorBump}`, description: remoteLabel, version: majorBump },
+        { label: 'Custom version...', description: remoteLabel, version: '' }
+      ], { placeHolder: `Select version for "${title}" upload` });
+    }
 
     if (!picked) { return; }
 

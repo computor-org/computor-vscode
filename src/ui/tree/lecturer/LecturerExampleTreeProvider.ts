@@ -53,7 +53,7 @@ class ExampleTreeItem extends vscode.TreeItem {
     public readonly repository: ExampleRepositoryList,
     public readonly isCheckedOut: boolean = false
   ) {
-    super(example.title, vscode.TreeItemCollapsibleState.None);
+    super(example.identifier, vscode.TreeItemCollapsibleState.None);
     this.id = `example-${example.id}`;
     this.contextValue = isCheckedOut ? 'exampleCheckedOut' : 'example';
     this.iconPath = new vscode.ThemeIcon(isCheckedOut ? 'check' : 'file-code');
@@ -79,12 +79,8 @@ class ExampleTreeItem extends vscode.TreeItem {
   private getDescription(): string {
     const parts = [];
     if (this.isCheckedOut) { parts.push('checked out'); }
-    if (this.example.category) { parts.push(this.example.category); }
-    if (this.example.tags && this.example.tags.length > 0) {
-      const tagStr = this.example.tags.slice(0, 2).join(', ');
-      parts.push(`[${tagStr}${this.example.tags.length > 2 ? '...' : ''}]`);
-    }
-    return parts.join(' ');
+    parts.push(this.example.title);
+    return parts.join(' · ');
   }
 }
 
@@ -457,7 +453,11 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       );
     }
 
-    return filteredExamples.map(example =>
+    const sorted = filteredExamples.sort((a, b) =>
+      a.identifier.localeCompare(b.identifier)
+    );
+
+    return sorted.map(example =>
       new ExampleTreeItem(example, repository, checkedOutIds.has(example.id))
     );
   }
