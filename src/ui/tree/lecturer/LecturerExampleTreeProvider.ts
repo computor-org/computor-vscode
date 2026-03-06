@@ -219,12 +219,47 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   private repositoriesCache: ExampleRepositoryList[] | null = null;
   private examplesCache: Map<string, ExampleList[]> = new Map();
   private checkedOutCache: CheckedOutExampleGroup[] | null = null;
+  private fileWatchers: vscode.Disposable[] = [];
 
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
     this.apiService = providedApiService || new ComputorApiService(context);
+    this.setupFileWatchers(context);
+  }
+
+  private setupFileWatchers(context: vscode.ExtensionContext): void {
+    const examplesPath = this.getExamplesPath();
+    if (!examplesPath) { return; }
+
+    const patterns = [
+      new vscode.RelativePattern(examplesPath, '**/working/meta.yaml'),
+      new vscode.RelativePattern(examplesPath, '**/working/test.yaml'),
+      new vscode.RelativePattern(examplesPath, '**/working/content/**'),
+    ];
+
+    for (const pattern of patterns) {
+      const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+      const debouncedRefresh = this.createDebouncedRefresh();
+      watcher.onDidChange(debouncedRefresh);
+      watcher.onDidCreate(debouncedRefresh);
+      watcher.onDidDelete(debouncedRefresh);
+      this.fileWatchers.push(watcher);
+    }
+
+    context.subscriptions.push(...this.fileWatchers);
+  }
+
+  private createDebouncedRefresh(): () => void {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    return () => {
+      if (timeout) { clearTimeout(timeout); }
+      timeout = setTimeout(() => {
+        this.checkedOutCache = null;
+        this._onDidChangeTreeData.fire(undefined);
+      }, 300);
+    };
   }
 
   refresh(): void {
