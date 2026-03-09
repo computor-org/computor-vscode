@@ -223,18 +223,44 @@ export class ComputorTestingInstaller {
 
     const tmpDir = this.createTestRunDir(exampleDir, target);
 
-    const command = `computor-test ${language} run -T test.yaml`;
+    const activatePath = path.join(this.getVenvDir(), 'bin', 'activate');
+    const testCommand = `export MPLBACKEND=Agg && source "${activatePath}" && computor-test ${language} run -T test.yaml`;
 
     const terminal = vscode.window.createTerminal({
       name: 'Computor Test',
       cwd: tmpDir,
-      env: {
-        PATH: `${path.join(this.getVenvDir(), 'bin')}:${process.env['PATH'] || ''}`,
-        VIRTUAL_ENV: this.getVenvDir()
-      }
+      shellPath: '/bin/bash',
+      shellArgs: ['--norc', '--noprofile', '-c', `${testCommand}; exec bash --norc --noprofile`],
+      env: { VIRTUAL_ENV: this.getVenvDir(), MPLBACKEND: 'Agg' }
     });
     terminal.show();
-    terminal.sendText(command);
+
+    this.pollForTestResults(tmpDir);
+  }
+
+  private pollForTestResults(tmpDir: string): void {
+    const resultPath = path.join(tmpDir, 'output', 'testSummary.json');
+    const POLL_INTERVAL_MS = 2000;
+    const TIMEOUT_MS = 300_000;
+    const startTime = Date.now();
+
+    const interval = setInterval(() => {
+      if (Date.now() - startTime > TIMEOUT_MS) {
+        clearInterval(interval);
+        return;
+      }
+
+      if (!fs.existsSync(resultPath)) { return; }
+
+      clearInterval(interval);
+      try {
+        const results = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+        vscode.commands.executeCommand('computor.results.open', results);
+        vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
+      } catch (e) {
+        console.error('Failed to parse test results:', e);
+      }
+    }, POLL_INTERVAL_MS);
   }
 
   private createTestRunDir(exampleDir: string, target: string): string {
@@ -245,7 +271,35 @@ export class ComputorTestingInstaller {
     if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-    fs.cpSync(exampleDir, tmpDir, { recursive: true });
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const excludeDirs = new Set([
+      'localTests', 'studentTemplates', 'content',
+      'student', 'reference', 'testprograms', 'artifacts', 'output'
+    ]);
+    const excludeFiles = new Set(['test.yaml', 'meta.yaml', '.computor-example.json']);
+
+    const testYamlSource = path.join(exampleDir, 'test.yaml');
+    if (fs.existsSync(testYamlSource)) {
+      fs.cpSync(testYamlSource, path.join(tmpDir, 'test.yaml'));
+    }
+
+    const copyExampleCodeFiles = (destDir: string) => {
+      fs.mkdirSync(destDir, { recursive: true });
+      const entries = fs.readdirSync(exampleDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (excludeFiles.has(entry.name)) { continue; }
+        if (entry.isDirectory() && excludeDirs.has(entry.name)) { continue; }
+        fs.cpSync(
+          path.join(exampleDir, entry.name),
+          path.join(destDir, entry.name),
+          { recursive: true }
+        );
+      }
+    };
+
+    copyExampleCodeFiles(path.join(tmpDir, 'reference'));
+    copyExampleCodeFiles(path.join(tmpDir, 'student'));
 
     if (target !== '.') {
       const targetSourceDir = path.join(exampleDir, target);
@@ -253,7 +307,7 @@ export class ComputorTestingInstaller {
       for (const entry of entries) {
         fs.cpSync(
           path.join(targetSourceDir, entry),
-          path.join(tmpDir, entry),
+          path.join(tmpDir, 'student', entry),
           { recursive: true, force: true }
         );
       }
@@ -276,9 +330,7 @@ export class ComputorTestingInstaller {
   }
 
   private async pickTestTarget(exampleDir: string): Promise<string | undefined> {
-    const items: vscode.QuickPickItem[] = [
-      { label: 'Example Root', description: 'Run tests against files in the example directory', detail: '.' }
-    ];
+    const items: vscode.QuickPickItem[] = [];
 
     const localTestsDir = path.join(exampleDir, 'localTests');
     if (fs.existsSync(localTestsDir)) {
@@ -297,6 +349,8 @@ export class ComputorTestingInstaller {
         // ignore read errors
       }
     }
+
+    items.push({ label: 'Example Root', description: 'Run tests against files in the example directory', detail: '.' });
 
     if (items.length === 1) {
       return items[0]!.detail;
@@ -362,7 +416,7 @@ export class ComputorTestingInstaller {
         if (match) {
           const major = parseInt(match[1]!, 10);
           const minor = parseInt(match[2]!, 10);
-          if (major >= 3 && minor >= 10 && minor > bestMinor) {
+          if (major >= 3 && minor >= 10 && minor <= 13 && minor > bestMinor) {
             bestCmd = cmd;
             bestMinor = minor;
             this.log(`Found ${stdout.trim()} at ${cmd}`);
