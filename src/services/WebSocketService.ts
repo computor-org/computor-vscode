@@ -127,7 +127,7 @@ export class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelayMs = 1000;
-  private connectionTimeoutMs = 300000; // 5 minutes to establish connection
+  private connectionTimeoutMs = 10000; // 10 seconds to establish connection
   private typingTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly typingTimeoutMs = 5000;
   private statusBarItem: vscode.StatusBarItem;
