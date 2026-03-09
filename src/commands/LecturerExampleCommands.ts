@@ -14,6 +14,7 @@ import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersionPath, snapshotWorkingToVersion } from '../utils/checkedOutExampleManager';
 import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
 import { ComputorTestingInstaller } from '../services/ComputorTestingInstaller';
+import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
 
 /**
  * Simplified example commands for the lecturer view
@@ -729,7 +730,7 @@ export class LecturerExampleCommands {
         const addToZip = (currentDir: string, basePath: string) => {
           const entries = fs.readdirSync(currentDir);
           for (const entry of entries) {
-            if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) continue;
+            if (shouldExcludeExampleEntry(entry)) continue;
             const fullPath = path.join(currentDir, entry);
             const stat = fs.statSync(fullPath);
             const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');

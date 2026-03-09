@@ -28,6 +28,7 @@ import { createSimpleGit } from '../git/simpleGitFactory';
 import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
+import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
 import type { WebSocketService } from '../services/WebSocketService';
 
 interface ReleaseScope {
@@ -1766,7 +1767,7 @@ export class LecturerCommands {
           const addToZip = (dirPath: string, basePath: string) => {
             const entries = fs.readdirSync(dirPath);
             for (const entry of entries) {
-              if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) {
+              if (shouldExcludeExampleEntry(entry)) {
                 continue;
               }
               const fullPath = path.join(dirPath, entry);
