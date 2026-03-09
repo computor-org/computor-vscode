@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
 import { HttpError } from '../http/errors/HttpError';
-import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
@@ -110,14 +109,12 @@ export class ComputorApiService {
   private static instance?: ComputorApiService;
 
   public httpClient?: HttpClient;
-  private settingsManager: ComputorSettingsManager;
 
   // Batched method versions for improved performance
   public readonly batchedGetCourseContents: (courseId: string) => Promise<CourseContentList[] | undefined>;
   public readonly batchedGetCourseContentTypes: (courseId: string) => Promise<CourseContentTypeList[] | undefined>;
 
   constructor(context: vscode.ExtensionContext, httpClient?: HttpClient) {
-    this.settingsManager = new ComputorSettingsManager(context);
     this.httpClient = httpClient;
 
     // Store as singleton instance
@@ -759,22 +756,9 @@ export class ComputorApiService {
   async downloadCourseContentReference(courseContentId: string, withDependencies: boolean = true): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
-      const params = withDependencies ? '?with_dependencies=true' : '';
-      const endpoint = `/tutors/course-contents/${courseContentId}/reference${params}`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      const endpoint = `/tutors/course-contents/${courseContentId}/reference`;
+      const params = withDependencies ? { with_dependencies: 'true' } : undefined;
+      return await client.getBuffer(endpoint, params);
     } catch (error) {
       console.error('Failed to download course content reference:', error);
       return undefined;
@@ -788,25 +772,12 @@ export class ComputorApiService {
   async downloadCourseContentDescription(courseContentId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/tutors/course-contents/${courseContentId}/description`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          return undefined;
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        return undefined;
+      }
       console.error('Failed to download course content description:', error);
       return undefined;
     }
@@ -841,21 +812,8 @@ export class ComputorApiService {
   async downloadSubmissionArtifact(artifactId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/submissions/artifacts/${artifactId}/download`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error) {
       console.error('Failed to download submission artifact:', error);
       return undefined;
@@ -2668,21 +2626,8 @@ export class ComputorApiService {
   async downloadTutorTestArtifacts(testId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/tutors/tests/${testId}/artifacts/download`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error) {
       console.error('Failed to download tutor test artifacts:', error);
       return undefined;
@@ -2933,21 +2878,8 @@ export class ComputorApiService {
   async downloadResultArtifacts(resultId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/results/${resultId}/artifacts/download`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error: any) {
       console.error('Failed to download result artifacts:', error);
       return undefined;

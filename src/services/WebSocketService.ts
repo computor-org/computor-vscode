@@ -159,6 +159,9 @@ export class WebSocketService {
       return;
     }
 
+    // Ensure token is fresh before connecting
+    await this.ensureFreshToken();
+
     const token = this.httpClient.getAccessToken();
     if (!token) {
       console.warn('[WebSocket] No access token available, cannot connect');
@@ -167,6 +170,7 @@ export class WebSocketService {
 
     this.connectionState = 'connecting';
     this.updateStatusBar();
+    const connectStartTime = Date.now();
 
     try {
       const settings = await this.settingsManager.getSettings();
@@ -176,12 +180,14 @@ export class WebSocketService {
       const wsUrl = baseUrl.replace(/^http/, 'ws');
       const fullUrl = `${wsUrl}/ws?token=${encodeURIComponent(token)}`;
 
+      console.log(`[WebSocket] Connecting to ${wsUrl}/ws (timeout: ${this.connectionTimeoutMs}ms)`);
       this.ws = new WebSocket(fullUrl);
 
       // Set connection timeout - if we don't connect within this time, consider it failed
       this.connectionTimeout = setTimeout(() => {
         if (this.connectionState === 'connecting') {
-          console.warn('[WebSocket] Connection timeout');
+          const elapsed = Date.now() - connectStartTime;
+          console.warn(`[WebSocket] Connection timeout after ${elapsed}ms`);
           this.ws?.close();
           this.connectionState = 'disconnected';
           this.updateStatusBar();
@@ -190,7 +196,8 @@ export class WebSocketService {
       }, this.connectionTimeoutMs);
 
       this.ws.onopen = () => {
-        console.log('[WebSocket] Connected');
+        const elapsed = Date.now() - connectStartTime;
+        console.log(`[WebSocket] Connected (took ${elapsed}ms)`);
         this.clearConnectionTimeout();
         this.connectionState = 'connected';
         this.reconnectAttempts = 0;
@@ -212,7 +219,8 @@ export class WebSocketService {
       };
 
       this.ws.onclose = (event) => {
-        console.log(`[WebSocket] Disconnected: ${event.code} ${event.reason}`);
+        const elapsed = Date.now() - connectStartTime;
+        console.log(`[WebSocket] Disconnected after ${elapsed}ms: code=${event.code} reason=${event.reason || 'none'}`);
         this.clearConnectionTimeout();
         this.connectionState = 'disconnected';
         this.updateStatusBar();
@@ -234,7 +242,9 @@ export class WebSocketService {
       };
 
       this.ws.onerror = (event) => {
-        console.error('[WebSocket] Error:', event);
+        const elapsed = Date.now() - connectStartTime;
+        const errorMessage = (event as ErrorEvent)?.message || 'Unknown error';
+        console.error(`[WebSocket] Error after ${elapsed}ms: ${errorMessage}`);
         this.eventHandlers.forEach((handlers) => {
           handlers.onError?.('WebSocket connection error');
         });
@@ -475,6 +485,19 @@ export class WebSocketService {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = undefined;
+    }
+  }
+
+  private async ensureFreshToken(): Promise<void> {
+    if (!this.httpClient) {
+      return;
+    }
+
+    try {
+      await this.httpClient.refreshAuth();
+      console.log('[WebSocket] Token refreshed before connect');
+    } catch (error) {
+      console.warn('[WebSocket] Token refresh failed, using existing token:', error);
     }
   }
 
