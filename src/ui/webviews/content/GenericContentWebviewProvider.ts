@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
@@ -6,7 +7,7 @@ import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, te
 
 export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
-    context: import('vscode').ExtensionContext,
+    context: vscode.ExtensionContext,
     apiService: ComputorApiService,
     treeDataProvider?: LecturerTreeDataProvider
   ) {
