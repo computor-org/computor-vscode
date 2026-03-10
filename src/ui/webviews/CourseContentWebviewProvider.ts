@@ -236,16 +236,8 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         vscode.commands.executeCommand('computor.lecturer.unassignExample', message.data);
         break;
 
-      case 'updateExample':
-        vscode.window.showInformationMessage('Example update functionality coming soon!');
-        break;
-
       case 'createChild':
         vscode.commands.executeCommand('computor.lecturer.createCourseContent', message.data);
-        break;
-
-      case 'moveContent':
-        vscode.window.showInformationMessage('Content reordering coming soon!');
         break;
 
       case 'deleteContent':
