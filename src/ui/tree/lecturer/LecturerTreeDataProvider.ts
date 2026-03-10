@@ -547,39 +547,22 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         } else {
           // Show course content types with content kind titles
           const contentTypes = await this.getCourseContentTypes(element.course.id);
+          const contentKinds = await this.apiService.getCourseContentKinds();
+          const kindMap = new Map(contentKinds.map(k => [k.id, k.title || undefined]));
 
-          // Sort content types alphabetically by title
           const sortedContentTypes = [...contentTypes].sort((a, b) => {
             const titleA = (a.title || a.slug || '').toLowerCase();
             const titleB = (b.title || b.slug || '').toLowerCase();
             return titleA.localeCompare(titleB);
           });
 
-          // Fetch content kind information for each type
-          const contentTypesWithKinds = await Promise.all(sortedContentTypes.map(async (type) => {
-            try {
-              const fullType = await this.apiService.getCourseContentType(type.id);
-              const kindTitle = fullType?.course_content_kind?.title || undefined;
-              return new CourseContentTypeTreeItem(
-                type,
-                element.course,
-                element.courseFamily,
-                element.organization,
-                kindTitle
-              );
-            } catch (error) {
-              // If fetching full type fails, create without kind title
-              console.warn(`Failed to fetch content type details for ${type.id}:`, error);
-              return new CourseContentTypeTreeItem(
-                type,
-                element.course,
-                element.courseFamily,
-                element.organization
-              );
-            }
-          }));
-
-          return contentTypesWithKinds;
+          return sortedContentTypes.map(type => new CourseContentTypeTreeItem(
+            type,
+            element.course,
+            element.courseFamily,
+            element.organization,
+            type.course_content_kind?.title || kindMap.get(type.course_content_kind_id)
+          ));
         }
       }
 
