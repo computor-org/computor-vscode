@@ -15,6 +15,8 @@ import {
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../../../utils/deploymentHelpers';
 
+const ASSIGNMENT_KIND_ID = 'assignment';
+
 export interface CourseContentAssignmentInfo {
   directoryName?: string;
   versionIdentifier?: string | null;
@@ -144,7 +146,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     }
     
     // Check if it's an assignment based on course_content_kind_id
-    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
+    const isAssignment = this.contentType?.course_content_kind_id === ASSIGNMENT_KIND_ID;
     
     if (isAssignment) {
       parts.push('assignment');
@@ -177,7 +179,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     try {
       // Determine shape based on course_content_kind_id
       // 'assignment' gets square, 'unit' (or anything else) gets circle
-      const shape = this.contentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
+      const shape = this.contentType?.course_content_kind_id === ASSIGNMENT_KIND_ID ? 'square' : 'circle';
       return IconGenerator.getColoredIcon(color, shape);
     } catch {
       // Fallback to default theme icons if icon generation fails
@@ -254,7 +256,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
 
   private getDescription(): string | undefined {
     const parts: string[] = [];
-    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
+    const isAssignment = this.contentType?.course_content_kind_id === ASSIGNMENT_KIND_ID;
     const assignment = this.assignmentInfo;
 
     if (isAssignment) {
