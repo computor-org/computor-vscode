@@ -94,7 +94,12 @@ export interface WsMaintenanceReminder {
   };
 }
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder;
+export interface WsSystemConnected {
+  type: 'system:connected';
+  user_id: string;
+}
+
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -478,6 +483,10 @@ export class WebSocketService {
           this.eventHandlers.forEach((handlers) => {
             handlers.onReadUpdate?.(message.channel, message.message_id, message.user_id);
           });
+          break;
+
+        case 'system:connected':
+          console.log('[WebSocket] Connected as user:', message.user_id);
           break;
 
         case 'pong':
