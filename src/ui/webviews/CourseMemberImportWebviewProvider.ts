@@ -43,7 +43,6 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
         this.apiService.getCourseRoles(),
         this.apiService.getCourseGroups(courseId)
       ]);
-      console.log(`Fetched ${this.availableGroups.length} course groups:`, this.availableGroups);
     } catch (error) {
       console.error('Failed to fetch course data:', error);
       vscode.window.showErrorMessage(`Failed to fetch course data: ${error}`);
@@ -250,7 +249,6 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'pollWorkflowStatus':
-        console.log('Received pollWorkflowStatus message:', message.data);
         await this.handlePollWorkflowStatus(message.data);
         break;
 
@@ -270,7 +268,6 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     rowNumber: number;
     workflowId: string;
   }): Promise<void> {
-    console.log('Polling workflow status:', data.workflowId);
     try {
       const status = await this.apiService.getWorkflowStatus(data.workflowId);
 
@@ -402,106 +399,96 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     let successCount = 0;
     let errorCount = 0;
 
+    const chunkSize = 10;
+    const chunkDelayMs = 500;
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
         title: 'Importing course members...',
-        cancellable: false
+        cancellable: true
       },
-      async (progress) => {
-        for (let i = 0; i < data.selectedRows.length; i++) {
-          const row = data.selectedRows[i];
-          if (!row) {
-            continue;
-          }
+      async (progress, token) => {
+        for (let chunkStart = 0; chunkStart < data.selectedRows.length; chunkStart += chunkSize) {
+          if (token.isCancellationRequested) { break; }
 
+          const chunk = data.selectedRows.slice(chunkStart, chunkStart + chunkSize);
           progress.report({
-            increment: 100 / totalRows,
-            message: `Importing ${i + 1}/${totalRows}: ${row.memberData.email}`
+            message: `Importing ${chunkStart + 1}–${Math.min(chunkStart + chunkSize, totalRows)} of ${totalRows}...`
           });
 
-          try {
-            // Call the real API endpoint
-            const result = await this.apiService.importSingleCourseMember(
-              this.courseId!,
-              {
-                email: row.memberData.email,
-                given_name: row.memberData.given_name,
-                family_name: row.memberData.family_name,
-                course_group_title: row.memberData.course_group_title,
-                course_role_id: row.selectedRoleId
-              },
-              {
-                createMissingGroup: data.options.createMissingGroups,
-                updateIfExists: data.options.updateIfExists
-              }
-            );
+          await Promise.all(chunk.map(async (row) => {
+            if (!row) { return; }
 
-            // Send result to webview
-            console.log('Import API result:', result);
-
-            if (result.workflow_id) {
-              // Async workflow started - webview will poll for status
-              console.log('Sending importProgress with workflowId:', result.workflow_id);
-              this.panel?.webview.postMessage({
-                command: 'importProgress',
-                data: {
-                  rowNumber: row.rowNumber,
-                  result: {
-                    status: 'pending',
-                    workflowId: result.workflow_id
-                  }
+            try {
+              const result = await this.apiService.importSingleCourseMember(
+                this.courseId!,
+                {
+                  email: row.memberData.email,
+                  given_name: row.memberData.given_name,
+                  family_name: row.memberData.family_name,
+                  course_group_title: row.memberData.course_group_title,
+                  course_role_id: row.selectedRoleId
+                },
+                {
+                  createMissingGroup: data.options.createMissingGroups,
+                  updateIfExists: data.options.updateIfExists
                 }
-              });
-              // Count workflow start as success - it was accepted by the server
-              successCount++;
-            } else {
-              // No workflow - operation completed immediately
-              const status = result.success ? 'success' : 'error';
-              this.panel?.webview.postMessage({
-                command: 'importProgress',
-                data: {
-                  rowNumber: row.rowNumber,
-                  result: {
-                    status,
-                    message: result.message || (result.success ? 'Member imported successfully' : 'Import failed')
-                  }
-                }
-              });
+              );
 
-              if (result.success) {
+              if (result.workflow_id) {
+                this.panel?.webview.postMessage({
+                  command: 'importProgress',
+                  data: {
+                    rowNumber: row.rowNumber,
+                    result: { status: 'pending', workflowId: result.workflow_id }
+                  }
+                });
                 successCount++;
               } else {
-                errorCount++;
+                const status = result.success ? 'success' : 'error';
+                this.panel?.webview.postMessage({
+                  command: 'importProgress',
+                  data: {
+                    rowNumber: row.rowNumber,
+                    result: {
+                      status,
+                      message: result.message || (result.success ? 'Member imported successfully' : 'Import failed')
+                    }
+                  }
+                });
+                if (result.success) { successCount++; }
+                else { errorCount++; }
               }
-            }
-          } catch (error: any) {
-            this.panel?.webview.postMessage({
-              command: 'importProgress',
-              data: {
-                rowNumber: row.rowNumber,
-                result: {
-                  status: 'error',
-                  message: error?.message || 'Unknown error'
+            } catch (error: any) {
+              this.panel?.webview.postMessage({
+                command: 'importProgress',
+                data: {
+                  rowNumber: row.rowNumber,
+                  result: { status: 'error', message: error?.message || 'Unknown error' }
                 }
-              }
-            });
+              });
+              errorCount++;
+            }
+          }));
 
-            errorCount++;
+          progress.report({ increment: (chunk.length / totalRows) * 100 });
+
+          if (chunkStart + chunkSize < data.selectedRows.length && !token.isCancellationRequested) {
+            await new Promise(resolve => setTimeout(resolve, chunkDelayMs));
           }
         }
 
-        // Send completion message
         this.panel?.webview.postMessage({
           command: 'importComplete',
-          data: {
-            total: totalRows,
-            success: successCount,
-            errors: errorCount
-          }
+          data: { total: totalRows, success: successCount, errors: errorCount }
         });
 
-        if (errorCount > 0) {
+        if (token.isCancellationRequested) {
+          vscode.window.showWarningMessage(
+            `Import cancelled. Processed: ${successCount + errorCount}/${totalRows}`
+          );
+        } else if (errorCount > 0) {
           vscode.window.showWarningMessage(
             `Import completed with errors. Success: ${successCount}, Errors: ${errorCount}`
           );
@@ -511,7 +498,6 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
           );
         }
 
-        // Refresh tree view
         if (this.treeDataProvider) {
           await this.treeDataProvider.refresh();
         }
