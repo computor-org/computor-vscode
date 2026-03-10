@@ -39,7 +39,6 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
 
     const infoHtml = section('Assignment Information', `
       ${infoRowCode('ID', courseContent.id)}
-      ${infoRowCode('Path', courseContent.path)}
       ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
       ${infoRow('Max Group Size', String(courseContent.max_group_size ?? 1))}
@@ -64,6 +63,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
 
     const editHtml = section('Edit Assignment', `
       <form id="editForm">
+        ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1.assignment_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots')}
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Assignment title' }))}
         ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Assignment description' }))}
         ${formGroup('Max Group Size', textInput('maxGroupSize', String(courseContent.max_group_size ?? 1), { type: 'number', min: 1 }))}
@@ -80,9 +80,12 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
     const scriptHtml = `
       var contentId = ${JSON.stringify(courseContent.id)};
       var courseId = ${JSON.stringify(course.id)};
+      var originalPath = ${JSON.stringify(courseContent.path)};
+      var currentPosition = ${JSON.stringify(courseContent.position)};
 
       document.getElementById('editForm').addEventListener('submit', function(e) {
         e.preventDefault();
+        var newPath = document.getElementById('path').value.trim();
         var updates = {
           title: document.getElementById('title').value,
           description: document.getElementById('description').value,
@@ -92,10 +95,24 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         if (testRunsEl) { updates.max_test_runs = parseInt(testRunsEl.value) || null; }
         var submissionsEl = document.getElementById('maxSubmissions');
         if (submissionsEl) { updates.max_submissions = parseInt(submissionsEl.value) || null; }
-        vscode.postMessage({
-          command: 'updateContent',
-          data: { courseId: courseId, contentId: contentId, updates: updates }
-        });
+
+        if (newPath !== originalPath) {
+          vscode.postMessage({
+            command: 'moveContent',
+            data: {
+              courseId: courseId,
+              contentId: contentId,
+              path: newPath,
+              position: currentPosition,
+              updates: updates
+            }
+          });
+        } else {
+          vscode.postMessage({
+            command: 'updateContent',
+            data: { courseId: courseId, contentId: contentId, updates: updates }
+          });
+        }
       });
 
       function refreshData() {

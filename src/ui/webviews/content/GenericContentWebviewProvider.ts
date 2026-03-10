@@ -28,13 +28,13 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
 
     const infoHtml = section('Content Information', `
       ${infoRowCode('ID', courseContent.id)}
-      ${infoRowCode('Path', courseContent.path)}
       ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
     `);
 
     const editHtml = section('Edit Content', `
       <form id="editForm">
+        ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1.content_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots')}
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Content title' }))}
         ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Content description' }))}
         <div class="actions">
@@ -48,20 +48,34 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
     const scriptHtml = `
       var contentId = ${JSON.stringify(courseContent.id)};
       var courseId = ${JSON.stringify(course.id)};
+      var originalPath = ${JSON.stringify(courseContent.path)};
+      var currentPosition = ${JSON.stringify(courseContent.position)};
 
       document.getElementById('editForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        vscode.postMessage({
-          command: 'updateContent',
-          data: {
-            courseId: courseId,
-            contentId: contentId,
-            updates: {
-              title: document.getElementById('title').value,
-              description: document.getElementById('description').value
+        var newPath = document.getElementById('path').value.trim();
+        var updates = {
+          title: document.getElementById('title').value,
+          description: document.getElementById('description').value
+        };
+
+        if (newPath !== originalPath) {
+          vscode.postMessage({
+            command: 'moveContent',
+            data: {
+              courseId: courseId,
+              contentId: contentId,
+              path: newPath,
+              position: currentPosition,
+              updates: updates
             }
-          }
-        });
+          });
+        } else {
+          vscode.postMessage({
+            command: 'updateContent',
+            data: { courseId: courseId, contentId: contentId, updates: updates }
+          });
+        }
       });
 
       function refreshData() {
