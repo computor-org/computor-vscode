@@ -7,11 +7,15 @@ import {
   CourseContentLecturerList,
   CourseContentTypeList,
   ExampleList,
+  ExampleGet,
+  ExampleVersionGet,
   CourseGroupList,
   CourseMemberList
 } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../../../utils/deploymentHelpers';
+
+const ASSIGNMENT_KIND_ID = 'assignment';
 
 export interface CourseContentAssignmentInfo {
   directoryName?: string;
@@ -73,36 +77,61 @@ export class CourseTreeItem extends vscode.TreeItem {
   }
 }
 
+export interface CourseContentTreeItemOptions {
+  courseContent: CourseContentList | CourseContentLecturerList;
+  course: CourseList;
+  courseFamily: CourseFamilyList;
+  organization: OrganizationList;
+  hasChildren: boolean;
+  exampleInfo?: ExampleGet | null;
+  contentType?: CourseContentTypeList;
+  isSubmittable?: boolean;
+  exampleVersionInfo?: ExampleVersionGet | null;
+  collapsibleState?: vscode.TreeItemCollapsibleState;
+  assignmentInfo?: CourseContentAssignmentInfo;
+  assignmentDirectory?: string;
+}
+
 export class CourseContentTreeItem extends vscode.TreeItem {
-  constructor(
-    public readonly courseContent: CourseContentList | CourseContentLecturerList,
-    public readonly course: CourseList,
-    public readonly courseFamily: CourseFamilyList,
-    public readonly organization: OrganizationList,
-    public readonly hasChildren: boolean,
-    public readonly exampleInfo?: any,
-    public readonly contentType?: CourseContentTypeList,
-    public readonly isSubmittable: boolean = false,
-    public readonly exampleVersionInfo?: any,
-    public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState,
-    public assignmentInfo?: CourseContentAssignmentInfo,
-    public assignmentDirectory?: string
-  ) {
+  public readonly courseContent: CourseContentList | CourseContentLecturerList;
+  public readonly course: CourseList;
+  public readonly courseFamily: CourseFamilyList;
+  public readonly organization: OrganizationList;
+  public readonly hasChildren: boolean;
+  public readonly exampleInfo?: ExampleGet | null;
+  public readonly contentType?: CourseContentTypeList;
+  public readonly isSubmittable: boolean;
+  public readonly exampleVersionInfo?: ExampleVersionGet | null;
+  public assignmentInfo?: CourseContentAssignmentInfo;
+  public assignmentDirectory?: string;
+
+  constructor(options: CourseContentTreeItemOptions) {
     super(
-      courseContent.title || courseContent.path,
-      providedCollapsibleState !== undefined ? providedCollapsibleState : 
-        (hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
+      options.courseContent.title || options.courseContent.path,
+      options.collapsibleState !== undefined ? options.collapsibleState :
+        (options.hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
     );
-    
-    this.id = `content-${courseContent.id}`;
+
+    this.courseContent = options.courseContent;
+    this.course = options.course;
+    this.courseFamily = options.courseFamily;
+    this.organization = options.organization;
+    this.hasChildren = options.hasChildren;
+    this.exampleInfo = options.exampleInfo;
+    this.contentType = options.contentType;
+    this.isSubmittable = options.isSubmittable ?? false;
+    this.exampleVersionInfo = options.exampleVersionInfo;
+    this.assignmentInfo = options.assignmentInfo;
+    this.assignmentDirectory = options.assignmentDirectory;
+
+    this.id = `content-${options.courseContent.id}`;
     if (!this.assignmentDirectory && this.assignmentInfo?.directoryName) {
       this.assignmentDirectory = this.assignmentInfo.directoryName;
     }
-    
+
     this.contextValue = this.getContextValue();
     this.iconPath = this.getIcon();
     this.tooltip = this.getTooltip();
-    
     this.description = this.getDescription();
   }
 
@@ -117,7 +146,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     }
     
     // Check if it's an assignment based on course_content_kind_id
-    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
+    const isAssignment = this.contentType?.course_content_kind_id === ASSIGNMENT_KIND_ID;
     
     if (isAssignment) {
       parts.push('assignment');
@@ -150,7 +179,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     try {
       // Determine shape based on course_content_kind_id
       // 'assignment' gets square, 'unit' (or anything else) gets circle
-      const shape = this.contentType?.course_content_kind_id === 'assignment' ? 'square' : 'circle';
+      const shape = this.contentType?.course_content_kind_id === ASSIGNMENT_KIND_ID ? 'square' : 'circle';
       return IconGenerator.getColoredIcon(color, shape);
     } catch {
       // Fallback to default theme icons if icon generation fails
@@ -179,7 +208,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       const versionId = getExampleVersionId(this.courseContent);
       if (versionId) {
         if (this.exampleVersionInfo) {
-          parts.push(`Version tag: ${this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown'}`);
+          parts.push(`Version tag: ${this.exampleVersionInfo.version_tag || 'unknown'}`);
         } else {
           parts.push('Version tag: loading...');
         }
@@ -227,7 +256,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
 
   private getDescription(): string | undefined {
     const parts: string[] = [];
-    const isAssignment = this.contentType?.course_content_kind_id === 'assignment';
+    const isAssignment = this.contentType?.course_content_kind_id === ASSIGNMENT_KIND_ID;
     const assignment = this.assignmentInfo;
 
     if (isAssignment) {
@@ -420,33 +449,56 @@ export class CourseMemberTreeItem extends vscode.TreeItem {
     public readonly course: CourseList,
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList,
-    public readonly group?: CourseGroupList
+    public readonly group?: CourseGroupList,
+    public readonly roleTitle?: string
   ) {
-    const userName = member.user?.username || member.user?.email || `User ${member.user_id.slice(0, 8)}`;
+    const displayName = formatMemberDisplayName(member);
     super(
-      userName,
+      displayName,
       vscode.TreeItemCollapsibleState.None
     );
     this.id = `member-${member.id}`;
     this.contextValue = 'course.member';
     this.iconPath = new vscode.ThemeIcon('account');
-    
-    // Build tooltip with user info
-    const tooltipParts = [
-      `Member: ${userName}`,
-      `User ID: ${member.user_id}`,
-      `Role ID: ${member.course_role_id}`
-    ];
-    
+
+    const tooltipParts = [`${displayName}`];
+
+    if (member.user?.email) {
+      tooltipParts.push(`Email: ${member.user.email}`);
+    }
+    if (member.user?.username) {
+      tooltipParts.push(`Username: ${member.user.username}`);
+    }
+    if (roleTitle) {
+      tooltipParts.push(`Role: ${roleTitle}`);
+    }
     if (group) {
       tooltipParts.push(`Group: ${group.title || group.id}`);
-    } else {
-      tooltipParts.push('Group: None');
     }
-    
+
     this.tooltip = tooltipParts.join('\n');
-    this.description = member.course_role_id;
+    this.description = roleTitle || undefined;
   }
+}
+
+export function formatMemberDisplayName(member: CourseMemberList): string {
+  const user = member.user;
+  if (user?.family_name && user?.given_name) {
+    return `${user.family_name} ${user.given_name}`;
+  }
+  if (user?.family_name) {
+    return user.family_name;
+  }
+  if (user?.given_name) {
+    return user.given_name;
+  }
+  return user?.username || user?.email || `User ${member.user_id.slice(0, 8)}`;
+}
+
+export function compareMembersByName(a: CourseMemberList, b: CourseMemberList): number {
+  const nameA = formatMemberDisplayName(a).toLowerCase();
+  const nameB = formatMemberDisplayName(b).toLowerCase();
+  return nameA.localeCompare(nameB);
 }
 
 export class LoadMoreTreeItem extends vscode.TreeItem {

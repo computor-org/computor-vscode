@@ -511,7 +511,6 @@ html, body {
 /* Drag and drop */
 #app {
   position: relative;
-  min-height: 100%;
 }
 
 #app.drag-over::before {

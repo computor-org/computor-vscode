@@ -75,9 +75,9 @@ export abstract class BaseWebviewProvider {
       this.panel.title = title;
     }
 
-    // Update content if data is provided
+    // Re-render content when showing with new data on an existing panel
     if (data && this.panel) {
-      this.panel.webview.postMessage({ command: 'update', data });
+      this.panel.webview.html = await this.getWebviewContent(data);
     }
   }
 

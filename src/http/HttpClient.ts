@@ -58,6 +58,11 @@ export abstract class HttpClient {
     return this.request<T>('GET', endpoint, undefined, params);
   }
 
+  async getBuffer(endpoint: string, params?: Record<string, any>): Promise<Buffer> {
+    const response = await this.request<ArrayBuffer>('GET', endpoint, undefined, params);
+    return Buffer.from(response.data);
+  }
+
   async post<T>(endpoint: string, data?: any, params?: Record<string, any>): Promise<HttpResponse<T>> {
     return this.request<T>('POST', endpoint, data, params);
   }

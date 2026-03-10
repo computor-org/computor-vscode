@@ -28,8 +28,6 @@
     availableRoles = state.availableRoles;
     availableGroups = state.availableGroups || [];
 
-    console.log('Initialized with', availableGroups.length, 'available groups:', availableGroups);
-
     render();
     attachEventListeners();
   }
@@ -158,10 +156,14 @@
       </div>
     `;
 
-    // Restore scroll position
-    const newTableBody = document.querySelector('.import-table-body');
-    if (newTableBody && scrollTop > 0) {
-      newTableBody.scrollTop = scrollTop;
+    // Restore scroll position after browser layout
+    if (scrollTop > 0) {
+      requestAnimationFrame(() => {
+        const newTableBody = document.querySelector('.import-table-body');
+        if (newTableBody) {
+          newTableBody.scrollTop = scrollTop;
+        }
+      });
     }
   }
 
@@ -191,6 +193,79 @@
     });
   }
 
+  function renderResultCell(member) {
+    if (member.isImporting) {
+      return '<span class="result-badge result-importing"><span class="spinner"></span> Importing...</span>';
+    }
+    if (!member.importResult) {
+      return '';
+    }
+    const status = member.importResult.status;
+    const runningStatuses = ['pending', 'queued', 'started'];
+    const isRunning = runningStatuses.includes(status);
+    let resultClass, resultIcon, displayStatus;
+    if (status === 'success') {
+      resultClass = 'result-success';
+      resultIcon = '✓';
+      displayStatus = 'success';
+    } else if (status === 'error') {
+      resultClass = 'result-error';
+      resultIcon = '✗';
+      displayStatus = 'error';
+    } else {
+      resultClass = 'result-pending';
+      resultIcon = '';
+      displayStatus = status;
+    }
+    let html = `<span class="result-badge ${resultClass}">
+      ${isRunning ? '<span class="spinner"></span>' : resultIcon} ${displayStatus}
+    </span>`;
+    if (member.importResult.message) {
+      html += `<div class="result-message">${escapeHtml(member.importResult.message)}</div>`;
+    }
+    return html;
+  }
+
+  function updateRowInPlace(member) {
+    const row = document.querySelector(`tr[data-row="${member.rowNumber}"]`);
+    if (!row) { return; }
+
+    row.className = member.isImporting ? 'row-importing' :
+      (member.importResult?.status === 'success' ? 'row-success' :
+       member.importResult?.status === 'error' ? 'row-error' : '');
+
+    const resultCell = row.querySelector('.result-cell');
+    if (resultCell) {
+      resultCell.innerHTML = renderResultCell(member);
+    }
+  }
+
+  function updateSelectionUI(changedRowNumber) {
+    const selectedCount = members.filter(m => m.isSelected).length;
+    const importBtn = document.getElementById('importBtn');
+    if (importBtn) {
+      importBtn.innerHTML = `${isImporting ? '<span class="spinner"></span>' : ''} Import Selected (${selectedCount})`;
+      importBtn.disabled = selectedCount === 0 || isImporting;
+    }
+
+    const visibleMembers = members.filter(m => currentFilter === 'all' || m.status === currentFilter);
+    const allVisibleSelected = visibleMembers.length > 0 && visibleMembers.every(m => m.isSelected);
+    const headerCheckbox = document.getElementById('headerCheckbox');
+    if (headerCheckbox) {
+      headerCheckbox.checked = allVisibleSelected;
+    }
+
+    if (changedRowNumber !== undefined) {
+      const member = members.find(m => m.rowNumber === changedRowNumber);
+      if (member) {
+        const roleSelect = document.querySelector(`.role-select[data-row="${changedRowNumber}"]`);
+        const groupSelect = document.querySelector(`.group-select[data-row="${changedRowNumber}"]`);
+        if (roleSelect) { roleSelect.disabled = !member.isSelected || isImporting; }
+        if (groupSelect) { groupSelect.disabled = !member.isSelected || isImporting; }
+      }
+    }
+  }
+
   function renderTableRows() {
     let visibleMembers = members.filter(m => {
       if (currentFilter === 'all') return true;
@@ -218,44 +293,7 @@
         modified: 'Modified'
       }[member.status] || member.status;
 
-      let resultHtml = '';
-      if (member.isImporting) {
-        resultHtml = '<span class="result-badge result-importing"><span class="spinner"></span> Importing...</span>';
-      } else if (member.importResult) {
-        const status = member.importResult.status;
-        let resultClass, resultIcon, displayStatus;
-
-        // TaskStatus: "queued" | "started" | "finished" | "failed" | "deferred" | "cancelled"
-        // Running statuses - show spinner (including 'pending' which is the initial state before polling starts)
-        const runningStatuses = ['pending', 'queued', 'started'];
-        const isRunning = runningStatuses.includes(status);
-
-        if (status === 'success') {
-          resultClass = 'result-success';
-          resultIcon = '✓';
-          displayStatus = 'success';
-        } else if (status === 'error') {
-          resultClass = 'result-error';
-          resultIcon = '✗';
-          displayStatus = 'error';
-        } else if (isRunning) {
-          resultClass = 'result-pending';
-          resultIcon = '';
-          displayStatus = status;
-        } else {
-          // Unknown status
-          resultClass = 'result-pending';
-          resultIcon = '';
-          displayStatus = status;
-        }
-
-        resultHtml = `
-          <span class="result-badge ${resultClass}">
-            ${isRunning ? '<span class="spinner"></span>' : resultIcon} ${displayStatus}
-          </span>
-          ${member.importResult.message ? `<div class="result-message">${escapeHtml(member.importResult.message)}</div>` : ''}
-        `;
-      }
+      const resultHtml = renderResultCell(member);
 
       const rowClass = member.isImporting ? 'row-importing' :
                       (member.importResult?.status === 'success' ? 'row-success' :
@@ -408,8 +446,7 @@
             command: 'selectionChanged',
             data: { rowNumber, isSelected: e.target.checked }
           });
-          render();
-          attachEventListeners();
+          updateSelectionUI(rowNumber);
         }
       });
     });
@@ -644,28 +681,23 @@
   }
 
   function handleImportProgress(data) {
-    console.log('handleImportProgress received:', data);
     const member = members.find(m => m.rowNumber === data.rowNumber);
     if (member) {
       member.importResult = data.result;
 
       // If we got a workflow_id, start polling for status
       if (data.result.workflowId) {
-        console.log('Got workflowId:', data.result.workflowId);
         member.workflowId = data.result.workflowId;
         startWorkflowPolling(data.rowNumber, data.result.workflowId);
       } else {
         member.isImporting = false;
       }
 
-      render();
-      attachEventListeners();
+      updateRowInPlace(member);
     }
   }
 
   function startWorkflowPolling(rowNumber, workflowId) {
-    console.log('Starting workflow polling for row', rowNumber, 'workflowId:', workflowId);
-
     // Clear any existing polling for this row
     if (workflowPollingIntervals[rowNumber]) {
       clearInterval(workflowPollingIntervals[rowNumber]);
@@ -677,13 +709,13 @@
       data: { rowNumber, workflowId }
     });
 
-    // Then poll every 3 seconds
+    // Poll every 10 seconds
     workflowPollingIntervals[rowNumber] = setInterval(() => {
       vscode.postMessage({
         command: 'pollWorkflowStatus',
         data: { rowNumber, workflowId }
       });
-    }, 3000);
+    }, 5000);
   }
 
   function handleWorkflowStatusUpdate(data) {
@@ -736,8 +768,7 @@
       };
     }
 
-    render();
-    attachEventListeners();
+    updateRowInPlace(member);
   }
 
   function handleImportComplete(data) {

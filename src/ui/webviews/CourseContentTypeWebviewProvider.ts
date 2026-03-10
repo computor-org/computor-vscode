@@ -3,6 +3,8 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentTypeGet, CourseList, CourseContentKindList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
+import { SHARED_STYLES } from './shared/webviewStyles';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput, pageShell } from './shared/webviewHelpers';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -19,17 +21,13 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
     course: CourseList;
     contentKind?: CourseContentKindList;
   }): Promise<string> {
-    if (!this.panel) {
-      return this.getBaseHtml('Content Type', '<p>Loading...</p>');
-    }
-
-    if (!data) {
+    if (!data?.contentType) {
       return this.getBaseHtml('Content Type', '<p>No content type data available</p>');
     }
 
     const { contentType, course, contentKind } = data;
+    const nonce = this.getNonce();
 
-    // Get content kind info if not provided
     let kind = contentKind;
     if (!kind) {
       try {
@@ -40,30 +38,81 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       }
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify({ contentType, course, contentKind: kind });
-    const cssUri = this.getWebviewUri(webview, 'webview-ui', 'course-content-type-details.css');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'course-content-type-details.js');
+    const color = contentType.color || '#888888';
 
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Content Type: ${contentType.title || contentType.slug}</title>
-      <link rel="stylesheet" href="${cssUri}">
-    </head>
-    <body>
-      <div id="app" class="view-root"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    const headerHtml = `
+      <h1>${colorSwatch(color)} ${escapeHtml(contentType.title || contentType.slug)}</h1>
+      <p>Content Type in ${escapeHtml(course?.title || course?.path)}</p>`;
+
+    const kindBadges = kind ? `
+      ${infoRow('Submittable', kind.submittable ? badge('Yes', 'success') : badge('No', 'muted'))}
+      ${infoRow('Can Have Children', kind.has_descendants ? badge('Yes', 'info') : badge('No', 'muted'))}
+      ${infoRow('Can Have Parent', kind.has_ascendants ? badge('Yes', 'info') : badge('No', 'muted'))}
+    ` : '';
+
+    const infoHtml = section('Information', `
+      ${infoRowCode('ID', contentType.id)}
+      ${infoRowCode('Slug', contentType.slug)}
+      ${infoRow('Color', `${colorSwatch(color)} <span class="code">${escapeHtml(color)}</span>`)}
+      ${infoRowText('Content Kind', kind?.title || contentType.course_content_kind_id)}
+      ${infoRowText('Description', contentType.description)}
+      ${kindBadges}
+    `);
+
+    const editHtml = section('Edit Content Type', `
+      <form id="editForm">
+        ${formGroup('Title', textInput('title', contentType.title, { placeholder: 'Content type title' }))}
+        ${formGroup('Slug', textInput('slug', contentType.slug, { required: true, pattern: '[a-z0-9_-]+', placeholder: 'content-type-slug' }))}
+        ${formGroup('Color', `
+          <div class="color-input-row">
+            <input type="color" id="colorPicker" value="${escapeHtml(color)}">
+            <input type="text" id="colorText" name="color" value="${escapeHtml(color)}" placeholder="#000000">
+          </div>
+        `)}
+        ${formGroup('Description', textareaInput('description', contentType.description, { placeholder: 'Content type description' }))}
+        <div class="actions">
+          <button type="submit">Save Changes</button>
+          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+        </div>
+      </form>
+    `);
+
+    const scriptHtml = `
+      var typeId = ${JSON.stringify(contentType.id)};
+      var colorPicker = document.getElementById('colorPicker');
+      var colorText = document.getElementById('colorText');
+
+      colorPicker.addEventListener('input', function() { colorText.value = colorPicker.value; });
+      colorText.addEventListener('input', function() {
+        if (/^#[0-9a-fA-F]{6}$/.test(colorText.value)) { colorPicker.value = colorText.value; }
+      });
+
+      document.getElementById('editForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        vscode.postMessage({
+          command: 'updateContentType',
+          data: {
+            typeId: typeId,
+            updates: {
+              title: document.getElementById('title').value,
+              slug: document.getElementById('slug').value,
+              color: colorText.value,
+              description: document.getElementById('description').value
+            }
+          }
+        });
+      });
+
+      function refreshData() {
+        vscode.postMessage({ command: 'refresh', data: { typeId: typeId } });
+      }
+
+      window.addEventListener('message', function(event) {
+        if (event.data.command === 'updateState') { location.reload(); }
+      });
+    `;
+
+    return pageShell(nonce, 'Content Type', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -72,10 +121,8 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
         try {
           await this.apiService.updateCourseContentType(message.data.typeId, message.data.updates);
           vscode.window.showInformationMessage('Content type updated successfully');
-          
-          // Update tree with changes
+
           if (this.treeDataProvider) {
-            // Get the course ID from the data to provide context for the update
             const courseData = this.currentData as { course: CourseList };
             this.treeDataProvider.updateNode('courseContentType', message.data.typeId, {
               ...message.data.updates,
@@ -90,42 +137,28 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        // Reload the webview with fresh data
-        if (message.data.typeId) {
+        if (message.data.typeId && this.panel) {
           try {
             const freshContentType = await this.apiService.getCourseContentType(message.data.typeId);
-            if (freshContentType && this.currentData) {
-              // Also refresh content kind info if needed
-              let contentKind = this.currentData.contentKind;
+            if (freshContentType) {
+              let kind = this.currentData?.contentKind;
               if (freshContentType.course_content_kind_id) {
                 try {
                   const kinds = await this.apiService.getCourseContentKinds();
                   const freshKind = kinds.find(k => k.id === freshContentType.course_content_kind_id);
-                  if (freshKind) {
-                    contentKind = freshKind;
-                  }
+                  if (freshKind) { kind = freshKind; }
                 } catch (error) {
                   console.error('Failed to refresh content kind:', error);
                 }
               }
-              
-              // Update the current data and re-render the entire webview
-              this.currentData.contentType = freshContentType;
-              this.currentData.contentKind = contentKind;
-              const content = await this.getWebviewContent(this.currentData);
-              if (this.panel) {
-                this.panel.webview.html = content;
-              }
-              vscode.window.showInformationMessage('Content type refreshed');
+
+              this.currentData = { ...this.currentData, contentType: freshContentType, contentKind: kind };
+              this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
           }
         }
-        break;
-
-      case 'findUsage':
-        vscode.window.showInformationMessage('Finding content type usage coming soon!');
         break;
 
       case 'deleteContentType':

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
 import { HttpError } from '../http/errors/HttpError';
-import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
@@ -32,6 +31,8 @@ import {
   ExampleRepositoryList,
   ExampleRepositoryGet,
   ExampleGet,
+  ExampleVersionGet,
+  ExampleVersionList,
   ExampleUploadRequest,
   ExampleDownloadResponse,
   CourseGroupList,
@@ -108,14 +109,12 @@ export class ComputorApiService {
   private static instance?: ComputorApiService;
 
   public httpClient?: HttpClient;
-  private settingsManager: ComputorSettingsManager;
 
   // Batched method versions for improved performance
   public readonly batchedGetCourseContents: (courseId: string) => Promise<CourseContentList[] | undefined>;
   public readonly batchedGetCourseContentTypes: (courseId: string) => Promise<CourseContentTypeList[] | undefined>;
 
   constructor(context: vscode.ExtensionContext, httpClient?: HttpClient) {
-    this.settingsManager = new ComputorSettingsManager(context);
     this.httpClient = httpClient;
 
     // Store as singleton instance
@@ -527,6 +526,16 @@ export class ComputorApiService {
     return response.data;
   }
 
+  async moveCourseContent(courseId: string, contentId: string, path: string, position: number): Promise<CourseContentGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<CourseContentGet>(`/course-contents/${contentId}/move`, { path, position });
+
+    this.invalidateCachePattern(`courseContents-${courseId}`);
+    this.invalidateCachePattern(`courseContent-${contentId}`);
+
+    return response.data;
+  }
+
   async deleteCourseContent(courseId: string, contentId: string): Promise<void> {
     const client = await this.getHttpClient();
     await client.delete(`/course-contents/${contentId}`);
@@ -703,33 +712,41 @@ export class ComputorApiService {
     }
   }
 
-  async getExampleVersion(exampleVersionId: string): Promise<any | undefined> {
+  async getExampleVersion(exampleVersionId: string): Promise<ExampleVersionGet | undefined> {
     const cacheKey = `exampleVersion-${exampleVersionId}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<any>(cacheKey);
+
+    const cached = multiTierCache.get<ExampleVersionGet>(cacheKey);
     if (cached) {
       return cached;
     }
-    
+
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        // Use the correct endpoint for fetching a specific example version
-        const response = await client.get<any>(`/examples/versions/${exampleVersionId}`);
+        const response = await client.get<ExampleVersionGet>(`/examples/versions/${exampleVersionId}`);
         return response.data;
       }, {
         maxRetries: 2,
         exponentialBackoff: true
       });
-      
-      // Cache in warm tier if we got a result
+
       if (result) {
         multiTierCache.set(cacheKey, result, 'warm');
       }
       return result;
     } catch (error) {
       console.error('Failed to get example version:', error);
+      return undefined;
+    }
+  }
+
+  async downloadExampleVersion(versionId: string): Promise<ExampleDownloadResponse | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<ExampleDownloadResponse>(`/examples/download/${versionId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to download example version:', error);
       return undefined;
     }
   }
@@ -749,22 +766,9 @@ export class ComputorApiService {
   async downloadCourseContentReference(courseContentId: string, withDependencies: boolean = true): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
-      const params = withDependencies ? '?with_dependencies=true' : '';
-      const endpoint = `/tutors/course-contents/${courseContentId}/reference${params}`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      const endpoint = `/tutors/course-contents/${courseContentId}/reference`;
+      const params = withDependencies ? { with_dependencies: 'true' } : undefined;
+      return await client.getBuffer(endpoint, params);
     } catch (error) {
       console.error('Failed to download course content reference:', error);
       return undefined;
@@ -778,25 +782,12 @@ export class ComputorApiService {
   async downloadCourseContentDescription(courseContentId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/tutors/course-contents/${courseContentId}/description`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          return undefined;
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        return undefined;
+      }
       console.error('Failed to download course content description:', error);
       return undefined;
     }
@@ -831,21 +822,8 @@ export class ComputorApiService {
   async downloadSubmissionArtifact(artifactId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/submissions/artifacts/${artifactId}/download`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error) {
       console.error('Failed to download submission artifact:', error);
       return undefined;
@@ -876,32 +854,6 @@ export class ComputorApiService {
    * Assign example to course content (non-lecturer endpoint)
    * Uses the /course-contents/{id}/assign-example endpoint
    */
-  async assignExampleSourceToCourseContent(
-    contentId: string,
-    exampleIdentifier: string,
-    versionTag: string,
-    deploymentMessage?: string
-  ): Promise<CourseContentGet> {
-    return errorRecoveryService.executeWithRecovery(async () => {
-      const client = await this.getHttpClient();
-      const response = await client.post<CourseContentGet>(
-        `/course-contents/${contentId}/assign-example`,
-        {
-          example_identifier: exampleIdentifier,
-          version_tag: versionTag,
-          deployment_message: deploymentMessage
-        }
-      );
-
-      multiTierCache.delete(`courseContent-${contentId}-true`);
-      multiTierCache.delete(`courseContent-${contentId}-false`);
-
-      return response.data;
-    }, {
-      maxRetries: 2,
-      exponentialBackoff: true
-    });
-  }
 
   async unassignExampleFromCourseContent(courseId: string, contentId: string): Promise<CourseContentGet> {
     // Note: courseId is kept for API consistency but not used in the endpoint
@@ -1088,13 +1040,13 @@ export class ComputorApiService {
    * @param exampleId The example ID
    * @param versionTag Optional version tag to filter for a specific version
    */
-  async getExampleVersions(exampleId: string, versionTag?: string): Promise<any[]> {
+  async getExampleVersions(exampleId: string, versionTag?: string): Promise<ExampleVersionList[]> {
     try {
       const client = await this.getHttpClient();
       const url = versionTag
         ? `/examples/${exampleId}/versions?version_tag=${encodeURIComponent(versionTag)}`
         : `/examples/${exampleId}/versions`;
-      const response = await client.get<any[]>(url);
+      const response = await client.get<ExampleVersionList[]>(url);
       return response.data || [];
     } catch (error) {
       console.error('Failed to get example versions:', error);
@@ -1447,7 +1399,7 @@ export class ComputorApiService {
 
   // Course Members API methods
   async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
-    const cacheKey = groupId ? `courseMembers-${courseId}-${groupId}` : `courseMembers-${courseId}`;
+    const cacheKey = groupId ? `courseMembers-${groupId}` : `courseMembers-${courseId}`;
 
     // Check cache first
     const cached = multiTierCache.get<CourseMemberList[]>(cacheKey);
@@ -1459,9 +1411,11 @@ export class ComputorApiService {
     const result = await errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
       const queryParams = new URLSearchParams();
-      queryParams.append('course_id', courseId);
+      queryParams.append('limit', '10000');
       if (groupId) {
         queryParams.append('course_group_id', groupId);
+      } else {
+        queryParams.append('course_id', courseId);
       }
 
       const response = await client.get<CourseMemberList[]>(`/course-members?${queryParams.toString()}`);
@@ -2687,21 +2641,8 @@ export class ComputorApiService {
   async downloadTutorTestArtifacts(testId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/tutors/tests/${testId}/artifacts/download`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error) {
       console.error('Failed to download tutor test artifacts:', error);
       return undefined;
@@ -2952,21 +2893,8 @@ export class ComputorApiService {
   async downloadResultArtifacts(resultId: string): Promise<Buffer | undefined> {
     try {
       const client = await this.getHttpClient();
-      const settings = await this.settingsManager.getSettings();
       const endpoint = `/results/${resultId}/artifacts/download`;
-      const url = `${settings.authentication.baseUrl}${endpoint}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: client.getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      return await client.getBuffer(endpoint);
     } catch (error: any) {
       console.error('Failed to download result artifacts:', error);
       return undefined;

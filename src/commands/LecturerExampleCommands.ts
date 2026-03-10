@@ -4,23 +4,39 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { ExampleTreeItem, ExampleRepositoryTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
-import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList } from '../types/generated';
-import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
+import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, FileSystemTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
+import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList, CodeAbilityMeta } from '../types/generated';
+import { writeExampleFiles } from '../utils/exampleFileWriter';
+import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
+import { TestYamlEditorWebviewProvider } from '../ui/webviews/TestYamlEditorWebviewProvider';
+import { MetaYamlEditorWebviewProvider } from '../ui/webviews/MetaYamlEditorWebviewProvider';
+import { WorkspaceStructureManager } from '../utils/workspaceStructure';
+import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersionPath, snapshotWorkingToVersion } from '../utils/checkedOutExampleManager';
+import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
+import { ComputorTestingInstaller } from '../services/ComputorTestingInstaller';
+import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
+import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 
 /**
  * Simplified example commands for the lecturer view
  */
 export class LecturerExampleCommands {
+  private exampleDetailProvider: ExampleDetailWebviewProvider;
+  private testYamlEditorProvider: TestYamlEditorWebviewProvider;
+  private metaYamlEditorProvider: MetaYamlEditorWebviewProvider;
+  private uploadAllProvider: UploadAllExamplesWebviewProvider;
+
   constructor(
     private context: vscode.ExtensionContext,
     private apiService: ComputorApiService,
     private treeProvider: LecturerExampleTreeProvider
   ) {
+    this.exampleDetailProvider = new ExampleDetailWebviewProvider(context, apiService, treeProvider);
+    this.testYamlEditorProvider = new TestYamlEditorWebviewProvider(context);
+    this.metaYamlEditorProvider = new MetaYamlEditorWebviewProvider(context);
+    this.uploadAllProvider = new UploadAllExamplesWebviewProvider(context, apiService, treeProvider);
     this.registerCommands();
   }
-  private assignmentsRootCache: { courseId: string; path: string } | null = null;
-
   private registerCommands(): void {
     // Search examples - already registered in extension.ts but we'll override with better implementation
     this.context.subscriptions.push(
@@ -120,10 +136,17 @@ export class LecturerExampleCommands {
       })
     );
 
-    // Checkout example
+    // Checkout example (latest version)
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.checkoutExample', async (item: ExampleTreeItem) => {
         await this.checkoutExample(item);
+      })
+    );
+
+    // Checkout specific version
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.checkoutExampleVersion', async (item: ExampleTreeItem) => {
+        await this.checkoutExample(item, true);
       })
     );
 
@@ -134,10 +157,86 @@ export class LecturerExampleCommands {
       })
     );
 
-    // Upload example
+    // Upload working copy
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item: ExampleTreeItem) => {
-        await this.uploadExample(item);
+      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item: ExampleTreeItem | CheckedOutVersionTreeItem) => {
+        if (item instanceof CheckedOutVersionTreeItem) {
+          await this.uploadCheckedOutVersion(item);
+        } else {
+          await this.uploadExample(item);
+        }
+      })
+    );
+
+    // Bump version on working copy
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.bumpExampleVersion', async (item: CheckedOutVersionTreeItem) => {
+        await this.bumpCheckedOutVersion(item);
+      })
+    );
+
+    // Reveal checked-out version in explorer
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.revealCheckedOutInExplorer', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem) => {
+        const p = item instanceof CheckedOutVersionTreeItem ? item.version.fullPath : item.group.fullPath;
+        await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p));
+      })
+    );
+
+    // Delete entire checked-out example group
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem) => {
+        await this.deleteCheckedOutGroup(item);
+      })
+    );
+
+    // Delete single checked-out version
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.deleteCheckedOutVersion', async (item: CheckedOutVersionTreeItem) => {
+        await this.deleteCheckedOutVersion(item);
+      })
+    );
+
+    // Restore version to working copy
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.restoreVersionToWorking', async (item: CheckedOutVersionTreeItem) => {
+        await this.restoreVersionToWorking(item);
+      })
+    );
+
+    // Compare version with working copy
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.compareWithWorking', async (item: CheckedOutVersionTreeItem) => {
+        await this.compareWithWorking(item);
+      })
+    );
+
+    // Compare a single version file with its working counterpart
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.compareFileWithWorking', async (item: FileSystemTreeItem) => {
+        await this.compareFileWithWorking(item);
+      })
+    );
+
+    // File management commands
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.newFile', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+        await this.createFileOrFolder(item, false);
+      })
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.newFolder', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+        await this.createFileOrFolder(item, true);
+      })
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.renameItem', async (item: FileSystemTreeItem) => {
+        await this.renameFileSystemItem(item);
+      })
+    );
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.deleteItem', async (item: FileSystemTreeItem) => {
+        await this.deleteFileSystemItem(item);
       })
     );
 
@@ -192,152 +291,237 @@ export class LecturerExampleCommands {
         await this.revealExampleInExplorer(item);
       })
     );
+
+    // Show example details in webview side panel
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.showExampleDetails', async (item: ExampleTreeItem) => {
+        await this.showExampleDetails(item);
+      })
+    );
+
+    // Open test.yaml editor
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.editTestYaml', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+        await this.editTestYaml(item);
+      })
+    );
+
+    // Add test.yaml to working example
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.addTests', async (item: CheckedOutVersionTreeItem) => {
+        await this.addTests(item);
+      })
+    );
+
+    // Open meta.yaml editor (from meta.yaml file or working example root)
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.editMetaYaml', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+        await this.editMetaYaml(item);
+      })
+    );
+
+    // Create new readme in content directory
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.newReadme', async (item: FileSystemTreeItem) => {
+        await this.createNewReadme(item);
+      })
+    );
+
+    // Import examples from directory
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.importExamples', async () => {
+        await this.importExamples();
+      })
+    );
+
+    // Upload all examples
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.uploadAllExamples', async () => {
+        await this.uploadAllProvider.show('Upload All Examples');
+      })
+    );
+
+    // Install computor-testing tools
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.installTestingTools', async () => {
+        const installer = ComputorTestingInstaller.getInstance();
+        await installer.install();
+      })
+    );
+
+    // Update computor-testing tools
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.updateTestingTools', async () => {
+        const installer = ComputorTestingInstaller.getInstance();
+        await installer.update();
+      })
+    );
+
+    // Uninstall computor-testing tools
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.uninstallTestingTools', async () => {
+        const installer = ComputorTestingInstaller.getInstance();
+        await installer.uninstall();
+      })
+    );
+
+    // Run tests on checked-out example
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.runExampleTests', async (item: CheckedOutVersionTreeItem) => {
+        await this.runExampleTests(item);
+      })
+    );
   }
 
-  /**
-   * Checkout an example to the workspace
-   */
-  private async checkoutExample(item: ExampleTreeItem): Promise<void> {
-    if (!item || !item.example) {
+  private async checkoutExample(item: ExampleTreeItem, pickVersion: boolean = false): Promise<void> {
+    if (!item?.example) {
       vscode.window.showErrorMessage('Invalid example item');
       return;
     }
 
-    const assignmentsRoot = await this.getAssignmentsRoot();
-    if (!assignmentsRoot) {
-      return;
-    }
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+    const versionsPath = this.getVersionsDir();
+    if (!versionsPath) { return; }
 
     try {
-      const examplePath = path.join(assignmentsRoot, item.example.directory);
-      
-      // Check if directory already exists
-      if (fs.existsSync(examplePath)) {
-        const overwrite = await vscode.window.showWarningMessage(
-          `Directory '${item.example.directory}' already exists. Overwrite?`,
-          'Yes', 'No'
-        );
-        
-        if (overwrite !== 'Yes') {
+      let versionId: string | undefined;
+      let versionTag: string | undefined;
+      let versionNumber: number | undefined;
+
+      if (pickVersion) {
+        const versions = await this.apiService.getExampleVersions(item.example.id);
+        if (versions.length === 0) {
+          vscode.window.showErrorMessage('No versions available for this example');
           return;
         }
-        
-        // Remove existing directory
-        fs.rmSync(examplePath, { recursive: true, force: true });
+        const sorted = versions.slice().sort((a, b) => b.version_number - a.version_number);
+        const picked = await vscode.window.showQuickPick(
+          sorted.map(v => ({
+            label: v.version_tag,
+            description: `#${v.version_number}${v.created_at ? ' — ' + new Date(v.created_at).toLocaleDateString() : ''}`,
+            versionId: v.id,
+            versionTag: v.version_tag,
+            versionNumber: v.version_number
+          })),
+          { placeHolder: 'Select a version to checkout' }
+        );
+        if (!picked) { return; }
+        versionId = picked.versionId;
+        versionTag = picked.versionTag;
+        versionNumber = picked.versionNumber;
       }
 
-      // Download the example
-      const exampleData = await this.apiService.downloadExample(item.example.id, false);
+      const exampleData = versionId
+        ? await this.apiService.downloadExampleVersion(versionId)
+        : await this.apiService.downloadExample(item.example.id, false);
+
       if (!exampleData) {
         vscode.window.showErrorMessage('Failed to download example');
         return;
       }
 
-      // Create directory
-      fs.mkdirSync(examplePath, { recursive: true });
+      const resolvedTag = versionTag || exampleData.version_tag;
 
-      // Write all files from the download response
-      for (const [filename, content] of Object.entries(exampleData.files)) {
-        const filePath = path.join(examplePath, filename);
-        const fileDir = path.dirname(filePath);
-        
-        // Create subdirectories if needed
-        if (!fs.existsSync(fileDir)) {
-          fs.mkdirSync(fileDir, { recursive: true });
+      const metadata: CheckoutMetadata = {
+        exampleId: item.example.id,
+        repositoryId: item.repository.id,
+        directory: item.example.directory,
+        versionId: versionId || exampleData.version_id || '',
+        versionTag: resolvedTag,
+        versionNumber: versionNumber ?? 0,
+        checkedOutAt: new Date().toISOString()
+      };
+
+      if (pickVersion) {
+        // Specific version: only create version snapshot in example_versions/
+        const versionDir = getVersionPath(versionsPath, item.example.directory, resolvedTag);
+        const versionLabel = `example_versions/${item.example.directory}/${resolvedTag}`;
+
+        if (fs.existsSync(versionDir)) {
+          const overwrite = await vscode.window.showWarningMessage(
+            `'${versionLabel}' already exists. Overwrite?`, 'Yes', 'No'
+          );
+          if (overwrite !== 'Yes') { return; }
+          fs.rmSync(versionDir, { recursive: true, force: true });
         }
-        
-        // Write file content (handle binary vs text)
-        try {
-          const ext = path.extname(filename).toLowerCase();
-          const binaryExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.webp']);
-          if (typeof content === 'string' && content.startsWith('data:') && content.includes(';base64,')) {
-            const base64 = content.split(';base64,')[1] || '';
-            const buffer = Buffer.from(base64, 'base64');
-            fs.writeFileSync(filePath, buffer);
-          } else if (binaryExtensions.has(ext)) {
-            // Attempt to decode as base64 for known binary extensions
-            const maybeBase64 = content as string;
-            const isProbablyBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(maybeBase64) && (maybeBase64.replace(/\s+/g, '').length % 4 === 0);
-            if (isProbablyBase64) {
-              const buffer = Buffer.from(maybeBase64, 'base64');
-              fs.writeFileSync(filePath, buffer);
-            } else {
-              // Fallback: write raw bytes from utf8 string (may still corrupt if misidentified)
-              fs.writeFileSync(filePath, maybeBase64);
-            }
-          } else {
-            fs.writeFileSync(filePath, content, 'utf8');
-          }
-        } catch (e) {
-          // Fallback to text write on any errors
-          fs.writeFileSync(filePath, content, 'utf8');
+
+        fs.mkdirSync(versionDir, { recursive: true });
+        writeExampleFiles(exampleData.files, versionDir);
+        writeCheckoutMetadata(versionDir, metadata);
+
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(
+          `Checked out '${item.example.title}' [${resolvedTag}] to ${versionLabel}`
+        );
+      } else {
+        // Latest: create working copy in examples/ and version snapshot in example_versions/
+        const workingDir = getWorkingPath(examplesPath, item.example.directory);
+        const versionDir = getVersionPath(versionsPath, item.example.directory, resolvedTag);
+
+        if (fs.existsSync(workingDir)) {
+          const overwrite = await vscode.window.showWarningMessage(
+            `Working copy of '${item.example.directory}' already exists. Overwrite?`, 'Yes', 'No'
+          );
+          if (overwrite !== 'Yes') { return; }
+          fs.rmSync(workingDir, { recursive: true, force: true });
         }
-        
-        // If this is meta.yaml, also create a .meta.yaml copy as source of truth
-        if (filename === 'meta.yaml') {
-          const hiddenMetaPath = path.join(examplePath, '.meta.yaml');
-          fs.writeFileSync(hiddenMetaPath, content, 'utf8');
+
+        // Create working directory (flat: examples/<identifier>/files)
+        fs.mkdirSync(workingDir, { recursive: true });
+        writeExampleFiles(exampleData.files, workingDir);
+        writeCheckoutMetadata(workingDir, metadata);
+
+        // Create version snapshot in example_versions/
+        if (fs.existsSync(versionDir)) {
+          fs.rmSync(versionDir, { recursive: true, force: true });
         }
+        fs.mkdirSync(versionDir, { recursive: true });
+        fs.cpSync(workingDir, versionDir, { recursive: true });
+
+        this.treeProvider.refresh();
+        vscode.window.showInformationMessage(
+          `Checked out '${item.example.title}' [${resolvedTag}]`
+        );
       }
-
-      // Mark example as downloaded and refresh tree with version information
-      this.treeProvider.markExampleAsDownloaded(item.example.id, examplePath, exampleData.version_tag);
-
-      const relativePath = path.relative(assignmentsRoot, examplePath) || '.';
-      vscode.window.showInformationMessage(`Example '${item.example.title}' checked out to assignments: ${relativePath}`);
     } catch (error) {
       console.error('Failed to checkout example:', error);
       vscode.window.showErrorMessage(`Failed to checkout example: ${error}`);
     }
   }
 
-  /**
-   * Checkout all filtered examples from a repository
-   */
   private async checkoutAllFilteredExamples(item: ExampleRepositoryTreeItem): Promise<void> {
-    if (!item || !item.repository) {
+    if (!item?.repository) {
       vscode.window.showErrorMessage('Invalid repository item');
       return;
     }
 
-    const assignmentsRoot = await this.getAssignmentsRoot();
-    if (!assignmentsRoot) {
-      return;
-    }
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+    const versionsPath = this.getVersionsDir();
+    if (!versionsPath) { return; }
 
     try {
-      // Get all filtered examples for this repository
       const filteredExamples = await this.treeProvider.getFilteredExamplesForRepository(item.repository);
-      
       if (filteredExamples.length === 0) {
         vscode.window.showInformationMessage('No examples match the current filters');
         return;
       }
 
-      // Confirm with user
       const activeFilters: string[] = [];
       const searchQuery = this.treeProvider.getSearchQuery();
       const selectedCategory = this.treeProvider.getSelectedCategory();
       const selectedTags = this.treeProvider.getSelectedTags();
-      
       if (searchQuery) activeFilters.push(`search: "${searchQuery}"`);
       if (selectedCategory) activeFilters.push(`category: ${selectedCategory}`);
       if (selectedTags.length > 0) activeFilters.push(`tags: ${selectedTags.join(', ')}`);
-      
-      const filterInfo = activeFilters.length > 0 
-        ? ` with filters: ${activeFilters.join(', ')}`
-        : '';
-      
+      const filterInfo = activeFilters.length > 0 ? ` with filters: ${activeFilters.join(', ')}` : '';
+
       const confirm = await vscode.window.showInformationMessage(
-        `Checkout ${filteredExamples.length} example(s)${filterInfo}?`,
-        'Yes', 'No'
+        `Checkout ${filteredExamples.length} example(s)${filterInfo} to examples/?`, 'Yes', 'No'
       );
+      if (confirm !== 'Yes') { return; }
 
-      if (confirm !== 'Yes') {
-        return;
-      }
-
-      // Progress indicator
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: 'Checking out examples',
@@ -348,99 +532,64 @@ export class LecturerExampleCommands {
 
         for (let i = 0; i < filteredExamples.length; i++) {
           const exampleItem = filteredExamples[i];
-          if (!exampleItem || !exampleItem.example) continue;
-          
-          progress.report({ 
+          if (!exampleItem?.example) continue;
+
+          progress.report({
             increment: (100 / filteredExamples.length),
             message: `(${i + 1}/${filteredExamples.length}) ${exampleItem.example.title}`
           });
 
           try {
-            const examplePath = path.join(assignmentsRoot, exampleItem.example.directory);
-            
-            // Skip if directory already exists
-            if (fs.existsSync(examplePath)) {
-              errors.push(`${exampleItem.example.title}: Directory already exists`);
+            const workingDir = getWorkingPath(examplesPath, exampleItem.example.directory);
+
+            if (fs.existsSync(workingDir)) {
+              errors.push(`${exampleItem.example.title}: already exists`);
               continue;
             }
 
-            // Download the example
             const exampleData = await this.apiService.downloadExample(exampleItem.example.id, false);
             if (!exampleData) {
               errors.push(`${exampleItem.example.title}: Failed to download`);
               continue;
             }
 
-            // Create directory
-            fs.mkdirSync(examplePath, { recursive: true });
+            fs.mkdirSync(workingDir, { recursive: true });
+            writeExampleFiles(exampleData.files, workingDir);
 
-            // Write all files from the download response
-            for (const [filename, content] of Object.entries(exampleData.files)) {
-              const filePath = path.join(examplePath, filename);
-              const fileDir = path.dirname(filePath);
-              
-              // Create subdirectories if needed
-              if (!fs.existsSync(fileDir)) {
-                fs.mkdirSync(fileDir, { recursive: true });
-              }
-              
-              // Write file content (handle binary vs text)
-              try {
-                const ext = path.extname(filename).toLowerCase();
-                const binaryExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.webp']);
-                if (typeof content === 'string' && content.startsWith('data:') && content.includes(';base64,')) {
-                  const base64 = content.split(';base64,')[1] || '';
-                  const buffer = Buffer.from(base64, 'base64');
-                  fs.writeFileSync(filePath, buffer);
-                } else if (binaryExtensions.has(ext)) {
-                  const maybeBase64 = content as string;
-                  const isProbablyBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(maybeBase64) && (maybeBase64.replace(/\s+/g, '').length % 4 === 0);
-                  if (isProbablyBase64) {
-                    const buffer = Buffer.from(maybeBase64, 'base64');
-                    fs.writeFileSync(filePath, buffer);
-                  } else {
-                    fs.writeFileSync(filePath, maybeBase64);
-                  }
-                } else {
-                  fs.writeFileSync(filePath, content, 'utf8');
-                }
-              } catch (e) {
-                fs.writeFileSync(filePath, content, 'utf8');
-              }
-              
-              // If this is meta.yaml, also create a .meta.yaml copy as source of truth
-              if (filename === 'meta.yaml') {
-                const hiddenMetaPath = path.join(examplePath, '.meta.yaml');
-                fs.writeFileSync(hiddenMetaPath, content, 'utf8');
-              }
+            const metadata: CheckoutMetadata = {
+              exampleId: exampleItem.example.id,
+              repositoryId: exampleItem.repository.id,
+              directory: exampleItem.example.directory,
+              versionId: exampleData.version_id || '',
+              versionTag: exampleData.version_tag,
+              versionNumber: 0,
+              checkedOutAt: new Date().toISOString()
+            };
+            writeCheckoutMetadata(workingDir, metadata);
+
+            // Also create version snapshot in example_versions/
+            const versionDir = getVersionPath(versionsPath, exampleItem.example.directory, exampleData.version_tag);
+            if (fs.existsSync(versionDir)) {
+              fs.rmSync(versionDir, { recursive: true, force: true });
             }
-
-            // Mark example as downloaded with version information
-            this.treeProvider.markExampleAsDownloaded(exampleItem.example.id, examplePath, exampleData.version_tag);
+            fs.mkdirSync(path.dirname(versionDir), { recursive: true });
+            fs.cpSync(workingDir, versionDir, { recursive: true });
 
             successCount++;
           } catch (error) {
             errors.push(`${exampleItem.example.title}: ${error}`);
-            console.error(`Failed to checkout example ${exampleItem.example.title}:`, error);
           }
         }
 
-        // Show results
+        this.treeProvider.refresh();
+
         if (successCount === filteredExamples.length) {
-          vscode.window.showInformationMessage(
-            `Successfully checked out ${successCount} example(s)`
-          );
+          vscode.window.showInformationMessage(`Checked out ${successCount} example(s)`);
         } else if (successCount > 0) {
-          const errorMessage = errors.length > 3 
-            ? errors.slice(0, 3).join('; ') + '...'
-            : errors.join('; ');
-          vscode.window.showWarningMessage(
-            `Checked out ${successCount} of ${filteredExamples.length} examples. Errors: ${errorMessage}`
-          );
+          const errorMessage = errors.length > 3 ? errors.slice(0, 3).join('; ') + '...' : errors.join('; ');
+          vscode.window.showWarningMessage(`Checked out ${successCount} of ${filteredExamples.length}. Errors: ${errorMessage}`);
         } else {
-          vscode.window.showErrorMessage(
-            `Failed to checkout examples. ${errors[0]}`
-          );
+          vscode.window.showErrorMessage(`Failed to checkout examples. ${errors[0]}`);
         }
       });
     } catch (error) {
@@ -449,228 +598,389 @@ export class LecturerExampleCommands {
     }
   }
 
-  private async getAssignmentsRoot(): Promise<string | undefined> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
+  private getExamplesDir(): string | undefined {
+    try {
+      const wsManager = WorkspaceStructureManager.getInstance();
+      const examplesPath = wsManager.getExamplesPath();
+      fs.mkdirSync(examplesPath, { recursive: true });
+      return examplesPath;
+    } catch {
       vscode.window.showErrorMessage('No workspace folder open');
       return undefined;
     }
-
-    const markerPath = path.join(workspaceFolder.uri.fsPath, '.computor');
-    let courseId: string | undefined;
-
-    try {
-      const raw = await fs.promises.readFile(markerPath, 'utf8');
-      const marker = JSON.parse(raw);
-      if (marker && typeof marker.courseId === 'string') {
-        courseId = marker.courseId;
-      }
-    } catch (error) {
-      console.warn('[LecturerExampleCommands] Failed to read course marker:', error);
-    }
-
-    if (!courseId) {
-      vscode.window.showErrorMessage('Active course not found. Please run "Computor: Login" again.');
-      return undefined;
-    }
-
-    if (this.assignmentsRootCache && this.assignmentsRootCache.courseId === courseId) {
-      if (fs.existsSync(this.assignmentsRootCache.path)) {
-        return this.assignmentsRootCache.path;
-      }
-      this.assignmentsRootCache = null;
-    }
-
-    const course = await this.apiService.getCourse(courseId);
-    if (!course) {
-      vscode.window.showErrorMessage('Unable to fetch course information.');
-      return undefined;
-    }
-
-    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-    const assignmentsRoot = repoManager.getAssignmentsRepoRoot(course);
-    if (!assignmentsRoot || !fs.existsSync(assignmentsRoot)) {
-      vscode.window.showErrorMessage('Assignments repository not found. Run "Computor: Sync Assignments" first.');
-      return undefined;
-    }
-
-    this.assignmentsRootCache = { courseId, path: assignmentsRoot };
-    return assignmentsRoot;
   }
 
-  /**
-   * Upload a downloaded example back to the repository
-   */
+  private getVersionsDir(): string | undefined {
+    try {
+      const wsManager = WorkspaceStructureManager.getInstance();
+      const versionsPath = wsManager.getExampleVersionsPath();
+      fs.mkdirSync(versionsPath, { recursive: true });
+      return versionsPath;
+    } catch {
+      vscode.window.showErrorMessage('No workspace folder open');
+      return undefined;
+    }
+  }
+
   private async uploadExample(item: ExampleTreeItem): Promise<void> {
-    if (!item || !item.isDownloaded || !item.downloadPath) {
-      vscode.window.showErrorMessage('This example is not downloaded locally');
+    if (!item?.example) {
+      vscode.window.showErrorMessage('Invalid example item');
       return;
     }
 
-    if (!fs.existsSync(item.downloadPath)) {
-      vscode.window.showErrorMessage(`Example directory not found: ${item.downloadPath}`);
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
+    const workingDir = getWorkingPath(examplesPath, item.example.directory);
+    if (!fs.existsSync(workingDir)) {
+      vscode.window.showErrorMessage(`No working copy found. Check out the example first.`);
+      return;
+    }
+
+    const metadata = readCheckoutMetadata(workingDir);
+    await this.uploadFromDirectory(
+      workingDir, metadata?.directory || item.example.directory,
+      item.repository.id, item.example.title, metadata?.exampleId || item.example.id
+    );
+  }
+
+  private async uploadCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version) {
+      vscode.window.showErrorMessage('Invalid checked-out version');
+      return;
+    }
+
+    const v = item.version;
+    await this.uploadFromDirectory(
+      v.fullPath, v.metadata.directory, v.metadata.repositoryId,
+      item.groupDirectory, v.metadata.exampleId
+    );
+  }
+
+  private async uploadFromDirectory(
+    dirPath: string, directory: string, repositoryId: string, title: string, exampleId: string
+  ): Promise<void> {
+    if (!fs.existsSync(dirPath)) {
+      vscode.window.showErrorMessage(`Directory not found: ${dirPath}`);
+      return;
+    }
+
+    const { readMetaYamlVersion, updateMetaYamlVersion } = await import('../utils/metaYamlHelpers');
+    const { bumpVersion, normalizeSemVer } = await import('../utils/versionHelpers');
+
+    // Fetch latest remote version for bump proposals
+    let latestRemoteVersion: string | undefined;
+    const isFirstUpload = !exampleId;
+    if (!isFirstUpload) {
+      try {
+        const versions = await this.apiService.getExampleVersions(exampleId);
+        if (versions.length > 0) {
+          const latest = versions.reduce((a, b) => b.version_number > a.version_number ? b : a);
+          latestRemoteVersion = normalizeSemVer(latest.version_tag);
+        }
+      } catch {
+        // If we can't fetch versions, continue without remote version info
+      }
+    }
+
+    const localVersion = normalizeSemVer(readMetaYamlVersion(dirPath) || '0.1.0');
+    const baseVersion = latestRemoteVersion || localVersion;
+
+    const patchBump = bumpVersion(baseVersion, 'patch');
+    const minorBump = bumpVersion(baseVersion, 'minor');
+    const majorBump = bumpVersion(baseVersion, 'major');
+
+    let picked;
+    if (isFirstUpload || !latestRemoteVersion) {
+      picked = await vscode.window.showQuickPick([
+        { label: `Use current: ${localVersion}`, description: 'First upload', version: localVersion },
+        { label: `Patch: ${patchBump}`, description: `From ${baseVersion}`, version: patchBump },
+        { label: `Minor: ${minorBump}`, description: `From ${baseVersion}`, version: minorBump },
+        { label: `Major: ${majorBump}`, description: `From ${baseVersion}`, version: majorBump },
+        { label: 'Custom version...', description: '', version: '' }
+      ], { placeHolder: `Select version for first upload of "${title}"` });
+    } else {
+      const remoteLabel = `Latest remote: ${latestRemoteVersion}`;
+      picked = await vscode.window.showQuickPick([
+        { label: `Patch: ${patchBump}`, description: remoteLabel, version: patchBump },
+        { label: `Minor: ${minorBump}`, description: remoteLabel, version: minorBump },
+        { label: `Major: ${majorBump}`, description: remoteLabel, version: majorBump },
+        { label: 'Custom version...', description: remoteLabel, version: '' }
+      ], { placeHolder: `Select version for "${title}" upload` });
+    }
+
+    if (!picked) { return; }
+
+    let uploadVersion = picked.version;
+    if (!uploadVersion) {
+      const custom = await vscode.window.showInputBox({
+        prompt: 'Enter version tag',
+        placeHolder: 'e.g., 1.2.3',
+        value: patchBump
+      });
+      if (!custom) { return; }
+      uploadVersion = normalizeSemVer(custom);
+    }
+
+    const confirm = await vscode.window.showInformationMessage(
+      `Upload "${title}" as version ${uploadVersion}?`, 'Upload', 'Cancel'
+    );
+    if (confirm !== 'Upload') { return; }
+
+    // Update meta.yaml with the chosen version before uploading
+    try {
+      updateMetaYamlVersion(dirPath, uploadVersion);
+    } catch (e) {
+      vscode.window.showErrorMessage(`Failed to update meta.yaml version: ${e}`);
       return;
     }
 
     try {
-      // Confirm with user
-      const confirm = await vscode.window.showInformationMessage(
-        `Upload example "${item.example.title}" from local directory?`,
-        'Yes', 'No'
-      );
-
-      if (confirm !== 'Yes') {
-        return;
-      }
-
-      // Show progress
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Uploading example: ${item.example.title}`,
+        title: `Uploading: ${title} [${uploadVersion}]`,
         cancellable: false
       }, async (progress) => {
-        progress.report({ increment: 10, message: 'Packaging example as zip...' });
+        progress.report({ increment: 10, message: 'Packaging as zip...' });
 
-        // Package the example directory into a zip to preserve file types
         const zipper = new JSZip();
-
-        const addToZip = (dirPath: string, basePath: string) => {
-          const entries = fs.readdirSync(dirPath);
+        const addToZip = (currentDir: string, basePath: string) => {
+          const entries = fs.readdirSync(currentDir);
           for (const entry of entries) {
-            if (entry === 'node_modules' || entry === '.git' || entry.startsWith('.')) continue;
-            const fullPath = path.join(dirPath, entry);
+            if (shouldExcludeExampleEntry(entry)) continue;
+            const fullPath = path.join(currentDir, entry);
             const stat = fs.statSync(fullPath);
             const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
             if (stat.isFile()) {
-              if (entry === '.meta.yaml') continue; // local tracking only
-              const data = fs.readFileSync(fullPath);
-              zipper.file(relativePath, data);
+              zipper.file(relativePath, fs.readFileSync(fullPath));
             } else if (stat.isDirectory()) {
               addToZip(fullPath, basePath);
             }
           }
         };
+        addToZip(dirPath, dirPath);
 
-        addToZip(item.downloadPath!, item.downloadPath!);
-
-        // Generate base64 zip content
         const base64Zip = await zipper.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+        progress.report({ increment: 30, message: 'Uploading...' });
 
-        progress.report({ increment: 40, message: 'Preparing upload...' });
-
-        // Create upload request with a single zip entry
-        const zipName = `${item.example.directory}.zip`;
+        const zipName = `${directory}.zip`;
         const uploadRequest: ExampleUploadRequest = {
-          repository_id: item.repository.id,
-          directory: item.example.directory,
+          repository_id: repositoryId,
+          directory,
           files: { [zipName]: base64Zip }
         };
 
-        progress.report({ increment: 20, message: 'Uploading to server...' });
-
-        // Upload the example
         const result = await this.apiService.uploadExample(uploadRequest);
-        
-        if (result) {
-          progress.report({ increment: 30, message: 'Complete!' });
-          vscode.window.showInformationMessage(`Successfully uploaded example: ${item.example.title}`);
-          
-          // Refresh the tree to show any updates
-          this.treeProvider.refresh();
-        } else {
+        if (!result) {
           throw new Error('Upload failed - no response from server');
         }
+
+        const returnedExampleId = result.id || exampleId;
+
+        progress.report({ increment: 20, message: 'Downloading version snapshot...' });
+
+        // Download the newly created version from the API to create a clean snapshot
+        const examplesPath = this.getExamplesDir();
+        const versionsPath = this.getVersionsDir();
+        let uploadedVersionId = '';
+        let uploadedVersionNumber = 0;
+
+        if (examplesPath && versionsPath) {
+          try {
+            // Find the version we just uploaded
+            const updatedVersions = await this.apiService.getExampleVersions(returnedExampleId);
+            const uploadedVersion = updatedVersions.find(v => normalizeSemVer(v.version_tag) === uploadVersion);
+
+            if (uploadedVersion) {
+              uploadedVersionId = uploadedVersion.id;
+              uploadedVersionNumber = uploadedVersion.version_number;
+
+              const downloadedData = await this.apiService.downloadExampleVersion(uploadedVersion.id);
+              if (downloadedData) {
+                const versionDir = getVersionPath(versionsPath, directory, uploadVersion);
+                if (fs.existsSync(versionDir)) {
+                  fs.rmSync(versionDir, { recursive: true, force: true });
+                }
+                fs.mkdirSync(versionDir, { recursive: true });
+                writeExampleFiles(downloadedData.files, versionDir);
+
+                const existingMeta = readCheckoutMetadata(dirPath);
+                if (existingMeta) {
+                  writeCheckoutMetadata(versionDir, {
+                    ...existingMeta,
+                    exampleId: returnedExampleId,
+                    versionTag: uploadVersion,
+                    versionId: uploadedVersion.id,
+                    versionNumber: uploadedVersion.version_number,
+                    checkedOutAt: new Date().toISOString()
+                  });
+                }
+              }
+            } else {
+              // Fallback: snapshot from local files
+              const snapshotDir = snapshotWorkingToVersion(examplesPath, versionsPath, directory, uploadVersion);
+              const existingMeta = readCheckoutMetadata(dirPath);
+              if (existingMeta) {
+                writeCheckoutMetadata(snapshotDir, {
+                  ...existingMeta,
+                  exampleId: returnedExampleId,
+                  versionTag: uploadVersion,
+                  checkedOutAt: new Date().toISOString()
+                });
+              }
+            }
+          } catch (snapError) {
+            console.warn('Failed to create version snapshot:', snapError);
+          }
+
+          // Update working copy metadata to reflect uploaded version
+          const existingMeta = readCheckoutMetadata(dirPath);
+          if (existingMeta) {
+            writeCheckoutMetadata(dirPath, {
+              ...existingMeta,
+              exampleId: returnedExampleId,
+              versionTag: uploadVersion,
+              versionId: uploadedVersionId || existingMeta.versionId,
+              versionNumber: uploadedVersionNumber || existingMeta.versionNumber,
+              checkedOutAt: new Date().toISOString()
+            });
+          }
+        }
+
+        progress.report({ increment: 20, message: 'Complete!' });
+        vscode.window.showInformationMessage(`Successfully uploaded: ${title} [${uploadVersion}]`);
+        this.treeProvider.refresh();
       });
     } catch (error) {
       console.error('Failed to upload example:', error);
-      vscode.window.showErrorMessage(`Failed to upload example: ${error}`);
+      vscode.window.showErrorMessage(`Failed to upload: ${error}`);
     }
   }
 
-  /**
-   * Create a new example
-   */
   private async createNewExample(): Promise<void> {
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
     const title = await vscode.window.showInputBox({
       prompt: 'Example Title',
       placeHolder: 'Enter a title for the new example'
     });
-
-    if (!title) {
-      return;
-    }
+    if (!title) { return; }
 
     const identifier = await vscode.window.showInputBox({
-      prompt: 'Example Identifier',
+      prompt: 'Example Identifier (ltree: letters, digits, dots, underscores)',
       placeHolder: 'e.g., hello.world.basic',
-      value: title.toLowerCase().replace(/\s+/g, '.')
+      value: title.toLowerCase().replace(/\s+/g, '.'),
+      validateInput: (value) => {
+        if (!/^[a-zA-Z0-9._]+$/.test(value)) {
+          return 'Only letters, digits, dots, and underscores allowed (ltree format)';
+        }
+        return undefined;
+      }
     });
+    if (!identifier) { return; }
 
-    if (!identifier) {
-      return;
-    }
-
-    const directory = await vscode.window.showInputBox({
-      prompt: 'Directory Name',
-      placeHolder: 'Directory name for the example',
-      value: identifier.replace(/\./g, '-')
-    });
-
-    if (!directory) {
-      return;
-    }
-
-    // Create example in workspace
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage('No workspace folder open');
-      return;
-    }
-
-    // Create example directly in workspace root
-    const examplePath = path.join(workspaceFolder.uri.fsPath, directory);
-    
     try {
-      // Check if directory already exists
-      if (fs.existsSync(examplePath)) {
-        vscode.window.showErrorMessage(`Directory '${directory}' already exists in workspace`);
+      const existingExamples = await this.apiService.getExamples();
+      if (existingExamples.some(e => e.identifier === identifier)) {
+        vscode.window.showErrorMessage(`Example identifier "${identifier}" is already in use.`);
         return;
       }
-      
-      // Create directory
-      fs.mkdirSync(examplePath, { recursive: true });
+    } catch {
+      const proceed = await vscode.window.showWarningMessage(
+        'Could not verify identifier uniqueness. Continue anyway?',
+        'Continue', 'Cancel'
+      );
+      if (proceed !== 'Continue') { return; }
+    }
 
-      // Create meta.yaml file
-      const metaContent = `title: ${title}
-identifier: ${identifier}
-directory: ${directory}
-category: ""
-tags: []
-description: |
-  Example description here
-`;
+    const directory = identifier;
 
-      fs.writeFileSync(path.join(examplePath, 'meta.yaml'), metaContent);
+    // Select target repository for future uploads
+    let repositoryId = '';
+    try {
+      const repositories = await this.apiService.getExampleRepositories();
+      if (repositories.length > 0) {
+        const picked = await vscode.window.showQuickPick(
+          repositories.map(r => ({ label: r.name, description: r.description || undefined, id: r.id })),
+          { placeHolder: 'Select target repository for this example' }
+        );
+        if (!picked) { return; }
+        repositoryId = picked.id;
+      }
+    } catch {
+      // Continue without repository — user can pick one on upload
+    }
 
-      // Create README.md
-      const readmeContent = `# ${title}
+    // Select language
+    let languages: { code: string; name: string }[];
+    try {
+      languages = await this.apiService.getLanguages();
+    } catch {
+      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+    }
 
-## Description
-Add your example description here.
+    const hasEnglish = languages.some(l => l.code === 'en');
+    const sortedLanguages = hasEnglish
+      ? [languages.find(l => l.code === 'en')!, ...languages.filter(l => l.code !== 'en')]
+      : languages;
 
-## Usage
-Explain how to use this example.
-`;
+    const pickedLang = await vscode.window.showQuickPick(
+      sortedLanguages.map(l => ({ label: l.name, description: l.code, langCode: l.code })),
+      { placeHolder: 'Select language for this example' }
+    );
+    if (!pickedLang) { return; }
 
-      fs.writeFileSync(path.join(examplePath, 'README.md'), readmeContent);
+    const workingDir = getWorkingPath(examplesPath, directory);
+    if (fs.existsSync(workingDir)) {
+      vscode.window.showErrorMessage(`Local example "${directory}" already exists.`);
+      return;
+    }
 
-      vscode.window.showInformationMessage(`Example '${title}' created at ${examplePath}`);
-      
-      // Open the meta.yaml file
-      const doc = await vscode.workspace.openTextDocument(path.join(examplePath, 'meta.yaml'));
-      await vscode.window.showTextDocument(doc);
+    try {
+      fs.mkdirSync(workingDir, { recursive: true });
+
+      const meta: CodeAbilityMeta = {
+        slug: identifier,
+        version: '0.1.0',
+        title,
+        description: 'Example description here',
+        language: pickedLang.langCode,
+        license: 'MIT',
+        authors: [],
+        maintainers: [],
+        links: [],
+        supportingMaterial: [],
+        keywords: [],
+        properties: {
+          studentSubmissionFiles: [],
+          additionalFiles: [],
+          testFiles: [],
+          studentTemplates: []
+        }
+      };
+      const metaContent = yaml.dump(meta, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false, quotingType: "'", forceQuotes: false });
+      fs.writeFileSync(path.join(workingDir, 'meta.yaml'), metaContent);
+
+      fs.mkdirSync(path.join(workingDir, 'content'), { recursive: true });
+      fs.mkdirSync(path.join(workingDir, 'content', 'mediaFiles'), { recursive: true });
+      fs.writeFileSync(path.join(workingDir, 'content', `index_${pickedLang.langCode}.md`), `# ${title}\n`, 'utf8');
+
+      const metadata: CheckoutMetadata = {
+        exampleId: '',
+        repositoryId,
+        directory,
+        versionId: '',
+        versionTag: '0.1.0',
+        versionNumber: 0,
+        checkedOutAt: new Date().toISOString()
+      };
+      writeCheckoutMetadata(workingDir, metadata);
+
+      this.treeProvider.refreshAndExpand(directory);
+
+      vscode.window.showInformationMessage(`Created new example "${title}" in Local Examples`);
     } catch (error) {
-      console.error('Failed to create example:', error);
       vscode.window.showErrorMessage(`Failed to create example: ${error}`);
     }
   }
@@ -718,9 +1028,6 @@ Explain how to use this example.
     }
     
     vscode.window.showInformationMessage(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`);
-    
-    // TODO: Read meta.yaml, package the example, and upload
-    // IMPORTANT: When packaging, exclude .meta.yaml file (it's only for local version tracking)
   }
 
   /**
@@ -1269,49 +1576,743 @@ Explain how to use this example.
     }
   }
 
-  /**
-   * Reveal a downloaded example in the VS Code explorer
-   */
   private async revealExampleInExplorer(item: ExampleTreeItem): Promise<void> {
-    if (!item || !item.example) {
-      vscode.window.showErrorMessage('Invalid example item');
+    if (!item?.example) { return; }
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+    const workingPath = getWorkingPath(examplesPath, item.example.directory);
+    if (!fs.existsSync(workingPath)) {
+      vscode.window.showErrorMessage('Example is not checked out');
+      return;
+    }
+    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(workingPath));
+  }
+
+  private async bumpCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version) { return; }
+
+    const { readMetaYamlVersion, updateMetaYamlVersion } = await import('../utils/metaYamlHelpers');
+    const { bumpVersion, normalizeSemVer } = await import('../utils/versionHelpers');
+
+    const currentVersion = readMetaYamlVersion(item.version.fullPath);
+    if (!currentVersion) {
+      vscode.window.showErrorMessage('No version field found in meta.yaml');
       return;
     }
 
-    if (!item.isDownloaded || !item.downloadPath) {
-      vscode.window.showErrorMessage('Example is not downloaded yet');
+    const normalized = normalizeSemVer(currentVersion);
+    const patchBump = bumpVersion(currentVersion, 'patch');
+    const minorBump = bumpVersion(currentVersion, 'minor');
+    const majorBump = bumpVersion(currentVersion, 'major');
+
+    const picked = await vscode.window.showQuickPick([
+      { label: `Patch: ${normalized} -> ${patchBump}`, part: 'patch' as const, newVersion: patchBump },
+      { label: `Minor: ${normalized} -> ${minorBump}`, part: 'minor' as const, newVersion: minorBump },
+      { label: `Major: ${normalized} -> ${majorBump}`, part: 'major' as const, newVersion: majorBump }
+    ], { placeHolder: 'Select version bump type' });
+
+    if (!picked) { return; }
+
+    updateMetaYamlVersion(item.version.fullPath, picked.newVersion);
+    vscode.window.showInformationMessage(`Version bumped: ${normalized} -> ${picked.newVersion}`);
+    this.treeProvider.refresh();
+  }
+
+  private async deleteCheckedOutGroup(item: CheckedOutGroupTreeItem): Promise<void> {
+    if (!item?.group) { return; }
+
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete all local data of "${item.group.directory}"? This removes the working copy and all version snapshots.`,
+      'Delete', 'Cancel'
+    );
+    if (confirm !== 'Delete') { return; }
+
+    try {
+      // Delete working copy from examples/
+      if (fs.existsSync(item.group.fullPath)) {
+        fs.rmSync(item.group.fullPath, { recursive: true, force: true });
+      }
+      // Delete version snapshots from example_versions/
+      const versionsPath = this.getVersionsDir();
+      if (versionsPath) {
+        const versionsDir = path.join(versionsPath, item.group.directory);
+        if (fs.existsSync(versionsDir)) {
+          fs.rmSync(versionsDir, { recursive: true, force: true });
+        }
+      }
+      this.treeProvider.refresh();
+      vscode.window.showInformationMessage(`Deleted: ${item.group.directory}`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+    }
+  }
+
+  private async deleteCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version) { return; }
+
+    const label = item.version.isWorking ? 'working copy' : `version ${item.version.versionTag}`;
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete ${label} of "${item.groupDirectory}"?`,
+      'Delete', 'Cancel'
+    );
+    if (confirm !== 'Delete') { return; }
+
+    try {
+      fs.rmSync(item.version.fullPath, { recursive: true, force: true });
+      this.treeProvider.refresh();
+      vscode.window.showInformationMessage(`Deleted ${label}`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+    }
+  }
+
+  private async restoreVersionToWorking(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version || item.version.isWorking) { return; }
+
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
+    const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
+
+    const confirm = await vscode.window.showWarningMessage(
+      `Restore version ${item.version.versionTag} to working copy of "${item.groupDirectory}"? Any unsaved changes in the working directory will be lost.`,
+      'Restore', 'Cancel'
+    );
+    if (confirm !== 'Restore') { return; }
+
+    try {
+      if (fs.existsSync(workingDir)) {
+        fs.rmSync(workingDir, { recursive: true, force: true });
+      }
+      fs.cpSync(item.version.fullPath, workingDir, { recursive: true });
+
+      this.treeProvider.refresh();
+      vscode.window.showInformationMessage(`Restored ${item.version.versionTag} to working copy`);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to restore: ${error}`);
+    }
+  }
+
+  private async compareWithWorking(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version || item.version.isWorking) { return; }
+
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
+    const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
+    if (!fs.existsSync(workingDir)) {
+      vscode.window.showWarningMessage('No working copy found to compare against.');
+      return;
+    }
+
+    const versionDir = item.version.fullPath;
+    const files = this.collectFiles(versionDir, versionDir);
+
+    if (files.length === 0) {
+      vscode.window.showInformationMessage('No files found in version snapshot.');
+      return;
+    }
+
+    const picks = files.map(relativePath => {
+      const workingFile = path.join(workingDir, relativePath);
+      const exists = fs.existsSync(workingFile);
+      return {
+        label: relativePath,
+        description: exists ? '' : '(not in working copy)',
+        relativePath
+      };
+    });
+
+    const selected = await vscode.window.showQuickPick(picks, {
+      placeHolder: 'Select a file to compare with working copy',
+      title: `Compare ${item.version.versionTag} with working`
+    });
+
+    if (!selected) { return; }
+
+    const versionFile = vscode.Uri.file(path.join(versionDir, selected.relativePath));
+    const workingFile = vscode.Uri.file(path.join(workingDir, selected.relativePath));
+
+    if (!fs.existsSync(workingFile.fsPath)) {
+      vscode.window.showWarningMessage(`File "${selected.relativePath}" does not exist in working copy.`);
+      return;
+    }
+
+    await vscode.commands.executeCommand('vscode.diff',
+      versionFile, workingFile,
+      `${selected.relativePath} (${item.version.versionTag} ↔ working)`
+    );
+  }
+
+  private async compareFileWithWorking(item: FileSystemTreeItem): Promise<void> {
+    if (!item || item.isDirectory) { return; }
+
+    const examplesDir = this.getExamplesDir();
+    if (!examplesDir) { return; }
+    const versionsDir = this.getVersionsDir();
+    if (!versionsDir) { return; }
+
+    // Version files are in example_versions/<id>/<tag>/file
+    const relativeToVersions = path.relative(versionsDir, item.filePath);
+    const segments = relativeToVersions.split(path.sep);
+    if (segments.length < 3) { return; }
+
+    const exampleDirectory = segments[0]!;
+    const relativeFile = segments.slice(2).join(path.sep);
+
+    const workingDir = getWorkingPath(examplesDir, exampleDirectory);
+    if (!fs.existsSync(workingDir)) {
+      vscode.window.showWarningMessage('No working copy found to compare against.');
+      return;
+    }
+
+    const workingFilePath = path.join(workingDir, relativeFile);
+    const versionUri = vscode.Uri.file(item.filePath);
+
+    if (!fs.existsSync(workingFilePath)) {
+      const action = await vscode.window.showWarningMessage(
+        `"${relativeFile}" does not exist in the working copy.`,
+        'Open Version File'
+      );
+      if (action === 'Open Version File') {
+        await vscode.commands.executeCommand('vscode.open', versionUri);
+      }
+      return;
+    }
+
+    const workingUri = vscode.Uri.file(workingFilePath);
+    const versionLabel = segments[1];
+    await vscode.commands.executeCommand('vscode.diff',
+      versionUri, workingUri,
+      `${relativeFile} (${versionLabel} ↔ working)`
+    );
+  }
+
+  private collectFiles(dir: string, baseDir: string): string[] {
+    const results: string[] = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === '.computor-example.json') { continue; }
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...this.collectFiles(fullPath, baseDir));
+      } else {
+        results.push(path.relative(baseDir, fullPath));
+      }
+    }
+    return results;
+  }
+
+  private async createFileOrFolder(item: FileSystemTreeItem | CheckedOutVersionTreeItem, isFolder: boolean): Promise<void> {
+    let targetDir: string;
+    if (item instanceof CheckedOutVersionTreeItem) {
+      targetDir = item.version.fullPath;
+    } else if (item.isDirectory) {
+      targetDir = item.filePath;
+    } else {
+      targetDir = path.dirname(item.filePath);
+    }
+
+    const name = await vscode.window.showInputBox({
+      prompt: isFolder ? 'Enter folder name' : 'Enter file name',
+      placeHolder: isFolder ? 'new-folder' : 'new-file.txt'
+    });
+    if (!name) { return; }
+
+    const targetPath = path.join(targetDir, name);
+    if (fs.existsSync(targetPath)) {
+      vscode.window.showErrorMessage(`"${name}" already exists.`);
       return;
     }
 
     try {
-      // Convert to URI and reveal in explorer
-      const folderUri = vscode.Uri.file(item.downloadPath);
-      await vscode.commands.executeCommand('revealInExplorer', folderUri);
+      if (isFolder) {
+        fs.mkdirSync(targetPath, { recursive: true });
+      } else {
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.writeFileSync(targetPath, '', 'utf8');
+        const doc = await vscode.workspace.openTextDocument(targetPath);
+        await vscode.window.showTextDocument(doc);
+      }
+      this.treeProvider.refresh();
     } catch (error) {
-      console.error('Failed to reveal example in explorer:', error);
-      vscode.window.showErrorMessage(`Failed to reveal in explorer: ${error}`);
+      vscode.window.showErrorMessage(`Failed to create: ${error}`);
+    }
+  }
+
+  private async renameFileSystemItem(item: FileSystemTreeItem): Promise<void> {
+    if (!item) { return; }
+
+    const oldName = path.basename(item.filePath);
+    const newName = await vscode.window.showInputBox({
+      prompt: `Rename "${oldName}"`,
+      value: oldName
+    });
+    if (!newName || newName === oldName) { return; }
+
+    const newPath = path.join(path.dirname(item.filePath), newName);
+    if (fs.existsSync(newPath)) {
+      vscode.window.showErrorMessage(`"${newName}" already exists.`);
+      return;
+    }
+
+    try {
+      fs.renameSync(item.filePath, newPath);
+      this.treeProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to rename: ${error}`);
+    }
+  }
+
+  private async deleteFileSystemItem(item: FileSystemTreeItem): Promise<void> {
+    if (!item) { return; }
+
+    const name = path.basename(item.filePath);
+    const label = item.isDirectory ? `folder "${name}" and all its contents` : `file "${name}"`;
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete ${label}?`, 'Delete', 'Cancel'
+    );
+    if (confirm !== 'Delete') { return; }
+
+    try {
+      fs.rmSync(item.filePath, { recursive: true, force: true });
+      this.treeProvider.refresh();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
     }
   }
 
   private async getNextPosition(courseId: string, parentPath: string | undefined, contents: CourseContentList[]): Promise<number> {
-    void courseId; // Currently unused but kept for future use
-    // Filter contents at the same level
+    void courseId;
     const sameLevelContents = contents.filter(c => {
       if (!parentPath) {
-        // Root level - items with no dots in path
         return !c.path.includes('.');
       } else {
-        // Children of parent - items that start with parent path and have exactly one more segment
-        if (!c.path.startsWith(parentPath + '.')) {
-          return false;
-        }
+        if (!c.path.startsWith(parentPath + '.')) { return false; }
         const relativePath = c.path.substring(parentPath.length + 1);
         return !relativePath.includes('.');
       }
     });
-    
-    // Find the highest position and add 1
     const maxPosition = sameLevelContents.reduce((max, c) => Math.max(max, c.position || 0), 0);
     return maxPosition + 1;
+  }
+
+  private async showExampleDetails(item: ExampleTreeItem): Promise<void> {
+    if (!item?.example) {
+      vscode.window.showErrorMessage('Invalid example item');
+      return;
+    }
+
+    const examplesPath = this.getExamplesDir();
+    let downloadPath: string | undefined;
+    let isDownloaded = false;
+    let currentVersion: string | undefined;
+
+    if (examplesPath) {
+      const workingPath = getWorkingPath(examplesPath, item.example.directory);
+      if (fs.existsSync(workingPath)) {
+        downloadPath = workingPath;
+        isDownloaded = true;
+        const metadata = readCheckoutMetadata(workingPath);
+        currentVersion = metadata?.versionTag;
+      }
+    }
+
+    await this.exampleDetailProvider.show(`Example: ${item.example.title}`, {
+      example: item.example,
+      repository: item.repository,
+      isDownloaded,
+      downloadPath,
+      currentVersion
+    });
+  }
+
+  private async editTestYaml(item: FileSystemTreeItem | CheckedOutVersionTreeItem): Promise<void> {
+    let testYamlPath: string;
+    let exampleDir: string;
+
+    if (item instanceof CheckedOutVersionTreeItem) {
+      if (!item?.version?.isWorking) {
+        vscode.window.showErrorMessage('Test configuration can only be edited on working copies');
+        return;
+      }
+      exampleDir = item.version.fullPath;
+      testYamlPath = path.join(exampleDir, 'test.yaml');
+      if (!fs.existsSync(testYamlPath)) {
+        fs.writeFileSync(testYamlPath, '');
+        this.treeProvider.refresh();
+      }
+    } else if (item instanceof FileSystemTreeItem) {
+      if (!item?.filePath) {
+        vscode.window.showErrorMessage('Invalid file item');
+        return;
+      }
+      testYamlPath = item.filePath;
+      exampleDir = path.dirname(testYamlPath);
+    } else {
+      vscode.window.showErrorMessage('Invalid item');
+      return;
+    }
+
+    const metaYamlPath = path.join(exampleDir, 'meta.yaml');
+    let exampleTitle: string | undefined;
+
+    if (fs.existsSync(metaYamlPath)) {
+      try {
+        const metaContent = fs.readFileSync(metaYamlPath, 'utf8');
+        const metaData = yaml.load(metaContent) as Record<string, unknown>;
+        exampleTitle = metaData?.title as string;
+      } catch {
+        // Ignore meta.yaml parse errors
+      }
+    }
+
+    await this.testYamlEditorProvider.show(
+      `Test Editor: ${exampleTitle || path.basename(exampleDir)}`,
+      {
+        filePath: testYamlPath,
+        exampleDir,
+        exampleTitle
+      }
+    );
+  }
+
+  private async addTests(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version?.isWorking) {
+      vscode.window.showErrorMessage('Tests can only be added to working copies');
+      return;
+    }
+
+    const workingDir = item.version.fullPath;
+    const testYamlPath = path.join(workingDir, 'test.yaml');
+
+    if (fs.existsSync(testYamlPath)) {
+      await this.editTestYaml(new FileSystemTreeItem(testYamlPath, false, 'test.yaml', true));
+      return;
+    }
+
+    let exampleTitle: string | undefined;
+    const metaYamlPath = path.join(workingDir, 'meta.yaml');
+    if (fs.existsSync(metaYamlPath)) {
+      try {
+        const metaContent = fs.readFileSync(metaYamlPath, 'utf8');
+        const metaData = yaml.load(metaContent) as Record<string, unknown>;
+        exampleTitle = metaData?.title as string;
+      } catch {
+        // Ignore meta.yaml parse errors
+      }
+    }
+
+    fs.writeFileSync(testYamlPath, '');
+    this.treeProvider.refresh();
+
+    await this.testYamlEditorProvider.show(
+      `Test Editor: ${exampleTitle || path.basename(workingDir)}`,
+      {
+        filePath: testYamlPath,
+        exampleDir: workingDir,
+        exampleTitle
+      }
+    );
+  }
+
+  private async editMetaYaml(item: FileSystemTreeItem | CheckedOutVersionTreeItem): Promise<void> {
+    let metaYamlPath: string;
+    let exampleDir: string;
+
+    if (item instanceof CheckedOutVersionTreeItem) {
+      if (!item?.version?.isWorking) {
+        vscode.window.showErrorMessage('Meta configuration can only be edited on working copies');
+        return;
+      }
+      exampleDir = item.version.fullPath;
+      metaYamlPath = path.join(exampleDir, 'meta.yaml');
+    } else if (item instanceof FileSystemTreeItem) {
+      metaYamlPath = item.filePath;
+      exampleDir = path.dirname(metaYamlPath);
+    } else {
+      vscode.window.showErrorMessage('Invalid item');
+      return;
+    }
+
+    if (!fs.existsSync(metaYamlPath)) {
+      vscode.window.showErrorMessage('meta.yaml not found');
+      return;
+    }
+
+    let exampleTitle: string | undefined;
+    try {
+      const metaContent = fs.readFileSync(metaYamlPath, 'utf8');
+      const metaData = yaml.load(metaContent) as Record<string, unknown>;
+      exampleTitle = metaData?.title as string;
+    } catch {
+      // Ignore parse errors
+    }
+
+    let languages: { code: string; name: string }[];
+    try {
+      languages = await this.apiService.getLanguages();
+    } catch {
+      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+    }
+
+    await this.metaYamlEditorProvider.show(
+      `Meta Editor: ${exampleTitle || path.basename(exampleDir)}`,
+      {
+        filePath: metaYamlPath,
+        exampleDir,
+        exampleTitle,
+        languages
+      }
+    );
+  }
+
+  private async createNewReadme(item: FileSystemTreeItem): Promise<void> {
+    if (!item?.filePath || !item.isDirectory) {
+      vscode.window.showErrorMessage('Invalid content directory');
+      return;
+    }
+
+    let languages: { code: string; name: string }[];
+    try {
+      languages = await this.apiService.getLanguages();
+    } catch {
+      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+    }
+
+    // Find existing readmes to filter them out
+    const existingFiles = fs.readdirSync(item.filePath);
+    const existingLangs = new Set(
+      existingFiles
+        .filter(f => /^index_[a-z]{2}\.md$/.test(f))
+        .map(f => f.replace('index_', '').replace('.md', ''))
+    );
+
+    const availableLanguages = languages.filter(l => !existingLangs.has(l.code));
+    if (availableLanguages.length === 0) {
+      vscode.window.showInformationMessage('Readmes for all available languages already exist');
+      return;
+    }
+
+    // Default to 'en' if available
+    const hasEnglish = availableLanguages.some(l => l.code === 'en');
+    const sortedLanguages = hasEnglish
+      ? [availableLanguages.find(l => l.code === 'en')!, ...availableLanguages.filter(l => l.code !== 'en')]
+      : availableLanguages;
+
+    const picked = await vscode.window.showQuickPick(
+      sortedLanguages.map(l => ({ label: l.name, description: l.code, langCode: l.code })),
+      { placeHolder: 'Select language for the readme' }
+    );
+
+    if (!picked) { return; }
+
+    const filename = `index_${picked.langCode}.md`;
+    const filePath = path.join(item.filePath, filename);
+
+    fs.writeFileSync(filePath, `# \n`, 'utf8');
+    this.treeProvider.refresh();
+
+    const doc = await vscode.workspace.openTextDocument(filePath);
+    await vscode.window.showTextDocument(doc);
+  }
+
+  private async runExampleTests(item: CheckedOutVersionTreeItem): Promise<void> {
+    if (!item?.version?.fullPath) {
+      vscode.window.showErrorMessage('Invalid example item');
+      return;
+    }
+
+    if (!fs.existsSync(item.version.fullPath)) {
+      vscode.window.showErrorMessage('Example directory not found.');
+      return;
+    }
+
+    const installer = ComputorTestingInstaller.getInstance();
+    await installer.runTests(item.version.fullPath);
+  }
+
+  private async importExamples(): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Import Examples'
+    });
+    if (!uris || uris.length === 0) { return; }
+
+    const selectedDir = uris[0]!.fsPath;
+    const exampleDirs = this.detectExampleDirectories(selectedDir);
+
+    if (exampleDirs.length === 0) {
+      vscode.window.showWarningMessage('No examples found. A valid example directory must contain a meta.yaml with a slug.');
+      return;
+    }
+
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+    const versionsPath = this.getVersionsDir();
+    if (!versionsPath) { return; }
+
+    const { readMetaYaml, updateMetaYamlVersion } = await import('../utils/metaYamlHelpers');
+    const { normalizeSemVer } = await import('../utils/versionHelpers');
+    const { writeCheckoutMetadata, getVersionPath } = await import('../utils/checkedOutExampleManager');
+    const { writeExampleFiles } = await import('../utils/exampleFileWriter');
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Importing Examples',
+        cancellable: false
+      },
+      async (progress) => {
+        let imported = 0;
+        let failed = 0;
+
+        for (const exampleDir of exampleDirs) {
+          const dirName = path.basename(exampleDir);
+          progress.report({ message: `${dirName} (${imported + failed + 1}/${exampleDirs.length})` });
+
+          try {
+            const meta = readMetaYaml(exampleDir);
+            const slug = meta?.slug || meta?.identifier;
+            if (!slug) {
+              failed++;
+              continue;
+            }
+
+            const localVersion = meta.version || '0.1.0';
+            const directory = meta.directory || dirName;
+
+            // Copy to working directory
+            const workingDir = path.join(examplesPath, directory);
+            if (fs.existsSync(workingDir)) {
+              fs.rmSync(workingDir, { recursive: true, force: true });
+            }
+            fs.cpSync(exampleDir, workingDir, {
+              recursive: true,
+              filter: (source) => !shouldExcludeExampleEntry(path.basename(source))
+            });
+
+            // Normalize version tag in the working copy's meta.yaml
+            const normalizedLocalVersion = normalizeSemVer(localVersion);
+            if (normalizedLocalVersion !== localVersion) {
+              try {
+                updateMetaYamlVersion(workingDir, normalizedLocalVersion);
+              } catch { /* meta.yaml might not have version field yet */ }
+            }
+
+            // Look up example on server
+            const remoteExample = await this.apiService.getExampleByIdentifier(slug);
+
+            let exampleId = '';
+            let repositoryId = '';
+            let versionTag = localVersion;
+            let versionId = '';
+            let versionNumber = 0;
+
+            if (remoteExample) {
+              exampleId = remoteExample.id;
+              repositoryId = remoteExample.example_repository_id;
+
+              // Fetch versions and find best match
+              const versions = await this.apiService.getExampleVersions(remoteExample.id);
+              if (versions && versions.length > 0) {
+                // Try to find exact version match
+                const exactMatch = versions.find(v =>
+                  normalizeSemVer(v.version_tag) === normalizeSemVer(localVersion)
+                );
+
+                // Fall back to latest version
+                const bestVersion = exactMatch || versions.reduce((a, b) =>
+                  b.version_number > a.version_number ? b : a
+                );
+
+                versionTag = bestVersion.version_tag;
+                versionId = bestVersion.id;
+                versionNumber = bestVersion.version_number;
+
+                // Download version snapshot
+                try {
+                  const downloadedData = await this.apiService.downloadExampleVersion(bestVersion.id);
+                  if (downloadedData) {
+                    const versionDir = getVersionPath(versionsPath, directory, versionTag);
+                    if (fs.existsSync(versionDir)) {
+                      fs.rmSync(versionDir, { recursive: true, force: true });
+                    }
+                    fs.mkdirSync(versionDir, { recursive: true });
+                    writeExampleFiles(downloadedData.files, versionDir);
+
+                    writeCheckoutMetadata(versionDir, {
+                      exampleId,
+                      repositoryId,
+                      directory,
+                      versionId,
+                      versionTag: normalizeSemVer(versionTag),
+                      versionNumber,
+                      checkedOutAt: new Date().toISOString()
+                    });
+                  }
+                } catch (snapshotError) {
+                  console.warn(`Failed to download version snapshot for ${directory}:`, snapshotError);
+                }
+              }
+            }
+
+            // Write checkout metadata for working copy
+            writeCheckoutMetadata(workingDir, {
+              exampleId,
+              repositoryId,
+              directory,
+              versionId,
+              versionTag: normalizeSemVer(versionTag),
+              versionNumber,
+              checkedOutAt: new Date().toISOString()
+            });
+
+            imported++;
+          } catch (error) {
+            console.error(`Failed to import ${dirName}:`, error);
+            failed++;
+          }
+        }
+
+        this.treeProvider.refresh();
+
+        if (failed > 0) {
+          vscode.window.showWarningMessage(`Imported ${imported} example(s), ${failed} failed.`);
+        } else {
+          vscode.window.showInformationMessage(`Imported ${imported} example(s) successfully.`);
+        }
+      }
+    );
+  }
+
+  private detectExampleDirectories(dir: string): string[] {
+    // Check if this directory itself is an example
+    const metaPath = path.join(dir, 'meta.yaml');
+    if (fs.existsSync(metaPath)) {
+      const { readMetaYaml } = require('../utils/metaYamlHelpers');
+      const meta = readMetaYaml(dir);
+      if (meta?.slug || meta?.identifier) {
+        return [dir];
+      }
+    }
+
+    // Otherwise scan subdirectories for examples
+    const examples: string[] = [];
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) { continue; }
+        const subDir = path.join(dir, entry.name);
+        const subMeta = path.join(subDir, 'meta.yaml');
+        if (fs.existsSync(subMeta)) {
+          examples.push(subDir);
+        }
+      }
+    } catch { /* ignore read errors */ }
+
+    return examples;
   }
 }

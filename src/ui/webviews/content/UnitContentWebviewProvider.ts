@@ -2,11 +2,9 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
+import { SHARED_STYLES } from '../shared/webviewStyles';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from '../shared/webviewHelpers';
 
-/**
- * Webview provider for unit (container) course content.
- * Handles child content management and navigation.
- */
 export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
     context: vscode.ExtensionContext,
@@ -17,95 +15,124 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
   }
 
   protected async getWebviewContent(data?: CourseContentWebviewData): Promise<string> {
-    if (!this.panel) {
-      return this.getBaseHtml('Unit', '<p>Loading...</p>');
-    }
-
-    if (!data) {
+    if (!data?.courseContent) {
       return this.getBaseHtml('Unit', '<p>No unit data available</p>');
     }
 
-    const webview = this.panel.webview;
+    const { courseContent, course, contentType } = data;
     const nonce = this.getNonce();
-    const initialState = JSON.stringify(data);
-    const cssUri = this.getWebviewUri(webview, 'webview-ui', 'unit-content-details.css');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'unit-content-details.js');
 
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Unit: ${data.courseContent.title || data.courseContent.path}</title>
-      <link rel="stylesheet" href="${cssUri}">
-    </head>
-    <body>
-      <div id="app" class="view-root"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    let childCount = 0;
+    try {
+      const allContents = await this.apiService.getCourseContents(course.id, false, false);
+      childCount = allContents.filter(c =>
+        c.path.startsWith(courseContent.path + '.') &&
+        c.path.split('.').length === courseContent.path.split('.').length + 1
+      ).length;
+    } catch (error) {
+      console.error('Failed to count children:', error);
+    }
+
+    const headerHtml = `
+      <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
+      <p>Unit in ${escapeHtml(course?.title || course?.path)}</p>`;
+
+    const infoHtml = section('Unit Information', `
+      ${infoRowCode('ID', courseContent.id)}
+      ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
+      ${infoRowText('Position', String(courseContent.position ?? ''))}
+      ${infoRowText('Children', String(childCount))}
+    `);
+
+    const editHtml = section('Edit Unit', `
+      <form id="editForm">
+        ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots. Changing this will also update all children.')}
+        ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Unit title' }))}
+        ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Unit description' }))}
+        <div class="actions">
+          <button type="submit">Save Changes</button>
+          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+          <button type="button" class="btn-danger" onclick="deleteContent()">Delete</button>
+        </div>
+      </form>
+    `);
+
+    const scriptHtml = `
+      var contentId = ${JSON.stringify(courseContent.id)};
+      var courseId = ${JSON.stringify(course.id)};
+      var originalPath = ${JSON.stringify(courseContent.path)};
+      var currentPosition = ${JSON.stringify(courseContent.position)};
+
+      document.getElementById('editForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var newPath = document.getElementById('path').value.trim();
+        var updates = {
+          title: document.getElementById('title').value,
+          description: document.getElementById('description').value
+        };
+
+        if (newPath !== originalPath) {
+          vscode.postMessage({
+            command: 'moveContent',
+            data: {
+              courseId: courseId,
+              contentId: contentId,
+              path: newPath,
+              position: currentPosition,
+              updates: updates
+            }
+          });
+        } else {
+          vscode.postMessage({
+            command: 'updateContent',
+            data: { courseId: courseId, contentId: contentId, updates: updates }
+          });
+        }
+      });
+
+      function refreshData() {
+        vscode.postMessage({ command: 'refresh', data: { contentId: contentId } });
+      }
+
+      function deleteContent() {
+        if (confirm('Are you sure you want to delete this unit and all its children?')) {
+          vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
+        }
+      }
+
+      window.addEventListener('message', function(event) {
+        if (event.data.command === 'updateState') { location.reload(); }
+      });
+    `;
+
+    return pageShell(nonce, 'Unit', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 
-  /**
-   * Handle unit-specific messages
-   */
-  protected async handleCustomMessage(message: any): Promise<void> {
+  protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
     switch (message.command) {
       case 'loadChildren':
         await this.handleLoadChildren(message.data);
         break;
-
-      case 'reorderChildren':
-        await this.handleReorderChildren(message.data);
-        break;
-
-      default:
-        // Unknown command
-        break;
     }
   }
 
-  /**
-   * Load child content items
-   */
-  private async handleLoadChildren(data: any): Promise<void> {
+  private async handleLoadChildren(data?: Record<string, unknown>): Promise<void> {
+    if (!data) { return; }
     try {
-      // Get all course contents and filter by parent path (ltree structure)
-      const allContents = await this.apiService.getCourseContents(data.courseId, false, false);
-      const parentPath = data.parentPath || '';
+      const allContents = await this.apiService.getCourseContents(data.courseId as string, false, false);
+      const parentPath = (data.parentPath as string) || '';
 
-      // Filter children: path should be parentPath.something (one level deeper)
       const children = allContents.filter(c => {
-        if (!parentPath) {
-          // Root level: no dots in path
-          return !c.path.includes('.');
-        }
-        // Check if this is a direct child
-        const isChild = c.path.startsWith(parentPath + '.') &&
-                       c.path.split('.').length === parentPath.split('.').length + 1;
-        return isChild;
+        if (!parentPath) { return !c.path.includes('.'); }
+        return c.path.startsWith(parentPath + '.') &&
+               c.path.split('.').length === parentPath.split('.').length + 1;
       });
 
       if (this.panel) {
-        this.panel.webview.postMessage({
-          command: 'childrenLoaded',
-          data: { children }
-        });
+        this.panel.webview.postMessage({ command: 'childrenLoaded', data: { children } });
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to load children: ${error}`);
     }
-  }
-
-  /**
-   * Reorder child content items
-   */
-  private async handleReorderChildren(data: any): Promise<void> {
-    vscode.window.showInformationMessage('Child reordering coming soon!');
   }
 }

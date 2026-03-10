@@ -3,6 +3,8 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { CourseGroupGet, CourseList } from '../../types/generated';
+import { SHARED_STYLES } from './shared/webviewStyles';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from './shared/webviewHelpers';
 
 export class CourseGroupWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -19,44 +21,63 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
     course?: CourseList;
     membersCount?: number;
   }): Promise<string> {
-    if (!this.panel) {
-      return this.getBaseHtml('Course Group', '<p>Loading…</p>');
-    }
-
-    if (!data) {
+    if (!data?.group) {
       return this.getBaseHtml('Course Group', '<p>No course group data available</p>');
     }
 
     const { group, course, membersCount } = data;
-
-    const webview = this.panel.webview;
     const nonce = this.getNonce();
-    const initialState = JSON.stringify({ group, course, membersCount });
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'course-group-details.css');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'course-group-details.js');
 
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Course Group Details</title>
-      <link rel="stylesheet" href="${componentsCssUri}">
-      <link rel="stylesheet" href="${stylesUri}">
-    </head>
-    <body>
-      <div id="app" class="view-root"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${componentsJsUri}"></script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    const headerHtml = `
+      <h1>${escapeHtml(group.title || group.id)}</h1>
+      <p>Course Group${course ? ` in ${escapeHtml(course.title || course.path)}` : ''}</p>`;
+
+    const infoHtml = section('Information', `
+      ${infoRowCode('ID', group.id)}
+      ${infoRowText('Title', group.title)}
+      ${infoRowText('Description', group.description)}
+      ${course ? infoRowText('Course', course.title || course.path) : ''}
+      ${infoRowText('Members', String(membersCount || 0))}
+    `);
+
+    const editHtml = section('Edit Course Group', `
+      <form id="editForm">
+        ${formGroup('Title', textInput('title', group.title, { required: true, placeholder: 'Group title' }))}
+        ${formGroup('Description', textareaInput('description', group.description, { placeholder: 'Group description' }))}
+        <div class="actions">
+          <button type="submit">Save Changes</button>
+          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+        </div>
+      </form>
+    `);
+
+    const scriptHtml = `
+      const groupId = ${JSON.stringify(group.id)};
+
+      document.getElementById('editForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        vscode.postMessage({
+          command: 'updateCourseGroup',
+          data: {
+            groupId: groupId,
+            updates: {
+              title: document.getElementById('title').value,
+              description: document.getElementById('description').value
+            }
+          }
+        });
+      });
+
+      function refreshData() {
+        vscode.postMessage({ command: 'refresh', data: { groupId: groupId } });
+      }
+
+      window.addEventListener('message', function(event) {
+        if (event.data.command === 'updateState') { location.reload(); }
+      });
+    `;
+
+    return pageShell(nonce, 'Course Group', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -66,7 +87,6 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
           await this.apiService.updateCourseGroup(message.data.groupId, message.data.updates);
           vscode.window.showInformationMessage('Course group updated successfully');
 
-          // Update tree with changes
           if (this.treeDataProvider) {
             await this.treeDataProvider.refresh();
           }
@@ -76,11 +96,10 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
         break;
 
       case 'refresh':
-        if (message.data.groupId && this.currentData) {
+        if (message.data.groupId && this.panel) {
           try {
             const group = await this.apiService.getCourseGroup(message.data.groupId);
             if (group) {
-              // Get updated members count
               let membersCount = 0;
               try {
                 const members = await this.apiService.getCourseMembers(group.course_id, group.id);
@@ -89,13 +108,8 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
                 console.error('Failed to get members count:', error);
               }
 
-              this.currentData.group = group;
-              this.currentData.membersCount = membersCount;
-              this.panel?.webview.postMessage({
-                command: 'updateState',
-                data: { group, course: this.currentData.course, membersCount }
-              });
-              vscode.window.showInformationMessage('Course group refreshed');
+              this.currentData = { ...this.currentData, group, membersCount };
+              this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);

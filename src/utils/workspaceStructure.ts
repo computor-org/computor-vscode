@@ -10,6 +10,8 @@ export interface WorkspaceDirectories {
   reviewReference: string;
   reviewSubmissions: string;
   reference: string;
+  examples: string;
+  exampleVersions: string;
   tmp: string;
   tmpArtifacts: string;
 }
@@ -47,6 +49,8 @@ export class WorkspaceStructureManager {
       reviewReference: path.join(review, 'reference'),
       reviewSubmissions: path.join(review, 'submissions'),
       reference: path.join(this.workspaceRoot, 'reference'),
+      examples: path.join(this.workspaceRoot, 'examples'),
+      exampleVersions: path.join(this.workspaceRoot, 'example_versions'),
       tmp,
       tmpArtifacts: path.join(tmp, 'artifacts')
     };
@@ -142,6 +146,22 @@ export class WorkspaceStructureManager {
       JSON.stringify({ backendUrl }, null, 2),
       'utf8'
     );
+  }
+
+  getExamplesPath(): string {
+    return this.getDirectories().examples;
+  }
+
+  getExampleVersionsPath(): string {
+    return this.getDirectories().exampleVersions;
+  }
+
+  getExampleCheckoutPath(directory: string): string {
+    return path.join(this.getDirectories().examples, directory);
+  }
+
+  getToolsPath(): string {
+    return path.join(this.workspaceRoot, '.computor-tools');
   }
 
   /**

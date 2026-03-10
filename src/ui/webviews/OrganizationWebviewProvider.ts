@@ -3,6 +3,8 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { OrganizationGet } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
+import { SHARED_STYLES } from './shared/webviewStyles';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from './shared/webviewHelpers';
 
 export class OrganizationWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -17,17 +19,13 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
   protected async getWebviewContent(data?: {
     organization: OrganizationGet;
   }): Promise<string> {
-    if (!this.panel) {
-      return this.getBaseHtml('Organization', '<p>Loading…</p>');
-    }
-
-    if (!data) {
+    if (!data?.organization) {
       return this.getBaseHtml('Organization', '<p>No organization data available</p>');
     }
 
     const { organization } = data;
+    const nonce = this.getNonce();
 
-    // Get course families count
     let courseFamiliesCount = 0;
     try {
       const families = await this.apiService.getCourseFamilies(organization.id);
@@ -36,34 +34,58 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       console.error('Failed to get course families:', error);
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify({ organization, courseFamiliesCount });
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'organization-details.css');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'organization-details.js');
+    const headerHtml = `
+      <h1>${escapeHtml(organization.title || organization.path)}</h1>
+      <p>Organization</p>`;
 
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Organization Details</title>
-      <link rel="stylesheet" href="${componentsCssUri}">
-      <link rel="stylesheet" href="${stylesUri}">
-    </head>
-    <body>
-      <div id="app" class="view-root"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${componentsJsUri}"></script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    const infoHtml = section('Information', `
+      ${infoRowCode('ID', organization.id)}
+      ${infoRowCode('Path', organization.path)}
+      ${infoRowText('Title', organization.title)}
+      ${infoRowText('Description', organization.description)}
+      ${infoRowText('Course Families', String(courseFamiliesCount))}
+    `);
+
+    const editHtml = section('Edit Organization', `
+      <form id="editForm">
+        ${formGroup('Title', textInput('title', organization.title, { required: true, placeholder: 'Organization title' }))}
+        ${formGroup('Description', textareaInput('description', organization.description, { placeholder: 'Organization description' }))}
+        <div class="actions">
+          <button type="submit">Save Changes</button>
+          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+        </div>
+      </form>
+    `);
+
+    const scriptHtml = `
+      const orgId = ${JSON.stringify(organization.id)};
+
+      document.getElementById('editForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        vscode.postMessage({
+          command: 'updateOrganization',
+          data: {
+            organizationId: orgId,
+            updates: {
+              title: document.getElementById('title').value,
+              description: document.getElementById('description').value
+            }
+          }
+        });
+      });
+
+      function refreshData() {
+        vscode.postMessage({ command: 'refresh', data: { organizationId: orgId } });
+      }
+
+      window.addEventListener('message', function(event) {
+        if (event.data.command === 'updateState') {
+          location.reload();
+        }
+      });
+    `;
+
+    return pageShell(nonce, 'Organization', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -72,8 +94,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         try {
           await this.apiService.updateOrganization(message.data.organizationId, message.data.updates);
           vscode.window.showInformationMessage('Organization updated successfully');
-          
-          // Update tree with changes
+
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('organization', message.data.organizationId, message.data.updates);
           } else {
@@ -88,23 +109,9 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         if (message.data.organizationId) {
           try {
             const organization = await this.apiService.getOrganization(message.data.organizationId);
-            if (organization && this.currentData) {
-              this.currentData.organization = organization;
-
-              // Get updated course families count
-              let courseFamiliesCount = 0;
-              try {
-                const families = await this.apiService.getCourseFamilies(organization.id);
-                courseFamiliesCount = families.length;
-              } catch (error) {
-                console.error('Failed to get course families:', error);
-              }
-
-              this.panel?.webview.postMessage({
-                command: 'updateState',
-                data: { organization, courseFamiliesCount }
-              });
-              vscode.window.showInformationMessage('Organization refreshed');
+            if (organization && this.panel) {
+              this.currentData = { organization };
+              this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);

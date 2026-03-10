@@ -2,11 +2,9 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
+import { SHARED_STYLES } from '../shared/webviewStyles';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from '../shared/webviewHelpers';
 
-/**
- * Webview provider for generic course content (lectures, readings, etc.).
- * Provides basic editing capabilities.
- */
 export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
     context: vscode.ExtensionContext,
@@ -17,37 +15,84 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
   }
 
   protected async getWebviewContent(data?: CourseContentWebviewData): Promise<string> {
-    if (!this.panel) {
-      return this.getBaseHtml('Content', '<p>Loading...</p>');
-    }
-
-    if (!data) {
+    if (!data?.courseContent) {
       return this.getBaseHtml('Content', '<p>No content data available</p>');
     }
 
-    const webview = this.panel.webview;
+    const { courseContent, course, contentType } = data;
     const nonce = this.getNonce();
-    const initialState = JSON.stringify(data);
-    const cssUri = this.getWebviewUri(webview, 'webview-ui', 'generic-content-details.css');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'generic-content-details.js');
 
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Content: ${data.courseContent.title || data.courseContent.path}</title>
-      <link rel="stylesheet" href="${cssUri}">
-    </head>
-    <body>
-      <div id="app" class="view-root"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    const headerHtml = `
+      <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
+      <p>Content in ${escapeHtml(course?.title || course?.path)}</p>`;
+
+    const infoHtml = section('Content Information', `
+      ${infoRowCode('ID', courseContent.id)}
+      ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
+      ${infoRowText('Position', String(courseContent.position ?? ''))}
+    `);
+
+    const editHtml = section('Edit Content', `
+      <form id="editForm">
+        ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1.content_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots')}
+        ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Content title' }))}
+        ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Content description' }))}
+        <div class="actions">
+          <button type="submit">Save Changes</button>
+          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+          <button type="button" class="btn-danger" onclick="deleteContent()">Delete</button>
+        </div>
+      </form>
+    `);
+
+    const scriptHtml = `
+      var contentId = ${JSON.stringify(courseContent.id)};
+      var courseId = ${JSON.stringify(course.id)};
+      var originalPath = ${JSON.stringify(courseContent.path)};
+      var currentPosition = ${JSON.stringify(courseContent.position)};
+
+      document.getElementById('editForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var newPath = document.getElementById('path').value.trim();
+        var updates = {
+          title: document.getElementById('title').value,
+          description: document.getElementById('description').value
+        };
+
+        if (newPath !== originalPath) {
+          vscode.postMessage({
+            command: 'moveContent',
+            data: {
+              courseId: courseId,
+              contentId: contentId,
+              path: newPath,
+              position: currentPosition,
+              updates: updates
+            }
+          });
+        } else {
+          vscode.postMessage({
+            command: 'updateContent',
+            data: { courseId: courseId, contentId: contentId, updates: updates }
+          });
+        }
+      });
+
+      function refreshData() {
+        vscode.postMessage({ command: 'refresh', data: { contentId: contentId } });
+      }
+
+      function deleteContent() {
+        if (confirm('Are you sure you want to delete this content?')) {
+          vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
+        }
+      }
+
+      window.addEventListener('message', function(event) {
+        if (event.data.command === 'updateState') { location.reload(); }
+      });
+    `;
+
+    return pageShell(nonce, 'Content', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 }

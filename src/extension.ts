@@ -774,9 +774,22 @@ class UnifiedController {
   }
 
   private async openResultArtifact(api: ComputorApiService, resultId: string, artifactInfo: any): Promise<void> {
-    const { WorkspaceStructureManager } = await import('./utils/workspaceStructure');
     const fs = await import('fs');
     const path = await import('path');
+
+    // Local artifacts from lecturer example testing: resultId is "local:<outputDir>"
+    if (resultId.startsWith('local:')) {
+      const outputDir = resultId.substring('local:'.length);
+      const filePath = path.join(outputDir, artifactInfo.filename);
+      if (fs.existsSync(filePath)) {
+        await this.openArtifactFile(filePath);
+      } else {
+        vscode.window.showErrorMessage(`Local artifact not found: ${artifactInfo.filename}`);
+      }
+      return;
+    }
+
+    const { WorkspaceStructureManager } = await import('./utils/workspaceStructure');
     const JSZip = (await import('jszip')).default;
 
     const wsManager = WorkspaceStructureManager.getInstance();

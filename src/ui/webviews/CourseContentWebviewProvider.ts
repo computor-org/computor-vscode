@@ -56,15 +56,13 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
             </p>
           ` : ''}
           <div class="actions">
-            <button class="button secondary" onclick="unassignExample()">Unassign Example</button>
-            <button class="button" onclick="updateExample()">Update Example</button>
+            <button class="button" onclick="updateExampleVersion()">Update Version</button>
           </div>
         </div>
       ` : `
         <div class="info-section">
           <h2>No Example Assigned</h2>
           <p>This content does not have an example assigned yet.</p>
-          <button class="button" onclick="assignExample()">Assign Example</button>
         </div>
       `}
 
@@ -136,24 +134,10 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
           });
         }
         
-        function assignExample() {
-          sendMessage('assignExample', { 
+        function updateExampleVersion() {
+          sendMessage('updateExampleVersion', {
             courseId: contentData.course.id,
-            contentId: contentData.courseContent.id 
-          });
-        }
-        
-        function unassignExample() {
-          sendMessage('unassignExample', { 
-            courseId: contentData.course.id,
-            contentId: contentData.courseContent.id 
-          });
-        }
-        
-        function updateExample() {
-          sendMessage('updateExample', { 
-            courseId: contentData.course.id,
-            contentId: contentData.courseContent.id 
+            contentId: contentData.courseContent.id
           });
         }
         
@@ -228,24 +212,12 @@ export class CourseContentWebviewProvider extends BaseWebviewProvider {
         }
         break;
 
-      case 'assignExample':
-        vscode.commands.executeCommand('computor.lecturer.assignExample', message.data);
-        break;
-
-      case 'unassignExample':
-        vscode.commands.executeCommand('computor.lecturer.unassignExample', message.data);
-        break;
-
-      case 'updateExample':
-        vscode.window.showInformationMessage('Example update functionality coming soon!');
+      case 'updateExampleVersion':
+        vscode.commands.executeCommand('computor.lecturer.updateExampleVersion', message.data);
         break;
 
       case 'createChild':
         vscode.commands.executeCommand('computor.lecturer.createCourseContent', message.data);
-        break;
-
-      case 'moveContent':
-        vscode.window.showInformationMessage('Content reordering coming soon!');
         break;
 
       case 'deleteContent':

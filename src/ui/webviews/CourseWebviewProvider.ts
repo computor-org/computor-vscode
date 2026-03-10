@@ -3,6 +3,8 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseGet, CourseFamilyList, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
+import { SHARED_STYLES } from './shared/webviewStyles';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, formGroup, textInput, textareaInput, pageShell } from './shared/webviewHelpers';
 
 export class CourseWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -19,44 +21,72 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     courseFamily: CourseFamilyList;
     organization: OrganizationList;
   }): Promise<string> {
-    if (!this.panel) {
-      return this.getBaseHtml('Course', '<p>Loading…</p>');
-    }
-
-    if (!data) {
+    if (!data?.course) {
       return this.getBaseHtml('Course', '<p>No course data available</p>');
     }
 
     const { course, courseFamily, organization } = data;
-
-    const webview = this.panel.webview;
     const nonce = this.getNonce();
-    const initialState = JSON.stringify({ course, courseFamily, organization });
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'course-details.css');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'course-details.js');
+    const gitlabUrl = (course as any).properties?.gitlab?.url || '';
 
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Course Details</title>
-      <link rel="stylesheet" href="${componentsCssUri}">
-      <link rel="stylesheet" href="${stylesUri}">
-    </head>
-    <body>
-      <div id="app" class="view-root"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${componentsJsUri}"></script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    const headerHtml = `
+      <h1>${escapeHtml(course.title || course.path)}</h1>
+      <p>Course in ${escapeHtml(courseFamily?.title || courseFamily?.path)} / ${escapeHtml(organization?.title || organization?.path)}</p>`;
+
+    const gitlabRow = gitlabUrl
+      ? infoRow('GitLab Repository', `<a href="${escapeHtml(gitlabUrl)}" title="${escapeHtml(gitlabUrl)}">${escapeHtml(gitlabUrl)}</a>`)
+      : infoRowText('GitLab Repository', null);
+
+    const infoHtml = section('Information', `
+      ${infoRowCode('ID', course.id)}
+      ${infoRowCode('Path', course.path)}
+      ${infoRowText('Title', course.title)}
+      ${infoRowText('Description', course.description)}
+      ${infoRowText('Course Family', courseFamily?.title || courseFamily?.path)}
+      ${infoRowText('Organization', organization?.title || organization?.path)}
+      ${gitlabRow}
+    `);
+
+    const editHtml = section('Edit Course', `
+      <form id="editForm">
+        ${formGroup('Title', textInput('title', course.title, { placeholder: 'Course title' }))}
+        ${formGroup('Description', textareaInput('description', course.description, { placeholder: 'Course description' }))}
+        ${formGroup('GitLab Repository URL', textInput('gitlabUrl', gitlabUrl, { type: 'url', placeholder: 'https://gitlab.example.com/...' }))}
+        <div class="actions">
+          <button type="submit">Save Changes</button>
+          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+        </div>
+      </form>
+    `);
+
+    const scriptHtml = `
+      const courseId = ${JSON.stringify(course.id)};
+
+      document.getElementById('editForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        vscode.postMessage({
+          command: 'updateCourse',
+          data: {
+            courseId: courseId,
+            updates: {
+              title: document.getElementById('title').value,
+              description: document.getElementById('description').value,
+              gitlabUrl: document.getElementById('gitlabUrl').value
+            }
+          }
+        });
+      });
+
+      function refreshData() {
+        vscode.postMessage({ command: 'refresh', data: { courseId: courseId } });
+      }
+
+      window.addEventListener('message', function(event) {
+        if (event.data.command === 'updateState') { location.reload(); }
+      });
+    `;
+
+    return pageShell(nonce, 'Course', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -65,8 +95,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         try {
           await this.apiService.updateCourse(message.data.courseId, message.data.updates);
           vscode.window.showInformationMessage('Course updated successfully');
-          
-          // Update tree with changes
+
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('course', message.data.courseId, message.data.updates);
           }
@@ -79,13 +108,9 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         if (message.data.courseId) {
           try {
             const course = await this.apiService.getCourse(message.data.courseId);
-            if (course && this.currentData) {
-              this.currentData.course = course;
-              this.panel?.webview.postMessage({
-                command: 'updateState',
-                data: { course, courseFamily: this.currentData.courseFamily, organization: this.currentData.organization }
-              });
-              vscode.window.showInformationMessage('Course refreshed');
+            if (course && this.panel) {
+              this.currentData = { ...this.currentData, course };
+              this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
