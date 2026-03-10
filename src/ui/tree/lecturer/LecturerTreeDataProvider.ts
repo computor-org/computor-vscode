@@ -115,17 +115,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.gitWrapper = new GitWrapper();
     this.repositoryManager = new LecturerRepositoryManager(context, this.apiService as any);
     
-    // Load expanded states on startup
-    console.log('Loading expanded states on startup...');
-    this.loadExpandedStates().then(() => {
-      console.log('Expanded states loaded:', Object.keys(this.expandedStates));
-    });
+    this.loadExpandedStates();
   }
 
   refresh(): void {
-    console.log('Full tree refresh requested');
-    console.log('Current expanded states before refresh:', Object.keys(this.expandedStates));
-    
     // Clear ALL backend API caches - organizations, courses, course families, etc.
     this.clearAllCaches();
     this.paginationState.clear();
@@ -154,8 +147,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
    * This ensures the data is refreshed even if the node is collapsed
    */
   async forceRefreshCourse(courseId: string): Promise<void> {
-    console.log(`Force refreshing course ${courseId}`);
-    
     // Clear API cache FIRST, then tree cache
     this.apiService.clearCourseCache(courseId);
     this.clearCourseCache(courseId);
@@ -1288,20 +1279,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
       
       const title = contentItem.courseContent.title || contentItem.courseContent.path || 'Unknown';
-      console.log(`Deleting course content: ${title} (${contentItem.courseContent.id})`);
-      
       await this.apiService.deleteCourseContent(
         contentItem.course.id,
         contentItem.courseContent.id
       );
-      
-      console.log('Delete API call successful, clearing cache and refreshing tree...');
-      
+
       // Clear API cache for this course - this ensures fresh data will be fetched
       this.apiService.clearCourseCache(contentItem.course.id);
-      
+
       this.refresh();
-      
+
       vscode.window.showInformationMessage(`Deleted "${title}" successfully`);
     } catch (error) {
       console.error('Failed to delete course content:', error);
@@ -1409,18 +1396,14 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
    * Set node expanded state
    */
   public async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
-    console.log(`Setting node ${nodeId} expanded state to: ${expanded}`);
-    
     if (expanded) {
       this.expandedStates[nodeId] = true;
     } else {
       delete this.expandedStates[nodeId];
     }
-    
+
     try {
       await this.settingsManager.setNodeExpandedState(nodeId, expanded);
-      console.log(`Saved expanded state for ${nodeId}: ${expanded}`);
-      console.log('Current expanded states:', Object.keys(this.expandedStates));
     } catch (error) {
       console.error('Failed to save node expanded state:', error);
     }
@@ -1473,8 +1456,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
     try {
       const memberData = await memberDataItem.value;
-      console.log('[LecturerTreeDataProvider] Dropping members:', memberData);
-
       if (!Array.isArray(memberData)) {
         return;
       }
@@ -1511,36 +1492,25 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
-    // Debug: Log all available mime types
-    const mimeTypes: string[] = [];
-    dataTransfer.forEach((_value, key) => {
-      mimeTypes.push(key);
-    });
-    console.log('Available mime types:', mimeTypes);
-
     // Check if we have member data being dropped
     const memberData = dataTransfer.get('application/vnd.code.tree.lecturermember');
 
     if (memberData) {
-      // Validate that we actually have member data before processing
       try {
         const memberDataValue = await memberData.value;
         if (memberDataValue && Array.isArray(memberDataValue) && memberDataValue.length > 0) {
           await this.handleMemberDrop(target, memberData);
           return;
         }
-      } catch (error) {
-        console.log('Invalid member data, skipping member drop handler');
+      } catch {
+        // Invalid member data, skip
       }
     }
 
     // Check if we have example data being dropped
     const exampleData = dataTransfer.get('application/vnd.code.tree.computorexample');
 
-    console.log('Example data found:', !!exampleData);
-
     if (!exampleData || !target) {
-      console.log('Missing data or target - exampleData:', !!exampleData, 'target:', !!target);
       return;
     }
 
@@ -1606,10 +1576,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       let draggedExamples = dragDropManager.getDraggedData();
       
       if (!draggedExamples) {
-        // Fallback: try to get from DataTransfer (though this often fails)
-        console.log('No data in DragDropManager, trying DataTransfer...');
-        console.log('ExampleData item:', exampleData);
-        
+        // Fallback: try to get from DataTransfer
         let rawValue: any = '';
         
         if (typeof exampleData.value === 'function') {
@@ -1624,11 +1591,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           rawValue = exampleData.value ? String(exampleData.value) : '';
         }
         
-        console.log('Drag data from DataTransfer:', rawValue);
-        
         if (!rawValue || rawValue === '') {
           vscode.window.showErrorMessage('No data received from drag operation. Please try again or use the context menu instead.');
-          console.error('Empty drag data received');
           return;
         }
         
@@ -1636,21 +1600,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         draggedExamples = typeof rawValue === 'string' 
           ? JSON.parse(rawValue)
           : rawValue;
-      } else {
-        console.log('Successfully retrieved drag data from DragDropManager');
       }
       
       if (!Array.isArray(draggedExamples) || draggedExamples.length === 0) {
-        console.error('Invalid dragged examples format:', draggedExamples);
         return;
       }
 
-      // For simplicity, take the first dragged example
       const example = draggedExamples[0];
-      
+
       if (!example.exampleId) {
         vscode.window.showErrorMessage('Invalid example data - missing exampleId');
-        console.error('Invalid example data:', example);
         return;
       }
 
