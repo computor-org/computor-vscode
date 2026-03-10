@@ -775,18 +775,26 @@ export class LecturerExampleCommands {
           throw new Error('Upload failed - no response from server');
         }
 
+        const returnedExampleId = result.id || exampleId;
+
         progress.report({ increment: 20, message: 'Downloading version snapshot...' });
 
         // Download the newly created version from the API to create a clean snapshot
         const examplesPath = this.getExamplesDir();
         const versionsPath = this.getVersionsDir();
+        let uploadedVersionId = '';
+        let uploadedVersionNumber = 0;
+
         if (examplesPath && versionsPath) {
           try {
             // Find the version we just uploaded
-            const updatedVersions = await this.apiService.getExampleVersions(exampleId);
+            const updatedVersions = await this.apiService.getExampleVersions(returnedExampleId);
             const uploadedVersion = updatedVersions.find(v => normalizeSemVer(v.version_tag) === uploadVersion);
 
             if (uploadedVersion) {
+              uploadedVersionId = uploadedVersion.id;
+              uploadedVersionNumber = uploadedVersion.version_number;
+
               const downloadedData = await this.apiService.downloadExampleVersion(uploadedVersion.id);
               if (downloadedData) {
                 const versionDir = getVersionPath(versionsPath, directory, uploadVersion);
@@ -800,6 +808,7 @@ export class LecturerExampleCommands {
                 if (existingMeta) {
                   writeCheckoutMetadata(versionDir, {
                     ...existingMeta,
+                    exampleId: returnedExampleId,
                     versionTag: uploadVersion,
                     versionId: uploadedVersion.id,
                     versionNumber: uploadedVersion.version_number,
@@ -814,6 +823,7 @@ export class LecturerExampleCommands {
               if (existingMeta) {
                 writeCheckoutMetadata(snapshotDir, {
                   ...existingMeta,
+                  exampleId: returnedExampleId,
                   versionTag: uploadVersion,
                   checkedOutAt: new Date().toISOString()
                 });
@@ -828,7 +838,10 @@ export class LecturerExampleCommands {
           if (existingMeta) {
             writeCheckoutMetadata(dirPath, {
               ...existingMeta,
+              exampleId: returnedExampleId,
               versionTag: uploadVersion,
+              versionId: uploadedVersionId || existingMeta.versionId,
+              versionNumber: uploadedVersionNumber || existingMeta.versionNumber,
               checkedOutAt: new Date().toISOString()
             });
           }

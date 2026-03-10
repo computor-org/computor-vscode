@@ -261,6 +261,8 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     }
 
     const exampleId = result.id || example.exampleId;
+    let uploadedVersionId = '';
+    let uploadedVersionNumber = 0;
 
     // Create version snapshot
     try {
@@ -268,6 +270,11 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
       const uploadedVersion = versions?.find((v: { version_tag: string }) =>
         normalizeSemVer(v.version_tag) === uploadVersion
       );
+
+      if (uploadedVersion) {
+        uploadedVersionId = uploadedVersion.id;
+        uploadedVersionNumber = uploadedVersion.version_number;
+      }
 
       const dirs = WorkspaceStructureManager.getInstance().getDirectories();
 
@@ -307,6 +314,8 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
         ...existingMeta,
         exampleId,
         versionTag: uploadVersion,
+        versionId: uploadedVersionId || existingMeta.versionId,
+        versionNumber: uploadedVersionNumber || existingMeta.versionNumber,
         checkedOutAt: new Date().toISOString()
       });
     }
