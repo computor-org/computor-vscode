@@ -19,7 +19,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       return this.getBaseHtml('Assignment', '<p>No assignment data available</p>');
     }
 
-    const { courseContent, course, contentType, exampleInfo } = data;
+    const { courseContent, course, contentType, exampleInfo, exampleVersionInfo } = data;
     const nonce = this.getNonce();
 
     const statusColors: Record<string, string> = {
@@ -52,7 +52,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       ${infoRow('Status', statusBadge(deploymentStatus.toUpperCase(), statusColor))}
       ${exampleInfo?.title ? infoRowText('Example', exampleInfo.title) : infoRowText('Example', 'Not assigned')}
       ${exampleInfo?.identifier ? infoRowCode('Identifier', exampleInfo.identifier) : ''}
-      ${exampleInfo?.versionTag ? infoRowCode('Version', exampleInfo.versionTag) : ''}
+      ${exampleVersionInfo?.version_tag ? infoRowCode('Version', exampleVersionInfo.version_tag) : ''}
       <div class="actions">
         ${exampleInfo ? `
           <button class="btn-secondary" onclick="unassignExample()">Unassign Example</button>
@@ -136,13 +136,13 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
     return pageShell(nonce, 'Assignment', headerHtml, infoHtml + deploymentHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 
-  protected async handleCustomMessage(message: any): Promise<void> {
+  protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
     switch (message.command) {
       case 'deployAssignment':
         try {
           await vscode.commands.executeCommand('computor.lecturer.releaseCourseContent', {
-            courseId: message.data.courseId,
-            contentId: message.data.contentId
+            courseId: message.data?.courseId,
+            contentId: message.data?.contentId
           });
         } catch (error) {
           vscode.window.showErrorMessage(`Failed to deploy assignment: ${error}`);
@@ -153,7 +153,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         try {
           const contentData = this.currentData as CourseContentWebviewData;
           await vscode.commands.executeCommand('computor.lecturer.viewDeploymentInfo', {
-            courseContentId: message.data.contentId,
+            courseContentId: message.data?.contentId,
             courseContentTitle: contentData?.courseContent?.title || ''
           });
         } catch (error) {

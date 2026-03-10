@@ -94,7 +94,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
     return pageShell(nonce, 'Unit', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
   }
 
-  protected async handleCustomMessage(message: any): Promise<void> {
+  protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
     switch (message.command) {
       case 'loadChildren':
         await this.handleLoadChildren(message.data);
@@ -102,10 +102,11 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
     }
   }
 
-  private async handleLoadChildren(data: any): Promise<void> {
+  private async handleLoadChildren(data?: Record<string, unknown>): Promise<void> {
+    if (!data) { return; }
     try {
-      const allContents = await this.apiService.getCourseContents(data.courseId, false, false);
-      const parentPath = data.parentPath || '';
+      const allContents = await this.apiService.getCourseContents(data.courseId as string, false, false);
+      const parentPath = (data.parentPath as string) || '';
 
       const children = allContents.filter(c => {
         if (!parentPath) { return !c.path.includes('.'); }

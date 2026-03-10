@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from '../BaseWebviewProvider';
-import { CourseContentGet, CourseList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
+import { CourseContentGet, CourseList, CourseContentTypeList, CourseContentKindList, ExampleGet, ExampleVersionGet } from '../../../types/generated';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 
@@ -9,8 +9,14 @@ export interface CourseContentWebviewData {
   course: CourseList;
   contentType?: CourseContentTypeList;
   contentKind?: CourseContentKindList;
-  exampleInfo?: any;
+  exampleInfo?: ExampleGet | null;
+  exampleVersionInfo?: ExampleVersionGet | null;
   isSubmittable: boolean;
+}
+
+interface WebviewMessage {
+  command: string;
+  data?: Record<string, unknown>;
 }
 
 /**
@@ -32,17 +38,9 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
     this.treeDataProvider = treeDataProvider;
   }
 
-  /**
-   * Get the HTML content for the webview.
-   * Each content kind implements this differently.
-   */
   protected abstract getWebviewContent(data?: CourseContentWebviewData): Promise<string>;
 
-  /**
-   * Common message handling for all content types.
-   * Subclasses can override to add kind-specific handlers.
-   */
-  protected async handleMessage(message: any): Promise<void> {
+  protected async handleMessage(message: WebviewMessage): Promise<void> {
     switch (message.command) {
       case 'updateContent':
         await this.handleUpdateContent(message.data);
@@ -60,16 +58,8 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         await this.handleUnassignExample(message.data);
         break;
 
-      case 'updateExample':
-        await this.handleUpdateExample(message.data);
-        break;
-
       case 'createChild':
         await this.handleCreateChild(message.data);
-        break;
-
-      case 'moveContent':
-        await this.handleMoveContent(message.data);
         break;
 
       case 'deleteContent':
@@ -77,38 +67,29 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         break;
 
       default:
-        // Allow subclasses to handle additional messages
         await this.handleCustomMessage(message);
         break;
     }
   }
 
-  /**
-   * Handle custom messages specific to content kind.
-   * Override in subclasses for kind-specific messages.
-   */
-  protected async handleCustomMessage(message: any): Promise<void> {
+  protected async handleCustomMessage(message: WebviewMessage): Promise<void> {
     void message;
-    // Default: do nothing
   }
 
-  /**
-   * Update course content
-   */
-  protected async handleUpdateContent(data: any): Promise<void> {
+  protected async handleUpdateContent(data?: Record<string, unknown>): Promise<void> {
+    if (!data) { return; }
     try {
       await this.apiService.updateCourseContent(
-        data.courseId,
-        data.contentId,
-        data.updates
+        data.courseId as string,
+        data.contentId as string,
+        data.updates as Record<string, unknown>
       );
       vscode.window.showInformationMessage('Content updated successfully');
 
-      // Update tree with changes
       if (this.treeDataProvider) {
-        this.treeDataProvider.updateNode('courseContent', data.contentId, {
-          ...data.updates,
-          course_id: data.courseId
+        this.treeDataProvider.updateNode('courseContent', data.contentId as string, {
+          ...(data.updates as Record<string, unknown>),
+          course_id: data.courseId as string
         });
       }
     } catch (error) {
@@ -116,16 +97,12 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
     }
   }
 
-  /**
-   * Refresh content data
-   */
-  protected async handleRefresh(data: any): Promise<void> {
-    if (!data.contentId) return;
+  protected async handleRefresh(data?: Record<string, unknown>): Promise<void> {
+    if (!data?.contentId) { return; }
 
     try {
-      const freshContent = await this.apiService.getCourseContent(data.contentId);
+      const freshContent = await this.apiService.getCourseContent(data.contentId as string);
       if (freshContent && this.currentData) {
-        // Update the current data and re-render
         const webviewData = this.currentData as CourseContentWebviewData;
         webviewData.courseContent = freshContent;
 
@@ -140,45 +117,19 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
     }
   }
 
-  /**
-   * Assign example to content
-   */
-  protected async handleAssignExample(data: any): Promise<void> {
+  protected async handleAssignExample(data?: Record<string, unknown>): Promise<void> {
     await vscode.commands.executeCommand('computor.lecturer.assignExample', data);
   }
 
-  /**
-   * Unassign example from content
-   */
-  protected async handleUnassignExample(data: any): Promise<void> {
+  protected async handleUnassignExample(data?: Record<string, unknown>): Promise<void> {
     await vscode.commands.executeCommand('computor.lecturer.unassignExample', data);
   }
 
-  /**
-   * Update assigned example
-   */
-  protected async handleUpdateExample(data: any): Promise<void> {
-    vscode.window.showInformationMessage('Example update functionality coming soon!');
-  }
-
-  /**
-   * Create child content
-   */
-  protected async handleCreateChild(data: any): Promise<void> {
+  protected async handleCreateChild(data?: Record<string, unknown>): Promise<void> {
     await vscode.commands.executeCommand('computor.lecturer.createCourseContent', data);
   }
 
-  /**
-   * Move/reorder content
-   */
-  protected async handleMoveContent(data: any): Promise<void> {
-    vscode.window.showInformationMessage('Content reordering coming soon!');
-  }
-
-  /**
-   * Delete content
-   */
-  protected async handleDeleteContent(data: any): Promise<void> {
+  protected async handleDeleteContent(data?: Record<string, unknown>): Promise<void> {
     await vscode.commands.executeCommand('computor.lecturer.deleteCourseContent', data);
     this.panel?.dispose();
   }

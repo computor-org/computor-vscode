@@ -7,6 +7,8 @@ import {
   CourseContentLecturerList,
   CourseContentTypeList,
   ExampleList,
+  ExampleGet,
+  ExampleVersionGet,
   CourseGroupList,
   CourseMemberList
 } from '../../../types/generated';
@@ -80,10 +82,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     public readonly courseFamily: CourseFamilyList,
     public readonly organization: OrganizationList,
     public readonly hasChildren: boolean,
-    public readonly exampleInfo?: any,
+    public readonly exampleInfo?: ExampleGet | null,
     public readonly contentType?: CourseContentTypeList,
     public readonly isSubmittable: boolean = false,
-    public readonly exampleVersionInfo?: any,
+    public readonly exampleVersionInfo?: ExampleVersionGet | null,
     public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState,
     public assignmentInfo?: CourseContentAssignmentInfo,
     public assignmentDirectory?: string
@@ -179,7 +181,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       const versionId = getExampleVersionId(this.courseContent);
       if (versionId) {
         if (this.exampleVersionInfo) {
-          parts.push(`Version tag: ${this.exampleVersionInfo.version_tag || this.exampleVersionInfo.version || 'unknown'}`);
+          parts.push(`Version tag: ${this.exampleVersionInfo.version_tag || 'unknown'}`);
         } else {
           parts.push('Version tag: loading...');
         }
