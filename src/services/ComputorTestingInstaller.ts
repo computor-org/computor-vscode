@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { execAsync } from '../utils/exec';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
+import { ResultArtifactInfo } from '../types/generated/common';
 
 const REPO_URL = 'https://github.com/computor-org/computor-backend.git';
 const SPARSE_DIRS = ['computor-types', 'computor-testing'];
@@ -255,7 +256,9 @@ export class ComputorTestingInstaller {
       clearInterval(interval);
       try {
         const results = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
-        vscode.commands.executeCommand('computor.results.open', results);
+        const artifacts = this.collectLocalArtifacts(tmpDir);
+        const localResultId = artifacts.length > 0 ? `local:${path.join(tmpDir, 'output')}` : undefined;
+        vscode.commands.executeCommand('computor.results.open', results, localResultId, artifacts);
         vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
       } catch (e) {
         console.error('Failed to parse test results:', e);
@@ -314,6 +317,40 @@ export class ComputorTestingInstaller {
     }
 
     return tmpDir;
+  }
+
+  private collectLocalArtifacts(tmpDir: string): ResultArtifactInfo[] {
+    const outputDir = path.join(tmpDir, 'output');
+    if (!fs.existsSync(outputDir)) { return []; }
+
+    const CONTENT_TYPES: Record<string, string> = {
+      '.json': 'application/json', '.txt': 'text/plain', '.csv': 'text/csv',
+      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif', '.svg': 'image/svg+xml', '.pdf': 'application/pdf',
+      '.html': 'text/html', '.xml': 'application/xml', '.log': 'text/plain',
+    };
+
+    const artifacts: ResultArtifactInfo[] = [];
+    const entries = fs.readdirSync(outputDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isFile()) { continue; }
+      if (entry.name === 'testSummary.json') { continue; }
+
+      const filePath = path.join(outputDir, entry.name);
+      const stats = fs.statSync(filePath);
+      const ext = path.extname(entry.name).toLowerCase();
+
+      artifacts.push({
+        id: entry.name,
+        filename: entry.name,
+        content_type: CONTENT_TYPES[ext] || 'application/octet-stream',
+        file_size: stats.size,
+        created_at: stats.mtime.toISOString()
+      });
+    }
+
+    return artifacts;
   }
 
   private readTestYamlLanguage(exampleDir: string): string | undefined {
