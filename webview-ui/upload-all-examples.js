@@ -13,7 +13,8 @@
     const listEl = document.getElementById('exampleList');
     const countEl = document.getElementById('exampleCount');
 
-    countEl.textContent = `${examples.length}`;
+    var changedCount = examples.filter(function (e) { return e.hasChanges; }).length;
+    countEl.textContent = changedCount + ' changed / ' + examples.length + ' total';
 
     if (examples.length === 0) {
       listEl.innerHTML = '<div class="empty-state">No local working examples found.</div>';
@@ -25,17 +26,20 @@
     listEl.innerHTML = examples.map(function (ex) {
       const baseVersion = ex.remoteVersion || ex.localVersion;
       const proposedVersion = computeBump(baseVersion, bumpPolicy);
-      const isNew = !ex.exampleId;
-      const statusClass = ex._status || '';
+      const statusClass = ex._status || (ex.hasChanges ? '' : 'unchanged');
       const statusIcon = getStatusIcon(ex._status);
+      const changeIndicator = ex.hasChanges
+        ? '<span class="change-badge changed">modified</span>'
+        : '<span class="change-badge unchanged">unchanged</span>';
+      const isChecked = isUploading ? false : ex.hasChanges;
 
       return '<div class="example-item ' + statusClass + '" data-directory="' + escapeHtml(ex.directory) + '">'
         + '<label class="example-checkbox">'
         + '<input type="checkbox" class="example-select" data-directory="' + escapeHtml(ex.directory) + '"'
-        + (isUploading ? ' disabled' : ' checked') + '>'
+        + (isUploading ? ' disabled' : '') + (isChecked ? ' checked' : '') + '>'
         + '</label>'
         + '<div class="example-info">'
-        + '<div class="example-title">' + escapeHtml(ex.title) + '</div>'
+        + '<div class="example-title">' + escapeHtml(ex.title) + ' ' + changeIndicator + '</div>'
         + '<div class="example-directory">' + escapeHtml(ex.directory) + '</div>'
         + '</div>'
         + '<div class="example-versions">'
@@ -92,11 +96,12 @@
     radios.forEach(function (r) { r.disabled = disabled; });
   }
 
-  // Upload all
+  // Upload all changed
   document.getElementById('uploadBtn').addEventListener('click', function () {
     if (isUploading) { return; }
-    var allDirs = examples.map(function (e) { return e.directory; });
-    startUpload(allDirs);
+    var changedDirs = examples.filter(function (e) { return e.hasChanges; }).map(function (e) { return e.directory; });
+    if (changedDirs.length === 0) { return; }
+    startUpload(changedDirs);
   });
 
   // Upload selected

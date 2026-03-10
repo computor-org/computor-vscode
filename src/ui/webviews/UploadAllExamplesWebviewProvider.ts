@@ -11,6 +11,7 @@ import { writeExampleFiles } from '../../utils/exampleFileWriter';
 import { readMetaYamlVersion, updateMetaYamlVersion } from '../../utils/metaYamlHelpers';
 import { bumpVersion, normalizeSemVer } from '../../utils/versionHelpers';
 import { shouldExcludeExampleEntry } from '../../utils/exampleExcludePatterns';
+import { hasExampleChanged } from '../../utils/exampleDiffHelper';
 import type { BumpPart } from '../../utils/versionHelpers';
 import type { ExampleUploadRequest } from '../../types/generated';
 
@@ -22,6 +23,7 @@ interface ExampleInfo {
   exampleId: string;
   repositoryId: string;
   dirPath: string;
+  hasChanges: boolean;
 }
 
 interface ExampleUploadResult {
@@ -95,7 +97,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     </div>
 
     <div class="actions">
-      <button id="uploadBtn" class="btn-primary">Upload All</button>
+      <button id="uploadBtn" class="btn-primary">Upload Changed</button>
       <button id="uploadSelectedBtn" class="btn-secondary">Upload Selected</button>
     </div>
 
@@ -157,6 +159,10 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
         } catch { /* no remote version info */ }
       }
 
+      const dirs = WorkspaceStructureManager.getInstance().getDirectories();
+      const snapshotDir = getVersionPath(dirs.exampleVersions, group.directory, metadata.versionTag);
+      const hasChanges = hasExampleChanged(working.fullPath, snapshotDir);
+
       examples.push({
         directory: group.directory,
         title,
@@ -165,6 +171,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
         exampleId: metadata.exampleId || '',
         repositoryId: metadata.repositoryId || '',
         dirPath: working.fullPath,
+        hasChanges,
       });
     }
 

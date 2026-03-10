@@ -105,6 +105,9 @@ h2 {
 .example-item.uploading {
   background: rgba(0, 120, 212, 0.05);
 }
+.example-item.unchanged {
+  opacity: 0.55;
+}
 
 .example-checkbox {
   display: flex;
@@ -158,6 +161,24 @@ h2 {
   color: #4caf50;
   font-style: italic;
   font-family: var(--vscode-font-family);
+}
+
+.change-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.change-badge.changed {
+  background: rgba(255, 165, 0, 0.2);
+  color: #FFA500;
+}
+.change-badge.unchanged {
+  background: rgba(128, 128, 128, 0.15);
+  color: var(--vscode-descriptionForeground);
 }
 
 .example-status {
