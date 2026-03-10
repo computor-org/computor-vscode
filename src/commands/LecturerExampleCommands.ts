@@ -15,6 +15,7 @@ import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersion
 import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
 import { ComputorTestingInstaller } from '../services/ComputorTestingInstaller';
 import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
+import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 
 /**
  * Simplified example commands for the lecturer view
@@ -23,6 +24,7 @@ export class LecturerExampleCommands {
   private exampleDetailProvider: ExampleDetailWebviewProvider;
   private testYamlEditorProvider: TestYamlEditorWebviewProvider;
   private metaYamlEditorProvider: MetaYamlEditorWebviewProvider;
+  private uploadAllProvider: UploadAllExamplesWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -32,6 +34,7 @@ export class LecturerExampleCommands {
     this.exampleDetailProvider = new ExampleDetailWebviewProvider(context, apiService, treeProvider);
     this.testYamlEditorProvider = new TestYamlEditorWebviewProvider(context);
     this.metaYamlEditorProvider = new MetaYamlEditorWebviewProvider(context);
+    this.uploadAllProvider = new UploadAllExamplesWebviewProvider(context, apiService, treeProvider);
     this.registerCommands();
   }
   private registerCommands(): void {
@@ -321,6 +324,13 @@ export class LecturerExampleCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.newReadme', async (item: FileSystemTreeItem) => {
         await this.createNewReadme(item);
+      })
+    );
+
+    // Upload all examples
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.uploadAllExamples', async () => {
+        await this.uploadAllProvider.show('Upload All Examples');
       })
     );
 
