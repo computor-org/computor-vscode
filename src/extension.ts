@@ -847,42 +847,74 @@ class UnifiedController {
   }
 
   private async initializeTutorView(api: ComputorApiService): Promise<void> {
-    // Register filter panel and tree
-    const { TutorFilterPanelProvider } = await import('./ui/panels/TutorFilterPanel');
+    const { TutorFilterTreeProvider } = await import('./ui/tree/tutor/tutor-filter-tree-provider');
+    const { TutorCourseFilterItem, TutorGroupOptionItem, TutorMemberFilterItem, TutorShowMoreItem, NO_GROUP_SENTINEL, formatMemberName } = await import('./ui/tree/tutor/tutor-filter-tree-items');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
     const { TutorEditorDecorationService } = await import('./providers/TutorEditorDecorationService');
     const selection = TutorSelectionService.initialize(this.context, api);
 
-    // Initialize editor decoration service for in-editor student name display
     const editorDecorationService = TutorEditorDecorationService.initialize(this.context);
     editorDecorationService.connectToSelectionService(selection);
 
-    // Don't pre-select any course - tutor will show all courses in dropdown
-    const filterProvider = new TutorFilterPanelProvider(this.context.extensionUri, api, selection);
-    this.disposables.push(vscode.window.registerWebviewViewProvider(TutorFilterPanelProvider.viewType, filterProvider));
+    // Register filter tree (replaces webview filter panel)
+    const filterTree = new TutorFilterTreeProvider(api, selection);
+    const filterTreeView = vscode.window.createTreeView('computor.tutor.filters', {
+      treeDataProvider: filterTree,
+      showCollapseAll: true
+    });
+    this.disposables.push(filterTreeView);
 
+    // Select course when expanding a course node
+    this.disposables.push(filterTreeView.onDidExpandElement(async (event) => {
+      if (event.element instanceof TutorCourseFilterItem) {
+        const course = event.element.course;
+        const currentCourseId = selection.getCurrentCourseId();
+        if (currentCourseId !== course.id) {
+          await selection.selectCourse(course.id, course.title || course.path || course.name || course.id);
+          filterTree.refresh();
+        }
+      }
+    }));
+
+    // Register filter interaction commands
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectGroup', async (item: InstanceType<typeof TutorGroupOptionItem>) => {
+      if (item.isNoGroup) {
+        await selection.selectGroup(NO_GROUP_SENTINEL, 'No Group');
+      } else {
+        await selection.selectGroup(item.groupId, item.groupLabel);
+      }
+      filterTree.refresh();
+    }));
+
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectMember', async (item: InstanceType<typeof TutorMemberFilterItem>) => {
+      const name = formatMemberName(item.member);
+      await selection.selectMember(item.member.id, name);
+      filterTree.refresh();
+    }));
+
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.showMoreMembers', (item: InstanceType<typeof TutorShowMoreItem>) => {
+      filterTree.showMoreMembers(item.courseId);
+    }));
+
+    // Register course content tree
     const { TutorStudentTreeProvider } = await import('./ui/tree/tutor/TutorStudentTreeProvider');
     const tree = new TutorStudentTreeProvider(api, selection);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.tutor.courses', tree));
     const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: tree, showCollapseAll: true });
     this.disposables.push(treeView);
 
-    // Track collapse events to update expansion cache
     const tutorCollapseListener = treeView.onDidCollapseElement((event) => {
       tree.handleCollapse(event.element);
     });
     this.disposables.push(tutorCollapseListener);
 
-    // Checkout and show test results automatically when an assignment is selected
     const tutorSelectionListener = treeView.onDidChangeSelection((event) => {
       const selected = event.selection[0];
       if (!selected) return;
       if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
-        // Trigger checkout for the assignment (confirmRedownload=false: always download without asking)
         void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
 
-        // Show test results if available
         if ((selected as any).content?.result) {
           void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
         } else {
@@ -892,13 +924,12 @@ class UnifiedController {
     });
     const tutorVisibilityListener = treeView.onDidChangeVisibility((event) => {
       if (event.visible) {
-        // Clear results view when switching to tutor view
         void vscode.commands.executeCommand('computor.results.clear');
       }
     });
     this.disposables.push(tutorSelectionListener, tutorVisibilityListener);
 
-    // Status bar: show selection and allow reset
+    // Status bar
     const tutorStatus = TutorStatusBarService.initialize();
     const updateStatus = async () => {
       const courseLabel = selection.getCurrentCourseLabel() || selection.getCurrentCourseId();
@@ -920,10 +951,10 @@ class UnifiedController {
       }
       const label = selection.getCurrentCourseLabel();
       await selection.selectCourse(id, label);
-      filterProvider.refreshFilters();
+      filterTree.refresh();
     }));
 
-    const commands = new TutorCommands(this.context, tree, api, filterProvider, this.messagesInputPanel, this.wsService);
+    const commands = new TutorCommands(this.context, tree, api, filterTree, this.messagesInputPanel, this.wsService);
     commands.registerCommands();
   }
 

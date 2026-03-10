@@ -2155,7 +2155,7 @@ export class ComputorApiService {
   }
 
   async getExampleRepositories(organizationId?: string): Promise<ExampleRepositoryList[]> {
-    const queryParams = organizationId ? `?organization_id=${organizationId}` : '';
+    const queryParams = organizationId ? `?organization_id=${organizationId}&limit=10000` : '?limit=10000';
     const cacheKey = `exampleRepositories-${organizationId || 'all'}`;
     
     // Check cache first
@@ -2220,7 +2220,12 @@ export class ComputorApiService {
           params.append('directory', query.directory);
         }
 
-        const url = params.toString() ? `/examples?${params.toString()}` : '/examples';
+        // Override default backend limit (100) to fetch all examples
+        if (!params.has('limit')) {
+          params.append('limit', '10000');
+        }
+
+        const url = `/examples?${params.toString()}`;
         const response = await client.get<ExampleList[]>(url);
         return response.data;
       }, {

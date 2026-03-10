@@ -13,7 +13,9 @@ import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMember
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
-import { TutorFilterPanelProvider } from '../ui/panels/TutorFilterPanel';
+interface TutorFilterRefreshable {
+  refreshFilters(): void;
+}
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { TutorTestService } from '../services/TutorTestService';
@@ -25,7 +27,7 @@ export class TutorCommands {
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private workspaceStructure: WorkspaceStructureManager;
-  private filterProvider?: TutorFilterPanelProvider;
+  private filterProvider?: TutorFilterRefreshable;
   private checkoutQueue: Array<{ item: unknown; confirmRedownload: boolean; resolve: () => void }> = [];
   private isCheckoutInProgress = false;
   private tutorTestService: TutorTestService;
@@ -34,7 +36,7 @@ export class TutorCommands {
     context: vscode.ExtensionContext,
     treeDataProvider: TutorStudentTreeProvider,
     apiService?: ComputorApiService,
-    filterProvider?: TutorFilterPanelProvider,
+    filterProvider?: TutorFilterRefreshable,
     messagesInputPanel?: MessagesInputPanelProvider,
     wsService?: WebSocketService
   ) {
