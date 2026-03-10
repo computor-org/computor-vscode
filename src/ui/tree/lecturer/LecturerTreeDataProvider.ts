@@ -87,8 +87,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
   // Drag and drop support
-  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample', 'application/vnd.code.tree.lecturermember'];
-  public readonly dragMimeTypes: string[] = ['application/vnd.code.tree.lecturermember']; // Support dragging members
+  public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample', 'application/vnd.code.tree.lecturermember', 'application/vnd.code.tree.lecturercontent'];
+  public readonly dragMimeTypes: string[] = ['application/vnd.code.tree.lecturermember', 'application/vnd.code.tree.lecturercontent'];
 
   private apiService: ComputorApiService;
   private gitLabTokenManager: GitLabTokenManager;
@@ -1413,25 +1413,30 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
   // Drag and drop implementation
   public async handleDrag(source: readonly TreeItem[], treeDataTransfer: vscode.DataTransfer): Promise<void> {
-    // Only support dragging course members - explicitly reject other item types
     const members = source.filter(item => item instanceof CourseMemberTreeItem) as CourseMemberTreeItem[];
-
-    if (members.length === 0) {
-      // No valid draggable items - don't set any data transfer
-      return;
-    }
-
     if (members.length > 0) {
-      // Serialize member data for drag
       const memberData = members.map(m => ({
         memberId: m.member.id,
         courseId: m.course.id,
         currentGroupId: m.member.course_group_id
       }));
-
       treeDataTransfer.set(
         'application/vnd.code.tree.lecturermember',
         new vscode.DataTransferItem(memberData)
+      );
+      return;
+    }
+
+    const contentItem = source.find(item => item instanceof CourseContentTreeItem) as CourseContentTreeItem | undefined;
+    if (contentItem) {
+      treeDataTransfer.set(
+        'application/vnd.code.tree.lecturercontent',
+        new vscode.DataTransferItem({
+          contentId: contentItem.courseContent.id,
+          courseId: contentItem.course.id,
+          path: contentItem.courseContent.path,
+          position: contentItem.courseContent.position
+        })
       );
     }
   }
@@ -1493,6 +1498,137 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
   }
 
+  private getParentPath(path: string): string {
+    const lastDot = path.lastIndexOf('.');
+    return lastDot === -1 ? '' : path.substring(0, lastDot);
+  }
+
+  private getSlug(path: string): string {
+    const lastDot = path.lastIndexOf('.');
+    return lastDot === -1 ? path : path.substring(lastDot + 1);
+  }
+
+  private calculateInsertPosition(siblings: { position: number }[], targetIndex: number): number | undefined {
+    const targetSibling = siblings[targetIndex];
+    if (!targetSibling) {
+      return undefined;
+    }
+    if (targetIndex === 0) {
+      return targetSibling.position - 1;
+    }
+    const beforeSibling = siblings[targetIndex - 1];
+    if (!beforeSibling) {
+      return undefined;
+    }
+    return (beforeSibling.position + targetSibling.position) / 2;
+  }
+
+  private async handleContentReorder(
+    draggedData: { contentId: string; courseId: string; path: string; position: number },
+    target: CourseContentTreeItem
+  ): Promise<void> {
+    if (draggedData.contentId === target.courseContent.id) {
+      return;
+    }
+
+    const draggedPath = draggedData.path;
+    const targetPath = target.courseContent.path;
+    const draggedParent = this.getParentPath(draggedPath);
+    const targetParent = this.getParentPath(targetPath);
+    const isSameLevel = draggedParent === targetParent;
+
+    // Prevent moving an item into its own descendant
+    if (targetPath.startsWith(draggedPath + '.')) {
+      vscode.window.showWarningMessage('Cannot move an item into its own descendant');
+      return;
+    }
+
+    const allContents = await this.getCourseContents(draggedData.courseId);
+    const siblings = allContents
+      .filter(c => {
+        const parent = this.getParentPath(c.path);
+        return parent === targetParent && c.id !== draggedData.contentId;
+      })
+      .sort((a, b) => a.position - b.position);
+
+    const targetIndex = siblings.findIndex(c => c.id === target.courseContent.id);
+    if (targetIndex === -1) {
+      return;
+    }
+
+    const newPosition = this.calculateInsertPosition(siblings, targetIndex);
+    if (newPosition === undefined) {
+      return;
+    }
+
+    try {
+      if (isSameLevel) {
+        await this.apiService.updateCourseContent(
+          draggedData.courseId,
+          draggedData.contentId,
+          { position: newPosition }
+        );
+      } else {
+        const slug = this.getSlug(draggedPath);
+        const newPath = targetParent ? `${targetParent}.${slug}` : slug;
+        await this.apiService.moveCourseContent(
+          draggedData.courseId,
+          draggedData.contentId,
+          newPath,
+          newPosition
+        );
+      }
+
+      this.apiService.clearCourseCache(draggedData.courseId);
+      this.clearCourseCache(draggedData.courseId);
+      this._onDidChangeTreeData.fire(undefined);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to reorder: ${error?.message || error}`);
+    }
+  }
+
+  private async handleContentMoveToParent(
+    draggedData: { contentId: string; courseId: string; path: string; position: number },
+    targetParentPath: string,
+    courseId: string
+  ): Promise<void> {
+    const draggedParent = this.getParentPath(draggedData.path);
+    if (draggedParent === targetParentPath) {
+      return; // Already at this level
+    }
+
+    // Prevent moving into own descendant
+    if (targetParentPath.startsWith(draggedData.path + '.')) {
+      vscode.window.showWarningMessage('Cannot move an item into its own descendant');
+      return;
+    }
+
+    const slug = this.getSlug(draggedData.path);
+    const newPath = targetParentPath ? `${targetParentPath}.${slug}` : slug;
+
+    const allContents = await this.getCourseContents(courseId);
+    const siblings = allContents
+      .filter(c => {
+        const parent = this.getParentPath(c.path);
+        return parent === targetParentPath && c.id !== draggedData.contentId;
+      })
+      .sort((a, b) => a.position - b.position);
+
+    // Place at the end
+    const lastSibling = siblings[siblings.length - 1];
+    const newPosition = lastSibling ? lastSibling.position + 1 : 1;
+
+    try {
+      await this.apiService.moveCourseContent(courseId, draggedData.contentId, newPath, newPosition);
+
+      this.apiService.clearCourseCache(courseId);
+      this.clearCourseCache(courseId);
+      this._onDidChangeTreeData.fire(undefined);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to move: ${error?.message || error}`);
+    }
+  }
+
   public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
     // Check if we have member data being dropped
     const memberData = dataTransfer.get('application/vnd.code.tree.lecturermember');
@@ -1506,6 +1642,32 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         }
       } catch {
         // Invalid member data, skip
+      }
+    }
+
+    // Check if we have content reorder/move data
+    const contentData = dataTransfer.get('application/vnd.code.tree.lecturercontent');
+    if (contentData) {
+      try {
+        const draggedData = await contentData.value;
+        if (draggedData?.contentId) {
+          if (target instanceof CourseContentTreeItem) {
+            if (!target.isSubmittable) {
+              // Dropping onto a unit/container: move INTO it
+              await this.handleContentMoveToParent(draggedData, target.courseContent.path, target.course.id);
+            } else {
+              // Dropping onto a sibling: reorder alongside it
+              await this.handleContentReorder(draggedData, target);
+            }
+            return;
+          }
+          if (target instanceof CourseFolderTreeItem && target.folderType === 'contents') {
+            await this.handleContentMoveToParent(draggedData, '', target.course.id);
+            return;
+          }
+        }
+      } catch {
+        // Invalid content data, skip
       }
     }
 

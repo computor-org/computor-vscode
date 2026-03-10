@@ -526,6 +526,16 @@ export class ComputorApiService {
     return response.data;
   }
 
+  async moveCourseContent(courseId: string, contentId: string, path: string, position: number): Promise<CourseContentGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<CourseContentGet>(`/course-contents/${contentId}/move`, { path, position });
+
+    this.invalidateCachePattern(`courseContents-${courseId}`);
+    this.invalidateCachePattern(`courseContent-${contentId}`);
+
+    return response.data;
+  }
+
   async deleteCourseContent(courseId: string, contentId: string): Promise<void> {
     const client = await this.getHttpClient();
     await client.delete(`/course-contents/${contentId}`);
