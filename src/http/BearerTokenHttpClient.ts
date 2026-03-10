@@ -1,7 +1,10 @@
 import fetch from 'node-fetch';
 import { HttpClient } from './HttpClient';
-import { AuthenticationError } from './errors';
+import { AuthenticationError, MaintenanceError } from './errors';
 import { LocalLoginRequest, LocalLoginResponse, LocalTokenRefreshRequest, LocalTokenRefreshResponse } from '../types/generated/auth';
+
+/** Endpoints that bypass the maintenance mode block. */
+const MAINTENANCE_EXEMPT_PREFIXES = ['/auth/', '/system/maintenance'];
 
 export class BearerTokenHttpClient extends HttpClient {
   private accessToken: string | null = null;
@@ -10,6 +13,8 @@ export class BearerTokenHttpClient extends HttpClient {
   private tokenIssuedAt: Date | null = null;
   private userId: string | null = null;
   private refreshPromise: Promise<void> | null = null;
+  private _maintenanceMode = false;
+  private _maintenanceMessage: string | null = null;
 
   private readonly REFRESH_THRESHOLD_PERCENTAGE = 0.1; // Refresh when <10% lifetime remains
 
@@ -136,6 +141,11 @@ export class BearerTokenHttpClient extends HttpClient {
     data?: any,
     params?: Record<string, any>
   ): Promise<import('../types/HttpTypes').HttpResponse<T>> {
+    // Block requests during maintenance mode (except auth and maintenance status endpoints)
+    if (this._maintenanceMode && !MAINTENANCE_EXEMPT_PREFIXES.some(p => endpoint.startsWith(p))) {
+      throw new MaintenanceError(this._maintenanceMessage || undefined);
+    }
+
     // Proactive refresh: check if token needs refresh before making request
     if (this.shouldRefreshToken() && this.refreshToken) {
       console.log('[BearerTokenHttpClient] Token close to expiry, proactively refreshing');
@@ -312,5 +322,15 @@ export class BearerTokenHttpClient extends HttpClient {
     this.tokenExpiry = data.expiresAt || null;
     this.tokenIssuedAt = data.issuedAt || null;
     this.userId = data.userId || null;
+  }
+
+  public setMaintenanceMode(active: boolean, message?: string): void {
+    this._maintenanceMode = active;
+    this._maintenanceMessage = message || null;
+    console.log(`[BearerTokenHttpClient] Maintenance mode ${active ? 'ENABLED' : 'DISABLED'}${message ? ': ' + message : ''}`);
+  }
+
+  public isMaintenanceMode(): boolean {
+    return this._maintenanceMode;
   }
 }

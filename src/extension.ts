@@ -1086,6 +1086,7 @@ class UnifiedController {
       if (!status || !this.wsService) return;
 
       if (status.active) {
+        this.httpClient?.setMaintenanceMode(true, status.message);
         this.wsService.updateMaintenanceStatusBar('active', status.message);
         vscode.window.showWarningMessage(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`);
       } else if (status.scheduled_at) {

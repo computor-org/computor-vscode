@@ -505,6 +505,7 @@ export class WebSocketService {
         case 'maintenance:activated': {
           const activatedData = (message as any).data || message;
           console.log('[WebSocket] Maintenance activated:', activatedData.message);
+          this.httpClient?.setMaintenanceMode(true, activatedData.message);
           this.updateMaintenanceStatusBar('active', activatedData.message);
           vscode.window.showWarningMessage(`Maintenance Mode Active: ${activatedData.message}`);
           this.eventHandlers.forEach((handlers) => {
@@ -516,6 +517,7 @@ export class WebSocketService {
         case 'maintenance:deactivated': {
           const deactivatedData = (message as any).data || message;
           console.log('[WebSocket] Maintenance deactivated');
+          this.httpClient?.setMaintenanceMode(false);
           this.updateMaintenanceStatusBar('inactive');
           vscode.window.showInformationMessage(`Maintenance Complete: ${deactivatedData.message}`);
           this.eventHandlers.forEach((handlers) => {

@@ -122,3 +122,10 @@ export class ValidationError extends Error {
     this.name = 'ValidationError';
   }
 }
+
+export class MaintenanceError extends Error {
+  constructor(message: string = 'System is under maintenance. Please try again later.') {
+    super(message);
+    this.name = 'MaintenanceError';
+  }
+}
