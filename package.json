@@ -409,6 +409,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.importExamples",
+        "title": "Import Examples",
+        "icon": "$(folder-opened)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.uploadAllExamples",
         "title": "Upload All Examples",
         "icon": "$(cloud-upload)",
@@ -976,9 +982,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "computor.lecturer.uploadAllExamples",
+          "command": "computor.lecturer.importExamples",
           "when": "view == computor.lecturer.examples",
           "group": "1_upload@1"
+        },
+        {
+          "command": "computor.lecturer.uploadAllExamples",
+          "when": "view == computor.lecturer.examples",
+          "group": "1_upload@2"
         },
         {
           "command": "computor.lecturer.installTestingTools",

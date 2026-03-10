@@ -24,8 +24,8 @@
     const bumpPolicy = getSelectedPolicy();
 
     listEl.innerHTML = examples.map(function (ex) {
-      const baseVersion = ex.remoteVersion || ex.localVersion;
-      const proposedVersion = computeBump(baseVersion, bumpPolicy);
+      const isNew = !ex.remoteVersion;
+      const proposedVersion = isNew ? ex.localVersion : computeBump(ex.remoteVersion, bumpPolicy);
       const statusClass = ex._status || (ex.hasChanges ? '' : 'unchanged');
       const statusIcon = getStatusIcon(ex._status);
       const changeIndicator = ex.hasChanges

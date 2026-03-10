@@ -203,8 +203,10 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
       this.panel?.webview.postMessage({ command: 'uploadProgress', data: results });
 
       try {
-        const baseVersion = example.remoteVersion || example.localVersion;
-        const uploadVersion = bumpVersion(baseVersion, bumpPolicy);
+        const isNew = !example.remoteVersion;
+        const uploadVersion = isNew
+          ? normalizeSemVer(example.localVersion)
+          : bumpVersion(example.remoteVersion!, bumpPolicy);
 
         await this.uploadSingleExample(example, uploadVersion);
 

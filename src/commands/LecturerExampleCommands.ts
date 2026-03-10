@@ -327,6 +327,13 @@ export class LecturerExampleCommands {
       })
     );
 
+    // Import examples from directory
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.importExamples', async () => {
+        await this.importExamples();
+      })
+    );
+
     // Upload all examples
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.uploadAllExamples', async () => {
@@ -2110,5 +2117,178 @@ export class LecturerExampleCommands {
 
     const installer = ComputorTestingInstaller.getInstance();
     await installer.runTests(item.version.fullPath);
+  }
+
+  private async importExamples(): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Import Examples'
+    });
+    if (!uris || uris.length === 0) { return; }
+
+    const selectedDir = uris[0]!.fsPath;
+    const exampleDirs = this.detectExampleDirectories(selectedDir);
+
+    if (exampleDirs.length === 0) {
+      vscode.window.showWarningMessage('No examples found. A valid example directory must contain a meta.yaml with a slug.');
+      return;
+    }
+
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+    const versionsPath = this.getVersionsDir();
+    if (!versionsPath) { return; }
+
+    const { readMetaYaml } = await import('../utils/metaYamlHelpers');
+    const { normalizeSemVer } = await import('../utils/versionHelpers');
+    const { writeCheckoutMetadata, getVersionPath } = await import('../utils/checkedOutExampleManager');
+    const { writeExampleFiles } = await import('../utils/exampleFileWriter');
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Importing Examples',
+        cancellable: false
+      },
+      async (progress) => {
+        let imported = 0;
+        let failed = 0;
+
+        for (const exampleDir of exampleDirs) {
+          const dirName = path.basename(exampleDir);
+          progress.report({ message: `${dirName} (${imported + failed + 1}/${exampleDirs.length})` });
+
+          try {
+            const meta = readMetaYaml(exampleDir);
+            const slug = meta?.slug || meta?.identifier;
+            if (!slug) {
+              failed++;
+              continue;
+            }
+
+            const localVersion = meta.version || '0.1.0';
+            const directory = meta.directory || dirName;
+
+            // Copy to working directory
+            const workingDir = path.join(examplesPath, directory);
+            if (fs.existsSync(workingDir)) {
+              fs.rmSync(workingDir, { recursive: true, force: true });
+            }
+            fs.cpSync(exampleDir, workingDir, { recursive: true });
+
+            // Look up example on server
+            const remoteExample = await this.apiService.getExampleByIdentifier(slug);
+
+            let exampleId = '';
+            let repositoryId = '';
+            let versionTag = localVersion;
+            let versionId = '';
+            let versionNumber = 0;
+
+            if (remoteExample) {
+              exampleId = remoteExample.id;
+              repositoryId = remoteExample.example_repository_id;
+
+              // Fetch versions and find best match
+              const versions = await this.apiService.getExampleVersions(remoteExample.id);
+              if (versions && versions.length > 0) {
+                // Try to find exact version match
+                const exactMatch = versions.find(v =>
+                  normalizeSemVer(v.version_tag) === normalizeSemVer(localVersion)
+                );
+
+                // Fall back to latest version
+                const bestVersion = exactMatch || versions.reduce((a, b) =>
+                  b.version_number > a.version_number ? b : a
+                );
+
+                versionTag = bestVersion.version_tag;
+                versionId = bestVersion.id;
+                versionNumber = bestVersion.version_number;
+
+                // Download version snapshot
+                try {
+                  const downloadedData = await this.apiService.downloadExampleVersion(bestVersion.id);
+                  if (downloadedData) {
+                    const versionDir = getVersionPath(versionsPath, directory, versionTag);
+                    if (fs.existsSync(versionDir)) {
+                      fs.rmSync(versionDir, { recursive: true, force: true });
+                    }
+                    fs.mkdirSync(versionDir, { recursive: true });
+                    writeExampleFiles(downloadedData.files, versionDir);
+
+                    writeCheckoutMetadata(versionDir, {
+                      exampleId,
+                      repositoryId,
+                      directory,
+                      versionId,
+                      versionTag: normalizeSemVer(versionTag),
+                      versionNumber,
+                      checkedOutAt: new Date().toISOString()
+                    });
+                  }
+                } catch (snapshotError) {
+                  console.warn(`Failed to download version snapshot for ${directory}:`, snapshotError);
+                }
+              }
+            }
+
+            // Write checkout metadata for working copy
+            writeCheckoutMetadata(workingDir, {
+              exampleId,
+              repositoryId,
+              directory,
+              versionId,
+              versionTag: normalizeSemVer(versionTag),
+              versionNumber,
+              checkedOutAt: new Date().toISOString()
+            });
+
+            imported++;
+          } catch (error) {
+            console.error(`Failed to import ${dirName}:`, error);
+            failed++;
+          }
+        }
+
+        this.treeProvider.refresh();
+
+        if (failed > 0) {
+          vscode.window.showWarningMessage(`Imported ${imported} example(s), ${failed} failed.`);
+        } else {
+          vscode.window.showInformationMessage(`Imported ${imported} example(s) successfully.`);
+        }
+      }
+    );
+  }
+
+  private detectExampleDirectories(dir: string): string[] {
+    // Check if this directory itself is an example
+    const metaPath = path.join(dir, 'meta.yaml');
+    if (fs.existsSync(metaPath)) {
+      const { readMetaYaml } = require('../utils/metaYamlHelpers');
+      const meta = readMetaYaml(dir);
+      if (meta?.slug || meta?.identifier) {
+        return [dir];
+      }
+    }
+
+    // Otherwise scan subdirectories for examples
+    const examples: string[] = [];
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) { continue; }
+        const subDir = path.join(dir, entry.name);
+        const subMeta = path.join(subDir, 'meta.yaml');
+        if (fs.existsSync(subMeta)) {
+          examples.push(subDir);
+        }
+      }
+    } catch { /* ignore read errors */ }
+
+    return examples;
   }
 }
