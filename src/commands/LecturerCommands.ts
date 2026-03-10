@@ -663,64 +663,20 @@ export class LecturerCommands {
       return;
     }
 
-    const title = await vscode.window.showInputBox({
-      prompt: 'Enter course content title',
-      placeHolder: 'e.g., Week 1: Introduction'
-    });
-
-    if (!title) {
-      return;
-    }
-
-    const initialSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
     const isAssignment = this.isContentTypeSubmittable(selectedType.contentType);
 
     if (!isAssignment) {
+      const title = await vscode.window.showInputBox({
+        prompt: 'Enter course content title',
+        placeHolder: 'e.g., Week 1: Introduction'
+      });
+
+      if (!title) {
+        return;
+      }
+
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
       await this.treeDataProvider.createCourseContent(
-        folderItem,
-        title,
-        selectedType.id,
-        parentPath,
-        initialSlug,
-        undefined
-      );
-      return;
-    }
-
-    // For assignments, auto-generate the identifier from title
-    const autoSlug = title.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_|_$/g, '');
-
-    // Build full identifier: <organization_path>.<course_family_path>.<course_path>.<slug>
-    const orgPath = folderItem.organization.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-    const familyPath = folderItem.courseFamily.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-    const coursePath = folderItem.course.path.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-    const fullIdentifier = `${orgPath}.${familyPath}.${coursePath}.${autoSlug}`;
-
-    const ltreeIdentifier = fullIdentifier;
-
-    const versionTagInput = await vscode.window.showInputBox({
-      prompt: 'Version tag for this assignment',
-      value: '0.0.1',
-      ignoreFocusOut: true
-    });
-
-    if (!versionTagInput) {
-      return;
-    }
-
-    const versionTag = versionTagInput.trim();
-    if (!versionTag) {
-      vscode.window.showErrorMessage('Version tag cannot be empty.');
-      return;
-    }
-
-    // Use the autoSlug for the course content path (not the full identifier)
-    const slug = autoSlug || initialSlug || 'assignment';
-
-    try {
-      const createdContent = await this.treeDataProvider.createCourseContent(
         folderItem,
         title,
         selectedType.id,
@@ -728,32 +684,113 @@ export class LecturerCommands {
         slug,
         undefined
       );
+      return;
+    }
+
+    // For assignments: pick an existing example and version
+    const examples = await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Loading examples...',
+      cancellable: false
+    }, async () => {
+      return await this.apiService.getAvailableExamples();
+    });
+
+    if (!examples || examples.length === 0) {
+      vscode.window.showWarningMessage(
+        'No examples available. Upload examples in the Examples view first.'
+      );
+      return;
+    }
+
+    const selectedExample = await vscode.window.showQuickPick(
+      examples.map(ex => ({
+        label: ex.title,
+        description: ex.identifier || '',
+        detail: ex.description || '',
+        id: ex.id,
+        identifier: ex.identifier,
+        exampleTitle: ex.title
+      })),
+      {
+        placeHolder: 'Select example to assign',
+        matchOnDescription: true,
+        matchOnDetail: true
+      }
+    );
+
+    if (!selectedExample) {
+      return;
+    }
+
+    const versions = await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Loading versions...',
+      cancellable: false
+    }, async () => {
+      return await this.apiService.getExampleVersions(selectedExample.id);
+    });
+
+    if (!versions || versions.length === 0) {
+      vscode.window.showWarningMessage('No versions available for this example');
+      return;
+    }
+
+    const selectedVersion = await vscode.window.showQuickPick(
+      versions.map(v => ({
+        label: v.version_tag,
+        description: `Created: ${new Date(v.created_at).toLocaleDateString()}`,
+        versionTag: v.version_tag
+      })),
+      {
+        placeHolder: 'Select version'
+      }
+    );
+
+    if (!selectedVersion) {
+      return;
+    }
+
+    const title = await vscode.window.showInputBox({
+      prompt: 'Enter assignment title',
+      value: selectedExample.exampleTitle,
+      placeHolder: 'Assignment title'
+    });
+
+    if (!title) {
+      return;
+    }
+
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+    try {
+      const createdContent = await this.treeDataProvider.createCourseContent(
+        folderItem,
+        title,
+        selectedType.id,
+        parentPath,
+        slug || 'assignment',
+        undefined
+      );
 
       if (!createdContent) {
         return;
       }
 
-      try {
-        await this.apiService.lecturerAssignExample(
-          createdContent.id,
-          {
-            example_identifier: ltreeIdentifier,
-            version_tag: versionTag
-          }
-        );
-      } catch (error) {
-        console.warn('Failed to assign example source to new assignment:', error);
-      }
-
-      this.treeDataProvider.rememberAssignmentIdentifier(createdContent.id, ltreeIdentifier);
-
-      await this.prepareAssignmentDirectory(course.id, ltreeIdentifier, ltreeIdentifier, versionTag, title, '', course);
+      await this.apiService.lecturerAssignExample(
+        createdContent.id,
+        {
+          example_identifier: selectedExample.identifier,
+          version_tag: selectedVersion.versionTag
+        }
+      );
 
       await this.treeDataProvider.forceRefreshCourse(course.id);
-      vscode.window.showInformationMessage(`✅ Created assignment "${title}"`);
-    } catch (error) {
+      vscode.window.showInformationMessage(`Created assignment "${title}" with example "${selectedExample.label}" v${selectedVersion.versionTag}`);
+    } catch (error: any) {
       console.error('Failed to create assignment:', error);
-      vscode.window.showErrorMessage(`Failed to create assignment: ${error}`);
+      const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
     }
   }
 
@@ -1075,78 +1112,6 @@ export class LecturerCommands {
   private isWithinAssignmentRoot(base: string, candidate: string): boolean {
     const relative = path.relative(base, candidate);
     return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-  }
-
-  private async prepareAssignmentDirectory(
-    courseId: string,
-    normalizedIdentifier: string,
-    ltreeIdentifier: string,
-    versionTag: string,
-    title: string,
-    description: string,
-    course: CourseList
-  ): Promise<void> {
-    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-    const fullCourse = await this.apiService.getCourse(courseId) || course;
-
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing assignments repository...', cancellable: false }, async (progress) => {
-      progress.report({ message: `Syncing assignments for ${fullCourse.title || fullCourse.path}` });
-      await repoManager.syncAssignmentsForCourse(courseId, (message) => progress.report({ message }));
-    });
-
-    const repoRoot = repoManager.getAssignmentsRepoRoot(fullCourse);
-    if (!repoRoot) {
-      vscode.window.showWarningMessage('Assignments repository is not configured for this course. Directory was not created.');
-      return;
-    }
-
-    const parts = normalizedIdentifier.split('/').filter(Boolean);
-    const assignmentPath = path.join(repoRoot, ...parts);
-
-    if (fs.existsSync(assignmentPath)) {
-      vscode.window.showWarningMessage(`Assignment directory already exists: ${assignmentPath}`);
-      return;
-    }
-
-    await fs.promises.mkdir(assignmentPath, { recursive: true });
-
-    const metaContent = this.buildAssignmentMetaContent(ltreeIdentifier, versionTag, title, description);
-    const metaPath = path.join(assignmentPath, 'meta.yaml');
-    await fs.promises.writeFile(metaPath, metaContent, 'utf8');
-
-    try {
-      const doc = await vscode.workspace.openTextDocument(metaPath);
-      await vscode.window.showTextDocument(doc, { preview: true });
-    } catch (error) {
-      console.warn('Failed to open meta.yaml:', error);
-    }
-  }
-
-  private buildAssignmentMetaContent(identifier: string, versionTag: string, title: string, description: string): string {
-    const sanitizedDescription = description.trim();
-    const descriptionBlock = sanitizedDescription
-      ? `description: |\n  ${sanitizedDescription.replace(/\r?\n/g, '\n  ')}`
-      : 'description: ""';
-
-    return [
-      `version: '${versionTag}'`,
-      `slug: ${identifier}`,
-      `title: ${title}`,
-      descriptionBlock,
-      'language: en',
-      'license: MIT',
-      'keywords: []',
-      'authors: []',
-      'maintainers: []',
-      'links: []',
-      'supportingMaterial: []',
-      'properties:',
-      '  studentSubmissionFiles: []',
-      '  additionalFiles: []',
-      '  testFiles: []',
-      '  studentTemplates: []',
-      '  testDependencies: []'
-    ].join('\n');
   }
 
   private isContentTypeSubmittable(type: CourseContentTypeList): boolean {

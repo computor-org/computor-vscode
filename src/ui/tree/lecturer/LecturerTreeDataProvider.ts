@@ -791,6 +791,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       const fullDeployment = full?.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; example_identifier?: string | null; version_identifier?: string | null }) | null | undefined;
       const identifier = ((fullDeployment as any)?.deployment_path as string | undefined)
         || fullDeployment?.example_identifier;
+      console.log(`[DIR-RESOLVE] content=${content.id} deployment_path=${(fullDeployment as any)?.deployment_path} example_identifier=${fullDeployment?.example_identifier} identifier=${identifier}`);
       const sanitizedFull = this.sanitizeAssignmentDirectoryName(identifier || undefined);
       this.assignmentIdentifierCache.set(content.id, sanitizedFull ?? null);
       if (sanitizedFull) {
@@ -858,6 +859,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
     let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
     let folderExists = folder ? fs.existsSync(folder) : false;
+    console.log(`[FOLDER-CHECK] dir="${sanitizedDirectoryName}" folder="${folder}" exists=${folderExists} repoRoot="${repoRoot}"`);
     let statusMessage: AssignmentDirectoryStatus | undefined;
 
     if (!folder && attemptSync) {
