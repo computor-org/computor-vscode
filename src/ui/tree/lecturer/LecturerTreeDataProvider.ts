@@ -471,65 +471,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                   const start = page * pageSize;
                   const items = rootContents.slice(start, start + pageSize);
 
-                  // Transform to tree items
-                  const treeItems = await Promise.all(items.map(async content => {
-                    const hasChildren = this.hasChildContents(content, allContents);
-                    let exampleInfo = null;
-                    let exampleVersionInfo = null;
-
-                    // Check if example is assigned using helper
-                    if (hasExampleAssigned(content)) {
-                      const versionId = getExampleVersionId(content);
-                      if (versionId) {
-                        console.log(`[Virtual scroll] Fetching example version info for content "${content.title}" with version_id: ${versionId}`);
-                        try {
-                          exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
-                          console.log(`[Virtual scroll] Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
-
-                          // Get example info from the version
-                          if (exampleVersionInfo && exampleVersionInfo.example_id) {
-                            exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
-                            console.log(`[Virtual scroll] Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
-                          }
-                        } catch (error) {
-                          console.warn(`Failed to fetch version info for ${versionId}:`, error);
-                        }
-                      }
-                    }
-                    
-                    // Get content type for this content
-                    const contentTypes = await this.getCourseContentTypes(element.course.id);
-                    const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
-                    const isSubmittable = this.isContentSubmittable(contentType);
-                    const isAssignmentLeaf = isSubmittable && !hasChildren;
-                    let assignmentDirectory: string | undefined;
-                    let assignmentInfo: CourseContentAssignmentInfo | undefined;
-                    
-                    if (isSubmittable) {
-                      assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
-                      assignmentInfo = await this.computeAssignmentInfo(element.course, content, assignmentDirectory);
-                    }
-                    
-                    const nodeId = `content-${content.id}`;
-                    const expandedState = hasChildren
-                      ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
-                      : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-                    
-                    return new CourseContentTreeItem(
-                      content,
-                      element.course,
-                      element.courseFamily,
-                      element.organization,
-                      hasChildren,
-                      exampleInfo,
-                      contentType,
-                      isSubmittable,
-                      exampleVersionInfo,
-                      expandedState,
-                      assignmentInfo,
-                      assignmentDirectory
-                    );
-                  }));
+                  const treeItems = await Promise.all(items.map(content =>
+                    this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
+                  ));
                   
                   return { items: treeItems, total: rootContents.length };
                 },
@@ -554,66 +498,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             
             return items;
           } else {
-            // Small list - load all at once
-            const contentItems = await Promise.all(rootContents.map(async content => {
-              const hasChildren = this.hasChildContents(content, allContents);
-              let exampleInfo = null;
-              let exampleVersionInfo = null;
-
-              // Check if example is assigned using helper
-              if (hasExampleAssigned(content)) {
-                const versionId = getExampleVersionId(content);
-                if (versionId) {
-                  console.log(`Fetching example version info for content "${content.title}" with version_id: ${versionId}`);
-                  try {
-                    exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
-                    console.log(`Version info fetched:`, exampleVersionInfo ? `${exampleVersionInfo.version_tag || 'unknown'}` : 'null');
-
-                    // Get example info from the version
-                    if (exampleVersionInfo && exampleVersionInfo.example_id) {
-                      exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
-                      console.log(`Example info fetched:`, exampleInfo ? `${exampleInfo.title}` : 'null');
-                    }
-                  } catch (error) {
-                    console.warn(`Failed to fetch version info for ${versionId}:`, error);
-                  }
-                }
-              }
-              
-              // Get content type info
-              const contentTypes = await this.getCourseContentTypes(element.course.id);
-              const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
-              const isSubmittable = this.isContentSubmittable(contentType);
-              const isAssignmentLeaf = isSubmittable && !hasChildren;
-              let assignmentDirectory: string | undefined;
-              let assignmentInfo: CourseContentAssignmentInfo | undefined;
-              
-              if (isSubmittable) {
-                assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
-                assignmentInfo = await this.computeAssignmentInfo(element.course, content, assignmentDirectory);
-              }
-              
-              const nodeId = `content-${content.id}`;
-              const expandedState = hasChildren
-                ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
-                : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-              
-              return new CourseContentTreeItem(
-                content,
-                element.course,
-                element.courseFamily,
-                element.organization,
-                hasChildren,
-                exampleInfo,
-                contentType,
-                isSubmittable,
-                exampleVersionInfo,
-                expandedState,
-                assignmentInfo,
-                assignmentDirectory
-              );
-            }));
-            
+            const contentItems = await Promise.all(rootContents.map(content =>
+              this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
+            ));
             return contentItems;
           }
         } else if (element.folderType === 'groups') {
@@ -701,61 +588,9 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         const allContents = await this.getCourseContents(element.course.id);
         const childContents = this.getChildContents(element.courseContent as CourseContentLecturerList, allContents);
         
-        // Fetch example info for child contents
-        const childItems = await Promise.all(childContents.map(async content => {
-          const hasChildren = this.hasChildContents(content, allContents);
-          let exampleInfo = null;
-          let exampleVersionInfo = null;
-          
-          // Check if example is assigned using helper
-          if (hasExampleAssigned(content)) {
-            const versionId = getExampleVersionId(content);
-            if (versionId) {
-              try {
-                exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
-                // Get example info from the version
-                if (exampleVersionInfo && exampleVersionInfo.example_id) {
-                  exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
-                }
-              } catch (error) {
-                console.warn(`Failed to fetch version info for ${versionId}:`, error);
-              }
-            }
-          }
-          
-          // Get content type info
-          const contentTypes = await this.getCourseContentTypes(element.course.id);
-          const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
-          const isSubmittable = this.isContentSubmittable(contentType);
-          const isAssignmentLeaf = isSubmittable && !hasChildren;
-          let assignmentDirectory: string | undefined;
-          let assignmentInfo: CourseContentAssignmentInfo | undefined;
-
-          if (isSubmittable) {
-            assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
-            assignmentInfo = await this.computeAssignmentInfo(element.course, content, assignmentDirectory);
-          }
-          
-          const nodeId = `content-${content.id}`;
-          const expandedState = hasChildren
-            ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
-            : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-          
-          return new CourseContentTreeItem(
-            content,
-            element.course,
-            element.courseFamily,
-            element.organization,
-            hasChildren,
-            exampleInfo,
-            contentType,
-            isSubmittable,
-            exampleVersionInfo,
-            expandedState,
-            assignmentInfo,
-            assignmentDirectory
-          );
-        }));
+        const childItems = await Promise.all(childContents.map(content =>
+          this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
+        ));
         
         if (childItems.length > 0) {
           return childItems;
@@ -909,6 +744,64 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       }
       return [new InfoItem('Error loading assignment files', 'error')];
     }
+  }
+
+  private async buildContentTreeItem(
+    content: CourseContentLecturerList,
+    allContents: CourseContentLecturerList[],
+    course: CourseList,
+    courseFamily: CourseFamilyList,
+    organization: OrganizationList
+  ): Promise<CourseContentTreeItem> {
+    const hasChildren = this.hasChildContents(content, allContents);
+
+    let exampleInfo = null;
+    let exampleVersionInfo = null;
+    if (hasExampleAssigned(content)) {
+      const versionId = getExampleVersionId(content);
+      if (versionId) {
+        try {
+          exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
+          if (exampleVersionInfo && exampleVersionInfo.example_id) {
+            exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch version info for ${versionId}:`, error);
+        }
+      }
+    }
+
+    const contentTypes = await this.getCourseContentTypes(course.id);
+    const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
+    const isSubmittable = this.isContentSubmittable(contentType);
+    const isAssignmentLeaf = isSubmittable && !hasChildren;
+    let assignmentDirectory: string | undefined;
+    let assignmentInfo: CourseContentAssignmentInfo | undefined;
+
+    if (isSubmittable) {
+      assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
+      assignmentInfo = await this.computeAssignmentInfo(course, content, assignmentDirectory);
+    }
+
+    const nodeId = `content-${content.id}`;
+    const expandedState = hasChildren
+      ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+      : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+
+    return new CourseContentTreeItem(
+      content,
+      course,
+      courseFamily,
+      organization,
+      hasChildren,
+      exampleInfo,
+      contentType,
+      isSubmittable,
+      exampleVersionInfo,
+      expandedState,
+      assignmentInfo,
+      assignmentDirectory
+    );
   }
 
   private async resolveAssignmentDirectoryName(content: CourseContentLecturerList): Promise<string | undefined> {
