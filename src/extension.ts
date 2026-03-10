@@ -24,6 +24,7 @@ import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { LecturerFsCommands } from './commands/LecturerFsCommands';
 import { UserPasswordCommands } from './commands/UserPasswordCommands';
 import { SignUpCommands } from './commands/SignUpCommands';
+import { SettingsCommands } from './commands/SettingsCommands';
 import { LogoutCommands } from './commands/LogoutCommands';
 import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProvider';
 
@@ -1418,6 +1419,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Sign-up command (for users without passwords)
   new SignUpCommands(context).register();
+
+  // Settings view command (backend URL, git config, GitLab tokens, password change)
+  new SettingsCommands(context).register();
 
   // Offline mode login command
   context.subscriptions.push(vscode.commands.registerCommand('computor.loginOffline', async () => {

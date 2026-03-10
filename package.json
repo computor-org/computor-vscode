@@ -107,6 +107,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.settingsView",
+        "title": "Settings View",
+        "category": "Computor"
+      },
+      {
         "command": "computor.user.profile",
         "title": "Edit Profile",
         "category": "Computor",
