@@ -55,11 +55,9 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       ${exampleVersionInfo?.version_tag ? infoRowCode('Version', exampleVersionInfo.version_tag) : ''}
       <div class="actions">
         ${exampleInfo ? `
-          <button class="btn-secondary" onclick="unassignExample()">Unassign Example</button>
+          <button class="btn-secondary" onclick="updateExampleVersion()">Update Version</button>
           <button onclick="deployAssignment()">Deploy</button>
-        ` : `
-          <button onclick="assignExample()">Assign Example</button>
-        `}
+        ` : ''}
         <button class="btn-secondary" onclick="viewDeployment()">View Deployment Info</button>
       </div>
     `);
@@ -104,14 +102,8 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         vscode.postMessage({ command: 'refresh', data: { contentId: contentId } });
       }
 
-      function assignExample() {
-        vscode.postMessage({ command: 'assignExample', data: { courseId: courseId, contentId: contentId } });
-      }
-
-      function unassignExample() {
-        if (confirm('Are you sure you want to unassign the example?')) {
-          vscode.postMessage({ command: 'unassignExample', data: { courseId: courseId, contentId: contentId } });
-        }
+      function updateExampleVersion() {
+        vscode.postMessage({ command: 'updateExampleVersion', data: { courseId: courseId, contentId: contentId } });
       }
 
       function deployAssignment() {
@@ -138,6 +130,10 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
     switch (message.command) {
+      case 'updateExampleVersion':
+        await vscode.commands.executeCommand('computor.lecturer.updateExampleVersion', message.data);
+        break;
+
       case 'deployAssignment':
         try {
           await vscode.commands.executeCommand('computor.lecturer.releaseCourseContent', {

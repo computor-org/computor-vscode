@@ -19,7 +19,6 @@ import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebv
 import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
 import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMemberProgressWebviewProvider';
-import { ExampleGet } from '../types/generated/examples';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
@@ -225,14 +224,8 @@ export class LecturerCommands {
 
     // Example management
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.assignExample', async (item: CourseContentTreeItem) => {
-        await this.assignExample(item);
-      })
-    );
-
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.unassignExample', async (item: CourseContentTreeItem) => {
-        await this.unassignExample(item);
+      vscode.commands.registerCommand('computor.lecturer.updateExampleVersion', async (item: CourseContentTreeItem) => {
+        await this.updateExampleVersion(item);
       })
     );
 
@@ -1855,63 +1848,44 @@ export class LecturerCommands {
     });
   }
 
-  private async assignExample(item: CourseContentTreeItem): Promise<void> {
+  private async updateExampleVersion(itemOrData: CourseContentTreeItem | Record<string, unknown>): Promise<void> {
     try {
-      // Step 1: Check local assignments repository for examples and auto-upload if needed
-      await this.checkAndUploadLocalExamples(item.course);
+      let contentId: string;
+      let courseId: string;
+      let exampleInfo: { id: string; title: string; identifier: string } | undefined;
+      let currentVersionTag: string | undefined;
 
-      // Step 2: Get available examples
-      const examples = await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Loading examples...',
-        cancellable: false
-      }, async () => {
-        return await this.apiService.getAvailableExamples();
-      });
-
-      if (!examples || examples.length === 0) {
-        const action = await vscode.window.showWarningMessage(
-          'No examples available. You need to upload examples before assigning them.',
-          'Upload Example',
-          'Cancel'
-        );
-
-        if (action === 'Upload Example') {
-          vscode.commands.executeCommand('computor.lecturer.examples.focus');
-          vscode.window.showInformationMessage(
-            'Navigate to the Examples view, right-click an example, and select "Upload Example"'
-          );
-        }
-        return;
+      if (itemOrData instanceof CourseContentTreeItem) {
+        contentId = itemOrData.courseContent.id;
+        courseId = itemOrData.course.id;
+        exampleInfo = itemOrData.exampleInfo || undefined;
+        currentVersionTag = itemOrData.exampleVersionInfo?.version_tag;
+      } else {
+        contentId = itemOrData.contentId as string;
+        courseId = itemOrData.courseId as string;
       }
 
-      // Step 2: Show example picker
-      const selectedExample = await vscode.window.showQuickPick(
-        examples.map((ex: ExampleGet) => ({
-          label: ex.title,
-          description: ex.identifier || 'No identifier',
-          detail: ex.description || '',
-          id: ex.id,
-          identifier: ex.identifier
-        })),
-        {
-          placeHolder: 'Select example to assign',
-          matchOnDescription: true,
-          matchOnDetail: true
+      if (!exampleInfo) {
+        const deployment = await this.apiService.lecturerGetDeployment(contentId);
+        if (!deployment?.example_id) {
+          vscode.window.showWarningMessage('No example assigned to this assignment');
+          return;
         }
-      );
-
-      if (!selectedExample) {
-        return;
+        const example = await this.apiService.getExample(deployment.example_id);
+        if (!example) {
+          vscode.window.showWarningMessage('Could not load example information');
+          return;
+        }
+        exampleInfo = { id: example.id, title: example.title, identifier: example.identifier };
+        currentVersionTag = deployment.version_tag;
       }
 
-      // Step 3: Load versions for selected example
       const versions = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Loading example versions...',
+        title: 'Loading available versions...',
         cancellable: false
       }, async () => {
-        return await this.apiService.getExampleVersions(selectedExample.id);
+        return await this.apiService.getExampleVersions(exampleInfo!.id);
       });
 
       if (!versions || versions.length === 0) {
@@ -1919,16 +1893,14 @@ export class LecturerCommands {
         return;
       }
 
-      // Step 4: Show version picker
       const selectedVersion = await vscode.window.showQuickPick(
-        versions.map((v: any) => ({
+        versions.map(v => ({
           label: v.version_tag,
-          description: `Created: ${new Date(v.created_at).toLocaleDateString()}`,
-          detail: v.description || '',
+          description: v.version_tag === currentVersionTag ? '(current)' : `Created: ${new Date(v.created_at).toLocaleDateString()}`,
           versionTag: v.version_tag
         })),
         {
-          placeHolder: 'Select version to assign'
+          placeHolder: `Select version (current: ${currentVersionTag || 'unknown'})`
         }
       );
 
@@ -1936,101 +1908,46 @@ export class LecturerCommands {
         return;
       }
 
-      // Step 5: Confirm assignment
-      const confirm = await vscode.window.showInformationMessage(
-        `Assign "${selectedExample.label}" (v${selectedVersion.versionTag}) to this assignment?`,
-        'Assign',
-        'Cancel'
-      );
-
-      if (confirm !== 'Assign') {
+      if (selectedVersion.versionTag === currentVersionTag) {
+        vscode.window.showInformationMessage('Already on this version');
         return;
       }
 
-      // Step 6: Perform assignment using new lecturer endpoint
+      const confirm = await vscode.window.showInformationMessage(
+        `Update "${exampleInfo.title}" from v${currentVersionTag} to v${selectedVersion.versionTag}?`,
+        'Update',
+        'Cancel'
+      );
+
+      if (confirm !== 'Update') {
+        return;
+      }
+
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Assigning example...',
+        title: 'Updating example version...',
         cancellable: false
       }, async () => {
         await this.apiService.lecturerAssignExample(
-          item.courseContent.id,
+          contentId,
           {
-            example_identifier: selectedExample.identifier,
+            example_identifier: exampleInfo!.identifier,
             version_tag: selectedVersion.versionTag
           }
         );
       });
 
-      // Step 7: Success
       vscode.window.showInformationMessage(
-        `✅ Example assigned successfully!`
+        `Example version updated to v${selectedVersion.versionTag}`
       );
 
-      // Step 8: Refresh tree
-      this.apiService.clearCourseCache(item.course.id);
+      this.apiService.clearCourseCache(courseId);
       this.treeDataProvider.refresh();
 
     } catch (error: any) {
-      console.error('Failed to assign example:', error);
+      console.error('Failed to update example version:', error);
       const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-      vscode.window.showErrorMessage(`Failed to assign example: ${errorMessage}`);
-    }
-  }
-
-  private async unassignExample(item: CourseContentTreeItem): Promise<void> {
-    try {
-      // Step 1: Get current deployment info to check status
-      const deployment = await this.apiService.lecturerGetDeployment(item.courseContent.id);
-
-      // Step 2: Check if unassignable
-      const deploymentStatus = deployment?.deployment_status || 'unassigned';
-      if (deploymentStatus === 'deployed' || deploymentStatus === 'deploying') {
-        vscode.window.showErrorMessage(
-          `Cannot unassign: Example is ${deploymentStatus}.\n\nUnassignment is only allowed for pending or failed deployments.`
-        );
-        return;
-      }
-
-      // Step 3: Confirm unassignment
-      const confirmation = await vscode.window.showWarningMessage(
-        `Unassign example from "${item.courseContent.title}"?`,
-        { modal: true },
-        'Unassign',
-        'Cancel'
-      );
-
-      if (confirmation !== 'Unassign') {
-        return;
-      }
-
-      // Step 4: Perform unassignment using new lecturer endpoint
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Unassigning example...',
-        cancellable: false
-      }, async () => {
-        await this.apiService.lecturerUnassignExample(item.courseContent.id);
-      });
-
-      // Step 5: Success
-      vscode.window.showInformationMessage('✅ Example unassigned successfully');
-
-      // Step 6: Refresh tree
-      this.apiService.clearCourseCache(item.course.id);
-      this.treeDataProvider.refresh();
-
-    } catch (error: any) {
-      console.error('Failed to unassign example:', error);
-
-      // Handle specific error cases
-      if (error?.response?.status === 400) {
-        const errorDetail = error.response.data?.detail || 'Cannot unassign example';
-        vscode.window.showErrorMessage(`❌ Cannot unassign: ${errorDetail}`);
-      } else {
-        const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-        vscode.window.showErrorMessage(`❌ Unassignment failed: ${errorMessage}`);
-      }
+      vscode.window.showErrorMessage(`Failed to update example version: ${errorMessage}`);
     }
   }
 

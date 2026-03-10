@@ -699,15 +699,9 @@
         "category": "Computor Lecturer"
       },
       {
-        "command": "computor.lecturer.assignExample",
-        "title": "Assign Example",
-        "icon": "$(link)",
-        "category": "Computor Lecturer"
-      },
-      {
-        "command": "computor.lecturer.unassignExample",
-        "title": "Unassign Example",
-        "icon": "$(unlink)",
+        "command": "computor.lecturer.updateExampleVersion",
+        "title": "Update Example Version",
+        "icon": "$(versions)",
         "category": "Computor Lecturer"
       },
       {
@@ -1109,14 +1103,9 @@
           "group": "3_gitlab@1"
         },
         {
-          "command": "computor.lecturer.assignExample",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*noExample/",
-          "group": "4_example@1"
-        },
-        {
-          "command": "computor.lecturer.unassignExample",
+          "command": "computor.lecturer.updateExampleVersion",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
-          "group": "4_example@2"
+          "group": "4_example@1"
         },
         {
           "command": "computor.lecturer.viewDeploymentInfo",

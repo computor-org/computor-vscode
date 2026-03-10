@@ -50,14 +50,6 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         await this.handleRefresh(message.data);
         break;
 
-      case 'assignExample':
-        await this.handleAssignExample(message.data);
-        break;
-
-      case 'unassignExample':
-        await this.handleUnassignExample(message.data);
-        break;
-
       case 'createChild':
         await this.handleCreateChild(message.data);
         break;
@@ -117,13 +109,6 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
     }
   }
 
-  protected async handleAssignExample(data?: Record<string, unknown>): Promise<void> {
-    await vscode.commands.executeCommand('computor.lecturer.assignExample', data);
-  }
-
-  protected async handleUnassignExample(data?: Record<string, unknown>): Promise<void> {
-    await vscode.commands.executeCommand('computor.lecturer.unassignExample', data);
-  }
 
   protected async handleCreateChild(data?: Record<string, unknown>): Promise<void> {
     await vscode.commands.executeCommand('computor.lecturer.createCourseContent', data);

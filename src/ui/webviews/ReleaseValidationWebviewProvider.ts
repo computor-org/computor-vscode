@@ -40,12 +40,6 @@ export class ReleaseValidationWebviewProvider {
     // Handle messages from webview
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
-        case 'assignExample':
-          // Trigger assign example command
-          vscode.commands.executeCommand('computor.lecturer.assignExample', {
-            courseContent: { id: message.courseContentId }
-          });
-          break;
         case 'viewContent':
           // Could navigate to the content in the tree
           vscode.window.showInformationMessage(`Navigate to assignment: ${message.courseContentId}`);
@@ -196,9 +190,6 @@ export class ReleaseValidationWebviewProvider {
                 </div>
               </div>
               <div class="actions">
-                <button class="btn" onclick="assignExample('${error.course_content_id}')">
-                  Assign Example
-                </button>
                 <button class="btn btn-secondary" onclick="viewContent('${error.course_content_id}')">
                   View in Tree
                 </button>
@@ -211,8 +202,8 @@ export class ReleaseValidationWebviewProvider {
           <h3>📝 Next Steps:</h3>
           <ol>
             <li>Review each assignment listed above</li>
-            <li>Click "Assign Example" to assign an example and version to each assignment</li>
-            <li>After assigning all examples, try releasing again</li>
+            <li>Recreate assignments with examples assigned from the course tree</li>
+            <li>After all assignments have examples, try releasing again</li>
           </ol>
           <p><strong>Need help?</strong> Each assignment must have an example assigned before you can release the course to students.</p>
         </div>
@@ -223,13 +214,6 @@ export class ReleaseValidationWebviewProvider {
 
         <script>
           const vscode = acquireVsCodeApi();
-
-          function assignExample(courseContentId) {
-            vscode.postMessage({
-              command: 'assignExample',
-              courseContentId: courseContentId
-            });
-          }
 
           function viewContent(courseContentId) {
             vscode.postMessage({
