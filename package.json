@@ -397,6 +397,21 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.selectGroup",
+        "title": "Select Group Filter",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.selectMember",
+        "title": "Select Member",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.showMoreMembers",
+        "title": "Show More Members",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.showCourseMemberComments",
         "title": "Show Comments",
         "icon": "$(note)",
@@ -677,10 +692,9 @@
       "computor-tutor": [
         {
           "id": "computor.tutor.filters",
-          "type": "webview",
-          "name": "Filters",
+          "name": "Courses & Members",
           "icon": "$(filter)",
-          "contextualTitle": "Tutor Filters",
+          "contextualTitle": "Tutor Course Selection",
           "when": "computor.tutor.show"
         },
         {
