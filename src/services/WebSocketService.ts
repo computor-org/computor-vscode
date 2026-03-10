@@ -61,7 +61,40 @@ export interface WsError {
   message: string;
 }
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsChannelSubscribed | WsChannelUnsubscribed | WsError;
+export interface WsMaintenanceActivated {
+  type: 'maintenance:activated';
+  active: boolean;
+  message: string;
+  activated_at: string;
+}
+
+export interface WsMaintenanceDeactivated {
+  type: 'maintenance:deactivated';
+  active: boolean;
+  message: string;
+}
+
+export interface WsMaintenanceScheduled {
+  type: 'maintenance:scheduled';
+  scheduled_at: string;
+  message: string;
+}
+
+export interface WsMaintenanceCancelled {
+  type: 'maintenance:cancelled';
+  message: string;
+}
+
+export interface WsMaintenanceReminder {
+  type: 'maintenance:reminder';
+  data: {
+    minutes_remaining: number;
+    scheduled_at: string;
+    message: string;
+  };
+}
+
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -105,6 +138,11 @@ export interface WebSocketEventHandlers {
   onMessageDelete?: (channel: string, messageId: string) => void;
   onTypingUpdate?: (channel: string, userId: string, userName: string, isTyping: boolean) => void;
   onReadUpdate?: (channel: string, messageId: string, userId: string) => void;
+  onMaintenanceActivated?: (message: string, activatedAt: string) => void;
+  onMaintenanceDeactivated?: (message: string) => void;
+  onMaintenanceScheduled?: (scheduledAt: string, message: string) => void;
+  onMaintenanceCancelled?: (message: string) => void;
+  onMaintenanceReminder?: (minutesRemaining: number, scheduledAt: string, message: string) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: string) => void;
@@ -131,10 +169,12 @@ export class WebSocketService {
   private typingTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly typingTimeoutMs = 5000;
   private statusBarItem: vscode.StatusBarItem;
+  private maintenanceStatusBarItem: vscode.StatusBarItem;
 
   private constructor(settingsManager: ComputorSettingsManager) {
     this.settingsManager = settingsManager;
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+    this.maintenanceStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.updateStatusBar();
   }
 
@@ -462,6 +502,81 @@ export class WebSocketService {
           });
           break;
 
+        case 'maintenance:activated': {
+          const activatedData = (message as any).data || message;
+          console.log('[WebSocket] Maintenance activated:', activatedData.message);
+          this.updateMaintenanceStatusBar('active', activatedData.message);
+          vscode.window.showWarningMessage(`Maintenance Mode Active: ${activatedData.message}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onMaintenanceActivated?.(activatedData.message, activatedData.activated_at);
+          });
+          break;
+        }
+
+        case 'maintenance:deactivated': {
+          const deactivatedData = (message as any).data || message;
+          console.log('[WebSocket] Maintenance deactivated');
+          this.updateMaintenanceStatusBar('inactive');
+          vscode.window.showInformationMessage(`Maintenance Complete: ${deactivatedData.message}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onMaintenanceDeactivated?.(deactivatedData.message);
+          });
+          break;
+        }
+
+        case 'maintenance:scheduled': {
+          const scheduledData = (message as any).data || message;
+          console.log('[WebSocket] Maintenance scheduled:', scheduledData.scheduled_at);
+          this.updateMaintenanceStatusBar('scheduled', scheduledData.message, scheduledData.scheduled_at);
+          vscode.window.showInformationMessage(`Maintenance Scheduled for ${new Date(scheduledData.scheduled_at).toLocaleString()}: ${scheduledData.message}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onMaintenanceScheduled?.(scheduledData.scheduled_at, scheduledData.message);
+          });
+          break;
+        }
+
+        case 'maintenance:cancelled': {
+          const cancelledData = (message as any).data || message;
+          console.log('[WebSocket] Maintenance cancelled');
+          this.updateMaintenanceStatusBar('inactive');
+          vscode.window.showInformationMessage('Scheduled maintenance has been cancelled.');
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onMaintenanceCancelled?.(cancelledData.message);
+          });
+          break;
+        }
+
+        case 'maintenance:reminder': {
+          const reminderData = (message as any).data || message;
+          const minutesRemaining: number = reminderData.minutes_remaining;
+          const reminderMessage: string = reminderData.message || 'Maintenance is approaching';
+
+          console.log(`[WebSocket] Maintenance reminder: ${minutesRemaining}min remaining`);
+
+          // Update status bar with countdown
+          this.maintenanceStatusBarItem.text = `$(clock) Maint. ${minutesRemaining}m`;
+          this.maintenanceStatusBarItem.tooltip = `Maintenance in ${minutesRemaining} minute(s): ${reminderMessage}`;
+
+          // Escalate notification urgency based on time remaining
+          if (minutesRemaining <= 5) {
+            this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+            vscode.window.showErrorMessage(`Maintenance in ${minutesRemaining} minute(s): ${reminderMessage}`);
+          } else if (minutesRemaining <= 10) {
+            this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+            vscode.window.showWarningMessage(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+          } else {
+            this.maintenanceStatusBarItem.backgroundColor = undefined;
+            vscode.window.showInformationMessage(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+          }
+
+          this.maintenanceStatusBarItem.show();
+
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onMaintenanceReminder?.(minutesRemaining, reminderData.scheduled_at, reminderMessage);
+          });
+          break;
+        }
+
         default:
           console.warn('[WebSocket] Unknown message type:', message);
       }
@@ -563,10 +678,33 @@ export class WebSocketService {
     this.statusBarItem.show();
   }
 
+  public updateMaintenanceStatusBar(state: 'active' | 'scheduled' | 'inactive', message?: string, scheduledAt?: string): void {
+    switch (state) {
+      case 'active':
+        this.maintenanceStatusBarItem.text = '$(warning) Maintenance';
+        this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        this.maintenanceStatusBarItem.tooltip = message || 'System is under maintenance';
+        this.maintenanceStatusBarItem.show();
+        break;
+      case 'scheduled':
+        this.maintenanceStatusBarItem.text = '$(clock) Maint. scheduled';
+        this.maintenanceStatusBarItem.backgroundColor = undefined;
+        this.maintenanceStatusBarItem.tooltip = scheduledAt
+          ? `Maintenance scheduled: ${new Date(scheduledAt).toLocaleString()}${message ? ' — ' + message : ''}`
+          : message || 'Maintenance scheduled';
+        this.maintenanceStatusBarItem.show();
+        break;
+      case 'inactive':
+        this.maintenanceStatusBarItem.hide();
+        break;
+    }
+  }
+
   public dispose(): void {
     this.disconnect();
     this.eventHandlers.clear();
     this.statusBarItem.dispose();
+    this.maintenanceStatusBarItem.dispose();
     WebSocketService.instance = undefined;
   }
 }

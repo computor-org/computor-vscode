@@ -499,6 +499,9 @@ class UnifiedController {
     // Connect WebSocket (fire-and-forget, will reconnect automatically on failure)
     void this.wsService.connect();
 
+    // Check initial maintenance status (fire-and-forget)
+    void this.checkInitialMaintenanceStatus(api);
+
     // Register WebSocket reconnect command
     this.disposables.push(
       vscode.commands.registerCommand('computor.websocket.reconnect', async () => {
@@ -1075,6 +1078,24 @@ class UnifiedController {
 
   getHttpClient(): BearerTokenHttpClient | undefined {
     return this.httpClient;
+  }
+
+  private async checkInitialMaintenanceStatus(api: ComputorApiService): Promise<void> {
+    try {
+      const status = await api.getMaintenanceStatus();
+      if (!status || !this.wsService) return;
+
+      if (status.active) {
+        this.wsService.updateMaintenanceStatusBar('active', status.message);
+        vscode.window.showWarningMessage(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`);
+      } else if (status.scheduled_at) {
+        this.wsService.updateMaintenanceStatusBar('scheduled', status.message, status.scheduled_at);
+        vscode.window.showInformationMessage(`Maintenance Scheduled for ${new Date(status.scheduled_at).toLocaleString()}: ${status.message || 'Scheduled maintenance is planned'}`);
+      }
+    } catch (error) {
+      // Non-critical — don't block startup
+      console.warn('Failed to check initial maintenance status:', error);
+    }
   }
 }
 
