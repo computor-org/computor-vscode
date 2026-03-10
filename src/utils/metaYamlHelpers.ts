@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { normalizeSemVer } from './versionHelpers';
 
 export interface MetaYamlData {
   title?: string;
@@ -36,15 +37,16 @@ export function updateMetaYamlVersion(exampleDir: string, newVersion: string): v
     throw new Error(`meta.yaml not found in ${exampleDir}`);
   }
   const content = fs.readFileSync(metaPath, 'utf8');
+  const normalized = normalizeSemVer(newVersion);
 
   // Preserve YAML formatting by doing a regex replacement on the version line
   const versionPattern = /^(version\s*:\s*)(["']?).*?\2\s*$/m;
   let updated: string;
   if (versionPattern.test(content)) {
-    updated = content.replace(versionPattern, `$1"${newVersion}"`);
+    updated = content.replace(versionPattern, `$1"${normalized}"`);
   } else {
     // Append version field if missing
-    updated = content.trimEnd() + `\nversion: "${newVersion}"\n`;
+    updated = content.trimEnd() + `\nversion: "${normalized}"\n`;
   }
 
   fs.writeFileSync(metaPath, updated, 'utf8');

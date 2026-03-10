@@ -2141,7 +2141,7 @@ export class LecturerExampleCommands {
     const versionsPath = this.getVersionsDir();
     if (!versionsPath) { return; }
 
-    const { readMetaYaml } = await import('../utils/metaYamlHelpers');
+    const { readMetaYaml, updateMetaYamlVersion } = await import('../utils/metaYamlHelpers');
     const { normalizeSemVer } = await import('../utils/versionHelpers');
     const { writeCheckoutMetadata, getVersionPath } = await import('../utils/checkedOutExampleManager');
     const { writeExampleFiles } = await import('../utils/exampleFileWriter');
@@ -2176,7 +2176,18 @@ export class LecturerExampleCommands {
             if (fs.existsSync(workingDir)) {
               fs.rmSync(workingDir, { recursive: true, force: true });
             }
-            fs.cpSync(exampleDir, workingDir, { recursive: true });
+            fs.cpSync(exampleDir, workingDir, {
+              recursive: true,
+              filter: (source) => !shouldExcludeExampleEntry(path.basename(source))
+            });
+
+            // Normalize version tag in the working copy's meta.yaml
+            const normalizedLocalVersion = normalizeSemVer(localVersion);
+            if (normalizedLocalVersion !== localVersion) {
+              try {
+                updateMetaYamlVersion(workingDir, normalizedLocalVersion);
+              } catch { /* meta.yaml might not have version field yet */ }
+            }
 
             // Look up example on server
             const remoteExample = await this.apiService.getExampleByIdentifier(slug);
