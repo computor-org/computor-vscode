@@ -762,8 +762,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
       : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
 
-    return new CourseContentTreeItem(
-      content,
+    return new CourseContentTreeItem({
+      courseContent: content,
       course,
       courseFamily,
       organization,
@@ -772,10 +772,10 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       contentType,
       isSubmittable,
       exampleVersionInfo,
-      expandedState,
+      collapsibleState: expandedState,
       assignmentInfo,
       assignmentDirectory
-    );
+    });
   }
 
   private async resolveAssignmentDirectoryName(content: CourseContentLecturerList): Promise<string | undefined> {
@@ -1171,18 +1171,18 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
             (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
             vscode.TreeItemCollapsibleState.None;
           
-          return new CourseContentTreeItem(
-            parentContent,
-            element.course,
-            element.courseFamily,
-            element.organization,
+          return new CourseContentTreeItem({
+            courseContent: parentContent,
+            course: element.course,
+            courseFamily: element.courseFamily,
+            organization: element.organization,
             hasChildren,
             exampleInfo,
             contentType,
             isSubmittable,
             exampleVersionInfo,
-            expandedState
-          );
+            collapsibleState: expandedState
+          });
         }
       }
     }

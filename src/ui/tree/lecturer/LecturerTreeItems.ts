@@ -75,36 +75,61 @@ export class CourseTreeItem extends vscode.TreeItem {
   }
 }
 
+export interface CourseContentTreeItemOptions {
+  courseContent: CourseContentList | CourseContentLecturerList;
+  course: CourseList;
+  courseFamily: CourseFamilyList;
+  organization: OrganizationList;
+  hasChildren: boolean;
+  exampleInfo?: ExampleGet | null;
+  contentType?: CourseContentTypeList;
+  isSubmittable?: boolean;
+  exampleVersionInfo?: ExampleVersionGet | null;
+  collapsibleState?: vscode.TreeItemCollapsibleState;
+  assignmentInfo?: CourseContentAssignmentInfo;
+  assignmentDirectory?: string;
+}
+
 export class CourseContentTreeItem extends vscode.TreeItem {
-  constructor(
-    public readonly courseContent: CourseContentList | CourseContentLecturerList,
-    public readonly course: CourseList,
-    public readonly courseFamily: CourseFamilyList,
-    public readonly organization: OrganizationList,
-    public readonly hasChildren: boolean,
-    public readonly exampleInfo?: ExampleGet | null,
-    public readonly contentType?: CourseContentTypeList,
-    public readonly isSubmittable: boolean = false,
-    public readonly exampleVersionInfo?: ExampleVersionGet | null,
-    public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState,
-    public assignmentInfo?: CourseContentAssignmentInfo,
-    public assignmentDirectory?: string
-  ) {
+  public readonly courseContent: CourseContentList | CourseContentLecturerList;
+  public readonly course: CourseList;
+  public readonly courseFamily: CourseFamilyList;
+  public readonly organization: OrganizationList;
+  public readonly hasChildren: boolean;
+  public readonly exampleInfo?: ExampleGet | null;
+  public readonly contentType?: CourseContentTypeList;
+  public readonly isSubmittable: boolean;
+  public readonly exampleVersionInfo?: ExampleVersionGet | null;
+  public assignmentInfo?: CourseContentAssignmentInfo;
+  public assignmentDirectory?: string;
+
+  constructor(options: CourseContentTreeItemOptions) {
     super(
-      courseContent.title || courseContent.path,
-      providedCollapsibleState !== undefined ? providedCollapsibleState : 
-        (hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
+      options.courseContent.title || options.courseContent.path,
+      options.collapsibleState !== undefined ? options.collapsibleState :
+        (options.hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
     );
-    
-    this.id = `content-${courseContent.id}`;
+
+    this.courseContent = options.courseContent;
+    this.course = options.course;
+    this.courseFamily = options.courseFamily;
+    this.organization = options.organization;
+    this.hasChildren = options.hasChildren;
+    this.exampleInfo = options.exampleInfo;
+    this.contentType = options.contentType;
+    this.isSubmittable = options.isSubmittable ?? false;
+    this.exampleVersionInfo = options.exampleVersionInfo;
+    this.assignmentInfo = options.assignmentInfo;
+    this.assignmentDirectory = options.assignmentDirectory;
+
+    this.id = `content-${options.courseContent.id}`;
     if (!this.assignmentDirectory && this.assignmentInfo?.directoryName) {
       this.assignmentDirectory = this.assignmentInfo.directoryName;
     }
-    
+
     this.contextValue = this.getContextValue();
     this.iconPath = this.getIcon();
     this.tooltip = this.getTooltip();
-    
     this.description = this.getDescription();
   }
 
