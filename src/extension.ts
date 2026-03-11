@@ -1045,6 +1045,84 @@ class UnifiedController {
       dragAndDropController: exampleTree
     });
     this.disposables.push(exampleTreeView);
+    exampleTree.setTreeView(exampleTreeView);
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.revealInExamples', async (item: any) => {
+        if (!item?.exampleInfo?.id) {
+          vscode.window.showWarningMessage('No example assigned to this content.');
+          return;
+        }
+        const found = await exampleTree.revealExample(item.exampleInfo.id);
+        if (!found) {
+          vscode.window.showWarningMessage('Example not found in the examples tree.');
+        }
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.checkoutAssignmentExample', async (item: any) => {
+        if (!item?.exampleVersionInfo?.id || !item?.exampleInfo) {
+          vscode.window.showWarningMessage('No example version assigned to this content.');
+          return;
+        }
+
+        const fs = await import('fs');
+        const { writeExampleFiles } = await import('./utils/exampleFileWriter');
+        const { writeCheckoutMetadata, getWorkingPath, getVersionPath } = await import('./utils/checkedOutExampleManager');
+        const { WorkspaceStructureManager } = await import('./utils/workspaceStructure');
+
+        try {
+          const dirs = WorkspaceStructureManager.getInstance().getDirectories();
+          const exampleData = await api.downloadExampleVersion(item.exampleVersionInfo.id);
+          if (!exampleData) {
+            vscode.window.showErrorMessage('Failed to download example version.');
+            return;
+          }
+
+          const directory = item.exampleInfo.directory || exampleData.directory;
+          const versionTag = item.exampleVersionInfo.version_tag || exampleData.version_tag;
+          const metadata = {
+            exampleId: item.exampleInfo.id,
+            repositoryId: item.exampleInfo.example_repository_id || '',
+            directory,
+            versionId: item.exampleVersionInfo.id,
+            versionTag,
+            versionNumber: item.exampleVersionInfo.version_number ?? 0,
+            checkedOutAt: new Date().toISOString()
+          };
+
+          const workingDir = getWorkingPath(dirs.examples, directory);
+          const versionDir = getVersionPath(dirs.exampleVersions, directory, versionTag);
+
+          if (fs.existsSync(workingDir)) {
+            const overwrite = await vscode.window.showWarningMessage(
+              `Working copy of '${directory}' already exists. Overwrite?`, 'Yes', 'No'
+            );
+            if (overwrite !== 'Yes') { return; }
+            fs.rmSync(workingDir, { recursive: true, force: true });
+          }
+
+          fs.mkdirSync(workingDir, { recursive: true });
+          writeExampleFiles(exampleData.files, workingDir);
+          writeCheckoutMetadata(workingDir, metadata);
+
+          if (fs.existsSync(versionDir)) {
+            fs.rmSync(versionDir, { recursive: true, force: true });
+          }
+          fs.mkdirSync(versionDir, { recursive: true });
+          fs.cpSync(workingDir, versionDir, { recursive: true });
+
+          exampleTree.refresh();
+          vscode.window.showInformationMessage(
+            `Checked out '${item.exampleInfo.title || directory}' [${versionTag}]`
+          );
+        } catch (error) {
+          console.error('Failed to checkout assignment example:', error);
+          vscode.window.showErrorMessage(`Failed to checkout: ${error}`);
+        }
+      })
+    );
 
     const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService);
     commands.registerCommands();

@@ -360,6 +360,18 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.revealInExamples",
+        "title": "Reveal in Examples",
+        "icon": "$(link-external)",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.lecturer.checkoutAssignmentExample",
+        "title": "Checkout Example",
+        "icon": "$(cloud-download)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.lecturer.showExampleDetails",
         "title": "Show Details",
         "icon": "$(info)",
@@ -1138,6 +1150,16 @@
           "group": "4_example@1"
         },
         {
+          "command": "computor.lecturer.revealInExamples",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "4_example@2"
+        },
+        {
+          "command": "computor.lecturer.checkoutAssignmentExample",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "4_example@3"
+        },
+        {
           "command": "computor.lecturer.viewDeploymentInfo",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
           "group": "4_example@3"
@@ -1216,6 +1238,11 @@
           "command": "computor.lecturer.releaseCourseContent",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "inline@2"
+        },
+        {
+          "command": "computor.lecturer.revealInExamples",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "inline@1"
         },
         {
           "command": "computor.tutor.cloneStudentRepository",
