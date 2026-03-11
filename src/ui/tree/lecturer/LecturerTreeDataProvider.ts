@@ -1917,17 +1917,21 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       let contentType = submittableTypes[0];
       if (submittableTypes.length > 1) {
         const selected = await vscode.window.showQuickPick(
-          submittableTypes.map(t => ({
-            label: t.title || t.slug,
-            id: t.id
-          })),
-          { placeHolder: 'Select assignment type' }
+          submittableTypes.map(t => {
+            const fullType = contentTypes.find(ct => ct.id === t.id);
+            return {
+              label: t.title || t.slug,
+              description: fullType?.course_content_kind_id || '',
+              id: t.id
+            };
+          }),
+          { placeHolder: 'Select content type' }
         );
-        
+
         if (!selected) {
           return;
         }
-        
+
         const selectedType = submittableTypes.find(t => t.id === selected.id);
         if (selectedType) {
           contentType = selectedType;
@@ -1987,27 +1991,27 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
                 version_tag: latestVersion.version_tag
               }
             );
-            // Trigger assignments sync for the newly created content
-            try {
-              await this.apiService.generateAssignments(courseId, {
-                course_content_ids: [createdContent.id],
-                overwrite_strategy: 'skip_if_exists',
-                commit_message: `Initialize assignment from example ${fullExample.identifier || fullExample.title}`
-              });
-            } catch (e) {
-              console.warn('Failed to trigger assignments generation after creating content:', e);
+          } catch (assignError: any) {
+            const assignMessage = assignError?.response?.data?.detail || assignError.message || 'Unknown error';
+            const action = await vscode.window.showWarningMessage(
+              `Assignment "${example.title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`,
+              'Keep', 'Delete'
+            );
+            if (action === 'Delete') {
+              await this.apiService.deleteCourseContent(courseId, createdContent.id);
             }
-          } catch (assignError) {
-            console.warn('Failed to assign example version:', assignError);
+            this.apiService.clearCourseCache(courseId);
+            await this.forceRefreshCourse(courseId);
+            return;
           }
         }
       }
 
       // Refresh the tree
       await this.forceRefreshCourse(courseId);
-      
+
       vscode.window.showInformationMessage(
-        `✅ Created assignment "${example.title}" ${targetDescription}`
+        `Created assignment "${example.title}" ${targetDescription}`
       );
       
     } catch (error) {

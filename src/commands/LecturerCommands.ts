@@ -787,13 +787,27 @@ export class LecturerCommands {
         return;
       }
 
-      await this.apiService.lecturerAssignExample(
-        createdContent.id,
-        {
-          example_identifier: selectedExample.identifier,
-          version_tag: selectedVersion.versionTag
+      try {
+        await this.apiService.lecturerAssignExample(
+          createdContent.id,
+          {
+            example_identifier: selectedExample.identifier,
+            version_tag: selectedVersion.versionTag
+          }
+        );
+      } catch (assignError: any) {
+        const assignMessage = assignError?.response?.data?.detail || assignError.message || 'Unknown error';
+        const action = await vscode.window.showWarningMessage(
+          `Assignment "${title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`,
+          'Keep', 'Delete'
+        );
+        if (action === 'Delete') {
+          await this.apiService.deleteCourseContent(course.id, createdContent.id);
         }
-      );
+        this.apiService.clearCourseCache(course.id);
+        this.treeDataProvider.refresh();
+        return;
+      }
 
       await this.treeDataProvider.forceRefreshCourse(course.id);
       vscode.window.showInformationMessage(`Created assignment "${title}" with example "${selectedExample.label}" v${selectedVersion.versionTag}`);
