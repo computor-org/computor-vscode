@@ -1,0 +1,33 @@
+{
+  "version": "1.0.0",
+  "errors": {
+    "GIT_INDEX_CORRUPT": {
+      "code": "GIT_INDEX_CORRUPT",
+      "category": "git",
+      "severity": "error",
+      "title": "Corrupted Git Index",
+      "summary": "Your repository's Git index file is corrupted and cannot be read.",
+      "description": "## What happened?\n\nGit detected that the index file (`.git/index`) in your repository is corrupted. The error message typically reads:\n\n```\nerror: bad signature 0x00000000\nfatal: index file corrupt\n```\n\nor:\n\n```\nfatal: .git/index: index file smaller than expected\n```\n\n## Why does this happen?\n\nThis is almost always caused by **cloud synchronization software** (such as OwnCloud, Nextcloud, Dropbox, or OneDrive) interfering with Git's internal files. These sync tools may:\n\n- Overwrite the index file while Git is writing to it\n- Create sync-conflict copies of Git internal files\n- Partially upload or download the index file, leaving it truncated\n\n**Your code files are safe.** Only the Git index (a cache of file states) is affected.\n\n## How to fix it\n\n### Option 1: Click \"Rebuild Git Index\" below (recommended)\n\nThis will delete the corrupted index and rebuild it automatically. Your working files are not affected.\n\n### Option 2: Fix manually via terminal\n\nOpen a terminal in your repository folder and run:\n\n```bash\nrm .git/index\ngit reset\n```\n\n### Option 3: Re-clone the repository\n\nIf the problem persists, you can delete the repository folder and let Computor re-clone it on the next startup. Your latest committed code is safe on the server.\n\n## Preventing this in the future\n\n- **Move your workspace outside the cloud sync folder.** This is the most reliable fix.\n- If you must use a synced folder, add `.git` to your sync tool's exclusion list.\n- On Nextcloud/OwnCloud, right-click the `.git` folder and choose \"Ignore\" or add it to `.sync-exclude.lst`.\n- On Dropbox, use \"Selective Sync\" to exclude the workspace folder.\n- On OneDrive, right-click the folder and disable \"Always keep on this device\".",
+      "actions": [
+        {
+          "id": "REBUILD_INDEX",
+          "label": "Rebuild Git Index",
+          "tooltip": "Deletes the corrupted .git/index file and runs git reset to rebuild it",
+          "style": "primary"
+        },
+        {
+          "id": "OPEN_TERMINAL",
+          "label": "Open Terminal Here",
+          "tooltip": "Opens a terminal in the repository directory so you can run commands manually",
+          "style": "secondary"
+        },
+        {
+          "id": "DISMISS",
+          "label": "Dismiss",
+          "tooltip": "Close this error page",
+          "style": "secondary"
+        }
+      ]
+    }
+  }
+}

@@ -11,6 +11,7 @@ export enum GitErrorCode {
   AUTHENTICATION_FAILED = 'AUTHENTICATION_FAILED',
   NETWORK_ERROR = 'NETWORK_ERROR',
   PERMISSION_DENIED = 'PERMISSION_DENIED',
+  INDEX_CORRUPT = 'INDEX_CORRUPT',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR'
 }
 
@@ -76,7 +77,11 @@ export class GitErrorHandler {
     if (lowerMessage.includes('permission denied')) {
       return GitErrorCode.PERMISSION_DENIED;
     }
-    
+
+    if (this.isCorruptIndex(lowerMessage)) {
+      return GitErrorCode.INDEX_CORRUPT;
+    }
+
     return GitErrorCode.UNKNOWN_ERROR;
   }
 
@@ -111,18 +116,33 @@ export class GitErrorHandler {
       
       case GitErrorCode.PERMISSION_DENIED:
         return 'Permission denied. Please check your access rights.';
-      
+
+      case GitErrorCode.INDEX_CORRUPT:
+        return 'Your repository index is corrupted, likely due to cloud sync software interfering with Git files.';
+
       default:
         return error.message || 'An unknown error occurred.';
     }
+  }
+
+  static isCorruptIndex(message: string): boolean {
+    const lower = message.toLowerCase();
+    return lower.includes('index file corrupt')
+      || lower.includes('index file smaller than expected')
+      || lower.includes('bad signature')
+      || (lower.includes('.git/index') && (
+        lower.includes('corrupt') || lower.includes('invalid') || lower.includes('malformed')
+        || lower.includes('unexpected') || lower.includes('cannot read') || lower.includes('failed to read')
+      ));
   }
 
   static isRecoverable(error: GitError): boolean {
     switch (error.code) {
       case GitErrorCode.NETWORK_ERROR:
       case GitErrorCode.AUTHENTICATION_FAILED:
+      case GitErrorCode.INDEX_CORRUPT:
         return true;
-      
+
       default:
         return false;
     }
