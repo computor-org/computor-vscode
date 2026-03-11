@@ -23,6 +23,7 @@ export interface CourseContentAssignmentInfo {
   versionTag?: string | null;
   deploymentStatus?: string | null;
   hasDeployment?: boolean;
+  hasNewerVersion?: boolean;
   hasLocalChanges?: boolean;
   folderExists?: boolean;
   statusMessage?: { message: string; severity: 'info' | 'warning' | 'error' };
@@ -169,6 +170,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push('missingFolder');
     }
 
+    if (this.assignmentInfo?.hasNewerVersion) {
+      parts.push('newerVersionAvailable');
+    }
+
     if ('archived_at' in this.courseContent && this.courseContent.archived_at) {
       parts.push('archived');
     }
@@ -289,6 +294,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
         parts.push('🔄 update pending');
       } else {
         parts.push('⏳ not deployed yet');
+      }
+
+      if (assignment?.hasNewerVersion) {
+        parts.push('⬆ update available');
       }
     }
 

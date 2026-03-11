@@ -912,11 +912,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     // deployment data. Fetch fresh deployment status from the uncached endpoint.
     let deploymentStatus: string | null = content.deployment_status || null;
     let hasDeployment = content.has_deployment || false;
+    let hasNewerVersion = false;
     try {
       const freshDeployment = await this.apiService.lecturerGetDeployment(content.id);
       if (freshDeployment) {
         deploymentStatus = freshDeployment.deployment_status || null;
         hasDeployment = true;
+        hasNewerVersion = freshDeployment.has_newer_version === true;
       }
     } catch {
       // No deployment exists or endpoint failed — use list data as fallback
@@ -927,7 +929,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       versionIdentifier: undefined,
       versionTag: undefined,
       deploymentStatus,
-      hasDeployment
+      hasDeployment,
+      hasNewerVersion
     };
 
     if (!directoryName) {
