@@ -109,7 +109,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     super(
       options.courseContent.title || options.courseContent.path,
       options.collapsibleState !== undefined ? options.collapsibleState :
-        (options.hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
+        (options.hasChildren && !options.isSubmittable ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
     );
 
     this.courseContent = options.courseContent;

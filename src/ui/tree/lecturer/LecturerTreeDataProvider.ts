@@ -748,7 +748,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     const contentTypes = await this.getCourseContentTypes(course.id);
     const contentType = contentTypes.find(t => t.id === content.course_content_type_id);
     const isSubmittable = this.isContentSubmittable(contentType);
-    const isAssignmentLeaf = isSubmittable && !hasChildren;
     let assignmentDirectory: string | undefined;
     let assignmentInfo: CourseContentAssignmentInfo | undefined;
 
@@ -758,9 +757,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
 
     const nodeId = `content-${content.id}`;
-    const expandedState = hasChildren
-      ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
-      : (isAssignmentLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+    const expandedState = isSubmittable
+      ? vscode.TreeItemCollapsibleState.None
+      : hasChildren
+        ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+        : vscode.TreeItemCollapsibleState.None;
 
     return new CourseContentTreeItem({
       courseContent: content,
