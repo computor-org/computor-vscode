@@ -274,6 +274,9 @@ export class CourseContentTreeItem extends vscode.TreeItem {
 
       const deploymentStatus = assignment?.deploymentStatus || getDeploymentStatus(this.courseContent);
       const isDeployed = deploymentStatus === 'deployed' || deploymentStatus === 'released';
+      const wasPreviouslyDeployed = 'deployment' in this.courseContent
+        && this.courseContent.deployment?.deployed_at != null;
+
       if (isDeployed) {
         const icon = statusIcons[deploymentStatus!] || '✅';
         const label = statusLabels[deploymentStatus!] || deploymentStatus!.replace(/_/g, ' ');
@@ -282,15 +285,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
         parts.push('❌ failed');
       } else if (deploymentStatus === 'deploying' || deploymentStatus === 'in_progress') {
         parts.push('🔄 deploying');
+      } else if (wasPreviouslyDeployed) {
+        parts.push('🔄 update pending');
       } else {
         parts.push('⏳ not deployed yet');
-      }
-
-      if (deploymentStatus === 'deployed' && this.exampleVersionInfo && 'deployment' in this.courseContent && this.courseContent.deployment) {
-        const deployedVersionId = this.courseContent.deployment.example_version_id;
-        if (deployedVersionId && deployedVersionId !== this.exampleVersionInfo.id) {
-          parts.push('🔄 update pending');
-        }
       }
     }
 
