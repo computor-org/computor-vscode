@@ -235,24 +235,11 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push(`Version tag: ${this.assignmentInfo.versionTag}`);
     }
 
-    if (this.assignmentInfo?.hasLocalChanges) {
-      parts.push('Local changes detected since last deployment');
-    }
-
-    if (this.assignmentInfo && this.assignmentInfo.folderExists === false) {
-      parts.push('Assignment directory missing locally');
-    }
-
-    if (this.assignmentInfo?.commitMissing) {
-      parts.push('Deployment commit not found locally');
-    }
-
-    if (this.assignmentInfo?.statusMessage) {
-      parts.push(`${this.assignmentInfo.statusMessage.severity.toUpperCase()}: ${this.assignmentInfo.statusMessage.message}`);
-    }
-
-    if (this.assignmentInfo?.diffError) {
-      parts.push(`Diff error: ${this.assignmentInfo.diffError}`);
+    const deploymentStatus = this.assignmentInfo?.deploymentStatus || getDeploymentStatus(this.courseContent);
+    if (deploymentStatus) {
+      parts.push(`Status: ${deploymentStatus.replace(/_/g, ' ')}`);
+    } else if (hasExampleAssigned(this.courseContent)) {
+      parts.push('Status: not deployed yet');
     }
     
     return parts.join('\n') || this.courseContent.path;
@@ -286,29 +273,24 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       };
 
       const deploymentStatus = assignment?.deploymentStatus || getDeploymentStatus(this.courseContent);
-      if (deploymentStatus) {
-        const icon = statusIcons[deploymentStatus] || '❓';
-        const label = statusLabels[deploymentStatus] || deploymentStatus.replace(/_/g, ' ');
+      const isDeployed = deploymentStatus === 'deployed' || deploymentStatus === 'released';
+      if (isDeployed) {
+        const icon = statusIcons[deploymentStatus!] || '✅';
+        const label = statusLabels[deploymentStatus!] || deploymentStatus!.replace(/_/g, ' ');
         parts.push(`${icon} ${label}`);
-      } else if (assignment?.hasDeployment) {
-        parts.push('✅ deployed');
+      } else if (deploymentStatus === 'failed') {
+        parts.push('❌ failed');
+      } else if (deploymentStatus === 'deploying' || deploymentStatus === 'in_progress') {
+        parts.push('🔄 deploying');
+      } else {
+        parts.push('⏳ not deployed yet');
       }
 
-      if (assignment && assignment.folderExists === false) {
-        parts.push('⚠ not synced');
-      }
-
-      if (assignment?.hasDeployment && assignment.hasLocalChanges) {
-        parts.push('✏️ changes');
-      }
-
-      if (assignment?.commitMissing) {
-        parts.push('⚠ commit missing');
-      }
-
-      if (assignment?.statusMessage && assignment.statusMessage.severity !== 'info') {
-        const icon = assignment.statusMessage.severity === 'error' ? '❌' : '⚠';
-        parts.push(`${icon} ${assignment.statusMessage.message}`);
+      if (deploymentStatus === 'deployed' && this.exampleVersionInfo && 'deployment' in this.courseContent && this.courseContent.deployment) {
+        const deployedVersionId = this.courseContent.deployment.example_version_id;
+        if (deployedVersionId && deployedVersionId !== this.exampleVersionInfo.id) {
+          parts.push('🔄 update pending');
+        }
       }
     }
 
