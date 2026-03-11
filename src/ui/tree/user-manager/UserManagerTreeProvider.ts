@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { UserList } from '../../../types/generated/users';
 
-class UserTreeItem extends vscode.TreeItem {
+export class UserTreeItem extends vscode.TreeItem {
   constructor(
     public readonly user: UserList,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState
@@ -53,11 +53,14 @@ class UserTreeItem extends vscode.TreeItem {
   }
 }
 
-export class UserManagerTreeProvider implements vscode.TreeDataProvider<UserTreeItem> {
-  private onDidChangeTreeDataEmitter = new vscode.EventEmitter<UserTreeItem | undefined | null>();
+type TreeItem = UserTreeItem | vscode.TreeItem;
+
+export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem> {
+  private onDidChangeTreeDataEmitter = new vscode.EventEmitter<TreeItem | undefined | null>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
   private users: UserList[] = [];
+  private searchQuery = '';
 
   constructor(
     private readonly apiService: ComputorApiService,
@@ -71,11 +74,25 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<UserTree
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
-  getTreeItem(element: UserTreeItem): vscode.TreeItem {
+  getSearchQuery(): string {
+    return this.searchQuery;
+  }
+
+  setSearchQuery(query: string): void {
+    this.searchQuery = query;
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  clearSearch(): void {
+    this.searchQuery = '';
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  getTreeItem(element: TreeItem): vscode.TreeItem {
     return element;
   }
 
-  async getChildren(element?: UserTreeItem): Promise<UserTreeItem[]> {
+  async getChildren(element?: TreeItem): Promise<TreeItem[]> {
     if (element) {
       return [];
     }
@@ -85,10 +102,40 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<UserTree
         await this.loadUsers();
       }
 
-      return this.users.map(user => new UserTreeItem(
-        user,
-        vscode.TreeItemCollapsibleState.None
-      ));
+      const items: TreeItem[] = [];
+
+      if (this.searchQuery) {
+        const searchItem = new vscode.TreeItem(
+          `Search: "${this.searchQuery}"`,
+          vscode.TreeItemCollapsibleState.None
+        );
+        searchItem.iconPath = new vscode.ThemeIcon('search');
+        searchItem.contextValue = 'searchFilter';
+        searchItem.tooltip = `Current search filter: ${this.searchQuery}\nClick to clear`;
+        searchItem.command = {
+          command: 'computor.userManager.clearSearch',
+          title: 'Clear Search',
+          arguments: []
+        };
+        items.push(searchItem);
+      }
+
+      let filtered = this.users;
+      if (this.searchQuery) {
+        const query = this.searchQuery.toLowerCase();
+        filtered = filtered.filter(user =>
+          (user.family_name || '').toLowerCase().includes(query) ||
+          (user.given_name || '').toLowerCase().includes(query) ||
+          (user.email || '').toLowerCase().includes(query) ||
+          (user.username || '').toLowerCase().includes(query)
+        );
+      }
+
+      for (const user of filtered) {
+        items.push(new UserTreeItem(user, vscode.TreeItemCollapsibleState.None));
+      }
+
+      return items;
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to load users: ${error?.message || error}`);
       return [];

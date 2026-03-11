@@ -468,6 +468,17 @@
         "category": "Computor User Manager"
       },
       {
+        "command": "computor.userManager.searchUsers",
+        "title": "Search Users",
+        "icon": "$(search)",
+        "category": "Computor User Manager"
+      },
+      {
+        "command": "computor.userManager.clearSearch",
+        "title": "Clear Search",
+        "category": "Computor User Manager"
+      },
+      {
         "command": "computor.logout",
         "title": "Logout",
         "icon": "$(sign-out)",
@@ -955,9 +966,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "computor.userManager.refresh",
+          "command": "computor.userManager.searchUsers",
           "when": "view == computor.usermanager.users",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.userManager.refresh",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@2"
         },
         {
           "command": "computor.manageGitLabTokens",
