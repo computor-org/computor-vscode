@@ -66,7 +66,7 @@ export class TutorGroupOptionItem extends vscode.TreeItem {
     super(groupLabel, vscode.TreeItemCollapsibleState.None);
     const suffix = isNoGroup ? NO_GROUP_SENTINEL : (groupId ?? 'all');
     this.id = `tutor-filter-group-option-${courseId}-${suffix}`;
-    this.contextValue = 'tutorGroupOption';
+    this.contextValue = isSelected ? 'tutorGroupOption.selected' : 'tutorGroupOption';
     this.iconPath = new vscode.ThemeIcon(isSelected ? 'check' : 'circle-outline');
     this.command = {
       command: 'computor.tutor.selectGroup',

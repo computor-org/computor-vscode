@@ -906,7 +906,11 @@ class UnifiedController {
 
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectMember', async (item: InstanceType<typeof TutorMemberFilterItem>) => {
       const name = formatMemberName(item.member);
-      await selection.selectMember(item.member.id, name);
+      const memberGroupId = item.member.course_group_id ?? null;
+      const memberGroupLabel = memberGroupId
+        ? filterTree.resolveGroupLabel(item.courseId, memberGroupId)
+        : null;
+      await selection.selectMember(item.member.id, name, memberGroupId, memberGroupLabel);
       filterTree.refresh();
     }));
 

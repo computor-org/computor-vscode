@@ -14,6 +14,8 @@ export class TutorSelectionService {
   private courseLabel: string | null = null;
   private groupLabel: string | null = null;
   private memberLabel: string | null = null;
+  private memberCourseGroupId: string | null = null;
+  private memberCourseGroupLabel: string | null = null;
 
   private emitter = new vscode.EventEmitter<void>();
   public readonly onDidChangeSelection = this.emitter.event;
@@ -30,6 +32,8 @@ export class TutorSelectionService {
         this.courseLabel = persisted.courseLabel ?? null;
         this.groupLabel = persisted.groupLabel ?? null;
         this.memberLabel = persisted.memberLabel ?? null;
+        this.memberCourseGroupId = persisted.memberCourseGroupId ?? null;
+        this.memberCourseGroupLabel = persisted.memberCourseGroupLabel ?? null;
       }
     } catch {}
   }
@@ -65,6 +69,8 @@ export class TutorSelectionService {
     this.memberId = null;
     this.groupLabel = null;
     this.memberLabel = null;
+    this.memberCourseGroupId = null;
+    this.memberCourseGroupLabel = null;
     await this.persist();
     this.emitter.fire();
   }
@@ -75,13 +81,25 @@ export class TutorSelectionService {
     // Reset member selection
     this.memberId = null;
     this.memberLabel = null;
+    this.memberCourseGroupId = null;
+    this.memberCourseGroupLabel = null;
     await this.persist();
     this.emitter.fire();
   }
 
-  async selectMember(memberId: string | null, label?: string | null): Promise<void> {
+  getMemberCourseGroupId(): string | null { return this.memberCourseGroupId; }
+  getMemberCourseGroupLabel(): string | null { return this.memberCourseGroupLabel; }
+
+  async selectMember(
+    memberId: string | null,
+    label?: string | null,
+    courseGroupId?: string | null,
+    courseGroupLabel?: string | null
+  ): Promise<void> {
     this.memberId = memberId;
     this.memberLabel = label ?? this.memberLabel ?? null;
+    this.memberCourseGroupId = courseGroupId ?? null;
+    this.memberCourseGroupLabel = courseGroupLabel ?? null;
     await this.persist();
     this.emitter.fire();
   }
@@ -89,6 +107,8 @@ export class TutorSelectionService {
   async clearMember(): Promise<void> {
     this.memberId = null;
     this.memberLabel = null;
+    this.memberCourseGroupId = null;
+    this.memberCourseGroupLabel = null;
     await this.persist();
     this.emitter.fire();
   }
@@ -101,7 +121,9 @@ export class TutorSelectionService {
         memberId: this.memberId,
         courseLabel: this.courseLabel,
         groupLabel: this.groupLabel,
-        memberLabel: this.memberLabel
+        memberLabel: this.memberLabel,
+        memberCourseGroupId: this.memberCourseGroupId,
+        memberCourseGroupLabel: this.memberCourseGroupLabel
       });
     } catch {}
   }

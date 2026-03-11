@@ -104,7 +104,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
       return items;
     }
 
-    await this.autoSelectFirstMember(members);
+    await this.autoSelectFirstMember(courseId, members);
 
     const selectedMemberId = this.selection.getCurrentMemberId();
     const visibleCount = this.visibleMemberCount.get(courseId) ?? PAGE_SIZE;
@@ -146,7 +146,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     return options;
   }
 
-  private resolveGroupLabel(courseId: string, groupId: string | null): string {
+  resolveGroupLabel(courseId: string, groupId: string | null): string {
     if (!groupId) {
       return 'All';
     }
@@ -184,14 +184,17 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     return members;
   }
 
-  private async autoSelectFirstMember(members: TutorCourseMemberList[]): Promise<void> {
+  private async autoSelectFirstMember(courseId: string, members: TutorCourseMemberList[]): Promise<void> {
     const currentMemberId = this.selection.getCurrentMemberId();
     if (currentMemberId && members.some(m => m.id === currentMemberId)) {
       return;
     }
     const first = members[0];
     if (first) {
-      await this.selection.selectMember(first.id, formatMemberName(first));
+      const groupLabel = first.course_group_id
+        ? this.resolveGroupLabel(courseId, first.course_group_id)
+        : null;
+      await this.selection.selectMember(first.id, formatMemberName(first), first.course_group_id, groupLabel);
     }
   }
 }
