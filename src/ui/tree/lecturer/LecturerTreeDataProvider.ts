@@ -908,13 +908,26 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     content: CourseContentLecturerList,
     directoryName?: string
   ): Promise<CourseContentAssignmentInfo | undefined> {
-    // The new lecturer endpoint has deployment_status and has_deployment directly
+    // The list endpoint is cached on the backend (5-min TTL) and may return stale
+    // deployment data. Fetch fresh deployment status from the uncached endpoint.
+    let deploymentStatus: string | null = content.deployment_status || null;
+    let hasDeployment = content.has_deployment || false;
+    try {
+      const freshDeployment = await this.apiService.lecturerGetDeployment(content.id);
+      if (freshDeployment) {
+        deploymentStatus = freshDeployment.deployment_status || null;
+        hasDeployment = true;
+      }
+    } catch {
+      // No deployment exists or endpoint failed — use list data as fallback
+    }
+
     const info: CourseContentAssignmentInfo = {
       directoryName,
-      versionIdentifier: undefined, // Will be fetched if needed
-      versionTag: undefined, // Will be fetched if needed
-      deploymentStatus: content.deployment_status || null,
-      hasDeployment: content.has_deployment || false
+      versionIdentifier: undefined,
+      versionTag: undefined,
+      deploymentStatus,
+      hasDeployment
     };
 
     if (!directoryName) {
