@@ -133,7 +133,7 @@ export const SHARED_STYLES = `
   input, textarea, select {
     width: 100%;
     padding: 6px 8px;
-    border: 1px solid var(--vscode-input-border);
+    border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.35)));
     background-color: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border-radius: 4px;
