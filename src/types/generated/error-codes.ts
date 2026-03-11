@@ -540,7 +540,7 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
       html: "<strong>Deletion Blocked</strong><p>This course content cannot be deleted because students have already submitted work. Use <em>archive</em> instead to hide the content while preserving student data.</p>",
     },
     retryAfter: undefined,
-    documentationUrl: null,
+    documentationUrl: undefined,
   },
   CONTENT_007: {
     code: "CONTENT_007",
@@ -554,7 +554,7 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
       html: "<strong>Deletion Blocked</strong><p>This course content cannot be deleted because it contains descendant items with student submissions. Use <em>archive</em> instead to hide the content while preserving student data.</p>",
     },
     retryAfter: undefined,
-    documentationUrl: null,
+    documentationUrl: undefined,
   },
   VERSION_001: {
     code: "VERSION_001",
