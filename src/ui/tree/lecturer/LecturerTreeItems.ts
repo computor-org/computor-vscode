@@ -312,6 +312,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       }
     }
 
+    if ('archived_at' in this.courseContent && this.courseContent.archived_at) {
+      parts.push('📦 Archived');
+    }
+
     return parts.length > 0 ? parts.join(' • ') : undefined;
   }
 }
