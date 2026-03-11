@@ -7,9 +7,7 @@ import {
   TutorGroupFilterItem,
   TutorGroupOptionItem,
   TutorMemberFilterItem,
-  TutorShowMoreItem,
   NO_GROUP_SENTINEL,
-  PAGE_SIZE,
   formatMemberName,
   compareMembersByName
 } from './tutor-filter-tree-items';
@@ -18,8 +16,7 @@ type FilterTreeItem =
   | TutorCourseFilterItem
   | TutorGroupFilterItem
   | TutorGroupOptionItem
-  | TutorMemberFilterItem
-  | TutorShowMoreItem;
+  | TutorMemberFilterItem;
 
 export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<FilterTreeItem | undefined | null | void>();
@@ -28,7 +25,6 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
   private courses: Array<{ id: string; title?: string | null; path?: string; name?: string }> = [];
   private groupsCache = new Map<string, CourseGroupList[]>();
   private membersCache = new Map<string, TutorCourseMemberList[]>();
-  private visibleMemberCount = new Map<string, number>();
 
   private currentGroupFetchCourseId?: string | null;
   private currentMemberFetchKey?: { courseId: string | null; groupId: string | null };
@@ -66,12 +62,6 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     this.refresh();
   }
 
-  showMoreMembers(courseId: string): void {
-    const current = this.visibleMemberCount.get(courseId) ?? PAGE_SIZE;
-    this.visibleMemberCount.set(courseId, current + PAGE_SIZE);
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
   private async getRootChildren(): Promise<FilterTreeItem[]> {
     if (this.courses.length === 0) {
       this.courses = await this.api.getTutorCourses(false) || [];
@@ -107,15 +97,8 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     await this.autoSelectFirstMember(courseId, members);
 
     const selectedMemberId = this.selection.getCurrentMemberId();
-    const visibleCount = this.visibleMemberCount.get(courseId) ?? PAGE_SIZE;
-    const visibleMembers = members.slice(0, visibleCount);
-    const remaining = members.length - visibleCount;
-
-    for (const member of visibleMembers) {
+    for (const member of members) {
       items.push(new TutorMemberFilterItem(member, courseId, member.id === selectedMemberId));
-    }
-    if (remaining > 0) {
-      items.push(new TutorShowMoreItem(courseId, remaining));
     }
 
     return items;

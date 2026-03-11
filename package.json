@@ -550,11 +550,6 @@
         "category": "Computor Tutor"
       },
       {
-        "command": "computor.tutor.showMoreMembers",
-        "title": "Show More Members",
-        "category": "Computor Tutor"
-      },
-      {
         "command": "computor.tutor.showCourseMemberComments",
         "title": "Show Comments",
         "icon": "$(note)",

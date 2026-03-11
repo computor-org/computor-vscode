@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import type { TutorCourseMemberList } from '../../../types/generated/courses';
 
 export const NO_GROUP_SENTINEL = '__no_group__';
-export const PAGE_SIZE = 5;
 
 export function formatMemberName(member: TutorCourseMemberList): string {
   const user = member.user;
@@ -95,19 +94,3 @@ export class TutorMemberFilterItem extends vscode.TreeItem {
   }
 }
 
-export class TutorShowMoreItem extends vscode.TreeItem {
-  constructor(
-    public readonly courseId: string,
-    public readonly remainingCount: number
-  ) {
-    super(`Show more... (${remainingCount} remaining)`, vscode.TreeItemCollapsibleState.None);
-    this.id = `tutor-filter-show-more-${courseId}`;
-    this.contextValue = 'tutorShowMore';
-    this.iconPath = new vscode.ThemeIcon('ellipsis');
-    this.command = {
-      command: 'computor.tutor.showMoreMembers',
-      title: 'Show More Members',
-      arguments: [this]
-    };
-  }
-}

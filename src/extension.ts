@@ -865,7 +865,7 @@ class UnifiedController {
 
   private async initializeTutorView(api: ComputorApiService): Promise<void> {
     const { TutorFilterTreeProvider } = await import('./ui/tree/tutor/tutor-filter-tree-provider');
-    const { TutorCourseFilterItem, TutorGroupOptionItem, TutorMemberFilterItem, TutorShowMoreItem, NO_GROUP_SENTINEL, formatMemberName } = await import('./ui/tree/tutor/tutor-filter-tree-items');
+    const { TutorCourseFilterItem, TutorGroupOptionItem, TutorMemberFilterItem, NO_GROUP_SENTINEL, formatMemberName } = await import('./ui/tree/tutor/tutor-filter-tree-items');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
     const { TutorEditorDecorationService } = await import('./providers/TutorEditorDecorationService');
@@ -912,10 +912,6 @@ class UnifiedController {
         : null;
       await selection.selectMember(item.member.id, name, memberGroupId, memberGroupLabel);
       filterTree.refresh();
-    }));
-
-    this.disposables.push(vscode.commands.registerCommand('computor.tutor.showMoreMembers', (item: InstanceType<typeof TutorShowMoreItem>) => {
-      filterTree.showMoreMembers(item.courseId);
     }));
 
     // Register course content tree
