@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IconGenerator } from './utils/IconGenerator';
-import { GitCancelledError } from './utils/exec';
+import { execAsync, GitCancelledError } from './utils/exec';
 import { errorCatalog } from './exceptions/ErrorCatalog';
+import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
+import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -646,6 +648,36 @@ class UnifiedController {
 
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
+
+    // Wire error page for corrupt git index detection
+    const errorPageProvider = new ErrorPageWebviewProvider(this.context);
+    errorPageProvider.registerActionHandler('REBUILD_INDEX', async (_errorCode, ctx) => {
+      if (!ctx?.repositoryPath) { return; }
+      try {
+        const indexPath = path.join(ctx.repositoryPath, '.git', 'index');
+        if (fs.existsSync(indexPath)) {
+          await fs.promises.unlink(indexPath);
+        }
+        await execAsync('git reset', { cwd: ctx.repositoryPath });
+        vscode.window.showInformationMessage('Git index rebuilt successfully. Please reload the window.', 'Reload Window').then(choice => {
+          if (choice === 'Reload Window') {
+            void vscode.commands.executeCommand('workbench.action.reloadWindow');
+          }
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to rebuild git index: ${message}`);
+      }
+    });
+    errorPageProvider.registerActionHandler('OPEN_TERMINAL', async (_errorCode, ctx) => {
+      if (!ctx?.repositoryPath) { return; }
+      const terminal = vscode.window.createTerminal({ name: 'Repository', cwd: ctx.repositoryPath });
+      terminal.show();
+    });
+    repositoryManager.setCorruptIndexHandler((repoPath: string) => {
+      void errorPageProvider.showError('GIT_INDEX_CORRUPT', { repositoryPath: repoPath });
+    });
+
     const statusBar = (await import('./ui/StatusBarService')).StatusBarService.initialize(this.context);
     const courseSelectionService = CourseSelectionService.initialize(this.context, api, statusBar);
 
@@ -1425,8 +1457,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
 
-  // Initialize backend error catalog
+  // Initialize error catalogs
   errorCatalog.initialize();
+  clientErrorCatalog.initialize();
 
   extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 

@@ -11,3 +11,5 @@
 export * from './types';
 export * from './ErrorCatalog';
 export * from './ErrorDisplayStrategy';
+export * from './client-error-types';
+export * from './ClientErrorCatalog';

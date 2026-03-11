@@ -47,6 +47,10 @@ module.exports = (_env = {}, argv = {}) => {
           {
             from: path.resolve(__dirname, 'src', 'exceptions', 'error-catalog.vscode.json'),
             to: path.resolve(__dirname, 'dist', 'exceptions', 'error-catalog.vscode.json')
+          },
+          {
+            from: path.resolve(__dirname, 'src', 'exceptions', 'client-error-catalog.json'),
+            to: path.resolve(__dirname, 'dist', 'exceptions', 'client-error-catalog.json')
           }
         ]
       })
