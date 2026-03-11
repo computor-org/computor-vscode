@@ -168,7 +168,11 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     if (this.assignmentInfo && this.assignmentInfo.folderExists === false) {
       parts.push('missingFolder');
     }
-    
+
+    if ('archived_at' in this.courseContent && this.courseContent.archived_at) {
+      parts.push('archived');
+    }
+
     return parts.join('.');
   }
 

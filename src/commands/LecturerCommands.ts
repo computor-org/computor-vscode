@@ -20,6 +20,7 @@ import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidati
 import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
 import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMemberProgressWebviewProvider';
 import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
+import { HttpError } from '../http/errors/HttpError';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
@@ -219,6 +220,18 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.deleteCourseContent', async (item: CourseContentTreeItem) => {
         await this.deleteCourseContent(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.archiveCourseContent', async (item: CourseContentTreeItem) => {
+        await this.archiveCourseContent(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.unarchiveCourseContent', async (item: CourseContentTreeItem) => {
+        await this.unarchiveCourseContent(item);
       })
     );
 
@@ -1289,25 +1302,74 @@ export class LecturerCommands {
   }
 
   private async deleteCourseContent(item: CourseContentTreeItem): Promise<void> {
-    console.log('Delete command called with item:', item);
-    console.log('Item type:', item.constructor.name);
-    console.log('Item courseContent:', item.courseContent);
-    
-    // Validate that we have the required data
     if (!item.courseContent || !item.courseContent.id) {
       vscode.window.showErrorMessage('Invalid course content item - missing required data');
-      console.error('Invalid item passed to deleteCourseContent:', item);
       return;
     }
-    
+
+    const title = item.courseContent.title || item.courseContent.path;
     const confirmation = await vscode.window.showWarningMessage(
-      `Are you sure you want to delete "${item.courseContent.title || item.courseContent.path}"?`,
+      `Are you sure you want to delete "${title}"?`,
       'Yes',
       'No'
     );
 
-    if (confirmation === 'Yes') {
-      await this.treeDataProvider.deleteCourseContent(item);
+    if (confirmation !== 'Yes') { return; }
+
+    try {
+      await this.apiService.deleteCourseContent(item.course.id, item.courseContent.id);
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+      vscode.window.showInformationMessage(`Deleted "${title}" successfully`);
+    } catch (error: any) {
+      if (error instanceof HttpError && (error.errorCode === 'CONTENT_006' || error.errorCode === 'CONTENT_007')) {
+        const archiveChoice = await vscode.window.showWarningMessage(
+          `Cannot delete "${title}" because it has student submissions. Would you like to archive it instead?`,
+          'Archive',
+          'Cancel'
+        );
+        if (archiveChoice === 'Archive') {
+          await this.archiveCourseContent(item);
+        }
+      } else {
+        vscode.window.showErrorMessage(`Failed to delete "${title}": ${error.message || error}`);
+      }
+    }
+  }
+
+  private async archiveCourseContent(item: CourseContentTreeItem): Promise<void> {
+    if (!item.courseContent?.id || !item.course?.id) {
+      vscode.window.showErrorMessage('Invalid course content item');
+      return;
+    }
+
+    const title = item.courseContent.title || item.courseContent.path;
+
+    try {
+      await this.apiService.archiveCourseContent(item.course.id, item.courseContent.id);
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+      vscode.window.showInformationMessage(`Archived "${title}" successfully`);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to archive "${title}": ${error.message || error}`);
+    }
+  }
+
+  private async unarchiveCourseContent(item: CourseContentTreeItem): Promise<void> {
+    if (!item.courseContent?.id || !item.course?.id) {
+      vscode.window.showErrorMessage('Invalid course content item');
+      return;
+    }
+
+    const title = item.courseContent.title || item.courseContent.path;
+
+    try {
+      await this.apiService.unarchiveCourseContent(item.course.id, item.courseContent.id);
+      this.apiService.clearCourseCache(item.course.id);
+      this.treeDataProvider.refresh();
+      vscode.window.showInformationMessage(`Unarchived "${title}" successfully`);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to unarchive "${title}": ${error.message || error}`);
     }
   }
 
