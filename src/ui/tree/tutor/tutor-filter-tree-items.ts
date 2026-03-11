@@ -22,6 +22,21 @@ export function buildBadgeDescription(member: TutorCourseMemberList): string | u
   return badges.length > 0 ? badges.join(' \u00B7 ') : undefined;
 }
 
+export function buildMemberTooltip(member: TutorCourseMemberList): string {
+  const parts: string[] = [];
+  const user = member.user;
+  if (user?.given_name || user?.family_name) {
+    parts.push(`${user.given_name || ''} ${user.family_name || ''}`.trim());
+  }
+  if (user?.email) {
+    parts.push(`Email: ${user.email}`);
+  }
+  if (user?.username) {
+    parts.push(`Username: ${user.username}`);
+  }
+  return parts.join('\n');
+}
+
 export function compareMembersByName(a: TutorCourseMemberList, b: TutorCourseMemberList): number {
   return formatMemberName(a).localeCompare(formatMemberName(b));
 }
@@ -85,6 +100,7 @@ export class TutorMemberFilterItem extends vscode.TreeItem {
     this.id = `tutor-filter-member-${member.id}`;
     this.contextValue = isSelected ? 'tutorMember.selected' : 'tutorMember';
     this.description = buildBadgeDescription(member);
+    this.tooltip = buildMemberTooltip(member);
     this.iconPath = new vscode.ThemeIcon(isSelected ? 'person-filled' : 'person');
     this.command = {
       command: 'computor.tutor.selectMember',

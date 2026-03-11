@@ -94,7 +94,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       const memberLabel = this.selection.getCurrentMemberLabel() || memberId;
       const memberGroupLabel = this.selection.getMemberCourseGroupLabel();
       const headerItems: vscode.TreeItem[] = [
-        new TutorSelectionMemberItem(memberLabel),
+        new TutorSelectionMemberItem(memberLabel, this.selection.getMemberEmail(), this.selection.getMemberUsername()),
         new TutorSelectionGroupItem(memberGroupLabel || 'No Group')
       ];
 
@@ -638,11 +638,17 @@ interface ContentNode {
 }
 
 class TutorSelectionMemberItem extends vscode.TreeItem {
-  constructor(memberLabel: string) {
+  constructor(memberLabel: string, email?: string | null, username?: string | null) {
     super(memberLabel, vscode.TreeItemCollapsibleState.None);
     this.id = 'tutor-content-member';
     this.contextValue = 'tutorMember.selected';
     this.iconPath = new vscode.ThemeIcon('person-filled');
+    const tooltipParts: string[] = [memberLabel];
+    if (email) { tooltipParts.push(`Email: ${email}`); }
+    if (username) { tooltipParts.push(`Username: ${username}`); }
+    if (tooltipParts.length > 1) {
+      this.tooltip = tooltipParts.join('\n');
+    }
   }
 }
 

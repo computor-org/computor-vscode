@@ -169,15 +169,24 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
 
   private async autoSelectFirstMember(courseId: string, members: TutorCourseMemberList[]): Promise<void> {
     const currentMemberId = this.selection.getCurrentMemberId();
-    if (currentMemberId && members.some(m => m.id === currentMemberId)) {
-      return;
+    if (currentMemberId) {
+      const existing = members.find(m => m.id === currentMemberId);
+      if (existing) {
+        if (!this.selection.getMemberEmail() && existing.user?.email) {
+          const groupLabel = existing.course_group_id
+            ? this.resolveGroupLabel(courseId, existing.course_group_id)
+            : null;
+          await this.selection.selectMember(existing.id, formatMemberName(existing), existing.course_group_id, groupLabel, existing.user?.email, existing.user?.username);
+        }
+        return;
+      }
     }
     const first = members[0];
     if (first) {
       const groupLabel = first.course_group_id
         ? this.resolveGroupLabel(courseId, first.course_group_id)
         : null;
-      await this.selection.selectMember(first.id, formatMemberName(first), first.course_group_id, groupLabel);
+      await this.selection.selectMember(first.id, formatMemberName(first), first.course_group_id, groupLabel, first.user?.email, first.user?.username);
     }
   }
 }
