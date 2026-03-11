@@ -2362,7 +2362,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<UserList[]>('/users');
+        const response = await client.get<UserList[]>('/users', { limit: 10000 });
         return response.data;
       }, {
         maxRetries: 2,
