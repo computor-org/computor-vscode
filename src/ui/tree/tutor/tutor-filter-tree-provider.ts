@@ -7,9 +7,7 @@ import {
   TutorGroupFilterItem,
   TutorGroupOptionItem,
   TutorMemberFilterItem,
-  TutorShowMoreItem,
   NO_GROUP_SENTINEL,
-  PAGE_SIZE,
   formatMemberName,
   compareMembersByName
 } from './tutor-filter-tree-items';
@@ -18,8 +16,7 @@ type FilterTreeItem =
   | TutorCourseFilterItem
   | TutorGroupFilterItem
   | TutorGroupOptionItem
-  | TutorMemberFilterItem
-  | TutorShowMoreItem;
+  | TutorMemberFilterItem;
 
 export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<FilterTreeItem | undefined | null | void>();
@@ -28,7 +25,6 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
   private courses: Array<{ id: string; title?: string | null; path?: string; name?: string }> = [];
   private groupsCache = new Map<string, CourseGroupList[]>();
   private membersCache = new Map<string, TutorCourseMemberList[]>();
-  private visibleMemberCount = new Map<string, number>();
 
   private currentGroupFetchCourseId?: string | null;
   private currentMemberFetchKey?: { courseId: string | null; groupId: string | null };
@@ -66,12 +62,6 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     this.refresh();
   }
 
-  showMoreMembers(courseId: string): void {
-    const current = this.visibleMemberCount.get(courseId) ?? PAGE_SIZE;
-    this.visibleMemberCount.set(courseId, current + PAGE_SIZE);
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
   private async getRootChildren(): Promise<FilterTreeItem[]> {
     if (this.courses.length === 0) {
       this.courses = await this.api.getTutorCourses(false) || [];
@@ -104,18 +94,11 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
       return items;
     }
 
-    await this.autoSelectFirstMember(members);
+    await this.autoSelectFirstMember(courseId, members);
 
     const selectedMemberId = this.selection.getCurrentMemberId();
-    const visibleCount = this.visibleMemberCount.get(courseId) ?? PAGE_SIZE;
-    const visibleMembers = members.slice(0, visibleCount);
-    const remaining = members.length - visibleCount;
-
-    for (const member of visibleMembers) {
+    for (const member of members) {
       items.push(new TutorMemberFilterItem(member, courseId, member.id === selectedMemberId));
-    }
-    if (remaining > 0) {
-      items.push(new TutorShowMoreItem(courseId, remaining));
     }
 
     return items;
@@ -146,7 +129,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     return options;
   }
 
-  private resolveGroupLabel(courseId: string, groupId: string | null): string {
+  resolveGroupLabel(courseId: string, groupId: string | null): string {
     if (!groupId) {
       return 'All';
     }
@@ -184,14 +167,26 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     return members;
   }
 
-  private async autoSelectFirstMember(members: TutorCourseMemberList[]): Promise<void> {
+  private async autoSelectFirstMember(courseId: string, members: TutorCourseMemberList[]): Promise<void> {
     const currentMemberId = this.selection.getCurrentMemberId();
-    if (currentMemberId && members.some(m => m.id === currentMemberId)) {
-      return;
+    if (currentMemberId) {
+      const existing = members.find(m => m.id === currentMemberId);
+      if (existing) {
+        if (!this.selection.getMemberEmail() && existing.user?.email) {
+          const groupLabel = existing.course_group_id
+            ? this.resolveGroupLabel(courseId, existing.course_group_id)
+            : null;
+          await this.selection.selectMember(existing.id, formatMemberName(existing), existing.course_group_id, groupLabel, existing.user?.email, existing.user?.username);
+        }
+        return;
+      }
     }
     const first = members[0];
     if (first) {
-      await this.selection.selectMember(first.id, formatMemberName(first));
+      const groupLabel = first.course_group_id
+        ? this.resolveGroupLabel(courseId, first.course_group_id)
+        : null;
+      await this.selection.selectMember(first.id, formatMemberName(first), first.course_group_id, groupLabel, first.user?.email, first.user?.username);
     }
   }
 }

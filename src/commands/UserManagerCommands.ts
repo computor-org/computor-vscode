@@ -30,6 +30,26 @@ export class UserManagerCommands {
         await this.handleOpenUserDetails(item);
       })
     );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.userManager.searchUsers', async () => {
+        const currentQuery = this.treeProvider.getSearchQuery();
+        const query = await vscode.window.showInputBox({
+          prompt: 'Search users by name, email, or username',
+          placeHolder: 'Enter search query',
+          value: currentQuery
+        });
+        if (query !== undefined) {
+          this.treeProvider.setSearchQuery(query);
+        }
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.userManager.clearSearch', () => {
+        this.treeProvider.clearSearch();
+      })
+    );
   }
 
   private async handleRefresh(): Promise<void> {

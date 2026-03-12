@@ -5,6 +5,7 @@ import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { execAsync, execAsyncWithTimeout, GitTimeoutError, GitCancelledError } from '../utils/exec';
 import { CTGit } from '../git/CTGit';
+import { GitErrorHandler } from '../git/GitErrorHandler';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
@@ -26,6 +27,7 @@ export class StudentRepositoryManager {
   private workspaceStructure: WorkspaceStructureManager;
   private gitLabTokenManager: GitLabTokenManager;
   private apiService: ComputorApiService;
+  private corruptIndexHandler?: (repoPath: string) => void;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -34,6 +36,15 @@ export class StudentRepositoryManager {
     this.apiService = apiService;
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
+  }
+
+  setCorruptIndexHandler(handler: (repoPath: string) => void): void {
+    this.corruptIndexHandler = handler;
+  }
+
+  private isCorruptIndexError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return GitErrorHandler.isCorruptIndex(message);
   }
 
   /**
@@ -480,7 +491,11 @@ export class StudentRepositoryManager {
       console.error('[StudentRepositoryManager] Failed to sync fork:', error);
       await this.abortMergeIfPossible(repoPath);
 
-      // Notify user about the failure
+      if (this.isCorruptIndexError(error) && this.corruptIndexHandler) {
+        this.corruptIndexHandler(repoPath);
+        return false;
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       await vscode.window.showWarningMessage(
         `Failed to automatically update your repository from upstream. You may be working with an older version. Error: ${errorMessage}`,

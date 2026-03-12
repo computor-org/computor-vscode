@@ -90,11 +90,18 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     }
 
     if (!element) {
-      // Root: load course contents for the selected course and member
+      // Root: show selection context headers, then course contents
+      const memberLabel = this.selection.getCurrentMemberLabel() || memberId;
+      const memberGroupLabel = this.selection.getMemberCourseGroupLabel();
+      const headerItems: vscode.TreeItem[] = [
+        new TutorSelectionMemberItem(memberLabel, this.selection.getMemberEmail(), this.selection.getMemberUsername()),
+        new TutorSelectionGroupItem(memberGroupLabel || 'No Group')
+      ];
+
       const courseContents = await (this.api as any).getTutorCourseContents?.(courseId, memberId) || [];
-      if (courseContents.length === 0) return [new MessageItem('No content available', 'info')];
+      if (courseContents.length === 0) return [...headerItems, new MessageItem('No content available', 'info')];
       const tree = this.buildContentTree(courseContents, this.contentKinds);
-      return this.createTreeItems(tree, memberId);
+      return [...headerItems, ...this.createTreeItems(tree, memberId)];
     }
 
     if (element instanceof TutorUnitItem) {
@@ -628,6 +635,30 @@ interface ContentNode {
   unreviewedCount?: number;
   submissionGroup?: SubmissionGroupStudentList;
   aggregatedColor?: string;
+}
+
+class TutorSelectionMemberItem extends vscode.TreeItem {
+  constructor(memberLabel: string, email?: string | null, username?: string | null) {
+    super(memberLabel, vscode.TreeItemCollapsibleState.None);
+    this.id = 'tutor-content-member';
+    this.contextValue = 'tutorMember.selected';
+    this.iconPath = new vscode.ThemeIcon('person-filled');
+    const tooltipParts: string[] = [memberLabel];
+    if (email) { tooltipParts.push(`Email: ${email}`); }
+    if (username) { tooltipParts.push(`Username: ${username}`); }
+    if (tooltipParts.length > 1) {
+      this.tooltip = tooltipParts.join('\n');
+    }
+  }
+}
+
+class TutorSelectionGroupItem extends vscode.TreeItem {
+  constructor(groupLabel: string) {
+    super(groupLabel, vscode.TreeItemCollapsibleState.None);
+    this.id = 'tutor-content-group';
+    this.contextValue = 'tutorGroupOption.selected';
+    this.iconPath = new vscode.ThemeIcon('organization');
+  }
 }
 
 class MessageItem extends vscode.TreeItem {

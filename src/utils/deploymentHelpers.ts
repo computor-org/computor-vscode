@@ -8,21 +8,21 @@ import { CourseContentGet, CourseContentList } from '../types/generated';
  * Check if a course content has an example/deployment assigned
  */
 export function hasExampleAssigned(content: CourseContentGet | CourseContentList): boolean {
-  // For CourseContentList, check has_deployment flag
-  if ('has_deployment' in content) {
-    return content.has_deployment === true;
+  // Check has_deployment flag (only trust explicit true/false, not null)
+  if ('has_deployment' in content && content.has_deployment === true) {
+    return true;
   }
-  
-  // For CourseContentGet, check if deployment exists or deprecated field
+
+  // Check if deployment object exists
   if ('deployment' in content && content.deployment) {
     return true;
   }
-  
+
   // Fallback to deprecated field if available
   if ('example_version_id' in content && content.example_version_id) {
     return true;
   }
-  
+
   return false;
 }
 

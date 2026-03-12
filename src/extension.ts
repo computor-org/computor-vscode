@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IconGenerator } from './utils/IconGenerator';
-import { GitCancelledError } from './utils/exec';
+import { execAsync, GitCancelledError } from './utils/exec';
 import { errorCatalog } from './exceptions/ErrorCatalog';
+import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
+import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -646,6 +648,36 @@ class UnifiedController {
 
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
+
+    // Wire error page for corrupt git index detection
+    const errorPageProvider = new ErrorPageWebviewProvider(this.context);
+    errorPageProvider.registerActionHandler('REBUILD_INDEX', async (_errorCode, ctx) => {
+      if (!ctx?.repositoryPath) { return; }
+      try {
+        const indexPath = path.join(ctx.repositoryPath, '.git', 'index');
+        if (fs.existsSync(indexPath)) {
+          await fs.promises.unlink(indexPath);
+        }
+        await execAsync('git reset', { cwd: ctx.repositoryPath });
+        vscode.window.showInformationMessage('Git index rebuilt successfully. Please reload the window.', 'Reload Window').then(choice => {
+          if (choice === 'Reload Window') {
+            void vscode.commands.executeCommand('workbench.action.reloadWindow');
+          }
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to rebuild git index: ${message}`);
+      }
+    });
+    errorPageProvider.registerActionHandler('OPEN_TERMINAL', async (_errorCode, ctx) => {
+      if (!ctx?.repositoryPath) { return; }
+      const terminal = vscode.window.createTerminal({ name: 'Repository', cwd: ctx.repositoryPath });
+      terminal.show();
+    });
+    repositoryManager.setCorruptIndexHandler((repoPath: string) => {
+      void errorPageProvider.showError('GIT_INDEX_CORRUPT', { repositoryPath: repoPath });
+    });
+
     const statusBar = (await import('./ui/StatusBarService')).StatusBarService.initialize(this.context);
     const courseSelectionService = CourseSelectionService.initialize(this.context, api, statusBar);
 
@@ -865,7 +897,7 @@ class UnifiedController {
 
   private async initializeTutorView(api: ComputorApiService): Promise<void> {
     const { TutorFilterTreeProvider } = await import('./ui/tree/tutor/tutor-filter-tree-provider');
-    const { TutorCourseFilterItem, TutorGroupOptionItem, TutorMemberFilterItem, TutorShowMoreItem, NO_GROUP_SENTINEL, formatMemberName } = await import('./ui/tree/tutor/tutor-filter-tree-items');
+    const { TutorCourseFilterItem, TutorGroupOptionItem, TutorMemberFilterItem, NO_GROUP_SENTINEL, formatMemberName } = await import('./ui/tree/tutor/tutor-filter-tree-items');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
     const { TutorEditorDecorationService } = await import('./providers/TutorEditorDecorationService');
@@ -906,12 +938,12 @@ class UnifiedController {
 
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectMember', async (item: InstanceType<typeof TutorMemberFilterItem>) => {
       const name = formatMemberName(item.member);
-      await selection.selectMember(item.member.id, name);
+      const memberGroupId = item.member.course_group_id ?? null;
+      const memberGroupLabel = memberGroupId
+        ? filterTree.resolveGroupLabel(item.courseId, memberGroupId)
+        : null;
+      await selection.selectMember(item.member.id, name, memberGroupId, memberGroupLabel, item.member.user?.email, item.member.user?.username);
       filterTree.refresh();
-    }));
-
-    this.disposables.push(vscode.commands.registerCommand('computor.tutor.showMoreMembers', (item: InstanceType<typeof TutorShowMoreItem>) => {
-      filterTree.showMoreMembers(item.courseId);
     }));
 
     // Register course content tree
@@ -1013,6 +1045,84 @@ class UnifiedController {
       dragAndDropController: exampleTree
     });
     this.disposables.push(exampleTreeView);
+    exampleTree.setTreeView(exampleTreeView);
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.revealInExamples', async (item: any) => {
+        if (!item?.exampleInfo?.id) {
+          vscode.window.showWarningMessage('No example assigned to this content.');
+          return;
+        }
+        const found = await exampleTree.revealExample(item.exampleInfo.id);
+        if (!found) {
+          vscode.window.showWarningMessage('Example not found in the examples tree.');
+        }
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.checkoutAssignmentExample', async (item: any) => {
+        if (!item?.exampleVersionInfo?.id || !item?.exampleInfo) {
+          vscode.window.showWarningMessage('No example version assigned to this content.');
+          return;
+        }
+
+        const fs = await import('fs');
+        const { writeExampleFiles } = await import('./utils/exampleFileWriter');
+        const { writeCheckoutMetadata, getWorkingPath, getVersionPath } = await import('./utils/checkedOutExampleManager');
+        const { WorkspaceStructureManager } = await import('./utils/workspaceStructure');
+
+        try {
+          const dirs = WorkspaceStructureManager.getInstance().getDirectories();
+          const exampleData = await api.downloadExampleVersion(item.exampleVersionInfo.id);
+          if (!exampleData) {
+            vscode.window.showErrorMessage('Failed to download example version.');
+            return;
+          }
+
+          const directory = item.exampleInfo.directory || exampleData.directory;
+          const versionTag = item.exampleVersionInfo.version_tag || exampleData.version_tag;
+          const metadata = {
+            exampleId: item.exampleInfo.id,
+            repositoryId: item.exampleInfo.example_repository_id || '',
+            directory,
+            versionId: item.exampleVersionInfo.id,
+            versionTag,
+            versionNumber: item.exampleVersionInfo.version_number ?? 0,
+            checkedOutAt: new Date().toISOString()
+          };
+
+          const workingDir = getWorkingPath(dirs.examples, directory);
+          const versionDir = getVersionPath(dirs.exampleVersions, directory, versionTag);
+
+          if (fs.existsSync(workingDir)) {
+            const overwrite = await vscode.window.showWarningMessage(
+              `Working copy of '${directory}' already exists. Overwrite?`, 'Yes', 'No'
+            );
+            if (overwrite !== 'Yes') { return; }
+            fs.rmSync(workingDir, { recursive: true, force: true });
+          }
+
+          fs.mkdirSync(workingDir, { recursive: true });
+          writeExampleFiles(exampleData.files, workingDir);
+          writeCheckoutMetadata(workingDir, metadata);
+
+          if (fs.existsSync(versionDir)) {
+            fs.rmSync(versionDir, { recursive: true, force: true });
+          }
+          fs.mkdirSync(versionDir, { recursive: true });
+          fs.cpSync(workingDir, versionDir, { recursive: true });
+
+          exampleTree.refresh();
+          vscode.window.showInformationMessage(
+            `Checked out '${item.exampleInfo.title || directory}' [${versionTag}]`
+          );
+        } catch (error) {
+          console.error('Failed to checkout assignment example:', error);
+          vscode.window.showErrorMessage(`Failed to checkout: ${error}`);
+        }
+      })
+    );
 
     const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService);
     commands.registerCommands();
@@ -1425,8 +1535,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
 
-  // Initialize backend error catalog
+  // Initialize error catalogs
   errorCatalog.initialize();
+  clientErrorCatalog.initialize();
 
   extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 

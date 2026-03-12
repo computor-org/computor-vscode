@@ -23,6 +23,7 @@ export interface CourseContentAssignmentInfo {
   versionTag?: string | null;
   deploymentStatus?: string | null;
   hasDeployment?: boolean;
+  hasNewerVersion?: boolean;
   hasLocalChanges?: boolean;
   folderExists?: boolean;
   statusMessage?: { message: string; severity: 'info' | 'warning' | 'error' };
@@ -109,7 +110,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     super(
       options.courseContent.title || options.courseContent.path,
       options.collapsibleState !== undefined ? options.collapsibleState :
-        (options.hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
+        (options.hasChildren && !options.isSubmittable ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
     );
 
     this.courseContent = options.courseContent;
@@ -168,7 +169,15 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     if (this.assignmentInfo && this.assignmentInfo.folderExists === false) {
       parts.push('missingFolder');
     }
-    
+
+    if (this.assignmentInfo?.hasNewerVersion) {
+      parts.push('newerVersionAvailable');
+    }
+
+    if ('archived_at' in this.courseContent && this.courseContent.archived_at) {
+      parts.push('archived');
+    }
+
     return parts.join('.');
   }
 
@@ -231,24 +240,11 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push(`Version tag: ${this.assignmentInfo.versionTag}`);
     }
 
-    if (this.assignmentInfo?.hasLocalChanges) {
-      parts.push('Local changes detected since last deployment');
-    }
-
-    if (this.assignmentInfo && this.assignmentInfo.folderExists === false) {
-      parts.push('Assignment directory missing locally');
-    }
-
-    if (this.assignmentInfo?.commitMissing) {
-      parts.push('Deployment commit not found locally');
-    }
-
-    if (this.assignmentInfo?.statusMessage) {
-      parts.push(`${this.assignmentInfo.statusMessage.severity.toUpperCase()}: ${this.assignmentInfo.statusMessage.message}`);
-    }
-
-    if (this.assignmentInfo?.diffError) {
-      parts.push(`Diff error: ${this.assignmentInfo.diffError}`);
+    const deploymentStatus = this.assignmentInfo?.deploymentStatus || getDeploymentStatus(this.courseContent);
+    if (deploymentStatus) {
+      parts.push(`Status: ${deploymentStatus.replace(/_/g, ' ')}`);
+    } else if (hasExampleAssigned(this.courseContent)) {
+      parts.push('Status: not deployed yet');
     }
     
     return parts.join('\n') || this.courseContent.path;
@@ -282,30 +278,31 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       };
 
       const deploymentStatus = assignment?.deploymentStatus || getDeploymentStatus(this.courseContent);
-      if (deploymentStatus) {
-        const icon = statusIcons[deploymentStatus] || '❓';
-        const label = statusLabels[deploymentStatus] || deploymentStatus.replace(/_/g, ' ');
+      const isDeployed = deploymentStatus === 'deployed' || deploymentStatus === 'released';
+      const wasPreviouslyDeployed = 'deployment' in this.courseContent
+        && this.courseContent.deployment?.deployed_at != null;
+
+      if (isDeployed) {
+        const icon = statusIcons[deploymentStatus!] || '✅';
+        const label = statusLabels[deploymentStatus!] || deploymentStatus!.replace(/_/g, ' ');
         parts.push(`${icon} ${label}`);
-      } else if (assignment?.hasDeployment) {
-        parts.push('✅ deployed');
+      } else if (deploymentStatus === 'failed') {
+        parts.push('❌ failed');
+      } else if (deploymentStatus === 'deploying' || deploymentStatus === 'in_progress') {
+        parts.push('🔄 deploying');
+      } else if (wasPreviouslyDeployed) {
+        parts.push('🔄 update pending');
+      } else {
+        parts.push('⏳ not deployed yet');
       }
 
-      if (assignment && assignment.folderExists === false) {
-        parts.push('⚠ not synced');
+      if (assignment?.hasNewerVersion) {
+        parts.push('⬆ update available');
       }
+    }
 
-      if (assignment?.hasDeployment && assignment.hasLocalChanges) {
-        parts.push('✏️ changes');
-      }
-
-      if (assignment?.commitMissing) {
-        parts.push('⚠ commit missing');
-      }
-
-      if (assignment?.statusMessage && assignment.statusMessage.severity !== 'info') {
-        const icon = assignment.statusMessage.severity === 'error' ? '❌' : '⚠';
-        parts.push(`${icon} ${assignment.statusMessage.message}`);
-      }
+    if ('archived_at' in this.courseContent && this.courseContent.archived_at) {
+      parts.push('📦 Archived');
     }
 
     return parts.length > 0 ? parts.join(' • ') : undefined;

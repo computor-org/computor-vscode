@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "generated_at": "2025-11-05T23:30:23.566615",
-  "error_count": 61,
+  "generated_at": "2026-03-11T16:21:57.157306",
+  "error_count": 66,
   "errors": {
     "AUTH_001": {
       "code": "AUTH_001",
@@ -104,6 +104,19 @@
         "plain": "Your course role is insufficient for this operation.",
         "markdown": "**Insufficient Course Role**\n\nYour current role in this course does not allow this operation. Required role: {required_role}.",
         "html": "<strong>Insufficient Course Role</strong><p>Your current role in this course does not allow this operation. Required role: <code>{required_role}</code>.</p>"
+      },
+      "retry_after": null
+    },
+    "AUTHZ_005": {
+      "code": "AUTHZ_005",
+      "http_status": 403,
+      "category": "authorization",
+      "severity": "error",
+      "title": "Role Escalation Denied",
+      "message": {
+        "plain": "You cannot assign a role higher than your own.",
+        "markdown": "**Role Escalation Denied**\n\nYou cannot assign the role '{target_role}'. Your role '{user_role}' can only assign roles at or below your privilege level.",
+        "html": "<strong>Role Escalation Denied</strong><p>You cannot assign the role <code>{target_role}</code>. Your role <code>{user_role}</code> can only assign roles at or below your privilege level.</p>"
       },
       "retry_after": null
     },
@@ -341,6 +354,32 @@
       },
       "retry_after": null
     },
+    "CONTENT_006": {
+      "code": "CONTENT_006",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "warning",
+      "title": "Deletion Blocked by Student Submissions",
+      "message": {
+        "plain": "Cannot delete this course content because students have already submitted work. Use archive instead.",
+        "markdown": "**Deletion Blocked**\n\nThis course content cannot be deleted because students have already submitted work. Use **archive** instead to hide the content while preserving student data.",
+        "html": "<strong>Deletion Blocked</strong><p>This course content cannot be deleted because students have already submitted work. Use <em>archive</em> instead to hide the content while preserving student data.</p>"
+      },
+      "retry_after": null
+    },
+    "CONTENT_007": {
+      "code": "CONTENT_007",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "warning",
+      "title": "Deletion Blocked by Descendant Submissions",
+      "message": {
+        "plain": "Cannot delete this course content because descendant items have student submissions. Use archive instead.",
+        "markdown": "**Deletion Blocked**\n\nThis course content cannot be deleted because it contains descendant items with student submissions. Use **archive** instead to hide the content while preserving student data.",
+        "html": "<strong>Deletion Blocked</strong><p>This course content cannot be deleted because it contains descendant items with student submissions. Use <em>archive</em> instead to hide the content while preserving student data.</p>"
+      },
+      "retry_after": null
+    },
     "VERSION_001": {
       "code": "VERSION_001",
       "http_status": 409,
@@ -403,6 +442,19 @@
         "plain": "Required deployment information is missing.",
         "markdown": "**Missing Deployment Information**\n\nRequired deployment information (path, version, etc.) is missing. The assignment may not be properly configured.",
         "html": "<strong>Missing Deployment Information</strong><p>Required deployment information is missing.</p>"
+      },
+      "retry_after": null
+    },
+    "DEPLOY_005": {
+      "code": "DEPLOY_005",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "error",
+      "title": "Duplicate Example in Course",
+      "message": {
+        "plain": "This example is already assigned to another content item in this course.",
+        "markdown": "**Duplicate Example in Course**\n\nThis example is already assigned to another content item in this course. Each example can only be assigned once per course, regardless of version.",
+        "html": "<strong>Duplicate Example in Course</strong><p>This example is already assigned to another content item in this course. Each example can only be assigned once per course, regardless of version.</p>"
       },
       "retry_after": null
     },
@@ -715,6 +767,19 @@
         "plain": "Workflow service is temporarily unavailable.",
         "markdown": "**Temporal Service Unavailable**\n\nThe workflow orchestration service is temporarily unavailable. Please try again later.",
         "html": "<strong>Temporal Service Unavailable</strong><p>The workflow orchestration service is temporarily unavailable. Please try again later.</p>"
+      },
+      "retry_after": 120
+    },
+    "EXT_005": {
+      "code": "EXT_005",
+      "http_status": 503,
+      "category": "external_service",
+      "severity": "error",
+      "title": "Task Queue Unavailable",
+      "message": {
+        "plain": "No worker available for the specified task queue.",
+        "markdown": "**Task Queue Unavailable**\n\nNo worker is available to process tasks on the specified queue. The testing service may be misconfigured or the worker is not running.",
+        "html": "<strong>Task Queue Unavailable</strong><p>No worker is available to process tasks on the specified queue. The testing service may be misconfigured or the worker is not running.</p>"
       },
       "retry_after": 120
     },

@@ -221,6 +221,8 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   private checkedOutCache: CheckedOutExampleGroup[] | null = null;
   private fileWatchers: vscode.Disposable[] = [];
   private expandDirectory: string | undefined;
+  private treeView?: vscode.TreeView<vscode.TreeItem>;
+  private parentMap = new Map<string, vscode.TreeItem>();
 
   constructor(
     context: vscode.ExtensionContext,
@@ -267,6 +269,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this.repositoriesCache = null;
     this.examplesCache.clear();
     this.checkedOutCache = null;
+    this.parentMap.clear();
     this._onDidChangeTreeData.fire(undefined);
   }
 
@@ -283,6 +286,11 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     return element;
   }
 
+  getParent(element: vscode.TreeItem): vscode.TreeItem | undefined {
+    if (!element.id) { return undefined; }
+    return this.parentMap.get(element.id);
+  }
+
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     try {
       if (!element) {
@@ -291,7 +299,11 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
 
       if (element instanceof RootSectionTreeItem) {
         if (element.section === 'repositories') {
-          return this.getRepositorySectionItems();
+          const repos = await this.getRepositorySectionItems();
+          for (const repo of repos) {
+            if (repo.id) { this.parentMap.set(repo.id, element); }
+          }
+          return repos;
         }
         if (element.section === 'checkedOut') {
           return this.getCheckedOutGroups();
@@ -299,7 +311,11 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       }
 
       if (element instanceof ExampleRepositoryTreeItem) {
-        return this.getExamplesForRepository(element.repository);
+        const examples = await this.getExamplesForRepository(element.repository);
+        for (const ex of examples) {
+          if (ex.id) { this.parentMap.set(ex.id, element); }
+        }
+        return examples;
       }
 
       if (element instanceof CheckedOutGroupTreeItem) {
@@ -538,6 +554,37 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     } catch {
       return undefined;
     }
+  }
+
+  setTreeView(view: vscode.TreeView<vscode.TreeItem>): void {
+    this.treeView = view;
+  }
+
+  async revealExample(exampleId: string): Promise<boolean> {
+    if (!this.treeView) { return false; }
+
+    if (!this.repositoriesCache) {
+      this.repositoriesCache = await this.apiService.getExampleRepositories() || [];
+    }
+
+    const repoRoot = new RootSectionTreeItem('repositories', 'Repositories', 'cloud');
+
+    for (const repo of this.repositoriesCache) {
+      const repoItem = new ExampleRepositoryTreeItem(repo);
+      if (repoItem.id) { this.parentMap.set(repoItem.id, repoRoot); }
+
+      const examples = await this.getExamplesForRepository(repo);
+      for (const ex of examples) {
+        if (ex.id) { this.parentMap.set(ex.id, repoItem); }
+      }
+
+      const match = examples.find(e => e.example.id === exampleId);
+      if (match) {
+        await this.treeView.reveal(match, { select: true, focus: true, expand: true });
+        return true;
+      }
+    }
+    return false;
   }
 
   public handleDrag(source: readonly vscode.TreeItem[], treeDataTransfer: vscode.DataTransfer, _token: vscode.CancellationToken): void | Thenable<void> {

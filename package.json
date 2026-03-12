@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "2026.3.3",
+  "version": "2026.3.4",
   "publisher": "itpcp-tugraz",
   "repository": {
     "type": "git",
@@ -360,6 +360,18 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.revealInExamples",
+        "title": "Reveal in Examples",
+        "icon": "$(link-external)",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.lecturer.checkoutAssignmentExample",
+        "title": "Checkout Example",
+        "icon": "$(cloud-download)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.lecturer.showExampleDetails",
         "title": "Show Details",
         "icon": "$(info)",
@@ -468,6 +480,17 @@
         "category": "Computor User Manager"
       },
       {
+        "command": "computor.userManager.searchUsers",
+        "title": "Search Users",
+        "icon": "$(search)",
+        "category": "Computor User Manager"
+      },
+      {
+        "command": "computor.userManager.clearSearch",
+        "title": "Clear Search",
+        "category": "Computor User Manager"
+      },
+      {
         "command": "computor.logout",
         "title": "Logout",
         "icon": "$(sign-out)",
@@ -547,11 +570,6 @@
       {
         "command": "computor.tutor.selectMember",
         "title": "Select Member",
-        "category": "Computor Tutor"
-      },
-      {
-        "command": "computor.tutor.showMoreMembers",
-        "title": "Show More Members",
         "category": "Computor Tutor"
       },
       {
@@ -716,6 +734,18 @@
       {
         "command": "computor.lecturer.deleteCourseContent",
         "title": "Delete",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.archiveCourseContent",
+        "title": "Archive",
+        "icon": "$(archive)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.unarchiveCourseContent",
+        "title": "Unarchive",
+        "icon": "$(history)",
         "category": "Computor Lecturer"
       },
       {
@@ -960,9 +990,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "computor.userManager.refresh",
+          "command": "computor.userManager.searchUsers",
           "when": "view == computor.usermanager.users",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.userManager.refresh",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@2"
         },
         {
           "command": "computor.manageGitLabTokens",
@@ -1102,9 +1137,19 @@
           "group": "2_edit@1"
         },
         {
+          "command": "computor.lecturer.archiveCourseContent",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)(?!.*\\.archived)/",
+          "group": "5_archive@1"
+        },
+        {
+          "command": "computor.lecturer.unarchiveCourseContent",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent.*\\.archived/",
+          "group": "5_archive@1"
+        },
+        {
           "command": "computor.lecturer.deleteCourseContent",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
-          "group": "3_delete@1"
+          "group": "6_delete@1"
         },
         {
           "command": "computor.lecturer.deleteCourseContentType",
@@ -1127,9 +1172,19 @@
           "group": "4_example@1"
         },
         {
+          "command": "computor.lecturer.revealInExamples",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "4_example@2"
+        },
+        {
+          "command": "computor.lecturer.checkoutAssignmentExample",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "4_example@3"
+        },
+        {
           "command": "computor.lecturer.viewDeploymentInfo",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
-          "group": "4_example@3"
+          "group": "4_example@4"
         },
         {
           "command": "computor.lecturer.showCourseDetails",
@@ -1144,7 +1199,7 @@
         {
           "command": "computor.lecturer.showCourseContentDetails",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
-          "group": "5_details@1"
+          "group": "7_details@1"
         },
         {
           "command": "computor.lecturer.showOrganizationDetails",
@@ -1205,6 +1260,11 @@
           "command": "computor.lecturer.releaseCourseContent",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "inline@2"
+        },
+        {
+          "command": "computor.lecturer.revealInExamples",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "inline@1"
         },
         {
           "command": "computor.tutor.cloneStudentRepository",

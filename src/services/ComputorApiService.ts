@@ -539,10 +539,28 @@ export class ComputorApiService {
   async deleteCourseContent(courseId: string, contentId: string): Promise<void> {
     const client = await this.getHttpClient();
     await client.delete(`/course-contents/${contentId}`);
-    
-    // Delete the specific cache entry for this course's contents
+
     const cacheKey = `courseContents-${courseId}`;
     multiTierCache.delete(cacheKey);
+    this.invalidateCachePattern(`lecturerCourseContents-${courseId}`);
+  }
+
+  async archiveCourseContent(courseId: string, contentId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch(`/course-contents/${contentId}/archive`);
+
+    const cacheKey = `courseContents-${courseId}`;
+    multiTierCache.delete(cacheKey);
+    this.invalidateCachePattern(`lecturerCourseContents-${courseId}`);
+  }
+
+  async unarchiveCourseContent(courseId: string, contentId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch(`/course-contents/${contentId}/unarchive`);
+
+    const cacheKey = `courseContents-${courseId}`;
+    multiTierCache.delete(cacheKey);
+    this.invalidateCachePattern(`lecturerCourseContents-${courseId}`);
   }
 
   async getCourseContentKinds(): Promise<CourseContentKindList[]> {
@@ -2362,7 +2380,7 @@ export class ComputorApiService {
     try {
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
-        const response = await client.get<UserList[]>('/users');
+        const response = await client.get<UserList[]>('/users', { limit: 10000 });
         return response.data;
       }, {
         maxRetries: 2,

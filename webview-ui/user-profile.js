@@ -51,7 +51,9 @@
 
     const studentProfilesHtml = studentProfiles.length > 0
       ? studentProfiles.map((sp, index) => {
-          const orgTitle = sp.organization?.title || sp.organization?.name || sp.organization?.path || 'Unknown Organization';
+          const matchedOrg = organizations.find(o => o.id === sp.organization_id);
+          const org = sp.organization || matchedOrg;
+          const orgTitle = org?.title || org?.path || 'Unknown Organization';
           return `
         <form class="student-profile-card student-profile-form" data-profile-id="${escapeHtml(sp.id)}" style="opacity: 0.5; pointer-events: none;">
           <h3>Student Profile: ${escapeHtml(orgTitle)}</h3>

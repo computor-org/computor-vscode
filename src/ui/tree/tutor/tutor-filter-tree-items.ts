@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import type { TutorCourseMemberList } from '../../../types/generated/courses';
 
 export const NO_GROUP_SENTINEL = '__no_group__';
-export const PAGE_SIZE = 5;
 
 export function formatMemberName(member: TutorCourseMemberList): string {
   const user = member.user;
@@ -21,6 +20,21 @@ export function buildBadgeDescription(member: TutorCourseMemberList): string | u
     badges.push(`\u{1F514} ${member.unread_message_count}`);
   }
   return badges.length > 0 ? badges.join(' \u00B7 ') : undefined;
+}
+
+export function buildMemberTooltip(member: TutorCourseMemberList): string {
+  const parts: string[] = [];
+  const user = member.user;
+  if (user?.given_name || user?.family_name) {
+    parts.push(`${user.given_name || ''} ${user.family_name || ''}`.trim());
+  }
+  if (user?.email) {
+    parts.push(`Email: ${user.email}`);
+  }
+  if (user?.username) {
+    parts.push(`Username: ${user.username}`);
+  }
+  return parts.join('\n');
 }
 
 export function compareMembersByName(a: TutorCourseMemberList, b: TutorCourseMemberList): number {
@@ -66,7 +80,7 @@ export class TutorGroupOptionItem extends vscode.TreeItem {
     super(groupLabel, vscode.TreeItemCollapsibleState.None);
     const suffix = isNoGroup ? NO_GROUP_SENTINEL : (groupId ?? 'all');
     this.id = `tutor-filter-group-option-${courseId}-${suffix}`;
-    this.contextValue = 'tutorGroupOption';
+    this.contextValue = isSelected ? 'tutorGroupOption.selected' : 'tutorGroupOption';
     this.iconPath = new vscode.ThemeIcon(isSelected ? 'check' : 'circle-outline');
     this.command = {
       command: 'computor.tutor.selectGroup',
@@ -86,6 +100,7 @@ export class TutorMemberFilterItem extends vscode.TreeItem {
     this.id = `tutor-filter-member-${member.id}`;
     this.contextValue = isSelected ? 'tutorMember.selected' : 'tutorMember';
     this.description = buildBadgeDescription(member);
+    this.tooltip = buildMemberTooltip(member);
     this.iconPath = new vscode.ThemeIcon(isSelected ? 'person-filled' : 'person');
     this.command = {
       command: 'computor.tutor.selectMember',
@@ -95,19 +110,3 @@ export class TutorMemberFilterItem extends vscode.TreeItem {
   }
 }
 
-export class TutorShowMoreItem extends vscode.TreeItem {
-  constructor(
-    public readonly courseId: string,
-    public readonly remainingCount: number
-  ) {
-    super(`Show more... (${remainingCount} remaining)`, vscode.TreeItemCollapsibleState.None);
-    this.id = `tutor-filter-show-more-${courseId}`;
-    this.contextValue = 'tutorShowMore';
-    this.iconPath = new vscode.ThemeIcon('ellipsis');
-    this.command = {
-      command: 'computor.tutor.showMoreMembers',
-      title: 'Show More Members',
-      arguments: [this]
-    };
-  }
-}
