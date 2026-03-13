@@ -10,7 +10,7 @@ import { performanceMonitor } from '../../../services/PerformanceMonitoringServi
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
 import { DragDropManager } from '../../../services/DragDropManager';
 import { GitWrapper } from '../../../git/GitWrapper';
-import { hasExampleAssigned, getExampleVersionId } from '../../../utils/deploymentHelpers';
+import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -37,9 +37,7 @@ import type {
   OrganizationList,
   CourseContentTypeList,
   CourseGroupList,
-  CourseMemberList,
-  CourseContentDeploymentList,
-  ExampleGet
+  CourseMemberList
 } from '../../../types/generated';
 
 type TreeItem =
@@ -104,7 +102,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private gitWrapper: GitWrapper;
   private repositoryManager: LecturerRepositoryManager;
   private assignmentIdentifierCache: Map<string, string | null> = new Map();
-  private fullCourseCache: Map<string, any> = new Map();
+  private fullCourseCache: Map<string, Promise<any>> = new Map();
   private rolesTitleCache: Map<string, string> = new Map();
 
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
@@ -676,7 +674,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       return [];
     }
 
-    const rawDirectoryName = element.assignmentDirectory || await this.resolveAssignmentDirectoryName(element.courseContent as CourseContentLecturerList);
+    const rawDirectoryName = element.assignmentDirectory || this.resolveAssignmentDirectoryName(element.courseContent as CourseContentLecturerList);
     if (!rawDirectoryName) {
       return [new InfoItem('Assignment not initialized in assignments repo', 'info')];
     }
@@ -729,19 +727,17 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   ): Promise<CourseContentTreeItem> {
     const hasChildren = this.hasChildContents(content, allContents);
 
+    // Use deployment data from the list endpoint (already includes example_version)
     let exampleInfo = null;
     let exampleVersionInfo = null;
-    if (hasExampleAssigned(content)) {
-      const versionId = getExampleVersionId(content);
-      if (versionId) {
-        try {
-          exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
-          if (exampleVersionInfo && exampleVersionInfo.example_id) {
-            exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
-          }
-        } catch (error) {
-          console.warn(`Failed to fetch version info for ${versionId}:`, error);
-        }
+    const deployment = (content as any).deployment;
+    if (hasExampleAssigned(content) && deployment) {
+      if (deployment.example_version) {
+        exampleVersionInfo = deployment.example_version;
+      }
+      // Synthesize minimal exampleInfo from deployment's example_identifier
+      if (deployment.example_identifier) {
+        exampleInfo = { title: deployment.example_identifier } as any;
       }
     }
 
@@ -752,7 +748,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     let assignmentInfo: CourseContentAssignmentInfo | undefined;
 
     if (isSubmittable) {
-      assignmentDirectory = await this.resolveAssignmentDirectoryName(content);
+      assignmentDirectory = this.resolveAssignmentDirectoryName(content);
       assignmentInfo = await this.computeAssignmentInfo(course, content, assignmentDirectory);
     }
 
@@ -779,27 +775,23 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     });
   }
 
-  private async resolveAssignmentDirectoryName(content: CourseContentLecturerList): Promise<string | undefined> {
+  private resolveAssignmentDirectoryName(content: CourseContentLecturerList): string | undefined {
     const cached = this.assignmentIdentifierCache.get(content.id);
     if (cached !== undefined) {
       return cached || undefined;
     }
 
-    // The new lecturer endpoint doesn't include deployment details,
-    // so we need to fetch the full content to get deployment path
-    try {
-      const full = await this.apiService.getCourseContent(content.id, true) as CourseContentGet | undefined;
-      const fullDeployment = full?.deployment as (CourseContentDeploymentList & { deployment_path?: string | null; example_identifier?: string | null; version_identifier?: string | null }) | null | undefined;
-      const identifier = ((fullDeployment as any)?.deployment_path as string | undefined)
-        || fullDeployment?.example_identifier;
-      console.log(`[DIR-RESOLVE] content=${content.id} deployment_path=${(fullDeployment as any)?.deployment_path} example_identifier=${fullDeployment?.example_identifier} identifier=${identifier}`);
-      const sanitizedFull = this.sanitizeAssignmentDirectoryName(identifier || undefined);
-      this.assignmentIdentifierCache.set(content.id, sanitizedFull ?? null);
-      if (sanitizedFull) {
-        return sanitizedFull;
+    // Use deployment data from the list endpoint (no extra API call needed)
+    const deployment = (content as any).deployment;
+    if (deployment) {
+      const identifier = deployment.example_identifier || deployment.version_identifier;
+      if (identifier) {
+        const sanitized = this.sanitizeAssignmentDirectoryName(identifier);
+        this.assignmentIdentifierCache.set(content.id, sanitized ?? null);
+        if (sanitized) {
+          return sanitized;
+        }
       }
-    } catch (error) {
-      console.warn('Failed to resolve assignment directory name:', error);
     }
 
     const fallback = this.extractSlugFromPath(content.path);
@@ -908,21 +900,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     content: CourseContentLecturerList,
     directoryName?: string
   ): Promise<CourseContentAssignmentInfo | undefined> {
-    // The list endpoint is cached on the backend (5-min TTL) and may return stale
-    // deployment data. Fetch fresh deployment status from the uncached endpoint.
-    let deploymentStatus: string | null = content.deployment_status || null;
-    let hasDeployment = content.has_deployment || false;
-    let hasNewerVersion = false;
-    try {
-      const freshDeployment = await this.apiService.lecturerGetDeployment(content.id);
-      if (freshDeployment) {
-        deploymentStatus = freshDeployment.deployment_status || null;
-        hasDeployment = true;
-        hasNewerVersion = freshDeployment.has_newer_version === true;
-      }
-    } catch {
-      // No deployment exists or endpoint failed — use list data as fallback
-    }
+    // Use deployment data from the list endpoint (includes has_newer_version)
+    const deployment = (content as any).deployment;
+    let deploymentStatus: string | null = deployment?.deployment_status || content.deployment_status || null;
+    let hasDeployment = deployment ? true : (content.has_deployment || false);
+    let hasNewerVersion = deployment?.has_newer_version === true;
 
     const info: CourseContentAssignmentInfo = {
       directoryName,
@@ -1012,27 +994,31 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     return false;
   }
 
-  private async getFullCourse(course: CourseList): Promise<any> {
+  private getFullCourse(course: CourseList): Promise<any> {
     const cached = this.fullCourseCache.get(course.id);
     if (cached) {
       return cached;
     }
 
-    let fullCourse: any = await this.apiService.getCourse(course.id);
-    if (!fullCourse) {
-      fullCourse = { ...course };
-    }
-
-    if (!fullCourse.organization && fullCourse.organization_id) {
-      try {
-        fullCourse.organization = await (this.apiService as any).getOrganization(fullCourse.organization_id);
-      } catch (error) {
-        console.warn('Failed to load organization for course', error);
+    const promise = (async () => {
+      let fullCourse: any = await this.apiService.getCourse(course.id);
+      if (!fullCourse) {
+        fullCourse = { ...course };
       }
-    }
 
-    this.fullCourseCache.set(course.id, fullCourse);
-    return fullCourse;
+      if (!fullCourse.organization && fullCourse.organization_id) {
+        try {
+          fullCourse.organization = await (this.apiService as any).getOrganization(fullCourse.organization_id);
+        } catch (error) {
+          console.warn('Failed to load organization for course', error);
+        }
+      }
+
+      return fullCourse;
+    })();
+
+    this.fullCourseCache.set(course.id, promise);
+    return promise;
   }
 
   public rememberAssignmentIdentifier(contentId: string, identifier: string): void {
@@ -1163,20 +1149,15 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           const hasChildren = this.hasChildContents(parentContent, allContents);
           let exampleInfo = null;
           let exampleVersionInfo = null;
-          
-          // Check if example is assigned using helper
-          if (hasExampleAssigned(parentContent)) {
-            const versionId = getExampleVersionId(parentContent);
-            if (versionId) {
-              try {
-                exampleVersionInfo = await this.apiService.getExampleVersion(versionId);
-                // Get example info from the version
-                if (exampleVersionInfo && exampleVersionInfo.example_id) {
-                  exampleInfo = await this.getExampleInfo(exampleVersionInfo.example_id);
-                }
-              } catch (error) {
-                console.warn(`Failed to fetch version info for ${versionId}:`, error);
-              }
+
+          // Use deployment data from the list endpoint
+          const parentDeployment = (parentContent as any).deployment;
+          if (hasExampleAssigned(parentContent) && parentDeployment) {
+            if (parentDeployment.example_version) {
+              exampleVersionInfo = parentDeployment.example_version;
+            }
+            if (parentDeployment.example_identifier) {
+              exampleInfo = { title: parentDeployment.example_identifier } as any;
             }
           }
           
@@ -1348,26 +1329,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   /**
    * Ensure we have GitLab tokens for all unique GitLab instances in courses
    */
-  private async getExampleInfo(exampleId: string): Promise<ExampleGet | null> {
-    // Check cache first
-    // Examples fetched from API on demand
-    
-    try {
-      const example = await this.apiService.getExample(exampleId);
-      if (example) {
-        // Example stored in API cache
-        return example;
-      } else {
-        console.warn(`Example ${exampleId} not found or returned undefined`);
-      }
-    } catch (error) {
-      console.error(`Failed to fetch example ${exampleId}:`, error);
-      // Show a more user-friendly error message
-      vscode.window.showWarningMessage(`Failed to load example information for ID: ${exampleId}`);
-    }
-    
-    return null;
-  }
 
   private async ensureGitLabTokensForCourses(courses: CourseList[]): Promise<void> {
     const gitlabUrls = new Set<string>();

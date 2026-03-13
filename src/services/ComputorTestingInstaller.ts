@@ -249,7 +249,7 @@ export class ComputorTestingInstaller {
     const TIMEOUT_MS = 300_000;
     const startTime = Date.now();
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       if (Date.now() - startTime > TIMEOUT_MS) {
         clearInterval(interval);
         return;
@@ -262,8 +262,9 @@ export class ComputorTestingInstaller {
         const results = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
         const artifacts = this.collectLocalArtifacts(tmpDir);
         const localResultId = artifacts.length > 0 ? `local:${path.join(tmpDir, 'output')}` : undefined;
-        vscode.commands.executeCommand('computor.results.open', results, localResultId, artifacts);
-        vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
+        await vscode.commands.executeCommand('computor.results.open', results, localResultId, artifacts);
+        await vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
+        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
       } catch (e) {
         console.error('Failed to parse test results:', e);
       }
