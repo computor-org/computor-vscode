@@ -7,6 +7,7 @@ import { ResultArtifactInfo } from '../types/generated/common';
 
 const REPO_URL = 'https://github.com/computor-org/computor-backend.git';
 const SPARSE_DIRS = ['computor-types', 'computor-testing'];
+const IS_WINDOWS = process.platform === 'win32';
 
 export class ComputorTestingInstaller {
   private static instance: ComputorTestingInstaller;
@@ -36,11 +37,16 @@ export class ComputorTestingInstaller {
   }
 
   private getActivatePrefix(): string {
+    if (IS_WINDOWS) {
+      return `"${path.join(this.getVenvDir(), 'Scripts', 'activate.bat')}"`;
+    }
     return `source "${path.join(this.getVenvDir(), 'bin', 'activate')}"`;
   }
 
   isInstalled(): boolean {
-    const computorTestBin = path.join(this.getVenvDir(), 'bin', 'computor-test');
+    const binDir = IS_WINDOWS ? 'Scripts' : 'bin';
+    const exeName = IS_WINDOWS ? 'computor-test.exe' : 'computor-test';
+    const computorTestBin = path.join(this.getVenvDir(), binDir, exeName);
     return fs.existsSync(computorTestBin);
   }
 
@@ -224,16 +230,8 @@ export class ComputorTestingInstaller {
 
     const tmpDir = this.createTestRunDir(exampleDir, target);
 
-    const activatePath = path.join(this.getVenvDir(), 'bin', 'activate');
-    const testCommand = `export MPLBACKEND=Agg && source "${activatePath}" && computor-test ${language} run -T test.yaml`;
-
-    const terminal = vscode.window.createTerminal({
-      name: 'Computor Test',
-      cwd: tmpDir,
-      shellPath: '/bin/bash',
-      shellArgs: ['--norc', '--noprofile', '-c', `${testCommand}; exec bash --norc --noprofile`],
-      env: { VIRTUAL_ENV: this.getVenvDir(), MPLBACKEND: 'Agg' }
-    });
+    const terminalOptions = this.buildTerminalOptions(tmpDir, language);
+    const terminal = vscode.window.createTerminal(terminalOptions);
     terminal.show();
 
     this.pollForTestResults(tmpDir);
@@ -399,6 +397,33 @@ export class ComputorTestingInstaller {
     return picked?.detail;
   }
 
+  private buildTerminalOptions(cwd: string, language: string): vscode.TerminalOptions {
+    const venvDir = this.getVenvDir();
+    const env = { VIRTUAL_ENV: venvDir, MPLBACKEND: 'Agg' };
+
+    if (IS_WINDOWS) {
+      const activatePath = path.join(venvDir, 'Scripts', 'activate.bat');
+      const testCommand = `"${activatePath}" && set MPLBACKEND=Agg && computor-test ${language} run -T test.yaml`;
+      return {
+        name: 'Computor Test',
+        cwd,
+        shellPath: 'cmd.exe',
+        shellArgs: ['/K', testCommand],
+        env
+      };
+    }
+
+    const activatePath = path.join(venvDir, 'bin', 'activate');
+    const testCommand = `export MPLBACKEND=Agg && source "${activatePath}" && computor-test ${language} run -T test.yaml`;
+    return {
+      name: 'Computor Test',
+      cwd,
+      shellPath: '/bin/bash',
+      shellArgs: ['--norc', '--noprofile', '-c', `${testCommand}; exec bash --norc --noprofile`],
+      env
+    };
+  }
+
   async uninstall(): Promise<void> {
     const toolsDir = this.getToolsDir();
     if (!fs.existsSync(toolsDir)) {
@@ -425,7 +450,7 @@ export class ComputorTestingInstaller {
     const result = await execAsync(command, {
       cwd,
       timeout,
-      shell: '/bin/bash',
+      shell: IS_WINDOWS ? 'cmd.exe' : '/bin/bash',
       maxBuffer: 10 * 1024 * 1024
     });
     if (result.stdout.trim()) {
@@ -438,10 +463,9 @@ export class ComputorTestingInstaller {
   }
 
   private async findPython(): Promise<string | undefined> {
-    const candidates = [
-      'python3.13', 'python3.12', 'python3.11', 'python3.10',
-      'python3', 'python'
-    ];
+    const candidates = IS_WINDOWS
+      ? ['py -3.13', 'py -3.12', 'py -3.11', 'py -3.10', 'py -3', 'python3', 'python']
+      : ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3', 'python'];
 
     let bestCmd: string | undefined;
     let bestMinor = -1;
