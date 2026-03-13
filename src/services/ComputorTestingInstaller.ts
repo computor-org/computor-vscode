@@ -488,6 +488,21 @@ export class ComputorTestingInstaller {
       }
     }
 
+    if (!bestCmd) { return undefined; }
+
+    try {
+      const { stdout: resolvedPath } = await execAsync(
+        `${bestCmd} -c "import sys; print(sys.executable)"`
+      );
+      const trimmed = resolvedPath.trim();
+      if (trimmed) {
+        this.log(`Resolved Python path: ${trimmed}`);
+        return trimmed;
+      }
+    } catch {
+      // fall through to raw command
+    }
+
     return bestCmd;
   }
 }
