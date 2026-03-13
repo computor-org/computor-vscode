@@ -100,7 +100,7 @@ export class BackendConnectionService {
       };
       
       this.lastStatus = status;
-      this.updateStatusBar('disconnected');
+      this.updateStatusBar('disconnected', this.errorHintFor(errorType));
       return status;
     }
   }
@@ -110,6 +110,7 @@ export class BackendConnectionService {
    */
   setBaseUrl(baseUrl: string): void {
     this.currentBaseUrl = baseUrl;
+    this.retryCount = 0;
   }
   
   /**
@@ -148,7 +149,7 @@ export class BackendConnectionService {
   /**
    * Update status bar based on connection status
    */
-  private updateStatusBar(status: 'connected' | 'disconnected' | 'error'): void {
+  private updateStatusBar(status: 'connected' | 'disconnected' | 'error', errorHint?: string): void {
     switch (status) {
       case 'connected':
         this.statusBarItem.text = '$(check) Backend Connected';
@@ -158,7 +159,9 @@ export class BackendConnectionService {
       case 'disconnected':
         this.statusBarItem.text = '$(x) Backend Disconnected';
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-        this.statusBarItem.tooltip = `Backend is not reachable. Retry count: ${this.retryCount}/${this.maxRetries}`;
+        this.statusBarItem.tooltip = errorHint
+          ? `Backend is not reachable: ${errorHint}`
+          : 'Backend is not reachable';
         break;
       case 'error':
         this.statusBarItem.text = '$(warning) Backend Error';
@@ -170,6 +173,16 @@ export class BackendConnectionService {
     this.statusBarItem.show();
   }
   
+  private errorHintFor(errorType: BackendStatus['error']): string {
+    switch (errorType) {
+      case 'NOT_RUNNING': return 'server not running';
+      case 'TIMEOUT': return 'connection timed out';
+      case 'VPN_REQUIRED': return 'network unreachable';
+      case 'NETWORK_ERROR': return 'network error';
+      default: return 'unknown error';
+    }
+  }
+
   /**
    * Get the last known backend status
    */
@@ -233,10 +246,7 @@ export class BackendConnectionService {
     );
     
     if (selection === 'Retry') {
-      // Trigger a retry
-      const settings = vscode.workspace.getConfiguration('computor');
-      const baseUrl = settings.get<string>('backend.url') || 'http://localhost:8000';
-      await this.checkBackendConnection(baseUrl);
+      await this.checkBackendConnection(this.currentBaseUrl);
     } else if (selection === 'Open Terminal') {
       vscode.commands.executeCommand('workbench.action.terminal.new');
     } else if (selection === 'Check Settings') {

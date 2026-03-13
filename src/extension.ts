@@ -1657,7 +1657,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
     if (!url) return;
     await settings.setBaseUrl(url);
-    vscode.window.showInformationMessage('Computor backend URL updated.');
+
+    backendConnectionService.setBaseUrl(url);
+    const status = await backendConnectionService.checkBackendConnection(url);
+    if (status.isReachable) {
+      backendConnectionService.startHealthCheck(url);
+      vscode.window.showInformationMessage('Computor backend URL updated.');
+    } else {
+      backendConnectionService.stopHealthCheck();
+      await backendConnectionService.showConnectionError(status);
+    }
   }));
 
   // Listen for workspace folder changes to detect .computor files
