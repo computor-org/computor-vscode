@@ -104,14 +104,20 @@ export class ComputorTestingInstaller {
           this.log('  Clone complete.\n');
 
           // Step 2: Create venv
-          progress.report({ message: 'Creating virtual environment...', increment: 30 });
+          progress.report({ message: 'Creating virtual environment...', increment: 20 });
           this.log('Step 2: Creating virtual environment...');
           await this.exec(`"${pythonPath}" -m venv .venv`, repoDir);
           this.log('  Virtual environment created.\n');
 
-          // Step 3: Install packages
+          // Step 3: Ensure pip is available
+          progress.report({ message: 'Verifying pip...', increment: 10 });
+          this.log('Step 3: Verifying pip in virtual environment...');
+          await this.ensurePip(pythonPath, repoDir);
+          this.log('  pip is available.\n');
+
+          // Step 4: Install packages
           progress.report({ message: 'Installing computor-types...', increment: 20 });
-          this.log('Step 3: Installing computor-types...');
+          this.log('Step 4: Installing computor-types...');
           await this.exec(
             `${this.getActivatePrefix()} && pip install computor-types/`,
             repoDir,
@@ -119,8 +125,8 @@ export class ComputorTestingInstaller {
           );
           this.log('  computor-types installed.\n');
 
-          progress.report({ message: 'Installing computor-testing...', increment: 20 });
-          this.log('Step 4: Installing computor-testing...');
+          progress.report({ message: 'Installing computor-testing...', increment: 15 });
+          this.log('Step 5: Installing computor-testing...');
           await this.exec(
             `${this.getActivatePrefix()} && pip install computor-testing/`,
             repoDir,
@@ -128,9 +134,9 @@ export class ComputorTestingInstaller {
           );
           this.log('  computor-testing installed.\n');
 
-          // Step 4: Verify
-          progress.report({ message: 'Verifying installation...', increment: 20 });
-          this.log('Step 5: Verifying installation...');
+          // Step 6: Verify
+          progress.report({ message: 'Verifying installation...', increment: 15 });
+          this.log('Step 6: Verifying installation...');
           const { stdout: version } = await this.exec(
             `${this.getActivatePrefix()} && computor-test --version`,
             repoDir
@@ -441,6 +447,29 @@ export class ComputorTestingInstaller {
     vscode.window.showInformationMessage('Computor Testing tools removed.');
   }
 
+  private async ensurePip(pythonPath: string, repoDir: string): Promise<void> {
+    const pipPath = IS_WINDOWS
+      ? path.join(this.getVenvDir(), 'Scripts', 'pip.exe')
+      : path.join(this.getVenvDir(), 'bin', 'pip');
+
+    if (fs.existsSync(pipPath)) { return; }
+
+    this.log('  pip not found in venv, running ensurepip...');
+    try {
+      await this.exec(`"${pythonPath}" -m ensurepip --default-pip`, repoDir);
+    } catch {
+      this.log('  ensurepip failed, trying venv recreate with pip...');
+      await this.exec(`"${pythonPath}" -m venv --clear --upgrade-deps .venv`, repoDir);
+    }
+
+    if (!fs.existsSync(pipPath)) {
+      throw new Error(
+        'pip is not available in the virtual environment. ' +
+        'Please install Python with pip included (avoid the Microsoft Store version) and try again.'
+      );
+    }
+  }
+
   private async exec(
     command: string,
     cwd: string,
@@ -472,15 +501,16 @@ export class ComputorTestingInstaller {
 
     for (const cmd of candidates) {
       try {
-        const { stdout } = await execAsync(`${cmd} --version`);
-        const match = stdout.trim().match(/Python (\d+)\.(\d+)/);
+        const { stdout, stderr } = await execAsync(`${cmd} --version`);
+        const versionOutput = stdout.trim() || stderr.trim();
+        const match = versionOutput.match(/Python (\d+)\.(\d+)/);
         if (match) {
           const major = parseInt(match[1]!, 10);
           const minor = parseInt(match[2]!, 10);
-          if (major >= 3 && minor >= 10 && minor <= 13 && minor > bestMinor) {
+          if (major >= 3 && minor >= 10 && minor > bestMinor) {
             bestCmd = cmd;
             bestMinor = minor;
-            this.log(`Found ${stdout.trim()} at ${cmd}`);
+            this.log(`Found ${versionOutput} at ${cmd}`);
           }
         }
       } catch {
