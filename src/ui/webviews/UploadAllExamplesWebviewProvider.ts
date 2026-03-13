@@ -293,12 +293,13 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
       throw new Error('Upload returned no result');
     }
 
-    const exampleId = result.id || example.exampleId;
+    const exampleId = (result as any).example_id || example.exampleId;
     let uploadedVersionId = '';
     let uploadedVersionNumber = 0;
 
     // Create version snapshot
     try {
+      if (!exampleId) { throw new Error('No example ID available'); }
       const versions = await this.apiService.getExampleVersions(exampleId);
       const uploadedVersion = versions?.find((v: { version_tag: string }) =>
         normalizeSemVer(v.version_tag) === uploadVersion

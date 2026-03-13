@@ -1352,7 +1352,7 @@ export class LecturerCommands {
         courseId = itemOrData.courseId as string;
       }
 
-      if (!exampleInfo) {
+      if (!exampleInfo?.id) {
         const deployment = await this.apiService.lecturerGetDeployment(contentId);
         if (!deployment?.example_id) {
           vscode.window.showWarningMessage('No example assigned to this assignment');
@@ -1364,7 +1364,7 @@ export class LecturerCommands {
           return;
         }
         exampleInfo = { id: example.id, title: example.title, identifier: example.identifier };
-        currentVersionTag = deployment.version_tag;
+        currentVersionTag = currentVersionTag || deployment.version_tag;
       }
 
       const versions = await vscode.window.withProgress({

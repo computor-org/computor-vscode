@@ -795,7 +795,7 @@ export class LecturerExampleCommands {
           throw new Error('Upload failed - no response from server');
         }
 
-        const returnedExampleId = result.id || exampleId;
+        const returnedExampleId = (result as any).example_id || exampleId;
 
         progress.report({ increment: 20, message: 'Downloading version snapshot...' });
 
