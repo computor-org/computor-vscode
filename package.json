@@ -755,6 +755,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.updateExampleVersions",
+        "title": "Update All Example Versions",
+        "icon": "$(versions)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.viewDeploymentInfo",
         "title": "View Deployment Info",
         "icon": "$(info)",
@@ -1169,6 +1175,21 @@
         {
           "command": "computor.lecturer.updateExampleVersion",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
+          "group": "4_example@1"
+        },
+        {
+          "command": "computor.lecturer.updateExampleVersions",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*hasChildren/",
+          "group": "4_example@1"
+        },
+        {
+          "command": "computor.lecturer.updateExampleVersions",
+          "when": "view == computor.lecturer.courses && viewItem == course",
+          "group": "4_example@1"
+        },
+        {
+          "command": "computor.lecturer.updateExampleVersions",
+          "when": "view == computor.lecturer.courses && viewItem == course.contents",
           "group": "4_example@1"
         },
         {

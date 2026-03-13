@@ -1,4 +1,12 @@
 import { CourseContentGet, CourseContentList } from '../types/generated';
+import type { ComputorApiService } from '../services/ComputorApiService';
+
+export type ReleaseReason = 'new' | 'update' | 'failed';
+
+export interface ReleaseCandidate {
+  content: CourseContentGet | CourseContentList;
+  reason: ReleaseReason;
+}
 
 /**
  * Helper functions to work with the new deployment model
@@ -47,19 +55,14 @@ export function getExampleVersionId(content: CourseContentGet | CourseContentLis
  * Get the deployment status from course content
  */
 export function getDeploymentStatus(content: CourseContentGet | CourseContentList): string | null | undefined {
-  // Check deployment object first
   if ('deployment' in content && content.deployment?.deployment_status) {
-    console.log(`Debug getDeploymentStatus: Found deployment.deployment_status = ${content.deployment.deployment_status}`);
     return content.deployment.deployment_status;
   }
-  
-  // For CourseContentList, check the deprecated deployment_status field
+
   if ('deployment_status' in content) {
-    console.log(`Debug getDeploymentStatus: Using deprecated deployment_status = ${content.deployment_status}`);
     return content.deployment_status;
   }
-  
-  console.log(`Debug getDeploymentStatus: No deployment status found for content`);
+
   return null;
 }
 
@@ -90,11 +93,48 @@ export function getDeploymentInfo(content: CourseContentGet | CourseContentList)
 }
 
 /**
- * NOTE: example_id is completely removed from the new model.
- * To get example information, you need to:
- * 1. Get the example_version_id from deployment
- * 2. Fetch the ExampleVersion which contains example_id
- * 3. Fetch the Example using that ID
- * 
- * This is an intentional design change to ensure version tracking.
+ * Classify contents into release candidates with reasons (new / update / failed).
+ * Uses batch endpoint to check has_newer_version for all deployed items in one call.
  */
+export async function classifyReleaseContents(
+  contents: (CourseContentGet | CourseContentList)[],
+  apiService: ComputorApiService,
+  courseId: string
+): Promise<ReleaseCandidate[]> {
+  const candidates: ReleaseCandidate[] = [];
+
+  // Batch-fetch all deployments with has_newer_version in one call
+  const deploymentMap = new Map<string, any>();
+  try {
+    const batch = await apiService.lecturerGetCourseDeployments(courseId);
+    for (const dep of batch.deployments || []) {
+      deploymentMap.set(dep.course_content_id, dep);
+    }
+  } catch {
+    // Fallback: deployed items won't be classified as updates
+  }
+
+  for (const content of contents) {
+    const status = getDeploymentStatus(content);
+
+    if (status === 'pending') {
+      const deployedAt = 'deployment' in content ? content.deployment?.deployed_at : undefined;
+      candidates.push({ content, reason: deployedAt ? 'update' : 'new' });
+      continue;
+    }
+
+    if (status === 'failed') {
+      candidates.push({ content, reason: 'failed' });
+      continue;
+    }
+
+    if (status === 'deployed') {
+      const dep = deploymentMap.get(content.id);
+      if (dep?.has_newer_version) {
+        candidates.push({ content, reason: 'update' });
+      }
+    }
+  }
+
+  return candidates;
+}

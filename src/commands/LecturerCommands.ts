@@ -19,12 +19,12 @@ import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebv
 import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
 import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMemberProgressWebviewProvider';
-import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../utils/deploymentHelpers';
+import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
+import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../http/errors/HttpError';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
-import { createSimpleGit } from '../git/simpleGitFactory';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 
@@ -236,6 +236,12 @@ export class LecturerCommands {
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.updateExampleVersion', async (item: CourseContentTreeItem) => {
         await this.updateExampleVersion(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.updateExampleVersions', async (item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem) => {
+        await this.batchUpdateExampleVersions(item);
       })
     );
 
@@ -1037,62 +1043,6 @@ export class LecturerCommands {
     });
   }
 
-  private async commitAssignmentsBeforeRelease(
-    courseId: string,
-    progress?: vscode.Progress<{ message?: string; increment?: number }>
-  ): Promise<{ repoRoot: string; head: string } | undefined> {
-    const course = await this.apiService.getCourse(courseId);
-    if (!course) {
-      throw new Error('Course not found while preparing assignments repository.');
-    }
-
-    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-    await this.ensureAssignmentsRepo(course, repoManager);
-
-    const repoRoot = repoManager.getAssignmentsRepoRoot(course);
-    if (!repoRoot || !fs.existsSync(repoRoot)) {
-      throw new Error('Assignments repository is not available locally. Run "Sync assignments" first.');
-    }
-
-    const git = createSimpleGit({ baseDir: repoRoot });
-    const initialStatus = await git.status();
-    if (initialStatus.isClean()) {
-      const head = (await git.revparse(['HEAD'])).trim();
-      return { repoRoot, head };
-    }
-
-    progress?.report({ message: 'Staging assignment changes...' });
-    await git.add('.');
-    const stagedStatus = await git.status();
-    if (stagedStatus.isClean()) {
-      const head = (await git.revparse(['HEAD'])).trim();
-      return { repoRoot, head };
-    }
-
-    const commitMessage = `Update assignments before release (${new Date().toISOString()})`;
-    progress?.report({ message: 'Committing assignment changes...' });
-    try {
-      await git.commit(commitMessage);
-    } catch (error: any) {
-      const message = error && error.message ? error.message : String(error);
-      if (/nothing to commit/i.test(message)) {
-        return;
-      }
-      throw new Error(`Git commit failed: ${message}`);
-    }
-
-    progress?.report({ message: 'Pushing assignment changes...' });
-    try {
-      await git.push();
-    } catch (error: any) {
-      const message = error && error.message ? error.message : String(error);
-      throw new Error(`Git push failed: ${message}`);
-    }
-
-    const head = (await git.revparse(['HEAD'])).trim();
-    return { repoRoot, head };
-  }
-
   private getAssignmentDirectoryName(content: CourseContentGet): string | undefined {
     const deployment = (content as any)?.deployment;
     const deploymentPath = typeof deployment?.deployment_path === 'string' && deployment.deployment_path.trim().length > 0
@@ -1487,6 +1437,98 @@ export class LecturerCommands {
     }
   }
 
+  private async batchUpdateExampleVersions(item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
+    const scopeInfo = this.buildReleaseScopeFromTreeItem(item);
+    if (!scopeInfo) { return; }
+    const { courseId, scope } = scopeInfo;
+
+    try {
+      const updatableItems = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Scanning for updatable assignments...',
+        cancellable: false
+      }, async () => {
+        const [contents, batch] = await Promise.all([
+          this.apiService.getCourseContents(courseId, false, true),
+          this.apiService.lecturerGetCourseDeployments(courseId)
+        ]);
+        if (!contents || contents.length === 0) { return []; }
+
+        const deploymentMap = new Map<string, any>();
+        for (const dep of batch.deployments || []) {
+          deploymentMap.set(dep.course_content_id, dep);
+        }
+
+        const matchesScope = (c: { id: string; path?: string | null }): boolean => {
+          if (!scope || scope.all) { return true; }
+          const pathValue = c.path || '';
+          if (scope.parentId && scope.path) {
+            return c.id === scope.parentId || pathValue.startsWith(`${scope.path}.`);
+          }
+          if (scope.path) {
+            return pathValue === scope.path || pathValue.startsWith(`${scope.path}.`);
+          }
+          return true;
+        };
+
+        return contents
+          .filter(c => c.is_submittable && hasExampleAssigned(c) && matchesScope(c))
+          .map(content => ({ content, deployment: deploymentMap.get(content.id) }))
+          .filter(({ deployment }) => deployment?.has_newer_version);
+      });
+
+      if (updatableItems.length === 0) {
+        const scopeText = scope?.label ? ` under "${scope.label}"` : '';
+        vscode.window.showInformationMessage(`All assignments${scopeText} are already on their latest example versions.`);
+        return;
+      }
+
+      interface UpdateQuickPickItem extends vscode.QuickPickItem {
+        contentId: string;
+      }
+
+      const items: UpdateQuickPickItem[] = updatableItems.map(({ content, deployment }) => ({
+        label: `$(sync) ${content.title || content.path}`,
+        description: `v${deployment.version_tag || '?'} → v${deployment.latest_version_tag || 'latest'}`,
+        picked: true,
+        contentId: content.id
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        canPickMany: true,
+        title: `Update example versions${scope?.label ? ` — ${scope.label}` : ''}`,
+        placeHolder: `${updatableItems.length} assignment(s) have newer versions available`
+      });
+
+      if (!selected || selected.length === 0) { return; }
+
+      const selectedIds = new Set(selected.map(s => s.contentId));
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Updating example versions...',
+        cancellable: false
+      }, async () => {
+        const contentIds = [...selectedIds];
+        const result = await this.apiService.lecturerBatchUpgradeVersions(courseId, contentIds);
+
+        if (result.total_failed === 0) {
+          vscode.window.showInformationMessage(`Updated ${result.total_upgraded} assignment(s) to latest example versions.`);
+        } else {
+          vscode.window.showWarningMessage(`Updated ${result.total_upgraded} assignment(s), ${result.total_failed} failed.`);
+        }
+      });
+
+      this.apiService.clearCourseCache(courseId);
+      await this.treeDataProvider.forceRefreshCourse(courseId);
+
+    } catch (error: any) {
+      console.error('Failed to batch update example versions:', error);
+      const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to update example versions: ${errorMessage}`);
+    }
+  }
+
   private async viewDeploymentInfo(item: CourseContentTreeItem): Promise<void> {
     try {
       await this.deploymentInfoWebviewProvider.showDeploymentInfo(
@@ -1749,11 +1791,6 @@ export class LecturerCommands {
   }
 
   private async startReleaseWorkflow(courseId: string, scope: ReleaseScope): Promise<void> {
-    console.log('[RELEASE] ========================================');
-    console.log('[RELEASE] Starting release workflow for course:', courseId);
-    console.log('[RELEASE] Scope:', JSON.stringify(scope));
-    console.log('[RELEASE] ========================================');
-
     // Step 1: Pre-flight validation
     const validationResult = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
@@ -1784,129 +1821,48 @@ export class LecturerCommands {
       return;
     }
 
-    // Step 3: Continue with normal release flow
-    let repoInfo: { repoRoot: string; head: string } | undefined;
-    try {
-      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Preparing assignments repository...' }, async (progress) => {
-        repoInfo = await this.commitAssignmentsBeforeRelease(courseId, progress);
-      });
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to prepare assignments repository: ${error?.message || error}`);
-      return;
-    }
-
-    if (!repoInfo) {
-      vscode.window.showErrorMessage('Assignments repository could not be prepared.');
-      return;
-    }
-
-    // Clear both API and tree caches to get fresh data
+    // Step 3: Get pending release candidates
     this.apiService.clearCourseCache(courseId);
     this.treeDataProvider.invalidateCache('course', courseId);
 
-    const pendingContents = await this.getPendingReleaseContents(courseId, scope, repoInfo?.head);
+    const candidates = await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Checking for releasable content...',
+      cancellable: false
+    }, () => this.getPendingReleaseContents(courseId, scope));
 
-    if (pendingContents.length === 0) {
+    if (candidates.length === 0) {
       await this.handleNoPendingContent(courseId, scope);
       return;
     }
 
-    const confirmed = await this.confirmRelease(pendingContents, scope);
-    if (!confirmed) {
+    // Step 4: Let user select items to release
+    const selectedCandidates = await this.confirmRelease(candidates, scope);
+    if (!selectedCandidates || selectedCandidates.length === 0) {
       return;
     }
 
-    await this.executeRelease(courseId, scope, repoInfo);
+    await this.executeRelease(courseId, scope, selectedCandidates);
   }
   
-  private async getPendingReleaseContents(courseId: string, scope?: ReleaseScope, initialRepoHead?: string) {
-    // Fetch with deployment info included
+  private async getPendingReleaseContents(courseId: string, scope?: ReleaseScope): Promise<ReleaseCandidate[]> {
     const contents = await this.apiService.getCourseContents(courseId, false, true);
-    
-    console.log('Debug: Fetched contents for release check:', contents?.length);
-    
-    // Get content types to check if they are submittable
-    const contentTypes = await this.apiService.getCourseContentTypes(courseId);
-    const submittableTypeIds = new Set<string>();
-    
-    // Check each content type for submittability
-    for (const type of contentTypes) {
-      const fullType = await this.apiService.getCourseContentType(type.id);
-      if (fullType?.course_content_kind?.submittable) {
-        submittableTypeIds.add(type.id);
-      }
-    }
-    
-    console.log('Debug: Submittable type IDs:', Array.from(submittableTypeIds));
-    
-    let repoHead: string | undefined = initialRepoHead;
-    if (!repoHead) {
-      try {
-        const course = await this.apiService.getCourse(courseId);
-        if (course) {
-          const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-          const repoRoot = repoManager.getAssignmentsRepoRoot(course);
-          if (repoRoot && fs.existsSync(repoRoot)) {
-            const git = createSimpleGit({ baseDir: repoRoot });
-            repoHead = (await git.revparse(['HEAD'])).trim();
-            console.log(`[Release] Assignments HEAD commit: ${repoHead}`);
-          }
-        }
-      } catch (error) {
-        console.warn('[Release] Failed to resolve assignments repo HEAD:', error);
-      }
-    }
+    if (!contents || contents.length === 0) { return []; }
 
-    // Debug: log all contents with their deployment info
-    contents?.forEach(c => {
-      const isSubmittable = submittableTypeIds.has(c.course_content_type_id);
-      const hasExample = hasExampleAssigned(c);
-      const status = getDeploymentStatus(c);
-      console.log(`Debug: Content "${c.title}": submittable=${isSubmittable}, hasExample=${hasExample}, status=${status}, has_deployment=${c.has_deployment}, deployment_status=${c.deployment_status}`);
-    });
-    
-    const isReleasable = (c: any) => {
-      const isSubmittable = submittableTypeIds.has(c.course_content_type_id);
-      const status = getDeploymentStatus(c);
-      const deployedCommit = typeof (c as any)?.deployment?.version_identifier === 'string'
-        ? (c as any).deployment.version_identifier as string
-        : undefined;
-      const commitChanged = Boolean(repoHead && deployedCommit && repoHead !== deployedCommit);
-      return isSubmittable && hasExampleAssigned(c) && (
-        status === 'pending' ||
-        status === 'failed' ||
-        (status === 'deployed' && commitChanged)
-      );
+    const matchesScope = (c: { id: string; path?: string | null }): boolean => {
+      if (!scope || scope.all) { return true; }
+      const pathValue = c.path || '';
+      if (scope.parentId && scope.path) {
+        return c.id === scope.parentId || pathValue.startsWith(`${scope.path}.`);
+      }
+      if (scope.path) {
+        return pathValue === scope.path || pathValue.startsWith(`${scope.path}.`);
+      }
+      return true;
     };
 
-    if (scope && !scope.all && scope.parentId && scope.path) {
-      // First try to find releasable descendants (strict children only, not the parent)
-      const descendants = contents?.filter(c => {
-        const pathValue = c.path || '';
-        return pathValue.startsWith(`${scope.path}.`) && isReleasable(c);
-      }) || [];
-
-      if (descendants.length > 0) {
-        return descendants;
-      }
-
-      // No descendants found — the selected item is a leaf assignment, include it directly
-      const self = contents?.filter(c => c.id === scope.parentId && isReleasable(c)) || [];
-      return self;
-    }
-
-    return contents?.filter(c => {
-      // Filter by scope: path prefix
-      if (scope && !scope.all) {
-        if (scope.path) {
-          const pathValue = c.path || '';
-          if (!(pathValue === scope.path || pathValue.startsWith(`${scope.path}.`))) {
-            return false;
-          }
-        }
-      }
-      return isReleasable(c);
-    }) || [];
+    const eligible = contents.filter(c => c.is_submittable && hasExampleAssigned(c) && matchesScope(c));
+    return classifyReleaseContents(eligible, this.apiService, courseId);
   }
   
   private async handleNoPendingContent(courseId: string, scope?: ReleaseScope): Promise<void> {
@@ -1935,31 +1891,42 @@ export class LecturerCommands {
     const scopeText = scope?.label ? ` under "${scope.label}"` : '';
 
     if (withExamples.length > 0) {
-      vscode.window.showInformationMessage(
-        `No pending content to release${scopeText}. ${withExamples.length} item(s) have examples with deployment status: ${
-          withExamples.map(c => getDeploymentStatus(c) || 'not set').join(', ')
-        }`
-      );
+      vscode.window.showInformationMessage(`No pending content to release${scopeText}. All ${withExamples.length} assigned item(s) are up to date.`);
     } else {
       vscode.window.showInformationMessage(`No pending content to release${scopeText}. Assign examples to course contents first.`);
     }
   }
   
-  private async confirmRelease(pendingContents: any[], scope?: ReleaseScope): Promise<boolean> {
-    const pendingList = pendingContents.map(c => `• ${c.title || c.path}`).join('\n');
-    const header = scope?.label
-      ? `Release ${pendingContents.length} content item(s) under "${scope.label}" to students?`
-      : `Release ${pendingContents.length} content item(s) to students?`;
-    const confirmation = await vscode.window.showWarningMessage(
-      `${header}\n\n${pendingList}`,
-      { modal: true },
-      'Release',
-      'Cancel'
-    );
-    return confirmation === 'Release';
+  private async confirmRelease(candidates: ReleaseCandidate[], scope?: ReleaseScope): Promise<ReleaseCandidate[] | undefined> {
+    interface ReleaseQuickPickItem extends vscode.QuickPickItem {
+      candidate: ReleaseCandidate;
+    }
+
+    const iconMap = { new: '$(cloud-upload)', update: '$(sync)', failed: '$(error)' };
+    const descriptionMap = { new: 'new', update: 'update available', failed: 'failed — retry' };
+
+    const items: ReleaseQuickPickItem[] = candidates.map(candidate => ({
+      label: `${iconMap[candidate.reason]} ${candidate.content.title || candidate.content.path}`,
+      description: descriptionMap[candidate.reason],
+      picked: candidate.reason !== 'failed',
+      candidate
+    }));
+
+    const title = scope?.label
+      ? `Release content under "${scope.label}"`
+      : 'Release content to students';
+
+    const selected = await vscode.window.showQuickPick(items, {
+      canPickMany: true,
+      title,
+      placeHolder: 'Select items to release (new and updated are pre-selected)'
+    });
+
+    if (!selected || selected.length === 0) { return undefined; }
+    return selected.map(item => item.candidate);
   }
   
-  private async executeRelease(courseId: string, scope?: ReleaseScope, repoInfo?: { repoRoot: string; head: string }): Promise<void> {
+  private async executeRelease(courseId: string, scope: ReleaseScope | undefined, selectedCandidates: ReleaseCandidate[]): Promise<void> {
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: 'Releasing course content',
@@ -1967,69 +1934,41 @@ export class LecturerCommands {
     }, async (progress) => {
       progress.report({ increment: 0, message: 'Preparing release...' });
 
-      let effectiveRepoInfo = repoInfo;
-      if (!effectiveRepoInfo) {
-        try {
-          effectiveRepoInfo = await this.commitAssignmentsBeforeRelease(courseId, progress);
-        } catch (error: any) {
-          vscode.window.showErrorMessage(`Failed to prepare assignments repository: ${error?.message || error}`);
-          throw error;
+      const updateCandidates = selectedCandidates.filter(c => c.reason === 'update');
+      if (updateCandidates.length > 0) {
+        progress.report({ message: `Updating ${updateCandidates.length} example version(s) to latest...` });
+        const updateIds = updateCandidates.map(c => c.content.id);
+        const upgradeResult = await this.apiService.lecturerBatchUpgradeVersions(courseId, updateIds);
+        if (upgradeResult.total_failed > 0) {
+          console.warn(`${upgradeResult.total_failed} version upgrade(s) failed during release`);
         }
       }
 
-      // Determine selection
-      const pendingContents = await this.getPendingReleaseContents(courseId, scope, effectiveRepoInfo?.head);
-      const contentIds = pendingContents.map((c: any) => c.id);
-
-      if (contentIds.length === 0) {
-        vscode.window.showInformationMessage('No pending content remains after preparing assignments. Release cancelled.');
-        return;
-      }
+      const selectedContentIds = selectedCandidates.map(c => c.content.id);
 
       try {
-        if (scope?.parentId) {
-          progress.report({ message: `Syncing assignments for ${contentIds.length} item(s) under ${scope.label || 'selection'}...` });
-          await this.apiService.generateAssignments(courseId, {
-            parent_id: scope.parentId,
-            include_descendants: true,
-            overwrite_strategy: 'skip_if_exists',
-            commit_message: 'Sync assignments prior to student-template release'
-          });
-        } else {
-          progress.report({ message: `Syncing assignments for ${contentIds.length} item(s)...` });
-          await this.apiService.generateAssignments(courseId, {
-            all: scope?.all || false,
-            course_content_ids: scope?.all ? undefined : contentIds,
-            include_descendants: true,
-            overwrite_strategy: 'skip_if_exists',
-            commit_message: 'Sync assignments prior to student-template release'
-          });
-        }
+        progress.report({ message: `Syncing assignments for ${selectedContentIds.length} item(s)...` });
+        await this.apiService.generateAssignments(courseId, {
+          course_content_ids: selectedContentIds,
+          overwrite_strategy: 'skip_if_exists',
+          commit_message: 'Sync assignments prior to student-template release'
+        });
       } catch (e) {
         console.warn('Assignments generation failed or not available; continuing to student-template.', e);
       }
 
-      // Step 2: Trigger student-template generation (Temporal workflow)
       progress.report({ message: 'Starting student-template release...' });
-      const releaseSelection = scope?.parentId
-        ? { parent_id: scope.parentId, include_descendants: true }
-        : scope?.all
-          ? { all: true }
-          : { course_content_ids: contentIds, include_descendants: true };
-
       const result = await this.apiService.generateStudentTemplate(courseId, {
-        release: releaseSelection
+        release: { course_content_ids: selectedContentIds }
       });
-      console.log('Student-template workflow started:', result);
 
       const items = typeof result?.contents_to_process === 'number' ? result.contents_to_process : undefined;
       const scopeSuffix = scope?.label ? ` for ${scope.label}` : '';
       const msg = items && items > 0
-        ? `✅ Release started for ${items} item(s)${scopeSuffix}. This runs in background.`
-        : `✅ Release started${scopeSuffix}. This runs in background.`;
+        ? `Release started for ${items} item(s)${scopeSuffix}. This runs in background.`
+        : `Release started${scopeSuffix}. This runs in background.`;
       vscode.window.showInformationMessage(msg);
 
-      // Clear API cache and force refresh the course data
       this.apiService.clearCourseCache(courseId);
       await this.treeDataProvider.forceRefreshCourse(courseId);
     });
