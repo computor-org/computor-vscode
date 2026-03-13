@@ -1865,52 +1865,70 @@ export class LecturerCommands {
       console.log(`Debug: Content "${c.title}": submittable=${isSubmittable}, hasExample=${hasExample}, status=${status}, has_deployment=${c.has_deployment}, deployment_status=${c.deployment_status}`);
     });
     
+    const isReleasable = (c: any) => {
+      const isSubmittable = submittableTypeIds.has(c.course_content_type_id);
+      const status = getDeploymentStatus(c);
+      const deployedCommit = typeof (c as any)?.deployment?.version_identifier === 'string'
+        ? (c as any).deployment.version_identifier as string
+        : undefined;
+      const commitChanged = Boolean(repoHead && deployedCommit && repoHead !== deployedCommit);
+      return isSubmittable && hasExampleAssigned(c) && (
+        status === 'pending' ||
+        status === 'failed' ||
+        (status === 'deployed' && commitChanged)
+      );
+    };
+
+    if (scope && !scope.all && scope.parentId && scope.path) {
+      // First try to find releasable descendants (strict children only, not the parent)
+      const descendants = contents?.filter(c => {
+        const pathValue = c.path || '';
+        return pathValue.startsWith(`${scope.path}.`) && isReleasable(c);
+      }) || [];
+
+      if (descendants.length > 0) {
+        return descendants;
+      }
+
+      // No descendants found — the selected item is a leaf assignment, include it directly
+      const self = contents?.filter(c => c.id === scope.parentId && isReleasable(c)) || [];
+      return self;
+    }
+
     return contents?.filter(c => {
-      // Filter by scope: single content ID or path prefix
+      // Filter by scope: path prefix
       if (scope && !scope.all) {
-        if (scope.parentId) {
-          if (c.id !== scope.parentId) {
-            return false;
-          }
-        } else if (scope.path) {
+        if (scope.path) {
           const pathValue = c.path || '';
           if (!(pathValue === scope.path || pathValue.startsWith(`${scope.path}.`))) {
             return false;
           }
         }
       }
-      // Check if this content's type is submittable
-      const isSubmittable = submittableTypeIds.has(c.course_content_type_id);
-      // According to the new model, content with status 'pending' means assigned but not deployed
-      const status = getDeploymentStatus(c);
-      const deployedCommit = typeof (c as any)?.deployment?.version_identifier === 'string'
-        ? (c as any).deployment.version_identifier as string
-        : undefined;
-      const commitChanged = Boolean(repoHead && deployedCommit && repoHead !== deployedCommit);
-
-      // Only include submittable content with pending deployment
-      return isSubmittable && hasExampleAssigned(c) && (
-        status === 'pending' ||
-        status === 'failed' ||
-        (status === 'deployed' && commitChanged)
-      );
+      return isReleasable(c);
     }) || [];
   }
   
   private async handleNoPendingContent(courseId: string, scope?: ReleaseScope): Promise<void> {
     const contents = await this.apiService.getCourseContents(courseId, false, true);
-    const filtered = (scope && !scope.all)
-      ? contents?.filter(c => {
-          if (scope.parentId) {
-            return c.id === scope.parentId;
-          }
-          if (scope.path) {
-            const pathValue = c.path || '';
-            return pathValue === scope.path || pathValue.startsWith(`${scope.path}.`);
-          }
-          return true;
-        })
-      : contents;
+    let filtered: typeof contents;
+    if (scope && !scope.all && scope.parentId && scope.path) {
+      // Try descendants first; fall back to the item itself if it's a leaf
+      const descendants = contents?.filter(c => {
+        const pathValue = c.path || '';
+        return pathValue.startsWith(`${scope.path}.`);
+      });
+      filtered = (descendants && descendants.length > 0)
+        ? descendants
+        : contents?.filter(c => c.id === scope.parentId);
+    } else if (scope && !scope.all && scope.path) {
+      filtered = contents?.filter(c => {
+        const pathValue = c.path || '';
+        return pathValue === scope.path || pathValue.startsWith(`${scope.path}.`);
+      });
+    } else {
+      filtered = contents;
+    }
 
     const withExamples = filtered?.filter(c => hasExampleAssigned(c)) || [];
 
