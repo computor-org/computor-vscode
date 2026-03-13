@@ -12,9 +12,11 @@ const IS_WINDOWS = process.platform === 'win32';
 export class ComputorTestingInstaller {
   private static instance: ComputorTestingInstaller;
   private outputChannel: vscode.OutputChannel;
+  private activeTestTerminal: vscode.Terminal | undefined;
 
   private constructor() {
     this.outputChannel = vscode.window.createOutputChannel('Computor Testing');
+    this.cleanupStaleTestRuns();
   }
 
   static getInstance(): ComputorTestingInstaller {
@@ -234,11 +236,19 @@ export class ComputorTestingInstaller {
     const target = await this.pickTestTarget(exampleDir);
     if (!target) { return; }
 
+    // Dispose previous test terminal so its cwd is released (fixes Windows EBUSY)
+    if (this.activeTestTerminal) {
+      this.activeTestTerminal.dispose();
+      this.activeTestTerminal = undefined;
+      // Give Windows a moment to release the directory lock
+      if (IS_WINDOWS) { await new Promise(r => setTimeout(r, 500)); }
+    }
+
     const tmpDir = this.createTestRunDir(exampleDir, target);
 
     const terminalOptions = this.buildTerminalOptions(tmpDir, language);
-    const terminal = vscode.window.createTerminal(terminalOptions);
-    terminal.show();
+    this.activeTestTerminal = vscode.window.createTerminal(terminalOptions);
+    this.activeTestTerminal.show();
 
     this.pollForTestResults(tmpDir);
   }
@@ -277,10 +287,20 @@ export class ComputorTestingInstaller {
     const tmpDir = path.join(dirs.tmp, `test-run-${exampleName}`);
 
     if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // Fallback: use a timestamped directory if removal fails (e.g. Windows EBUSY)
+        const fallback = path.join(dirs.tmp, `test-run-${exampleName}-${Date.now()}`);
+        fs.mkdirSync(fallback, { recursive: true });
+        return this.populateTestRunDir(fallback, exampleDir, target);
+      }
     }
     fs.mkdirSync(tmpDir, { recursive: true });
+    return this.populateTestRunDir(tmpDir, exampleDir, target);
+  }
 
+  private populateTestRunDir(tmpDir: string, exampleDir: string, target: string): string {
     const excludeDirs = new Set([
       'localTests', 'studentTemplates', 'content',
       'student', 'reference', 'testprograms', 'artifacts', 'output'
@@ -322,6 +342,43 @@ export class ComputorTestingInstaller {
     }
 
     return tmpDir;
+  }
+
+  private cleanupStaleTestRuns(): void {
+    try {
+      const dirs = WorkspaceStructureManager.getInstance().getDirectories();
+      if (!fs.existsSync(dirs.tmp)) { return; }
+
+      const entries = fs.readdirSync(dirs.tmp, { withFileTypes: true });
+      const stale = entries.filter(
+        e => e.isDirectory() && /^test-run-.+-\d{13,}$/.test(e.name)
+      );
+
+      const failed: string[] = [];
+      for (const entry of stale) {
+        const fullPath = path.join(dirs.tmp, entry.name);
+        try {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+        } catch {
+          failed.push(fullPath);
+        }
+      }
+
+      if (failed.length > 0) {
+        const paths = failed.join('\n  ');
+        vscode.window.showWarningMessage(
+          `Could not remove ${failed.length} stale test run director${failed.length === 1 ? 'y' : 'ies'}. ` +
+          `Please delete manually:\n  ${paths}`,
+          'Open Folder'
+        ).then(action => {
+          if (action === 'Open Folder') {
+            vscode.env.openExternal(vscode.Uri.file(dirs.tmp));
+          }
+        });
+      }
+    } catch {
+      // Startup cleanup is best-effort — never block activation
+    }
   }
 
   private collectLocalArtifacts(tmpDir: string): ResultArtifactInfo[] {
