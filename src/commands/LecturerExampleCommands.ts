@@ -870,6 +870,7 @@ export class LecturerExampleCommands {
         progress.report({ increment: 20, message: 'Complete!' });
         vscode.window.showInformationMessage(`Successfully uploaded: ${title} [${uploadVersion}]`);
         this.treeProvider.refresh();
+        vscode.commands.executeCommand('computor.lecturer.refresh');
       });
     } catch (error) {
       console.error('Failed to upload example:', error);
@@ -1349,10 +1350,8 @@ export class LecturerExampleCommands {
           // Add a small delay to ensure the backend has processed the uploads
           await new Promise(resolve => setTimeout(resolve, 1000));
           
-          // Refresh the tree
           this.treeProvider.refresh();
-          
-          console.log(`Refreshed tree after uploading ${successCount} examples`);
+          vscode.commands.executeCommand('computor.lecturer.refresh');
         }
       });
 

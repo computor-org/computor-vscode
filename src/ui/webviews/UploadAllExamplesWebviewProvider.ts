@@ -254,6 +254,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
 
     this.panel?.webview.postMessage({ command: 'uploadComplete', data: results });
     this.treeProvider.refresh();
+    vscode.commands.executeCommand('computor.lecturer.refresh');
     this.isUploading = false;
   }
 
