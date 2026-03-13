@@ -24,6 +24,7 @@ import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../http/errors/HttpError';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
+import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
@@ -1454,7 +1455,7 @@ export class LecturerCommands {
         ]);
         if (!contents || contents.length === 0) { return []; }
 
-        const deploymentMap = new Map<string, any>();
+        const deploymentMap = new Map<string, CourseDeploymentList>();
         for (const dep of batch.deployments || []) {
           deploymentMap.set(dep.course_content_id, dep);
         }
@@ -1473,8 +1474,13 @@ export class LecturerCommands {
 
         return contents
           .filter(c => c.is_submittable && hasExampleAssigned(c) && matchesScope(c))
-          .map(content => ({ content, deployment: deploymentMap.get(content.id) }))
-          .filter(({ deployment }) => deployment?.has_newer_version);
+          .reduce<{ content: typeof contents[number]; deployment: CourseDeploymentList }[]>((acc, content) => {
+            const deployment = deploymentMap.get(content.id);
+            if (deployment?.has_newer_version) {
+              acc.push({ content, deployment });
+            }
+            return acc;
+          }, []);
       });
 
       if (updatableItems.length === 0) {

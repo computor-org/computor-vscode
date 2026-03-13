@@ -6,6 +6,7 @@ import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
+import type { CourseDeploymentGet, VersionUpgradeGet } from '../types/generated';
 import {
   OrganizationList,
   OrganizationGet,
@@ -1015,9 +1016,9 @@ export class ComputorApiService {
   /**
    * Lecturer: Get all deployments for a course with has_newer_version in batch
    */
-  async lecturerGetCourseDeployments(courseId: string): Promise<any> {
+  async lecturerGetCourseDeployments(courseId: string): Promise<CourseDeploymentGet> {
     const client = await this.getHttpClient();
-    const response = await client.get(
+    const response = await client.get<CourseDeploymentGet>(
       `/lecturers/courses/${courseId}/deployments`
     );
     return response.data;
@@ -1026,9 +1027,9 @@ export class ComputorApiService {
   /**
    * Lecturer: Batch-upgrade course contents to their latest example versions
    */
-  async lecturerBatchUpgradeVersions(courseId: string, courseContentIds: string[]): Promise<any> {
+  async lecturerBatchUpgradeVersions(courseId: string, courseContentIds: string[]): Promise<VersionUpgradeGet> {
     const client = await this.getHttpClient();
-    const response = await client.post(
+    const response = await client.post<VersionUpgradeGet>(
       `/lecturers/courses/${courseId}/upgrade-versions`,
       { course_content_ids: courseContentIds }
     );

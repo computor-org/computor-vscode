@@ -1,4 +1,5 @@
 import { CourseContentGet, CourseContentList } from '../types/generated';
+import type { CourseDeploymentList } from '../types/generated';
 import type { ComputorApiService } from '../services/ComputorApiService';
 
 export type ReleaseReason = 'new' | 'update' | 'failed';
@@ -104,7 +105,7 @@ export async function classifyReleaseContents(
   const candidates: ReleaseCandidate[] = [];
 
   // Batch-fetch all deployments with has_newer_version in one call
-  const deploymentMap = new Map<string, any>();
+  const deploymentMap = new Map<string, CourseDeploymentList>();
   try {
     const batch = await apiService.lecturerGetCourseDeployments(courseId);
     for (const dep of batch.deployments || []) {
