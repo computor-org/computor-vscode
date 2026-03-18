@@ -22,8 +22,10 @@ import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMember
 import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../http/errors/HttpError';
-import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet } from '../types/generated/courses';
-import type { OrganizationList } from '../types/generated/organizations';
+import { pollTaskUntilComplete } from '../utils/taskPoller';
+import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
+import type { OrganizationList, OrganizationTaskRequest } from '../types/generated/organizations';
+import type { GitLabCredentials } from '../types/generated/common';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
@@ -125,10 +127,22 @@ export class LecturerCommands {
       })
     );
 
-    // Course management commands
+    // Organization, course family, and course creation
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createCourse', async () => {
-        await this.createCourse();
+      vscode.commands.registerCommand('computor.lecturer.createOrganization', async () => {
+        await this.createOrganization();
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.createCourseFamily', async (item: OrganizationTreeItem) => {
+        await this.createCourseFamily(item);
+      })
+    );
+
+    this.context.subscriptions.push(
+      vscode.commands.registerCommand('computor.lecturer.createCourse', async (item?: CourseFamilyTreeItem) => {
+        await this.createCourse(item);
       })
     );
 
@@ -391,97 +405,269 @@ export class LecturerCommands {
     );
   }
 
-  /**
-   * Create a new course
-   */
-  private async createCourse(): Promise<void> {
-    // Get organization
-    const organizations = await this.apiService.getOrganizations();
-    if (!organizations || organizations.length === 0) {
-      vscode.window.showErrorMessage('No organizations available');
-      return;
-    }
-
-    const selectedOrg = await vscode.window.showQuickPick(
-      organizations.map(org => ({
-        label: org.title || org.path,
-        description: org.path,
-        organization: org
-      })),
-      { placeHolder: 'Select organization' }
-    );
-
-    if (!selectedOrg) {
-      return;
-    }
-
-    // Get course family  
-    const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
-    if (!families || families.length === 0) {
-      vscode.window.showErrorMessage('No course families available in this organization');
-      return;
-    }
-
-    const selectedFamily = await vscode.window.showQuickPick(
-      families.map(family => ({
-        label: family.title || family.path,
-        description: family.path,
-        family: family
-      })),
-      { placeHolder: 'Select course family' }
-    );
-
-    if (!selectedFamily) {
-      return;
-    }
-
-    // Get course details
-    const coursePath = await vscode.window.showInputBox({
-      prompt: 'Enter course path (URL-friendly identifier)',
-      placeHolder: 'e.g., cs101-2024, intro-programming-fall',
+  private async createOrganization(): Promise<void> {
+    const orgPath = await vscode.window.showInputBox({
+      prompt: 'Enter organization path (lowercase identifier)',
+      placeHolder: 'e.g., my-university, research-lab',
       validateInput: (value) => {
-        if (!value) {
-          return 'Course path is required';
-        }
-        if (!/^[a-z0-9-]+$/.test(value)) {
-          return 'Path must contain only lowercase letters, numbers, and hyphens';
+        if (!value) { return 'Organization path is required'; }
+        if (!/^[a-z0-9]+([.\-][a-z0-9]+)*$/.test(value)) {
+          return 'Path must be lowercase alphanumeric with hyphens and dots';
         }
         return null;
       }
     });
+    if (!orgPath) { return; }
 
-    if (!coursePath) {
-      return;
+    const orgTitle = await vscode.window.showInputBox({
+      prompt: 'Enter organization title',
+      placeHolder: 'e.g., My University',
+      value: orgPath.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    });
+    if (!orgTitle) { return; }
+
+    const gitlabUrl = await vscode.window.showInputBox({
+      prompt: 'Enter GitLab instance URL',
+      placeHolder: 'e.g., https://gitlab.example.com',
+      validateInput: (value) => {
+        if (!value) { return 'GitLab URL is required'; }
+        try { new URL(value); return null; }
+        catch { return 'Must be a valid URL'; }
+      }
+    });
+    if (!gitlabUrl) { return; }
+
+    const gitlabToken = await vscode.window.showInputBox({
+      prompt: 'Enter GitLab Personal Access Token (scopes: api, read_repository, write_repository)',
+      placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
+      password: true,
+      validateInput: (value) => !value ? 'GitLab token is required' : null
+    });
+    if (!gitlabToken) { return; }
+
+    const parentGroupIdStr = await vscode.window.showInputBox({
+      prompt: 'Enter parent GitLab group ID (0 for root-level)',
+      placeHolder: '0',
+      value: '0',
+      validateInput: (value) => {
+        if (!value) { return 'Parent group ID is required'; }
+        const num = parseInt(value, 10);
+        if (isNaN(num) || num < 0) { return 'Must be a non-negative integer'; }
+        return null;
+      }
+    });
+    if (!parentGroupIdStr) { return; }
+
+    const request: OrganizationTaskRequest = {
+      organization: {
+        path: orgPath,
+        title: orgTitle,
+        organization_type: 'organization'
+      },
+      gitlab: { gitlab_url: gitlabUrl, gitlab_token: gitlabToken },
+      parent_group_id: parseInt(parentGroupIdStr, 10)
+    };
+
+    try {
+      const taskResponse = await this.apiService.deployOrganization(request);
+
+      const result = await pollTaskUntilComplete(this.apiService, taskResponse.task_id, {
+        title: `Creating organization "${orgTitle}"...`
+      });
+
+      if (result.status === 'SUCCESS') {
+        vscode.window.showInformationMessage(`Organization "${orgTitle}" created successfully!`);
+        this.treeDataProvider.refresh();
+      } else if (result.status === 'FAILED') {
+        vscode.window.showErrorMessage(`Failed to create organization: ${result.error || 'Unknown error'}`);
+      } else if (result.status === 'TIMEOUT') {
+        vscode.window.showWarningMessage(`Organization creation for "${orgTitle}" is still in progress. Check back later.`);
+      }
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to create organization: ${error.message || error}`);
     }
+  }
+
+  private async createCourseFamily(item: OrganizationTreeItem): Promise<void> {
+    const organization = item.organization;
+
+    const familyPath = await vscode.window.showInputBox({
+      prompt: `Enter course family path under "${organization.title || organization.path}"`,
+      placeHolder: 'e.g., computer-science, mathematics',
+      validateInput: (value) => {
+        if (!value) { return 'Course family path is required'; }
+        if (!/^[a-z0-9]+([.\-][a-z0-9]+)*$/.test(value)) {
+          return 'Path must be lowercase alphanumeric with hyphens and dots';
+        }
+        return null;
+      }
+    });
+    if (!familyPath) { return; }
+
+    const familyTitle = await vscode.window.showInputBox({
+      prompt: 'Enter course family title',
+      placeHolder: 'e.g., Computer Science',
+      value: familyPath.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    });
+    if (!familyTitle) { return; }
+
+    const gitlab = await this.promptOptionalGitlab('Inherit from Organization');
+    if (gitlab === null) { return; }
+
+    const request: CourseFamilyTaskRequest = {
+      course_family: { path: familyPath, title: familyTitle },
+      organization_id: organization.id,
+      ...(gitlab ? { gitlab } : {})
+    };
+
+    try {
+      const taskResponse = await this.apiService.deployCourseFamily(request);
+
+      const result = await pollTaskUntilComplete(this.apiService, taskResponse.task_id, {
+        title: `Creating course family "${familyTitle}"...`
+      });
+
+      if (result.status === 'SUCCESS') {
+        vscode.window.showInformationMessage(`Course family "${familyTitle}" created successfully!`);
+        this.treeDataProvider.refresh();
+      } else if (result.status === 'FAILED') {
+        vscode.window.showErrorMessage(`Failed to create course family: ${result.error || 'Unknown error'}`);
+      } else if (result.status === 'TIMEOUT') {
+        vscode.window.showWarningMessage(`Course family creation for "${familyTitle}" is still in progress. Check back later.`);
+      }
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to create course family: ${error.message || error}`);
+    }
+  }
+
+  private async createCourse(item?: CourseFamilyTreeItem): Promise<void> {
+    let courseFamilyId: string;
+    let familyLabel: string;
+
+    if (item) {
+      courseFamilyId = item.courseFamily.id;
+      familyLabel = item.courseFamily.title || item.courseFamily.path;
+    } else {
+      const organizations = await this.apiService.getOrganizations();
+      if (!organizations || organizations.length === 0) {
+        vscode.window.showErrorMessage('No organizations available');
+        return;
+      }
+
+      const selectedOrg = await vscode.window.showQuickPick(
+        organizations.map(org => ({
+          label: org.title || org.path,
+          description: org.path,
+          organization: org
+        })),
+        { placeHolder: 'Select organization' }
+      );
+      if (!selectedOrg) { return; }
+
+      const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
+      if (!families || families.length === 0) {
+        vscode.window.showErrorMessage('No course families available in this organization');
+        return;
+      }
+
+      const selectedFamily = await vscode.window.showQuickPick(
+        families.map(family => ({
+          label: family.title || family.path,
+          description: family.path,
+          family: family
+        })),
+        { placeHolder: 'Select course family' }
+      );
+      if (!selectedFamily) { return; }
+
+      courseFamilyId = selectedFamily.family.id;
+      familyLabel = selectedFamily.family.title || selectedFamily.family.path;
+    }
+
+    const coursePath = await vscode.window.showInputBox({
+      prompt: 'Enter course path (URL-friendly identifier)',
+      placeHolder: 'e.g., cs101-2024, intro-programming-fall',
+      validateInput: (value) => {
+        if (!value) { return 'Course path is required'; }
+        if (!/^[a-z0-9]+([.\-][a-z0-9]+)*$/.test(value)) {
+          return 'Path must be lowercase alphanumeric with hyphens and dots';
+        }
+        return null;
+      }
+    });
+    if (!coursePath) { return; }
 
     const courseTitle = await vscode.window.showInputBox({
       prompt: 'Enter course title',
       placeHolder: 'e.g., Introduction to Computer Science',
       value: coursePath.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     });
+    if (!courseTitle) { return; }
 
-    if (!courseTitle) {
-      return;
-    }
+    const gitlab = await this.promptOptionalGitlab('Inherit from Course Family');
+    if (gitlab === null) { return; }
+
+    const request: CourseTaskRequest = {
+      course: { path: coursePath, title: courseTitle },
+      course_family_id: courseFamilyId,
+      ...(gitlab ? { gitlab } : {})
+    };
 
     try {
-      // TODO: Implement createCourse in ComputorApiService
-      // For now, show a message that this feature is coming soon
-      vscode.window.showInformationMessage(
-        `Course creation feature is coming soon! Would create: "${courseTitle}" in ${selectedFamily.family.title}`
-      );
-      
-      // When API is ready, uncomment:
-      // await this.apiService.createCourse({
-      //   path: coursePath,
-      //   title: courseTitle,
-      //   course_family_id: selectedFamily.family.id
-      // });
-      // vscode.window.showInformationMessage(`Course "${courseTitle}" created successfully!`);
-      // this.treeDataProvider.refresh();
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create course: ${error}`);
+      const taskResponse = await this.apiService.deployCourse(request);
+
+      const result = await pollTaskUntilComplete(this.apiService, taskResponse.task_id, {
+        title: `Creating course "${courseTitle}"...`
+      });
+
+      if (result.status === 'SUCCESS') {
+        vscode.window.showInformationMessage(`Course "${courseTitle}" created successfully in ${familyLabel}!`);
+        this.treeDataProvider.refresh();
+      } else if (result.status === 'FAILED') {
+        vscode.window.showErrorMessage(`Failed to create course: ${result.error || 'Unknown error'}`);
+      } else if (result.status === 'TIMEOUT') {
+        vscode.window.showWarningMessage(`Course creation for "${courseTitle}" is still in progress. Check back later.`);
+      }
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to create course: ${error.message || error}`);
     }
+  }
+
+  /**
+   * Prompt user to optionally provide custom GitLab credentials.
+   * Returns undefined to inherit, GitLabCredentials for custom, or null if cancelled.
+   */
+  private async promptOptionalGitlab(inheritLabel: string): Promise<GitLabCredentials | undefined | null> {
+    const choice = await vscode.window.showQuickPick(
+      [
+        { label: inheritLabel, description: 'Use parent GitLab settings', value: 'inherit' as const },
+        { label: 'Custom GitLab Settings', description: 'Specify different GitLab credentials', value: 'custom' as const }
+      ],
+      { placeHolder: 'GitLab configuration' }
+    );
+    if (!choice) { return null; }
+    if (choice.value === 'inherit') { return undefined; }
+
+    const gitlabUrl = await vscode.window.showInputBox({
+      prompt: 'Enter GitLab instance URL',
+      placeHolder: 'e.g., https://gitlab.example.com',
+      validateInput: (value) => {
+        if (!value) { return 'GitLab URL is required'; }
+        try { new URL(value); return null; }
+        catch { return 'Must be a valid URL'; }
+      }
+    });
+    if (!gitlabUrl) { return null; }
+
+    const gitlabToken = await vscode.window.showInputBox({
+      prompt: 'Enter GitLab Personal Access Token',
+      placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
+      password: true,
+      validateInput: (value) => !value ? 'GitLab token is required' : null
+    });
+    if (!gitlabToken) { return null; }
+
+    return { gitlab_url: gitlabUrl, gitlab_token: gitlabToken };
   }
 
   /**

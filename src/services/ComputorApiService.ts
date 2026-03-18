@@ -7,6 +7,9 @@ import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
 import type { CourseDeploymentGet, VersionUpgradeGet } from '../types/generated';
+import type { OrganizationTaskRequest } from '../types/generated/organizations';
+import type { CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
+import type { TaskInfo } from '../types/generated/tasks';
 import {
   OrganizationList,
   OrganizationGet,
@@ -1282,7 +1285,31 @@ export class ComputorApiService {
     const response = await client.get<TaskResponse>(`/tasks/${taskId}/status`);
     return response.data;
   }
-  
+
+  async getTaskInfo(taskId: string): Promise<TaskInfo> {
+    const client = await this.getHttpClient();
+    const response = await client.get<TaskInfo>(`/tasks/${taskId}/status`);
+    return response.data;
+  }
+
+  async deployOrganization(request: OrganizationTaskRequest): Promise<TaskResponse> {
+    const client = await this.getHttpClient();
+    const response = await client.post<TaskResponse>('/system/deploy/organizations', request);
+    return response.data;
+  }
+
+  async deployCourseFamily(request: CourseFamilyTaskRequest): Promise<TaskResponse> {
+    const client = await this.getHttpClient();
+    const response = await client.post<TaskResponse>('/system/deploy/course-families', request);
+    return response.data;
+  }
+
+  async deployCourse(request: CourseTaskRequest): Promise<TaskResponse> {
+    const client = await this.getHttpClient();
+    const response = await client.post<TaskResponse>('/system/deploy/courses', request);
+    return response.data;
+  }
+
   /**
    * Batch multiple API calls for improved performance
    */
