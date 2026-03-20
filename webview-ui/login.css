@@ -1,0 +1,187 @@
+.login-root {
+  padding: 16px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.login-card {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 8px;
+  padding: 32px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  text-align: center;
+}
+
+.login-card .subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+  text-align: center;
+}
+
+/* Backend URL display */
+.login-server-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.1));
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.login-server-info .server-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.login-server-info .server-url {
+  color: var(--vscode-textLink-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Form fields */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+}
+
+.form-field input {
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: var(--vscode-font-family);
+  outline: none;
+  box-sizing: border-box;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.form-field input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.form-field input:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.form-field input.invalid {
+  border-color: var(--vscode-inputValidation-errorBorder);
+  background-color: var(--vscode-inputValidation-errorBackground, rgba(211, 47, 47, 0.08));
+  box-shadow: inset 0 1px 2px rgba(211, 47, 47, 0.15);
+}
+
+.form-field .field-error {
+  font-size: 11px;
+  color: var(--vscode-errorForeground);
+  min-height: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+  margin-top: 0;
+}
+
+.form-field .field-error.visible {
+  min-height: 14px;
+  max-height: 28px;
+  opacity: 1;
+  margin-top: 2px;
+}
+
+/* Auto-login toggle */
+.login-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.login-toggle input[type="checkbox"] {
+  accent-color: var(--vscode-button-background);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: var(--vscode-font-family);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  padding: 10px 20px;
+  font-size: 14px;
+  width: 100%;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Notice */
+.login-notice {
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.login-notice.error {
+  background: rgba(211, 47, 47, 0.2);
+  border-color: rgba(211, 47, 47, 0.5);
+  color: var(--vscode-foreground);
+}
+
+.login-notice.success {
+  background: rgba(56, 142, 60, 0.2);
+  border-color: rgba(56, 142, 60, 0.5);
+  color: var(--vscode-foreground);
+}
