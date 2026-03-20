@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
+import type { WebSocketService } from '../../../services/WebSocketService';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
 import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../utils/repositoryNaming';
@@ -37,9 +38,48 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   private expandedContentIds = new Set<string>();
   private expandedVirtualFolderIds = new Set<string>();
   private expandedSubmissionIds = new Set<string>();
+  private wsService?: WebSocketService;
+  private subscribedCourseChannel?: string;
 
   constructor(private api: ComputorApiService, private selection: TutorSelectionService) {
     selection.onDidChangeSelection(() => this.refresh());
+  }
+
+  setWebSocketService(wsService: WebSocketService): void {
+    this.wsService = wsService;
+  }
+
+  private subscribeToCourseChannel(courseId: string): void {
+    if (!this.wsService) return;
+    const channel = `course:${courseId}`;
+    if (this.subscribedCourseChannel === channel) return;
+
+    // Unsubscribe from previous course channel
+    if (this.subscribedCourseChannel) {
+      this.wsService.unsubscribe([this.subscribedCourseChannel], 'tutor-tree');
+    }
+
+    this.subscribedCourseChannel = channel;
+    this.wsService.subscribe([channel], 'tutor-tree', {
+      onDeploymentStatusChanged: (event) => {
+        console.log(`[TutorTree/WS] Deployment status changed: ${event.course_content_id} -> ${event.new_status}`);
+        if (event.new_status === 'deployed' || event.new_status === 'failed') {
+          this.refresh();
+        }
+      },
+      onDeploymentAssigned: (event) => {
+        console.log(`[TutorTree/WS] Deployment assigned: ${event.course_content_id}`);
+        this.refresh();
+      },
+      onDeploymentUnassigned: (event) => {
+        console.log(`[TutorTree/WS] Deployment unassigned: ${event.course_content_id}`);
+        this.refresh();
+      },
+      onCourseContentUpdated: (event) => {
+        console.log(`[TutorTree/WS] Course content updated: ${event.course_content_id} (${event.change_type})`);
+        this.refresh();
+      },
+    });
   }
 
   /**
@@ -90,6 +130,9 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     }
 
     if (!element) {
+      // Subscribe to WS channel for the selected course
+      this.subscribeToCourseChannel(courseId);
+
       // Root: show selection context headers, then course contents
       const memberLabel = this.selection.getCurrentMemberLabel() || memberId;
       const memberGroupLabel = this.selection.getMemberCourseGroupLabel();

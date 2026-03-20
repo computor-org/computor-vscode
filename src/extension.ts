@@ -683,6 +683,7 @@ class UnifiedController {
 
     // Initialize tree view
     const tree = new StudentCourseContentTreeProvider(api, courseSelectionService, repositoryManager, this.context);
+    if (this.wsService) tree.setWebSocketService(this.wsService);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.student.courses', tree));
     const treeView = vscode.window.createTreeView('computor.student.courses', { treeDataProvider: tree, showCollapseAll: true });
     this.disposables.push(treeView);
@@ -949,6 +950,7 @@ class UnifiedController {
     // Register course content tree
     const { TutorStudentTreeProvider } = await import('./ui/tree/tutor/TutorStudentTreeProvider');
     const tree = new TutorStudentTreeProvider(api, selection);
+    if (this.wsService) tree.setWebSocketService(this.wsService);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.tutor.courses', tree));
     const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: tree, showCollapseAll: true });
     this.disposables.push(treeView);
@@ -1009,6 +1011,7 @@ class UnifiedController {
 
   private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
+    if (this.wsService) tree.setWebSocketService(this.wsService);
     this.disposables.push(vscode.window.registerTreeDataProvider('computor.lecturer.courses', tree));
 
     const treeView = vscode.window.createTreeView('computor.lecturer.courses', {

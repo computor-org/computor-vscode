@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
+import type { WebSocketService } from '../../../services/WebSocketService';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
@@ -104,6 +105,8 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private assignmentIdentifierCache: Map<string, string | null> = new Map();
   private fullCourseCache: Map<string, Promise<any>> = new Map();
   private rolesTitleCache: Map<string, string> = new Map();
+  private wsService?: WebSocketService;
+  private subscribedCourseChannels: Set<string> = new Set();
 
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
     // Use provided apiService or create a new one
@@ -114,6 +117,38 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.repositoryManager = new LecturerRepositoryManager(context, this.apiService as any);
     
     this.loadExpandedStates();
+  }
+
+  setWebSocketService(wsService: WebSocketService): void {
+    this.wsService = wsService;
+  }
+
+  private subscribeToCourseChannels(courseIds: string[]): void {
+    if (!this.wsService) return;
+    const newChannels = courseIds
+      .map(id => `course:${id}`)
+      .filter(ch => !this.subscribedCourseChannels.has(ch));
+    if (newChannels.length === 0) return;
+
+    newChannels.forEach(ch => this.subscribedCourseChannels.add(ch));
+    this.wsService.subscribe(newChannels, 'lecturer-tree', {
+      onDeploymentStatusChanged: (event) => {
+        console.log(`[LecturerTree/WS] Deployment status changed: ${event.course_content_id} -> ${event.new_status}`);
+        void this.forceRefreshCourse(event.course_id);
+      },
+      onDeploymentAssigned: (event) => {
+        console.log(`[LecturerTree/WS] Deployment assigned: ${event.course_content_id}`);
+        void this.forceRefreshCourse(event.course_id);
+      },
+      onDeploymentUnassigned: (event) => {
+        console.log(`[LecturerTree/WS] Deployment unassigned: ${event.course_content_id}`);
+        void this.forceRefreshCourse(event.course_id);
+      },
+      onCourseContentUpdated: (event) => {
+        console.log(`[LecturerTree/WS] Course content updated: ${event.course_content_id} (${event.change_type})`);
+        void this.forceRefreshCourse(event.course_id);
+      },
+    });
   }
 
   refresh(): void {
@@ -416,10 +451,13 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         // Cache courses for later use
         // Courses fetched directly from API
         
+        // Subscribe to WS channels for loaded courses
+        this.subscribeToCourseChannels(courses.map(c => c.id));
+
         return courses.map(course => {
           const nodeId = `course-${course.id}`;
-          const expandedState = this.expandedStates[nodeId] ? 
-            vscode.TreeItemCollapsibleState.Expanded : 
+          const expandedState = this.expandedStates[nodeId] ?
+            vscode.TreeItemCollapsibleState.Expanded :
             vscode.TreeItemCollapsibleState.Collapsed;
           return new CourseTreeItem(course, element.courseFamily, element.organization, expandedState);
         });
