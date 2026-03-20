@@ -6,6 +6,7 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
 import { StudentRepositoryManager } from '../../../services/StudentRepositoryManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
+import type { WebSocketService } from '../../../services/WebSocketService';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
@@ -43,9 +44,12 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private expandedStates: Record<string, boolean> = {};
     private itemIndex: Map<string, TreeItem> = new Map();
     private forceRefresh: boolean = false;
-    // Track courses that have been set up in this session (to avoid redundant setup)
+    // Track courses that have been set up in this session (to avoid redundant bulk setup on course expand)
     private coursesSetupThisSession: Set<string> = new Set();
-    // private courseCache: { id: string; title: string } | null = null;
+    // Track individual assignments where setup has already been attempted (to avoid repeated popups)
+    private assignmentsSetupAttempted: Set<string> = new Set();
+    private wsService?: WebSocketService;
+    private subscribedCourseChannels: Set<string> = new Set();
     
     constructor(
         apiService: ComputorApiService, 
@@ -62,19 +66,77 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         }
     }
     
+    setWebSocketService(wsService: WebSocketService): void {
+        this.wsService = wsService;
+    }
+
+    private subscribeToCourseChannels(courseIds: string[]): void {
+        if (!this.wsService) return;
+        const newChannels = courseIds
+            .map(id => `course:${id}`)
+            .filter(ch => !this.subscribedCourseChannels.has(ch));
+        if (newChannels.length === 0) return;
+
+        newChannels.forEach(ch => this.subscribedCourseChannels.add(ch));
+        this.wsService.subscribe(newChannels, 'student-tree', {
+            onDeploymentStatusChanged: (event) => {
+                console.log(`[StudentTree/WS] Deployment status changed: ${event.course_content_id} -> ${event.new_status}`);
+                if (event.new_status === 'deployed' || event.new_status === 'failed') {
+                    this.refreshContentById(event.course_id, event.course_content_id);
+                }
+            },
+            onDeploymentAssigned: (event) => {
+                console.log(`[StudentTree/WS] Deployment assigned: ${event.course_content_id}`);
+                this.refreshContentById(event.course_id, event.course_content_id);
+            },
+            onDeploymentUnassigned: (event) => {
+                console.log(`[StudentTree/WS] Deployment unassigned: ${event.course_content_id}`);
+                this.refreshContentById(event.course_id, event.course_content_id);
+            },
+            onCourseContentUpdated: (event) => {
+                console.log(`[StudentTree/WS] Course content updated: ${event.course_content_id} (${event.change_type})`);
+                // For structural changes, refresh the whole course
+                this.refreshCourseById(event.course_id);
+            },
+        });
+    }
+
+    private refreshContentById(courseId: string, courseContentId: string): void {
+        // Invalidate cache for this course so fresh data is fetched
+        this.courseContentsCache.delete(courseId);
+        // Try to find and refresh the specific item, fall back to course refresh
+        const item = this.itemIndex.get(courseContentId);
+        if (item) {
+            this._onDidChangeTreeData.fire(item);
+        } else {
+            this.refreshCourseById(courseId);
+        }
+    }
+
+    private refreshCourseById(courseId: string): void {
+        this.courseContentsCache.delete(courseId);
+        const courseItem = this.itemIndex.get(`course-${courseId}`);
+        if (courseItem) {
+            this._onDidChangeTreeData.fire(courseItem);
+        } else {
+            this._onDidChangeTreeData.fire(undefined);
+        }
+    }
+
     private async loadExpandedStates(): Promise<void> {
         if (!this.settingsManager) return;
         try {
             this.expandedStates = await this.settingsManager.getStudentTreeExpandedStates();
             // Mark courses that were expanded at startup as already set up
-            // (their repositories were updated during initializeStudentView)
+            // for bulk course-level setup (avoids duplicate bulk clone on course expand).
+            // Individual assignment-level setup is tracked separately and always allowed.
             for (const nodeId of Object.keys(this.expandedStates)) {
                 if (nodeId.startsWith('course-') && this.expandedStates[nodeId]) {
                     this.coursesSetupThisSession.add(nodeId.replace('course-', ''));
                 }
             }
             console.log('Loaded student tree expanded states:', Object.keys(this.expandedStates));
-            console.log('Courses already set up:', Array.from(this.coursesSetupThisSession));
+            console.log('Courses with bulk setup skipped:', Array.from(this.coursesSetupThisSession));
         } catch (error) {
             console.error('Failed to load student tree expanded states:', error);
             this.expandedStates = {};
@@ -86,6 +148,8 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         this.courseContentsCache.clear();
         this.contentKinds = [];
         this.itemIndex.clear();
+        // Clear assignment setup tracking so failed assignments can retry on refresh
+        this.assignmentsSetupAttempted.clear();
         // Don't clear expanded states on refresh - preserve them
         this._onDidChangeTreeData.fire(undefined);
     }
@@ -223,9 +287,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
                 const absDir = resolvePath(repoRoot, directory);
                 if (!absDir || !fs.existsSync(absDir)) {
-                    // Only trigger setup if the course hasn't been set up yet this session
-                    // (avoids per-assignment popup spam on refresh when repos already exist)
-                    if (courseId && this.repositoryManager && !this.coursesSetupThisSession.has(courseId)) {
+                    // Only trigger setup if this specific assignment hasn't been attempted yet this session
+                    const setupKey = `${courseId}:${element.courseContent.id}`;
+                    if (courseId && this.repositoryManager && !this.assignmentsSetupAttempted.has(setupKey)) {
+                        this.assignmentsSetupAttempted.add(setupKey);
                         console.log('[StudentTree] Setting up repository for assignment:', element.courseContent.title);
                         
                         // Show progress while setting up
@@ -491,6 +556,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 if (this.forceRefresh) {
                     this.forceRefresh = false;
                 }
+
+                // Subscribe to WS channels for all loaded courses
+                this.subscribeToCourseChannels(courses.map((c: any) => c.id));
 
                 return courseItems;
             } catch (error: any) {

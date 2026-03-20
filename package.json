@@ -515,6 +515,18 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.createOrganization",
+        "title": "Create New Organization",
+        "icon": "$(add)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.createCourseFamily",
+        "title": "Create New Course Family",
+        "icon": "$(add)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.createCourse",
         "title": "Create New Course",
         "icon": "$(add)",
@@ -755,6 +767,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.updateExampleVersions",
+        "title": "Update All Example Versions",
+        "icon": "$(versions)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.viewDeploymentInfo",
         "title": "View Deployment Info",
         "icon": "$(info)",
@@ -938,6 +956,11 @@
           "command": "computor.lecturer.refresh",
           "when": "view == computor.lecturer.courses",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.lecturer.createOrganization",
+          "when": "view == computor.lecturer.courses",
+          "group": "navigation@2"
         },
         {
           "command": "computor.user.profile",
@@ -1172,6 +1195,21 @@
           "group": "4_example@1"
         },
         {
+          "command": "computor.lecturer.updateExampleVersions",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*hasChildren/",
+          "group": "4_example@1"
+        },
+        {
+          "command": "computor.lecturer.updateExampleVersions",
+          "when": "view == computor.lecturer.courses && viewItem == course",
+          "group": "4_example@1"
+        },
+        {
+          "command": "computor.lecturer.updateExampleVersions",
+          "when": "view == computor.lecturer.courses && viewItem == course.contents",
+          "group": "4_example@1"
+        },
+        {
           "command": "computor.lecturer.revealInExamples",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
           "group": "4_example@2"
@@ -1202,9 +1240,19 @@
           "group": "7_details@1"
         },
         {
+          "command": "computor.lecturer.createCourseFamily",
+          "when": "view == computor.lecturer.courses && viewItem == organization",
+          "group": "1_create@1"
+        },
+        {
           "command": "computor.lecturer.showOrganizationDetails",
           "when": "view == computor.lecturer.courses && viewItem == organization",
           "group": "5_details@1"
+        },
+        {
+          "command": "computor.lecturer.createCourse",
+          "when": "view == computor.lecturer.courses && viewItem == courseFamily",
+          "group": "1_create@1"
         },
         {
           "command": "computor.lecturer.showCourseFamilyDetails",

@@ -665,6 +665,26 @@ export class LecturerExampleCommands {
       return;
     }
 
+    // If repositoryId is missing, prompt the user to select one
+    if (!repositoryId) {
+      const repos = await this.apiService.getExampleRepositories();
+      if (!repos || repos.length === 0) {
+        vscode.window.showErrorMessage('No example repositories found. Please create one first.');
+        return;
+      }
+
+      if (repos.length === 1) {
+        repositoryId = repos[0]!.id;
+      } else {
+        const picked = await vscode.window.showQuickPick(
+          repos.map(r => ({ label: r.name, description: r.source_url, id: r.id })),
+          { placeHolder: 'Select a repository for this example' }
+        );
+        if (!picked) { return; }
+        repositoryId = picked.id;
+      }
+    }
+
     const { readMetaYamlVersion, updateMetaYamlVersion } = await import('../utils/metaYamlHelpers');
     const { bumpVersion, normalizeSemVer } = await import('../utils/versionHelpers');
 
@@ -775,7 +795,7 @@ export class LecturerExampleCommands {
           throw new Error('Upload failed - no response from server');
         }
 
-        const returnedExampleId = result.id || exampleId;
+        const returnedExampleId = (result as any).example_id || exampleId;
 
         progress.report({ increment: 20, message: 'Downloading version snapshot...' });
 
@@ -850,6 +870,7 @@ export class LecturerExampleCommands {
         progress.report({ increment: 20, message: 'Complete!' });
         vscode.window.showInformationMessage(`Successfully uploaded: ${title} [${uploadVersion}]`);
         this.treeProvider.refresh();
+        vscode.commands.executeCommand('computor.lecturer.refresh');
       });
     } catch (error) {
       console.error('Failed to upload example:', error);
@@ -1329,10 +1350,8 @@ export class LecturerExampleCommands {
           // Add a small delay to ensure the backend has processed the uploads
           await new Promise(resolve => setTimeout(resolve, 1000));
           
-          // Refresh the tree
           this.treeProvider.refresh();
-          
-          console.log(`Refreshed tree after uploading ${successCount} examples`);
+          vscode.commands.executeCommand('computor.lecturer.refresh');
         }
       });
 
@@ -2159,6 +2178,9 @@ export class LecturerExampleCommands {
     const { writeCheckoutMetadata, getVersionPath } = await import('../utils/checkedOutExampleManager');
     const { writeExampleFiles } = await import('../utils/exampleFileWriter');
 
+    // Pre-select a fallback repository for examples not yet on the server
+    let fallbackRepositoryId: string | undefined;
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -2257,6 +2279,27 @@ export class LecturerExampleCommands {
                   console.warn(`Failed to download version snapshot for ${directory}:`, snapshotError);
                 }
               }
+            } else {
+              // Example not on server yet — prompt for a target repository (once)
+              if (!fallbackRepositoryId) {
+                const repos = await this.apiService.getExampleRepositories();
+                if (!repos || repos.length === 0) {
+                  vscode.window.showErrorMessage('No example repositories found. Please create one first.');
+                  return;
+                }
+
+                if (repos.length === 1) {
+                  fallbackRepositoryId = repos[0]!.id;
+                } else {
+                  const picked = await vscode.window.showQuickPick(
+                    repos.map(r => ({ label: r.name, description: r.source_url, id: r.id })),
+                    { placeHolder: 'Select a repository for new examples not yet on the server' }
+                  );
+                  if (!picked) { return; }
+                  fallbackRepositoryId = picked.id;
+                }
+              }
+              repositoryId = fallbackRepositoryId;
             }
 
             // Write checkout metadata for working copy

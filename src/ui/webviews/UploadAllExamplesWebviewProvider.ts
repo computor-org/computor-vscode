@@ -190,6 +190,38 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     const examples = await this.collectExamples();
     const toUpload = examples.filter(e => directories.includes(e.directory));
 
+    // If any examples are missing a repositoryId, prompt the user to select one
+    const needsRepo = toUpload.some(e => !e.repositoryId);
+    if (needsRepo) {
+      const repos = await this.apiService.getExampleRepositories();
+      if (!repos || repos.length === 0) {
+        vscode.window.showErrorMessage('No example repositories found. Please create one first.');
+        this.isUploading = false;
+        return;
+      }
+
+      let fallbackRepoId: string;
+      if (repos.length === 1) {
+        fallbackRepoId = repos[0]!.id;
+      } else {
+        const picked = await vscode.window.showQuickPick(
+          repos.map(r => ({ label: r.name, description: r.source_url, id: r.id })),
+          { placeHolder: 'Select a repository for new examples not yet on the server' }
+        );
+        if (!picked) {
+          this.isUploading = false;
+          return;
+        }
+        fallbackRepoId = picked.id;
+      }
+
+      for (const example of toUpload) {
+        if (!example.repositoryId) {
+          example.repositoryId = fallbackRepoId;
+        }
+      }
+    }
+
     const results: ExampleUploadResult[] = toUpload.map(e => ({
       directory: e.directory,
       status: 'pending' as const
@@ -222,6 +254,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
 
     this.panel?.webview.postMessage({ command: 'uploadComplete', data: results });
     this.treeProvider.refresh();
+    vscode.commands.executeCommand('computor.lecturer.refresh');
     this.isUploading = false;
   }
 
@@ -260,12 +293,13 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
       throw new Error('Upload returned no result');
     }
 
-    const exampleId = result.id || example.exampleId;
+    const exampleId = (result as any).example_id || example.exampleId;
     let uploadedVersionId = '';
     let uploadedVersionNumber = 0;
 
     // Create version snapshot
     try {
+      if (!exampleId) { throw new Error('No example ID available'); }
       const versions = await this.apiService.getExampleVersions(exampleId);
       const uploadedVersion = versions?.find((v: { version_tag: string }) =>
         normalizeSemVer(v.version_tag) === uploadVersion
@@ -313,6 +347,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
       writeCheckoutMetadata(dirPath, {
         ...existingMeta,
         exampleId,
+        repositoryId: example.repositoryId || existingMeta.repositoryId,
         versionTag: uploadVersion,
         versionId: uploadedVersionId || existingMeta.versionId,
         versionNumber: uploadedVersionNumber || existingMeta.versionNumber,

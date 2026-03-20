@@ -325,41 +325,37 @@ export class TutorCommands {
 
     // Tutor: Set grading and status together
     this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.assignment.grading', async (item: any) => {
-        const content: any = item?.content || item?.courseContent || item;
-        const contentId: string | undefined = content?.id;
-        if (!contentId) { vscode.window.showErrorMessage('No course content selected.'); return; }
+      vscode.commands.registerCommand('computor.tutor.assignment.grading', async (item: { content?: CourseContentStudentList; courseContent?: CourseContentStudentList }) => {
+        const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
+        const contentId = content?.id;
+        if (!content || !contentId) { vscode.window.showErrorMessage('No course content selected.'); return; }
 
         const sel = TutorSelectionService.getInstance();
         const memberId = sel.getCurrentMemberId();
         if (!memberId) { vscode.window.showErrorMessage('No course member selected.'); return; }
 
         // Get the latest submitted artifact to ensure grade is applied correctly
-        const submissionGroupId: string | undefined = content?.submission_group?.id;
+        const submissionGroup: SubmissionGroupStudentList | undefined | null = content.submission_group;
         let latestSubmittedArtifactId: string | undefined;
-        if (submissionGroupId) {
-          const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroupId, { latest: true });
+        if (submissionGroup?.id) {
+          const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroup.id, { latest: true });
           if (artifacts && artifacts.length > 0 && artifacts[0]) {
             latestSubmittedArtifactId = artifacts[0].id;
           }
         }
 
-        const prev = (() => {
-          const submission: any = content?.submission_group || content?.submission;
-          const latest = submission?.latest_grading || submission?.grading;
-          const grading = typeof latest?.grading === 'number' ? latest.grading as number : undefined;
-          const status = typeof latest?.status === 'string' ? String(latest.status) : undefined;
-          return { grading, status } as { grading?: number; status?: string };
-        })();
+        // Previous grade (0.0–1.0) from submission_group, previous status from content
+        const prevGrade: number | undefined = typeof submissionGroup?.grading === 'number' ? submissionGroup.grading : undefined;
+        const prevStatus: string | undefined = content.status ?? undefined;
 
         const gradingInput = await vscode.window.showInputBox({
           title: 'Grading',
-          prompt: 'Enter grading (0..1 or percentage 0..100)',
-          placeHolder: 'e.g., 0.85 or 85',
-          value: prev.grading != null ? (prev.grading <= 1 ? String(Math.round(prev.grading * 1000) / 1000) : String(prev.grading)) : undefined,
+          prompt: 'Enter grade as percentage (0–100%)',
+          placeHolder: 'e.g., 85',
+          value: prevGrade != null ? String(Math.round(prevGrade * 100)) : undefined,
           ignoreFocusOut: true,
           validateInput: (v) => {
-            if (!v || !v.trim()) return 'Enter a number between 0 and 1 or 0 and 100';
+            if (!v || !v.trim()) return 'Enter a percentage between 0 and 100';
             const n = Number(v.replace('%', '').trim());
             if (!isFinite(n)) return 'Not a number';
             if (n < 0 || n > 100) return 'Value must be between 0 and 100';
@@ -367,9 +363,7 @@ export class TutorCommands {
           }
         });
         if (gradingInput == null) return; // cancelled
-        let grade = Number(gradingInput.replace('%', '').trim());
-        if (grade > 1) grade = grade / 100; // percentage to fraction
-        grade = Math.max(0, Math.min(1, grade));
+        const grade = Math.max(0, Math.min(1, Number(gradingInput.replace('%', '').trim()) / 100));
 
         const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
           { label: 'corrected', description: 'Mark as corrected', value: 1 as GradingStatus },
@@ -379,25 +373,21 @@ export class TutorCommands {
         ];
         const statusPick = await vscode.window.showQuickPick(statusOptions, {
           title: 'Status',
-          placeHolder: 'Choose status',
+          placeHolder: prevStatus ? `Current: ${prevStatus}` : 'Choose status',
           canPickMany: false,
           ignoreFocusOut: true
         });
         if (!statusPick) return; // cancelled
 
         try {
-          // Use new TutorGradeCreate type with enum status
-          // Pass artifact_id to ensure grade is applied to the correct submitted artifact
           const tutorGrade: TutorGradeCreate = {
             artifact_id: latestSubmittedArtifactId,
-            grade: grade,
+            grade,
             status: statusPick.value,
-            feedback: null
           };
           await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
 
           // Clear caches and refresh to get updated data
-          const sel = TutorSelectionService.getInstance();
           const courseId = sel.getCurrentCourseId();
           const groupId = sel.getCurrentGroupId();
 
@@ -406,17 +396,13 @@ export class TutorCommands {
             this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
           }
 
-          // Always do a full tree refresh because:
-          // 1. Status changes affect parent unit items (aggregated status from API)
-          // 2. The API provides fresh data for all items including computed fields
+          // Full tree refresh: status changes affect parent unit items (aggregated from API)
           this.treeDataProvider.refresh();
-
-          // Refresh filter panel to update ungraded_submissions_count
           this.filterProvider?.refreshFilters();
 
-          vscode.window.showInformationMessage(`Updated: ${(grade * 100).toFixed(1)}% • ${statusPick.label}`);
+          vscode.window.showInformationMessage(`Updated: ${Math.round(grade * 100)}% • ${statusPick.label}`);
         } catch (e: any) {
-          vscode.window.showErrorMessage(`Failed to update grading/status: ${e?.message || e}`);
+          vscode.window.showErrorMessage(`Failed to update grading: ${e?.message || e}`);
         }
       })
     );

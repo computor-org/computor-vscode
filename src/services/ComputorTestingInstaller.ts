@@ -7,13 +7,16 @@ import { ResultArtifactInfo } from '../types/generated/common';
 
 const REPO_URL = 'https://github.com/computor-org/computor-backend.git';
 const SPARSE_DIRS = ['computor-types', 'computor-testing'];
+const IS_WINDOWS = process.platform === 'win32';
 
 export class ComputorTestingInstaller {
   private static instance: ComputorTestingInstaller;
   private outputChannel: vscode.OutputChannel;
+  private activeTestTerminal: vscode.Terminal | undefined;
 
   private constructor() {
     this.outputChannel = vscode.window.createOutputChannel('Computor Testing');
+    this.cleanupStaleTestRuns();
   }
 
   static getInstance(): ComputorTestingInstaller {
@@ -36,11 +39,16 @@ export class ComputorTestingInstaller {
   }
 
   private getActivatePrefix(): string {
+    if (IS_WINDOWS) {
+      return `"${path.join(this.getVenvDir(), 'Scripts', 'activate.bat')}"`;
+    }
     return `source "${path.join(this.getVenvDir(), 'bin', 'activate')}"`;
   }
 
   isInstalled(): boolean {
-    const computorTestBin = path.join(this.getVenvDir(), 'bin', 'computor-test');
+    const binDir = IS_WINDOWS ? 'Scripts' : 'bin';
+    const exeName = IS_WINDOWS ? 'computor-test.exe' : 'computor-test';
+    const computorTestBin = path.join(this.getVenvDir(), binDir, exeName);
     return fs.existsSync(computorTestBin);
   }
 
@@ -98,14 +106,20 @@ export class ComputorTestingInstaller {
           this.log('  Clone complete.\n');
 
           // Step 2: Create venv
-          progress.report({ message: 'Creating virtual environment...', increment: 30 });
+          progress.report({ message: 'Creating virtual environment...', increment: 20 });
           this.log('Step 2: Creating virtual environment...');
           await this.exec(`"${pythonPath}" -m venv .venv`, repoDir);
           this.log('  Virtual environment created.\n');
 
-          // Step 3: Install packages
+          // Step 3: Ensure pip is available
+          progress.report({ message: 'Verifying pip...', increment: 10 });
+          this.log('Step 3: Verifying pip in virtual environment...');
+          await this.ensurePip(pythonPath, repoDir);
+          this.log('  pip is available.\n');
+
+          // Step 4: Install packages
           progress.report({ message: 'Installing computor-types...', increment: 20 });
-          this.log('Step 3: Installing computor-types...');
+          this.log('Step 4: Installing computor-types...');
           await this.exec(
             `${this.getActivatePrefix()} && pip install computor-types/`,
             repoDir,
@@ -113,8 +127,8 @@ export class ComputorTestingInstaller {
           );
           this.log('  computor-types installed.\n');
 
-          progress.report({ message: 'Installing computor-testing...', increment: 20 });
-          this.log('Step 4: Installing computor-testing...');
+          progress.report({ message: 'Installing computor-testing...', increment: 15 });
+          this.log('Step 5: Installing computor-testing...');
           await this.exec(
             `${this.getActivatePrefix()} && pip install computor-testing/`,
             repoDir,
@@ -122,9 +136,9 @@ export class ComputorTestingInstaller {
           );
           this.log('  computor-testing installed.\n');
 
-          // Step 4: Verify
-          progress.report({ message: 'Verifying installation...', increment: 20 });
-          this.log('Step 5: Verifying installation...');
+          // Step 6: Verify
+          progress.report({ message: 'Verifying installation...', increment: 15 });
+          this.log('Step 6: Verifying installation...');
           const { stdout: version } = await this.exec(
             `${this.getActivatePrefix()} && computor-test --version`,
             repoDir
@@ -222,19 +236,19 @@ export class ComputorTestingInstaller {
     const target = await this.pickTestTarget(exampleDir);
     if (!target) { return; }
 
+    // Dispose previous test terminal so its cwd is released (fixes Windows EBUSY)
+    if (this.activeTestTerminal) {
+      this.activeTestTerminal.dispose();
+      this.activeTestTerminal = undefined;
+      // Give Windows a moment to release the directory lock
+      if (IS_WINDOWS) { await new Promise(r => setTimeout(r, 500)); }
+    }
+
     const tmpDir = this.createTestRunDir(exampleDir, target);
 
-    const activatePath = path.join(this.getVenvDir(), 'bin', 'activate');
-    const testCommand = `export MPLBACKEND=Agg && source "${activatePath}" && computor-test ${language} run -T test.yaml`;
-
-    const terminal = vscode.window.createTerminal({
-      name: 'Computor Test',
-      cwd: tmpDir,
-      shellPath: '/bin/bash',
-      shellArgs: ['--norc', '--noprofile', '-c', `${testCommand}; exec bash --norc --noprofile`],
-      env: { VIRTUAL_ENV: this.getVenvDir(), MPLBACKEND: 'Agg' }
-    });
-    terminal.show();
+    const terminalOptions = this.buildTerminalOptions(tmpDir, language);
+    this.activeTestTerminal = vscode.window.createTerminal(terminalOptions);
+    this.activeTestTerminal.show();
 
     this.pollForTestResults(tmpDir);
   }
@@ -245,7 +259,7 @@ export class ComputorTestingInstaller {
     const TIMEOUT_MS = 300_000;
     const startTime = Date.now();
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       if (Date.now() - startTime > TIMEOUT_MS) {
         clearInterval(interval);
         return;
@@ -258,8 +272,9 @@ export class ComputorTestingInstaller {
         const results = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
         const artifacts = this.collectLocalArtifacts(tmpDir);
         const localResultId = artifacts.length > 0 ? `local:${path.join(tmpDir, 'output')}` : undefined;
-        vscode.commands.executeCommand('computor.results.open', results, localResultId, artifacts);
-        vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
+        await vscode.commands.executeCommand('computor.results.open', results, localResultId, artifacts);
+        await vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
+        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
       } catch (e) {
         console.error('Failed to parse test results:', e);
       }
@@ -272,10 +287,20 @@ export class ComputorTestingInstaller {
     const tmpDir = path.join(dirs.tmp, `test-run-${exampleName}`);
 
     if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // Fallback: use a timestamped directory if removal fails (e.g. Windows EBUSY)
+        const fallback = path.join(dirs.tmp, `test-run-${exampleName}-${Date.now()}`);
+        fs.mkdirSync(fallback, { recursive: true });
+        return this.populateTestRunDir(fallback, exampleDir, target);
+      }
     }
     fs.mkdirSync(tmpDir, { recursive: true });
+    return this.populateTestRunDir(tmpDir, exampleDir, target);
+  }
 
+  private populateTestRunDir(tmpDir: string, exampleDir: string, target: string): string {
     const excludeDirs = new Set([
       'localTests', 'studentTemplates', 'content',
       'student', 'reference', 'testprograms', 'artifacts', 'output'
@@ -317,6 +342,43 @@ export class ComputorTestingInstaller {
     }
 
     return tmpDir;
+  }
+
+  private cleanupStaleTestRuns(): void {
+    try {
+      const dirs = WorkspaceStructureManager.getInstance().getDirectories();
+      if (!fs.existsSync(dirs.tmp)) { return; }
+
+      const entries = fs.readdirSync(dirs.tmp, { withFileTypes: true });
+      const stale = entries.filter(
+        e => e.isDirectory() && /^test-run-.+-\d{13,}$/.test(e.name)
+      );
+
+      const failed: string[] = [];
+      for (const entry of stale) {
+        const fullPath = path.join(dirs.tmp, entry.name);
+        try {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+        } catch {
+          failed.push(fullPath);
+        }
+      }
+
+      if (failed.length > 0) {
+        const paths = failed.join('\n  ');
+        vscode.window.showWarningMessage(
+          `Could not remove ${failed.length} stale test run director${failed.length === 1 ? 'y' : 'ies'}. ` +
+          `Please delete manually:\n  ${paths}`,
+          'Open Folder'
+        ).then(action => {
+          if (action === 'Open Folder') {
+            vscode.env.openExternal(vscode.Uri.file(dirs.tmp));
+          }
+        });
+      }
+    } catch {
+      // Startup cleanup is best-effort — never block activation
+    }
   }
 
   private collectLocalArtifacts(tmpDir: string): ResultArtifactInfo[] {
@@ -399,6 +461,33 @@ export class ComputorTestingInstaller {
     return picked?.detail;
   }
 
+  private buildTerminalOptions(cwd: string, language: string): vscode.TerminalOptions {
+    const venvDir = this.getVenvDir();
+    const env = { VIRTUAL_ENV: venvDir, MPLBACKEND: 'Agg' };
+
+    if (IS_WINDOWS) {
+      const activatePath = path.join(venvDir, 'Scripts', 'activate.bat');
+      const testCommand = `"${activatePath}" && set MPLBACKEND=Agg && computor-test ${language} run -T test.yaml`;
+      return {
+        name: 'Computor Test',
+        cwd,
+        shellPath: 'cmd.exe',
+        shellArgs: ['/K', testCommand],
+        env
+      };
+    }
+
+    const activatePath = path.join(venvDir, 'bin', 'activate');
+    const testCommand = `export MPLBACKEND=Agg && source "${activatePath}" && computor-test ${language} run -T test.yaml`;
+    return {
+      name: 'Computor Test',
+      cwd,
+      shellPath: '/bin/bash',
+      shellArgs: ['--norc', '--noprofile', '-c', `${testCommand}; exec bash --norc --noprofile`],
+      env
+    };
+  }
+
   async uninstall(): Promise<void> {
     const toolsDir = this.getToolsDir();
     if (!fs.existsSync(toolsDir)) {
@@ -416,6 +505,29 @@ export class ComputorTestingInstaller {
     vscode.window.showInformationMessage('Computor Testing tools removed.');
   }
 
+  private async ensurePip(pythonPath: string, repoDir: string): Promise<void> {
+    const pipPath = IS_WINDOWS
+      ? path.join(this.getVenvDir(), 'Scripts', 'pip.exe')
+      : path.join(this.getVenvDir(), 'bin', 'pip');
+
+    if (fs.existsSync(pipPath)) { return; }
+
+    this.log('  pip not found in venv, running ensurepip...');
+    try {
+      await this.exec(`"${pythonPath}" -m ensurepip --default-pip`, repoDir);
+    } catch {
+      this.log('  ensurepip failed, trying venv recreate with pip...');
+      await this.exec(`"${pythonPath}" -m venv --clear --upgrade-deps .venv`, repoDir);
+    }
+
+    if (!fs.existsSync(pipPath)) {
+      throw new Error(
+        'pip is not available in the virtual environment. ' +
+        'Please install Python with pip included (avoid the Microsoft Store version) and try again.'
+      );
+    }
+  }
+
   private async exec(
     command: string,
     cwd: string,
@@ -425,7 +537,7 @@ export class ComputorTestingInstaller {
     const result = await execAsync(command, {
       cwd,
       timeout,
-      shell: '/bin/bash',
+      shell: IS_WINDOWS ? 'cmd.exe' : '/bin/bash',
       maxBuffer: 10 * 1024 * 1024
     });
     if (result.stdout.trim()) {
@@ -438,30 +550,45 @@ export class ComputorTestingInstaller {
   }
 
   private async findPython(): Promise<string | undefined> {
-    const candidates = [
-      'python3.13', 'python3.12', 'python3.11', 'python3.10',
-      'python3', 'python'
-    ];
+    const candidates = IS_WINDOWS
+      ? ['py -3.13', 'py -3.12', 'py -3.11', 'py -3.10', 'py -3', 'python3', 'python']
+      : ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3', 'python'];
 
     let bestCmd: string | undefined;
     let bestMinor = -1;
 
     for (const cmd of candidates) {
       try {
-        const { stdout } = await execAsync(`${cmd} --version`);
-        const match = stdout.trim().match(/Python (\d+)\.(\d+)/);
+        const { stdout, stderr } = await execAsync(`${cmd} --version`);
+        const versionOutput = stdout.trim() || stderr.trim();
+        const match = versionOutput.match(/Python (\d+)\.(\d+)/);
         if (match) {
           const major = parseInt(match[1]!, 10);
           const minor = parseInt(match[2]!, 10);
-          if (major >= 3 && minor >= 10 && minor <= 13 && minor > bestMinor) {
+          if (major >= 3 && minor >= 10 && minor > bestMinor) {
             bestCmd = cmd;
             bestMinor = minor;
-            this.log(`Found ${stdout.trim()} at ${cmd}`);
+            this.log(`Found ${versionOutput} at ${cmd}`);
           }
         }
       } catch {
         continue;
       }
+    }
+
+    if (!bestCmd) { return undefined; }
+
+    try {
+      const { stdout: resolvedPath } = await execAsync(
+        `${bestCmd} -c "import sys; print(sys.executable)"`
+      );
+      const trimmed = resolvedPath.trim();
+      if (trimmed) {
+        this.log(`Resolved Python path: ${trimmed}`);
+        return trimmed;
+      }
+    } catch {
+      // fall through to raw command
     }
 
     return bestCmd;

@@ -6,6 +6,10 @@ import { errorRecoveryService } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
+import type { CourseDeploymentGet, VersionUpgradeGet } from '../types/generated';
+import type { OrganizationTaskRequest } from '../types/generated/organizations';
+import type { CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
+import type { TaskInfo } from '../types/generated/tasks';
 import {
   OrganizationList,
   OrganizationGet,
@@ -1013,6 +1017,29 @@ export class ComputorApiService {
   }
 
   /**
+   * Lecturer: Get all deployments for a course with has_newer_version in batch
+   */
+  async lecturerGetCourseDeployments(courseId: string): Promise<CourseDeploymentGet> {
+    const client = await this.getHttpClient();
+    const response = await client.get<CourseDeploymentGet>(
+      `/lecturers/courses/${courseId}/deployments`
+    );
+    return response.data;
+  }
+
+  /**
+   * Lecturer: Batch-upgrade course contents to their latest example versions
+   */
+  async lecturerBatchUpgradeVersions(courseId: string, courseContentIds: string[]): Promise<VersionUpgradeGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<VersionUpgradeGet>(
+      `/lecturers/courses/${courseId}/upgrade-versions`,
+      { course_content_ids: courseContentIds }
+    );
+    return response.data;
+  }
+
+  /**
    * Lecturer: Batch validate course content (checks if examples/versions exist)
    */
   async validateCourseContent(
@@ -1074,8 +1101,8 @@ export class ComputorApiService {
 
   clearCourseCache(courseId: string): void {
     // Clear all caches related to a specific course
-    const cacheKey = `courseContents-${courseId}`;
-    multiTierCache.delete(cacheKey);
+    multiTierCache.delete(`courseContents-${courseId}-false`);
+    multiTierCache.delete(`courseContents-${courseId}-true`);
 
     // Also clear content types cache
     const contentTypesKey = `courseContentTypes-${courseId}`;
@@ -1258,7 +1285,31 @@ export class ComputorApiService {
     const response = await client.get<TaskResponse>(`/tasks/${taskId}/status`);
     return response.data;
   }
-  
+
+  async getTaskInfo(taskId: string): Promise<TaskInfo> {
+    const client = await this.getHttpClient();
+    const response = await client.get<TaskInfo>(`/tasks/${taskId}/status`);
+    return response.data;
+  }
+
+  async deployOrganization(request: OrganizationTaskRequest): Promise<TaskResponse> {
+    const client = await this.getHttpClient();
+    const response = await client.post<TaskResponse>('/system/deploy/organizations', request);
+    return response.data;
+  }
+
+  async deployCourseFamily(request: CourseFamilyTaskRequest): Promise<TaskResponse> {
+    const client = await this.getHttpClient();
+    const response = await client.post<TaskResponse>('/system/deploy/course-families', request);
+    return response.data;
+  }
+
+  async deployCourse(request: CourseTaskRequest): Promise<TaskResponse> {
+    const client = await this.getHttpClient();
+    const response = await client.post<TaskResponse>('/system/deploy/courses', request);
+    return response.data;
+  }
+
   /**
    * Batch multiple API calls for improved performance
    */

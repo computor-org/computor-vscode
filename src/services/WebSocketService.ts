@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
+import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated } from '../types/generated/websocket';
 
 // WebSocket message types from server
 export interface WsMessageNew {
@@ -99,7 +100,13 @@ export interface WsSystemConnected {
   user_id: string;
 }
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder;
+// Re-export deployment/course event types from generated types
+export type WsDeploymentStatusChanged = WSDeploymentStatusChanged & { type: 'deployment:status_changed' };
+export type WsDeploymentAssigned = WSDeploymentAssigned & { type: 'deployment:assigned' };
+export type WsDeploymentUnassigned = WSDeploymentUnassigned & { type: 'deployment:unassigned' };
+export type WsCourseContentUpdated = WSCourseContentUpdated & { type: 'course:content_updated' };
+
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -148,6 +155,10 @@ export interface WebSocketEventHandlers {
   onMaintenanceScheduled?: (scheduledAt: string, message: string) => void;
   onMaintenanceCancelled?: (message: string) => void;
   onMaintenanceReminder?: (minutesRemaining: number, scheduledAt: string, message: string) => void;
+  onDeploymentStatusChanged?: (event: WsDeploymentStatusChanged) => void;
+  onDeploymentAssigned?: (event: WsDeploymentAssigned) => void;
+  onDeploymentUnassigned?: (event: WsDeploymentUnassigned) => void;
+  onCourseContentUpdated?: (event: WsCourseContentUpdated) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: string) => void;
@@ -584,6 +595,42 @@ export class WebSocketService {
 
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceReminder?.(minutesRemaining, reminderData.scheduled_at, reminderMessage);
+          });
+          break;
+        }
+
+        case 'deployment:status_changed': {
+          const statusData = (message as any).data || message;
+          console.log(`[WebSocket] Deployment status changed: ${statusData.course_content_id} ${statusData.previous_status} -> ${statusData.new_status}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onDeploymentStatusChanged?.({ ...statusData, type: 'deployment:status_changed' } as WsDeploymentStatusChanged);
+          });
+          break;
+        }
+
+        case 'deployment:assigned': {
+          const assignedData = (message as any).data || message;
+          console.log(`[WebSocket] Deployment assigned: ${assignedData.course_content_id} example=${assignedData.example_identifier}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onDeploymentAssigned?.({ ...assignedData, type: 'deployment:assigned' } as WsDeploymentAssigned);
+          });
+          break;
+        }
+
+        case 'deployment:unassigned': {
+          const unassignedData = (message as any).data || message;
+          console.log(`[WebSocket] Deployment unassigned: ${unassignedData.course_content_id}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onDeploymentUnassigned?.({ ...unassignedData, type: 'deployment:unassigned' } as WsDeploymentUnassigned);
+          });
+          break;
+        }
+
+        case 'course:content_updated': {
+          const contentData = (message as any).data || message;
+          console.log(`[WebSocket] Course content updated: ${contentData.course_content_id} change=${contentData.change_type}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onCourseContentUpdated?.({ ...contentData, type: 'course:content_updated' } as WsCourseContentUpdated);
           });
           break;
         }
