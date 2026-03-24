@@ -219,7 +219,7 @@
     let titleInput = null;
     if (createInput) {
       titleInput = createInput({
-        placeholder: 'Subject',
+        placeholder: 'Subject (optional)',
         value: state.editingMessage ? state.editingMessage.title || '' : '',
         disabled: state.loading
       });
@@ -233,7 +233,7 @@
         attributes: {
           type: 'text',
           id: 'message-title',
-          placeholder: 'Subject'
+          placeholder: 'Subject (optional)'
         }
       });
       inputEl.value = state.editingMessage ? state.editingMessage.title || '' : '';
