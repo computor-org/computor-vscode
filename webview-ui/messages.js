@@ -245,7 +245,8 @@
 
   function renderMessageNode(message, depth = 0) {
     const card = createElement('article', {
-      className: `message-card level-${message.level ?? depth}`
+      className: `message-card level-${message.level ?? depth}`,
+      attributes: { 'data-message-id': message.id }
     });
 
     const meta = createElement('div', { className: 'message-meta' });
@@ -732,29 +733,90 @@
     }
   });
 
-  // WebSocket event handlers
+  // WebSocket event handlers — patch DOM directly, no full re-render
   function handleWsMessageNew(data) {
     if (!data) return;
-    // Add the new message to the list and scroll to bottom
-    const newMessages = [...state.messages, data];
-    setState({ messages: newMessages, _scrollToBottom: true });
+    state.messages = [...state.messages, data];
+
+    const container = document.querySelector('.messages-container');
+    if (!container) return;
+
+    // Remove empty state if present
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) {
+      emptyState.remove();
+    }
+
+    // Insert new message before typing indicator (if present), otherwise append
+    const depth = data.parent_id ? undefined : 0;
+    if (data.parent_id) {
+      // Reply: append inside parent card
+      const parentCard = container.querySelector(`[data-message-id="${data.parent_id}"]`);
+      if (parentCard) {
+        parentCard.appendChild(renderMessageNode(data, (data.level ?? 1)));
+      } else {
+        // Parent not found, append as root
+        const typingEl = container.querySelector('.typing-indicator');
+        const node = renderMessageNode(data, data.level ?? 0);
+        container.insertBefore(node, typingEl || null);
+      }
+    } else {
+      const typingEl = container.querySelector('.typing-indicator');
+      const node = renderMessageNode(data, data.level ?? 0);
+      container.insertBefore(node, typingEl || null);
+    }
+
+    // Scroll to bottom for new messages
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   }
 
   function handleWsMessageUpdate(data) {
     if (!data || !data.messageId) return;
-    const updatedMessages = state.messages.map((msg) => {
+    state.messages = state.messages.map((msg) => {
       if (msg.id === data.messageId) {
         return { ...msg, ...data };
       }
       return msg;
     });
-    setState({ messages: updatedMessages });
+
+    const container = document.querySelector('.messages-container');
+    if (!container) return;
+
+    const oldCard = container.querySelector(`[data-message-id="${data.messageId}"]`);
+    if (!oldCard) return;
+
+    // Find the updated message in state
+    const updatedMsg = state.messages.find((m) => m.id === data.messageId);
+    if (!updatedMsg) return;
+
+    // Re-render just this card, preserving children (replies)
+    const newCard = renderMessageNode(updatedMsg, updatedMsg.level ?? 0);
+    oldCard.replaceWith(newCard);
   }
 
   function handleWsMessageDelete(data) {
     if (!data || !data.messageId) return;
-    const filteredMessages = state.messages.filter((msg) => msg.id !== data.messageId);
-    setState({ messages: filteredMessages });
+    state.messages = state.messages.filter((msg) => msg.id !== data.messageId);
+
+    const container = document.querySelector('.messages-container');
+    if (!container) return;
+
+    const card = container.querySelector(`[data-message-id="${data.messageId}"]`);
+    if (card) {
+      card.remove();
+    }
+
+    // Show empty state if no messages left
+    if (state.messages.length === 0) {
+      container.appendChild(
+        createElement('div', {
+          className: 'empty-state',
+          textContent: 'No messages yet. Use the input panel below to start the discussion.'
+        })
+      );
+    }
   }
 
   function handleWsTypingUpdate(data) {
