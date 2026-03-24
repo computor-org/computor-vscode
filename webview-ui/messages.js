@@ -78,6 +78,18 @@
     return roots;
   }
 
+  function flattenThreads(threads, depth) {
+    const result = [];
+    threads.forEach((node) => {
+      const d = depth ?? (node.level ?? 0);
+      result.push({ ...node, level: d, children: [] });
+      if (node.children && node.children.length > 0) {
+        result.push(...flattenThreads(node.children, d + 1));
+      }
+    });
+    return result;
+  }
+
   function renderMarkdown(text) {
     if (!text) {
       return '';
@@ -244,8 +256,9 @@
   }
 
   function renderMessageNode(message, depth = 0) {
+    const level = message.level ?? depth;
     const card = createElement('article', {
-      className: `message-card level-${message.level ?? depth}`,
+      className: `message-card ${level > 0 ? 'message-reply' : ''}`,
       attributes: { 'data-message-id': message.id }
     });
 
@@ -352,6 +365,18 @@
     }
 
     card.appendChild(meta);
+
+    // Reply context line — below meta
+    if (level > 0 && message.parent_id) {
+      const parentMsg = state.messages.find((m) => m.id === message.parent_id);
+      const parentAuthor = parentMsg ? getAuthorDisplay(parentMsg) : null;
+      const replyContext = createElement('div', {
+        className: 'reply-context-line',
+        innerHTML: `&#8627; ${escapeHtml(parentAuthor ? 'replying to ' + parentAuthor : 'reply')}`
+      });
+      card.appendChild(replyContext);
+    }
+
     if (title) {
       card.appendChild(title);
     }
@@ -360,12 +385,7 @@
       card.appendChild(actions);
     }
 
-    if (message.children && message.children.length > 0) {
-      message.children.forEach((child) => {
-        card.appendChild(renderMessageNode(child, depth + 1));
-      });
-    }
-
+    // Don't nest children — they are rendered flat by flattenThreads
     return card;
   }
 
@@ -403,8 +423,9 @@
     }
 
     const threads = buildThreads(state.messages);
-    threads.forEach((thread) => {
-      container.appendChild(renderMessageNode(thread, thread.level ?? 0));
+    const flat = flattenThreads(threads);
+    flat.forEach((msg) => {
+      container.appendChild(renderMessageNode(msg, msg.level ?? 0));
     });
 
     // Render typing indicator if someone is typing

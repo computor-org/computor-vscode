@@ -94,12 +94,15 @@ body {
   gap: 6px;
 }
 
-.message-card.level-1 {
-  margin-left: 14px;
+.message-card.message-reply {
+  border-left: 3px solid var(--vscode-textLink-foreground);
+  margin-left: 16px;
 }
 
-.message-card.level-2 {
-  margin-left: 24px;
+.reply-context-line {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 2px;
 }
 
 .message-meta {
