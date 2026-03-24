@@ -308,10 +308,12 @@
     meta.appendChild(metaLeft);
     meta.appendChild(metaRight);
 
-    const title = createElement('h3', {
-      className: 'message-title',
-      textContent: message.title || '(no title)'
-    });
+    const title = message.title
+      ? createElement('h3', {
+          className: 'message-title',
+          textContent: message.title
+        })
+      : null;
 
     const body = createElement('div', {
       className: 'message-body markdown-body',
@@ -349,7 +351,9 @@
     }
 
     card.appendChild(meta);
-    card.appendChild(title);
+    if (title) {
+      card.appendChild(title);
+    }
     card.appendChild(body);
     if (actions.childNodes.length > 0) {
       card.appendChild(actions);
