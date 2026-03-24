@@ -88,10 +88,10 @@ body {
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 4px;
   background: var(--vscode-editorWidget-background);
-  padding: 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 .message-card.message-reply {

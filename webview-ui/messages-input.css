@@ -114,6 +114,19 @@ body {
   min-height: 0;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.title-row .chat-title-input,
+.title-row input.vscode-input.chat-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Chat-style inputs without labels */
 .chat-title-input,
 input.vscode-input.chat-title-input {
@@ -322,27 +335,8 @@ textarea.vscode-input.chat-textarea:disabled {
   margin: 0;
 }
 
-/* Modern Actions Bar */
+/* Footer bar */
 .actions-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 8px;
-  flex-shrink: 0;
-  margin-top: auto;
-}
-
-.actions-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.actions-right {
   display: flex;
   align-items: center;
   gap: 8px;
