@@ -397,10 +397,6 @@
         const textarea = document.getElementById('message-body');
         const contentValue = (textarea ? textarea.value : state.messageContent).trim();
 
-        if (!titleValue.trim()) {
-          vscode.postMessage({ command: 'showWarning', data: 'Message title is required.' });
-          return;
-        }
         if (!contentValue) {
           vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
           return;
