@@ -433,13 +433,13 @@
 
     switch (message.command) {
       case 'updateState':
-        console.log('[messages-input] Received updateState:', message.data);
-        console.log('[messages-input] Target is:', message.data?.target);
-        // Reset content and tab when context changes
+        // Full reset: clear all transient state, then apply incoming data
+        state.replyTo = undefined;
+        state.editingMessage = undefined;
         state.messageContent = message.data?.editingMessage?.content || '';
         state.activeTab = 'write';
+        state.typingUsers = [];
         setState(message.data || {});
-        console.log('[messages-input] State after update, target:', state.target);
         break;
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });

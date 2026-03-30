@@ -768,24 +768,17 @@
       emptyState.remove();
     }
 
-    // Insert new message before typing indicator (if present), otherwise append
-    const depth = data.parent_id ? undefined : 0;
+    // Flat layout: all messages are siblings in the container
+    const typingEl = container.querySelector('.typing-indicator');
+    let level = 0;
     if (data.parent_id) {
-      // Reply: append inside parent card
-      const parentCard = container.querySelector(`[data-message-id="${data.parent_id}"]`);
-      if (parentCard) {
-        parentCard.appendChild(renderMessageNode(data, (data.level ?? 1)));
-      } else {
-        // Parent not found, append as root
-        const typingEl = container.querySelector('.typing-indicator');
-        const node = renderMessageNode(data, data.level ?? 0);
-        container.insertBefore(node, typingEl || null);
-      }
-    } else {
-      const typingEl = container.querySelector('.typing-indicator');
-      const node = renderMessageNode(data, data.level ?? 0);
-      container.insertBefore(node, typingEl || null);
+      // Find parent's level from state and go one deeper
+      const parent = state.messages.find((m) => m.id === data.parent_id);
+      level = (parent?.level ?? 0) + 1;
     }
+    data.level = level;
+    const node = renderMessageNode(data, level);
+    container.insertBefore(node, typingEl || null);
 
     // Scroll to bottom for new messages
     requestAnimationFrame(() => {
