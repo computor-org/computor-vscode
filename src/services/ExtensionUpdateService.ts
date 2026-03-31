@@ -13,6 +13,7 @@ import { ExtensionVersionListItem, ExtensionVersionListResponse } from '../types
 export class ExtensionUpdateService {
   private readonly extensionId: string;
   private checking = false;
+  private installedVersion: string | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly settings: ComputorSettingsManager) {
     const pkg = context.extension.packageJSON as { name?: string; publisher?: string };
@@ -59,6 +60,13 @@ export class ExtensionUpdateService {
 
       if (semver.gte(current, target)) {
         return;
+      }
+
+      if (this.installedVersion) {
+        const installed = semver.coerce(this.installedVersion);
+        if (installed && semver.gte(installed, target)) {
+          return;
+        }
       }
 
       const vscodeVersion = semver.coerce(vscode.version);
@@ -214,6 +222,8 @@ export class ExtensionUpdateService {
         await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
       }
     });
+
+    this.installedVersion = versionLabel;
 
     const choice = await vscode.window.showInformationMessage(
       `Computor extension updated to ${versionLabel}. Reload VS Code to apply changes.`,
