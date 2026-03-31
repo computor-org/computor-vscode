@@ -194,7 +194,7 @@ export class ExtensionUpdateService {
       }
 
       const redirectResponse = await fetch(downloadUrl.toString(), { redirect: 'manual', headers });
-      if (redirectResponse.status !== 302) {
+      if (redirectResponse.status < 300 || redirectResponse.status >= 400) {
         throw new Error(`Failed to download VSIX: ${redirectResponse.status}`);
       }
 
@@ -214,13 +214,17 @@ export class ExtensionUpdateService {
       const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'computor-update-'));
       const vsixPath = path.join(tempDir, `${this.extensionId.replace(/\./g, '-')}-${versionLabel}.vsix`);
 
-      try {
-        await fs.promises.writeFile(vsixPath, buffer);
-        progress.report({ message: 'Installing…' });
-        await vscode.commands.executeCommand('workbench.extensions.installExtension', vscode.Uri.file(vsixPath));
-      } finally {
-        await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+      await fs.promises.writeFile(vsixPath, buffer);
+      progress.report({ message: 'Installing…' });
+      await vscode.commands.executeCommand('workbench.extensions.installExtension', vscode.Uri.file(vsixPath));
+
+      progress.report({ message: 'Verifying…' });
+      const installed = await this.verifyInstallation(versionLabel);
+      if (!installed) {
+        throw new Error(`Installation of version ${versionLabel} could not be verified on disk.`);
       }
+
+      await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     });
 
     this.installedVersion = versionLabel;
@@ -233,6 +237,23 @@ export class ExtensionUpdateService {
 
     if (choice === 'Reload Now') {
       void vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+  }
+
+  private async verifyInstallation(expectedVersion: string): Promise<boolean> {
+    const extensionDir = this.context.extension.extensionPath;
+    const parentDir = path.dirname(extensionDir);
+    const extensionDirName = path.basename(extensionDir);
+    const baseName = extensionDirName.replace(/-[\d.]+$/, '');
+    const expectedDirName = `${baseName}-${expectedVersion}`;
+    const expectedPkgPath = path.join(parentDir, expectedDirName, 'package.json');
+
+    try {
+      const raw = await fs.promises.readFile(expectedPkgPath, 'utf-8');
+      const pkg = JSON.parse(raw) as { version?: string };
+      return pkg.version === expectedVersion;
+    } catch {
+      return false;
     }
   }
 
