@@ -272,7 +272,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       this.postLoading(true);
       await this.api.createMessage(payload);
       this.clearReplyAndEdit();
-      if (this.onMessageCreatedCallback) {
+      // Only refresh via callback if no WebSocket — WS handles the update in real-time
+      if (this.onMessageCreatedCallback && !this.state.wsChannel) {
         await this.onMessageCreatedCallback();
       }
     } catch (error: unknown) {
@@ -297,7 +298,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       this.postLoading(true);
       await this.api.updateMessage(data.messageId, updates);
       this.clearReplyAndEdit();
-      if (this.onMessageCreatedCallback) {
+      // Only refresh via callback if no WebSocket — WS handles the update in real-time
+      if (this.onMessageCreatedCallback && !this.state.wsChannel) {
         await this.onMessageCreatedCallback();
       }
     } catch (error: unknown) {

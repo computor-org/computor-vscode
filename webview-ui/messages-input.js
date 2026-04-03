@@ -215,33 +215,122 @@
 
     const form = createElement('div', { className: 'input-form' });
 
-    // Title input (inline style, no label)
+    // Title row: subject input + send button
+    const titleRow = createElement('div', { className: 'title-row' });
+
     let titleInput = null;
     if (createInput) {
       titleInput = createInput({
-        placeholder: 'Subject',
+        placeholder: 'Subject (optional)',
         value: state.editingMessage ? state.editingMessage.title || '' : '',
         disabled: state.loading
       });
       const titleEl = titleInput.render();
       titleEl.id = 'message-title';
       titleEl.classList.add('chat-title-input');
-      form.appendChild(titleEl);
+      titleRow.appendChild(titleEl);
     } else {
       const inputEl = createElement('input', {
         className: 'vscode-input chat-title-input',
         attributes: {
           type: 'text',
           id: 'message-title',
-          placeholder: 'Subject'
+          placeholder: 'Subject (optional)'
         }
       });
       inputEl.value = state.editingMessage ? state.editingMessage.title || '' : '';
       if (state.loading) {
         inputEl.disabled = true;
       }
-      form.appendChild(inputEl);
+      titleRow.appendChild(inputEl);
     }
+
+    // Cancel button in title row (when replying/editing)
+    if (createButton && (state.replyTo || state.editingMessage)) {
+      const cancelButton = createButton({
+        text: 'Cancel',
+        variant: 'tertiary',
+        size: 'sm',
+        onClick: () => {
+          setState({
+            replyTo: undefined,
+            editingMessage: undefined,
+            messageContent: '',
+            activeTab: 'write'
+          });
+          vscode.postMessage({ command: 'cancel' });
+        }
+      });
+      const cancelEl = cancelButton.render();
+      cancelEl.classList.add('cancel-btn');
+      titleRow.appendChild(cancelEl);
+    }
+
+    // Send/Save button in title row
+    if (createButton) {
+      const sendButton = createElement('button', {
+        className: `send-button ${state.loading ? 'loading' : ''} ${state.editingMessage ? 'save-mode' : ''}`,
+        attributes: {
+          type: 'button',
+          disabled: state.loading ? 'disabled' : null,
+          title: state.editingMessage ? 'Save changes' : 'Send message'
+        }
+      });
+
+      const buttonText = createElement('span', {
+        className: 'send-button-text',
+        textContent: state.editingMessage ? 'Save' : 'Send'
+      });
+      sendButton.appendChild(buttonText);
+
+      const buttonIcon = createElement('span', {
+        className: 'send-button-icon',
+        innerHTML: state.editingMessage ? '&#10003;' : '&#10148;'
+      });
+      sendButton.appendChild(buttonIcon);
+
+      sendButton.addEventListener('click', () => {
+        if (state.loading) return;
+
+        const titleValue = titleInput ? titleInput.getValue() : document.getElementById('message-title')?.value || '';
+        const textarea = document.getElementById('message-body');
+        const contentValue = (textarea ? textarea.value : state.messageContent).trim();
+
+        if (!contentValue) {
+          vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
+          return;
+        }
+
+        setState({ loading: true });
+
+        if (state.editingMessage) {
+          vscode.postMessage({
+            command: 'updateMessage',
+            data: {
+              messageId: state.editingMessage.id,
+              title: titleValue.trim(),
+              content: contentValue
+            }
+          });
+        } else {
+          vscode.postMessage({
+            command: 'createMessage',
+            data: {
+              title: titleValue.trim(),
+              content: contentValue,
+              parent_id: state.replyTo ? state.replyTo.id : undefined
+            }
+          });
+        }
+
+        state.messageContent = '';
+        state.activeTab = 'write';
+      });
+
+      titleRow.appendChild(sendButton);
+    }
+
+    form.appendChild(titleRow);
 
     // Markdown editor container with tabs
     const editorContainer = createElement('div', { className: 'markdown-editor' });
@@ -320,123 +409,21 @@
 
     container.appendChild(form);
 
-    // Actions bar at the bottom
-    const actionsBar = createElement('div', { className: 'actions-bar' });
-
-    // Left section: typing indicator or markdown hint
-    const actionsLeft = createElement('div', { className: 'actions-left' });
+    // Footer: typing indicator or markdown hint
+    const footer = createElement('div', { className: 'actions-bar' });
 
     if (state.typingUsers && state.typingUsers.length > 0) {
-      // Show typing indicator
       const typingIndicator = renderTypingIndicator(state.typingUsers);
-      actionsLeft.appendChild(typingIndicator);
+      footer.appendChild(typingIndicator);
     } else {
-      // Show markdown hint when not typing
       const mdHint = createElement('span', {
         className: 'markdown-hint',
         textContent: 'Markdown supported'
       });
-      actionsLeft.appendChild(mdHint);
+      footer.appendChild(mdHint);
     }
 
-    actionsBar.appendChild(actionsLeft);
-
-    // Right section: buttons
-    const actionsRight = createElement('div', { className: 'actions-right' });
-
-    if (createButton) {
-      if (state.replyTo || state.editingMessage) {
-        const cancelButton = createButton({
-          text: 'Cancel',
-          variant: 'tertiary',
-          size: 'sm',
-          onClick: () => {
-            // Update local state immediately for responsive UI
-            setState({
-              replyTo: undefined,
-              editingMessage: undefined,
-              messageContent: '',
-              activeTab: 'write'
-            });
-            // Notify extension to sync state
-            vscode.postMessage({ command: 'cancel' });
-          }
-        });
-        const cancelEl = cancelButton.render();
-        cancelEl.classList.add('cancel-btn');
-        actionsRight.appendChild(cancelEl);
-      }
-
-      // Modern send button with arrow
-      const sendButton = createElement('button', {
-        className: `send-button ${state.loading ? 'loading' : ''} ${state.editingMessage ? 'save-mode' : ''}`,
-        attributes: {
-          type: 'button',
-          disabled: state.loading ? 'disabled' : null,
-          title: state.editingMessage ? 'Save changes' : 'Send message'
-        }
-      });
-
-      const buttonText = createElement('span', {
-        className: 'send-button-text',
-        textContent: state.editingMessage ? 'Save' : 'Send'
-      });
-      sendButton.appendChild(buttonText);
-
-      // Arrow icon (using unicode)
-      const buttonIcon = createElement('span', {
-        className: 'send-button-icon',
-        innerHTML: state.editingMessage ? '&#10003;' : '&#10148;' // checkmark or arrow
-      });
-      sendButton.appendChild(buttonIcon);
-
-      sendButton.addEventListener('click', () => {
-        if (state.loading) return;
-
-        const titleValue = titleInput ? titleInput.getValue() : document.getElementById('message-title')?.value || '';
-        const textarea = document.getElementById('message-body');
-        const contentValue = (textarea ? textarea.value : state.messageContent).trim();
-
-        if (!titleValue.trim()) {
-          vscode.postMessage({ command: 'showWarning', data: 'Message title is required.' });
-          return;
-        }
-        if (!contentValue) {
-          vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
-          return;
-        }
-
-        setState({ loading: true });
-
-        if (state.editingMessage) {
-          vscode.postMessage({
-            command: 'updateMessage',
-            data: {
-              messageId: state.editingMessage.id,
-              title: titleValue.trim(),
-              content: contentValue
-            }
-          });
-        } else {
-          vscode.postMessage({
-            command: 'createMessage',
-            data: {
-              title: titleValue.trim(),
-              content: contentValue,
-              parent_id: state.replyTo ? state.replyTo.id : undefined
-            }
-          });
-        }
-
-        state.messageContent = '';
-        state.activeTab = 'write';
-      });
-
-      actionsRight.appendChild(sendButton);
-    }
-
-    actionsBar.appendChild(actionsRight);
-    container.appendChild(actionsBar);
+    container.appendChild(footer);
     mount.appendChild(container);
   }
 
@@ -446,13 +433,13 @@
 
     switch (message.command) {
       case 'updateState':
-        console.log('[messages-input] Received updateState:', message.data);
-        console.log('[messages-input] Target is:', message.data?.target);
-        // Reset content and tab when context changes
+        // Full reset: clear all transient state, then apply incoming data
+        state.replyTo = undefined;
+        state.editingMessage = undefined;
         state.messageContent = message.data?.editingMessage?.content || '';
         state.activeTab = 'write';
+        state.typingUsers = [];
         setState(message.data || {});
-        console.log('[messages-input] State after update, target:', state.target);
         break;
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });

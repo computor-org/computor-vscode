@@ -88,18 +88,21 @@ body {
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 4px;
   background: var(--vscode-editorWidget-background);
-  padding: 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
-.message-card.level-1 {
-  margin-left: 14px;
+.message-card.message-reply {
+  border-left: 3px solid var(--vscode-textLink-foreground);
+  margin-left: 16px;
 }
 
-.message-card.level-2 {
-  margin-left: 24px;
+.reply-context-line {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 2px;
 }
 
 .message-meta {

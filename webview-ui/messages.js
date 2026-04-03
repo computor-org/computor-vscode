@@ -18,6 +18,7 @@
       tags_match_all: false
     },
     typingUsers: [], // { userId, userName }
+    _scrollToBottom: false,
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -75,6 +76,18 @@
 
     roots.sort(sortFn).forEach(sortNode);
     return roots;
+  }
+
+  function flattenThreads(threads, depth) {
+    const result = [];
+    threads.forEach((node) => {
+      const d = depth ?? (node.level ?? 0);
+      result.push({ ...node, level: d, children: [] });
+      if (node.children && node.children.length > 0) {
+        result.push(...flattenThreads(node.children, d + 1));
+      }
+    });
+    return result;
   }
 
   function renderMarkdown(text) {
@@ -243,8 +256,10 @@
   }
 
   function renderMessageNode(message, depth = 0) {
+    const level = message.level ?? depth;
     const card = createElement('article', {
-      className: `message-card level-${message.level ?? depth}`
+      className: `message-card ${level > 0 ? 'message-reply' : ''}`,
+      attributes: { 'data-message-id': message.id }
     });
 
     const meta = createElement('div', { className: 'message-meta' });
@@ -307,10 +322,12 @@
     meta.appendChild(metaLeft);
     meta.appendChild(metaRight);
 
-    const title = createElement('h3', {
-      className: 'message-title',
-      textContent: message.title || '(no title)'
-    });
+    const title = message.title
+      ? createElement('h3', {
+          className: 'message-title',
+          textContent: message.title
+        })
+      : null;
 
     const body = createElement('div', {
       className: 'message-body markdown-body',
@@ -348,22 +365,31 @@
     }
 
     card.appendChild(meta);
-    card.appendChild(title);
+
+    // Reply context line — below meta
+    if (level > 0 && message.parent_id) {
+      const parentMsg = state.messages.find((m) => m.id === message.parent_id);
+      const parentAuthor = parentMsg ? getAuthorDisplay(parentMsg) : null;
+      const replyContext = createElement('div', {
+        className: 'reply-context-line',
+        innerHTML: `&#8627; ${escapeHtml(parentAuthor ? 'replying to ' + parentAuthor : 'reply')}`
+      });
+      card.appendChild(replyContext);
+    }
+
+    if (title) {
+      card.appendChild(title);
+    }
     card.appendChild(body);
     if (actions.childNodes.length > 0) {
       card.appendChild(actions);
     }
 
-    if (message.children && message.children.length > 0) {
-      message.children.forEach((child) => {
-        card.appendChild(renderMessageNode(child, depth + 1));
-      });
-    }
-
+    // Don't nest children — they are rendered flat by flattenThreads
     return card;
   }
 
-  function renderMessagesSection(container) {
+  function renderMessagesSection(container, prevScroll) {
     container.innerHTML = '';
 
     if (state.loading) {
@@ -397,8 +423,9 @@
     }
 
     const threads = buildThreads(state.messages);
-    threads.forEach((thread) => {
-      container.appendChild(renderMessageNode(thread, thread.level ?? 0));
+    const flat = flattenThreads(threads);
+    flat.forEach((msg) => {
+      container.appendChild(renderMessageNode(msg, msg.level ?? 0));
     });
 
     // Render typing indicator if someone is typing
@@ -407,9 +434,15 @@
       container.appendChild(typingIndicator);
     }
 
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-    });
+    if (state._scrollToBottom) {
+      state._scrollToBottom = false;
+      // Use rAF so layout is complete before scrolling to the very bottom
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    } else if (prevScroll > 0) {
+      container.scrollTop = prevScroll;
+    }
   }
 
   function renderTypingIndicator() {
@@ -628,6 +661,10 @@
       return;
     }
 
+    // Save scroll position from old container before destroying DOM
+    const oldContainer = mount.querySelector('.messages-container');
+    const prevScroll = oldContainer ? oldContainer.scrollTop : 0;
+
     mount.innerHTML = '';
 
     const view = createElement('div', { className: 'view-root' });
@@ -666,7 +703,7 @@
     const filterBar = renderFilterBar();
 
     const messagesContainer = createElement('div', { className: 'messages-container' });
-    renderMessagesSection(messagesContainer);
+    renderMessagesSection(messagesContainer, prevScroll);
 
     view.appendChild(header);
     view.appendChild(filterBar);
@@ -681,11 +718,15 @@
 
     switch (message.command) {
       case 'updateMessages':
-        setState({ messages: message.data || [], loading: false });
+        setState({ messages: message.data || [], loading: false, _scrollToBottom: true });
         break;
-      case 'setLoading':
-        setState({ loading: Boolean(message.data?.loading) });
+      case 'setLoading': {
+        const isLoading = Boolean(message.data?.loading);
+        // Skip redundant render when loading finishes and messages are already displayed
+        if (!isLoading && !state.loading) break;
+        setState({ loading: isLoading });
         break;
+      }
       case 'setError':
         setState({ error: message.data, loading: false });
         break;
@@ -713,29 +754,83 @@
     }
   });
 
-  // WebSocket event handlers
+  // WebSocket event handlers — patch DOM directly, no full re-render
   function handleWsMessageNew(data) {
     if (!data) return;
-    // Add the new message to the list
-    const newMessages = [...state.messages, data];
-    setState({ messages: newMessages });
+    state.messages = [...state.messages, data];
+
+    const container = document.querySelector('.messages-container');
+    if (!container) return;
+
+    // Remove empty state if present
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) {
+      emptyState.remove();
+    }
+
+    // Flat layout: all messages are siblings in the container
+    const typingEl = container.querySelector('.typing-indicator');
+    let level = 0;
+    if (data.parent_id) {
+      // Find parent's level from state and go one deeper
+      const parent = state.messages.find((m) => m.id === data.parent_id);
+      level = (parent?.level ?? 0) + 1;
+    }
+    data.level = level;
+    const node = renderMessageNode(data, level);
+    container.insertBefore(node, typingEl || null);
+
+    // Scroll to bottom for new messages
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   }
 
   function handleWsMessageUpdate(data) {
     if (!data || !data.messageId) return;
-    const updatedMessages = state.messages.map((msg) => {
+    state.messages = state.messages.map((msg) => {
       if (msg.id === data.messageId) {
         return { ...msg, ...data };
       }
       return msg;
     });
-    setState({ messages: updatedMessages });
+
+    const container = document.querySelector('.messages-container');
+    if (!container) return;
+
+    const oldCard = container.querySelector(`[data-message-id="${data.messageId}"]`);
+    if (!oldCard) return;
+
+    // Find the updated message in state
+    const updatedMsg = state.messages.find((m) => m.id === data.messageId);
+    if (!updatedMsg) return;
+
+    // Re-render just this card, preserving children (replies)
+    const newCard = renderMessageNode(updatedMsg, updatedMsg.level ?? 0);
+    oldCard.replaceWith(newCard);
   }
 
   function handleWsMessageDelete(data) {
     if (!data || !data.messageId) return;
-    const filteredMessages = state.messages.filter((msg) => msg.id !== data.messageId);
-    setState({ messages: filteredMessages });
+    state.messages = state.messages.filter((msg) => msg.id !== data.messageId);
+
+    const container = document.querySelector('.messages-container');
+    if (!container) return;
+
+    const card = container.querySelector(`[data-message-id="${data.messageId}"]`);
+    if (card) {
+      card.remove();
+    }
+
+    // Show empty state if no messages left
+    if (state.messages.length === 0) {
+      container.appendChild(
+        createElement('div', {
+          className: 'empty-state',
+          textContent: 'No messages yet. Use the input panel below to start the discussion.'
+        })
+      );
+    }
   }
 
   function handleWsTypingUpdate(data) {
@@ -745,19 +840,32 @@
     let typingUsers = [...(state.typingUsers || [])];
 
     if (isTyping) {
-      // Add user if not already in the list
       if (!typingUsers.find((u) => u.userId === userId)) {
         typingUsers.push({ userId, userName });
       }
     } else {
-      // Remove user from list
       typingUsers = typingUsers.filter((u) => u.userId !== userId);
     }
 
-    setState({ typingUsers });
+    // Update state without re-render
+    state.typingUsers = typingUsers;
+
+    // Patch the typing indicator in-place
+    const container = document.querySelector('.messages-container');
+    if (!container) return;
+
+    const existing = container.querySelector('.typing-indicator');
+    if (existing) {
+      existing.remove();
+    }
+
+    if (typingUsers.length > 0) {
+      container.appendChild(renderTypingIndicator());
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    state._scrollToBottom = true;
     render();
   });
 })();
