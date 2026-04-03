@@ -221,6 +221,10 @@ async function handleComputorWorkspaceDetected(
   context: vscode.ExtensionContext,
   computorMarkerPath: string
 ): Promise<void> {
+  if (activeSession || isAuthenticating) {
+    return;
+  }
+
   const settings = new ComputorSettingsManager(context);
 
   // Priority 1: Try API token from environment variable (Coder workspace injection)
@@ -1583,10 +1587,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (workspaceRoot && !activeSession) {
     const computorMarkerPath = path.join(workspaceRoot, computorMarker);
     if (fs.existsSync(computorMarkerPath)) {
-      // Small delay to let VS Code finish initializing
-      setTimeout(() => {
-        void handleComputorWorkspaceDetected(context, computorMarkerPath);
-      }, 500);
+      void handleComputorWorkspaceDetected(context, computorMarkerPath);
     }
   }
 
@@ -1616,16 +1617,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Listen for workspace folder changes to detect .computor files
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
-    if (!activeSession) {
-      const workspaceRoot = getWorkspaceRoot();
-      if (workspaceRoot) {
-        const computorMarkerPath = path.join(workspaceRoot, computorMarker);
-        if (fs.existsSync(computorMarkerPath)) {
-          // Small delay to let VS Code finish processing
-          setTimeout(() => {
-            void handleComputorWorkspaceDetected(context, computorMarkerPath);
-          }, 500);
-        }
+    const workspaceRoot = getWorkspaceRoot();
+    if (workspaceRoot) {
+      const computorMarkerPath = path.join(workspaceRoot, computorMarker);
+      if (fs.existsSync(computorMarkerPath)) {
+        void handleComputorWorkspaceDetected(context, computorMarkerPath);
       }
     }
   }));
