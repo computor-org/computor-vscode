@@ -2346,6 +2346,9 @@ export class ComputorApiService {
     const cached = multiTierCache.get<any[]>(cacheKey);
     if (cached) return cached;
     try {
+      // Do not retry: this endpoint backs a heavy aggregation on the server.
+      // Retries on a slow call amplify DB load without helping the user, so
+      // fail fast and rely on backend caching to make the next call cheap.
       const result = await errorRecoveryService.executeWithRecovery(async () => {
         const client = await this.getHttpClient();
         const params = new URLSearchParams();
@@ -2354,7 +2357,7 @@ export class ComputorApiService {
         const url = params.toString() ? `/tutors/course-members?${params.toString()}` : '/tutors/course-members';
         const response = await client.get<any[]>(url);
         return response.data;
-      }, { maxRetries: 2, exponentialBackoff: true });
+      }, { maxRetries: 0 });
       multiTierCache.set(cacheKey, result, 'warm');
       return result || [];
     } catch (e) {
