@@ -11,5 +11,6 @@
     "test/ui/**/*.test.ts"
   ],
   "timeout": 5000,
-  "recursive": true
+  "recursive": true,
+  "exit": true
 }
