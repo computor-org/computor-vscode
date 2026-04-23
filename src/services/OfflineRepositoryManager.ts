@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execAsync, execAsyncWithTimeout } from '../utils/exec';
+import { execAsync } from '../utils/exec';
+import { execGitClone } from '../git/gitCloneHelpers';
 import { addTokenToGitUrl, extractOriginFromGitUrl } from '../utils/gitUrlHelpers';
 
 /**
@@ -266,10 +267,7 @@ export class OfflineRepositoryManager {
 
       try {
         // Clone the repository
-        await execAsyncWithTimeout(`git clone "${authenticatedUrl}" "${repoName}"`, {
-          cwd: studentDir,
-          timeout: 40_000
-        });
+        await execGitClone(authenticatedUrl, repoName, { cwd: studentDir });
 
         progress.report({ increment: 60, message: 'Setting up remote...' });
 

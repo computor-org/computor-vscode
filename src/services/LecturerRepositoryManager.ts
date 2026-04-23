@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execAsyncWithTimeout } from '../utils/exec';
+import { execGitClone } from '../git/gitCloneHelpers';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { ComputorApiService } from './ComputorApiService';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
@@ -69,7 +70,7 @@ export class LecturerRepositoryManager {
 
     if (!exists) {
       report(`Cloning course ${courseId} assignments...`);
-      await execAsyncWithTimeout(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 40_000 });
+      await execGitClone(authUrl, target);
     } else {
       report(`Pulling course ${courseId} assignments...`);
       try {
@@ -102,7 +103,7 @@ export class LecturerRepositoryManager {
 
         report(`Recreating course ${courseId} from origin...`);
         try {
-          await execAsyncWithTimeout(`git clone "${authUrl}" "${target}"`, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 40_000 });
+          await execGitClone(authUrl, target);
         } catch (cloneError) {
           console.error(`[LecturerRepo] Re-clone failed for course ${courseId}:`, cloneError);
           vscode.window.showErrorMessage(`Computor could not recreate the assignments repository. Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);

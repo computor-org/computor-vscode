@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import { execAsync, execAsyncWithTimeout, GitTimeoutError, GitCancelledError } from '../utils/exec';
+import { execGitClone } from '../git/gitCloneHelpers';
 import { CTGit } from '../git/CTGit';
 import { GitErrorHandler } from '../git/GitErrorHandler';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
@@ -678,14 +679,7 @@ export class StudentRepositoryManager {
     const attemptClone = async (activeToken: string): Promise<void> => {
       const authenticatedUrl = addTokenToGitUrl(cloneUrl, activeToken);
       try {
-        await execAsyncWithTimeout(`git clone "${authenticatedUrl}" "${repoPath}"`, {
-          env: {
-            ...process.env,
-            GIT_TERMINAL_PROMPT: '0'
-          },
-          timeout: 40_000,
-          cancellationToken
-        });
+        await execGitClone(authenticatedUrl, repoPath, { cancellationToken });
         console.log(`[StudentRepositoryManager] Successfully cloned to ${repoPath}`);
       } catch (error) {
         // Clean up partial clone directory on any failure
