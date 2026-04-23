@@ -43,7 +43,7 @@ import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
-import { LoginWebviewProvider } from './ui/webviews/LoginWebviewProvider';
+import { LoginWebviewProvider, LoginCredentials } from './ui/webviews/LoginWebviewProvider';
 
 interface StoredAuth {
   accessToken: string;
@@ -105,17 +105,7 @@ async function attemptSilentAutoLogin(
     await controller.activate(client as any, onProgress);
     backendConnectionService.startHealthCheck(baseUrl);
 
-    activeSession = {
-      deactivate: () => controller.dispose().then(async () => {
-        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-        await context.globalState.update('computor.tutor.selection', undefined);
-        backendConnectionService.stopHealthCheck();
-      }),
-      getActiveViews: () => controller.getActiveViews(),
-      getHttpClient: () => controller.getHttpClient()
-    };
+    activeSession = createActiveSession(context, controller);
 
     await context.secrets.store('computor.auth', JSON.stringify(auth));
 
@@ -147,6 +137,20 @@ function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClie
   return client;
 }
 
+function createActiveSession(context: vscode.ExtensionContext, controller: UnifiedController): UnifiedSession {
+  return {
+    deactivate: () => controller.dispose().then(async () => {
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+      await context.globalState.update('computor.tutor.selection', undefined);
+      backendConnectionService.stopHealthCheck();
+    }),
+    getActiveViews: () => controller.getActiveViews(),
+    getHttpClient: () => controller.getHttpClient()
+  };
+}
+
 async function readMarker(file: string): Promise<{ backendUrl?: string; courseId?: string } | undefined> {
   try {
     if (!fs.existsSync(file)) return undefined;
@@ -159,6 +163,83 @@ async function readMarker(file: string): Promise<{ backendUrl?: string; courseId
 
 async function writeMarker(file: string, data: { backendUrl: string }): Promise<void> {
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+}
+
+type OnAuthenticatedResult = { done: true } | { done: false; retryMessage: string };
+
+async function runCredentialLoginLoop(
+  context: vscode.ExtensionContext,
+  baseUrl: string,
+  settings: ComputorSettingsManager,
+  onAuthenticated: (client: BearerTokenHttpClient, creds: LoginCredentials) => Promise<OnAuthenticatedResult>
+): Promise<void> {
+  const storedUsername = await context.secrets.get('computor.username');
+  const storedPassword = await context.secrets.get('computor.password');
+  const currentAutoLogin = await settings.isAutoLoginEnabled();
+
+  if (!loginWebviewProvider) { loginWebviewProvider = new LoginWebviewProvider(context); }
+  let creds = await loginWebviewProvider.promptCredentials(
+    storedUsername || storedPassword ? { username: storedUsername, password: storedPassword } : undefined,
+    currentAutoLogin
+  );
+
+  while (creds) {
+    backendConnectionService.setBaseUrl(baseUrl);
+    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+    if (!connectionStatus.isReachable) {
+      await backendConnectionService.showConnectionError(connectionStatus);
+      loginWebviewProvider.close();
+      return;
+    }
+
+    const client = new BearerTokenHttpClient(baseUrl, 5000);
+    try {
+      await client.authenticateWithCredentials(creds.username, creds.password);
+    } catch (error: any) {
+      creds = await loginWebviewProvider.notifyLoginFailed(error.message);
+      continue;
+    }
+
+    const result = await onAuthenticated(client, creds);
+    if (result.done) return;
+    creds = await loginWebviewProvider.notifyLoginFailed(result.retryMessage);
+  }
+}
+
+async function persistLoginCredentials(
+  context: vscode.ExtensionContext,
+  settings: ComputorSettingsManager,
+  auth: StoredAuth,
+  creds: LoginCredentials
+): Promise<void> {
+  await context.secrets.store('computor.auth', JSON.stringify(auth));
+  await context.secrets.store('computor.username', creds.username);
+  await context.secrets.store('computor.password', creds.password);
+  if (creds.enableAutoLogin !== undefined) {
+    await settings.setAutoLoginEnabled(creds.enableAutoLogin);
+  }
+}
+
+async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExistingFolders: boolean }> {
+  const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
+  if (action !== 'Open Folder') return { opened: false, hadExistingFolders: false };
+
+  const folderUri = await vscode.window.showOpenDialog({
+    canSelectFolders: true,
+    canSelectFiles: false,
+    canSelectMany: false,
+    openLabel: 'Select Workspace Folder'
+  });
+  if (!folderUri || folderUri.length === 0) return { opened: false, hadExistingFolders: false };
+
+  const workspaceFolders = vscode.workspace.workspaceFolders || [];
+  const hadExistingFolders = workspaceFolders.length > 0;
+  vscode.workspace.updateWorkspaceFolders(
+    workspaceFolders.length,
+    0,
+    { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
+  );
+  return { opened: true, hadExistingFolders };
 }
 
 /**
@@ -192,17 +273,7 @@ async function attemptApiTokenLogin(
     await controller.activate(client as any, onProgress);
     backendConnectionService.startHealthCheck(baseUrl);
 
-    activeSession = {
-      deactivate: () => controller.dispose().then(async () => {
-        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-        await context.globalState.update('computor.tutor.selection', undefined);
-        backendConnectionService.stopHealthCheck();
-      }),
-      getActiveViews: () => controller.getActiveViews(),
-      getHttpClient: () => controller.getHttpClient()
-    };
+    activeSession = createActiveSession(context, controller);
 
     if (extensionUpdateService) {
       extensionUpdateService.checkForUpdates().catch(err => {
@@ -358,41 +429,10 @@ async function performAutoLogin(
 async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
-    if (action === 'Open Folder') {
-      // Let the user select a folder to open as workspace
-      const folderUri = await vscode.window.showOpenDialog({
-        canSelectFolders: true,
-        canSelectFiles: false,
-        canSelectMany: false,
-        openLabel: 'Select Workspace Folder'
-      });
-
-      if (folderUri && folderUri.length > 0) {
-        // No longer storing pending login - will auto-detect .computor file instead
-
-        // Add the folder to the current workspace
-        // This will restart the extension if no workspace was open
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        vscode.workspace.updateWorkspaceFolders(
-          workspaceFolders.length,
-          0,
-          { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
-        );
-
-        // If we had existing workspace folders, the extension won't restart
-        // In that case, we can continue immediately
-        if (workspaceFolders.length > 0) {
-          // Give VS Code a moment to update
-          await new Promise(resolve => setTimeout(resolve, 100));
-          // Recursively call to handle the marker with the new workspace
-          await ensureWorkspaceMarker(baseUrl);
-          return;
-        }
-
-        // Extension will restart
-        return;
-      }
+    const result = await promptOpenWorkspaceFolder();
+    if (result.opened && result.hadExistingFolders) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await ensureWorkspaceMarker(baseUrl);
     }
     return;
   }
@@ -1261,42 +1301,10 @@ async function performTokenRefresh(
   baseUrl: string,
   session: UnifiedSession
 ): Promise<void> {
-  const secretKey = 'computor.auth';
-  const usernameKey = 'computor.username';
-  const passwordKey = 'computor.password';
-
   const settings = new ComputorSettingsManager(context);
-  const storedUsername = await context.secrets.get(usernameKey);
-  const storedPassword = await context.secrets.get(passwordKey);
-  const currentAutoLogin = await settings.isAutoLoginEnabled();
 
-  if (!loginWebviewProvider) { loginWebviewProvider = new LoginWebviewProvider(context); }
-  let creds = await loginWebviewProvider.promptCredentials(
-    storedUsername || storedPassword
-      ? { username: storedUsername, password: storedPassword }
-      : undefined,
-    currentAutoLogin
-  );
-
-  while (creds) {
-    backendConnectionService.setBaseUrl(baseUrl);
-    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-    if (!connectionStatus.isReachable) {
-      await backendConnectionService.showConnectionError(connectionStatus);
-      loginWebviewProvider.close();
-      return;
-    }
-
-    const tempClient = new BearerTokenHttpClient(baseUrl, 5000);
-
-    try {
-      await tempClient.authenticateWithCredentials(creds.username, creds.password);
-    } catch (error: any) {
-      creds = await loginWebviewProvider.notifyLoginFailed(error.message);
-      continue;
-    }
-
-    const tokenData = tempClient.getTokenData();
+  await runCredentialLoginLoop(context, baseUrl, settings, async (client, creds) => {
+    const tokenData = client.getTokenData();
     const auth: StoredAuth = {
       accessToken: tokenData.accessToken!,
       refreshToken: tokenData.refreshToken || undefined,
@@ -1304,7 +1312,6 @@ async function performTokenRefresh(
       userId: tokenData.userId || undefined
     };
 
-    // Update the existing HTTP client with new tokens
     const existingClient = session.getHttpClient?.();
     if (existingClient && existingClient instanceof BearerTokenHttpClient) {
       existingClient.setTokens(
@@ -1316,19 +1323,12 @@ async function performTokenRefresh(
     }
 
     await ensureWorkspaceMarker(baseUrl);
+    await persistLoginCredentials(context, settings, auth, creds);
 
-    await context.secrets.store(secretKey, JSON.stringify(auth));
-    await context.secrets.store(usernameKey, creds.username);
-    await context.secrets.store(passwordKey, creds.password);
-
-    if (creds.enableAutoLogin !== undefined) {
-      await settings.setAutoLoginEnabled(creds.enableAutoLogin);
-    }
-
-    loginWebviewProvider.close();
+    loginWebviewProvider?.close();
     vscode.window.showInformationMessage(`Re-authenticated successfully: ${baseUrl}`);
-    return;
-  }
+    return { done: true };
+  });
 }
 
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
@@ -1339,29 +1339,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     // Require an open workspace before proceeding
     const root = getWorkspaceRoot();
     if (!root) {
-      const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
-      if (action === 'Open Folder') {
-        // Let the user select a folder to open as workspace
-        const folderUri = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          openLabel: 'Select Workspace Folder'
-        });
-
-        if (folderUri && folderUri.length > 0) {
-          // No longer storing pending login - will auto-detect .computor file instead
-
-          // Add the folder to the current workspace
-          // This will restart the extension if no workspace was open
-          const workspaceFolders = vscode.workspace.workspaceFolders || [];
-          vscode.workspace.updateWorkspaceFolders(
-            workspaceFolders.length,
-            0,
-            { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
-          );
-        }
-      }
+      await promptOpenWorkspaceFolder();
       return;
     }
 
@@ -1383,40 +1361,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       return;
     }
 
-    const secretKey = 'computor.auth';
-    const usernameKey = 'computor.username';
-    const passwordKey = 'computor.password';
-
-    const storedUsername = await context.secrets.get(usernameKey);
-    const storedPassword = await context.secrets.get(passwordKey);
-    const currentAutoLogin = await settings.isAutoLoginEnabled();
-
-    if (!loginWebviewProvider) { loginWebviewProvider = new LoginWebviewProvider(context); }
-    let creds = await loginWebviewProvider.promptCredentials(
-      storedUsername || storedPassword
-        ? { username: storedUsername, password: storedPassword }
-        : undefined,
-      currentAutoLogin
-    );
-
-    while (creds) {
-      backendConnectionService.setBaseUrl(baseUrl);
-      const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-      if (!connectionStatus.isReachable) {
-        await backendConnectionService.showConnectionError(connectionStatus);
-        loginWebviewProvider.close();
-        return;
-      }
-
-      const client = new BearerTokenHttpClient(baseUrl, 5000);
-
-      try {
-        await client.authenticateWithCredentials(creds.username, creds.password);
-      } catch (error: any) {
-        creds = await loginWebviewProvider.notifyLoginFailed(error.message);
-        continue;
-      }
-
+    await runCredentialLoginLoop(context, baseUrl, settings, async (client, creds) => {
       const tokenData = client.getTokenData();
       const auth: StoredAuth = {
         accessToken: tokenData.accessToken!,
@@ -1431,47 +1376,28 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
       try {
         await controller.activate(client as any);
-        backendConnectionService.startHealthCheck(baseUrl);
-
-        activeSession = {
-          deactivate: () => controller.dispose().then(async () => {
-            await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-            await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-            await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-            await context.globalState.update('computor.tutor.selection', undefined);
-            backendConnectionService.stopHealthCheck();
-          }),
-          getActiveViews: () => controller.getActiveViews(),
-          getHttpClient: () => controller.getHttpClient()
-        };
-
-        await context.secrets.store(secretKey, JSON.stringify(auth));
-        await context.secrets.store(usernameKey, creds.username);
-        await context.secrets.store(passwordKey, creds.password);
-
-        if (creds.enableAutoLogin !== undefined) {
-          await settings.setAutoLoginEnabled(creds.enableAutoLogin);
-        }
-
-        if (extensionUpdateService) {
-          extensionUpdateService.checkForUpdates().catch(err => {
-            console.warn('Extension update check failed:', err);
-          });
-        }
-
-        loginWebviewProvider.close();
-        vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
-        return;
       } catch (error: any) {
         console.error('Login failed:', error);
         await controller.dispose();
         backendConnectionService.stopHealthCheck();
-
-        const errorMessage = error?.message || String(error);
-        creds = await loginWebviewProvider.notifyLoginFailed(errorMessage);
-        continue;
+        return { done: false, retryMessage: error?.message || String(error) };
       }
-    }
+
+      backendConnectionService.startHealthCheck(baseUrl);
+      activeSession = createActiveSession(context, controller);
+
+      await persistLoginCredentials(context, settings, auth, creds);
+
+      if (extensionUpdateService) {
+        extensionUpdateService.checkForUpdates().catch(err => {
+          console.warn('Extension update check failed:', err);
+        });
+      }
+
+      loginWebviewProvider?.close();
+      vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
+      return { done: true };
+    });
   } finally {
     isAuthenticating = false;
   }
