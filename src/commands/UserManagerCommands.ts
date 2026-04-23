@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { UserManagerTreeProvider } from '../ui/tree/user-manager/UserManagerTreeProvider';
 import { UserManagementWebviewProvider } from '../ui/webviews/UserManagementWebviewProvider';
+import { commandRegistrar } from './commandHelpers';
 
 export class UserManagerCommands {
   private userManagementWebviewProvider: UserManagementWebviewProvider;
@@ -19,37 +20,31 @@ export class UserManagerCommands {
   }
 
   registerCommands(): void {
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.userManager.refresh', async () => {
-        await this.handleRefresh();
-      })
-    );
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.userManager.openUserDetails', async (item?: any) => {
-        await this.handleOpenUserDetails(item);
-      })
-    );
+    const register = commandRegistrar(this.context);
+    register('computor.userManager.refresh', async () => {
+      await this.handleRefresh();
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.userManager.searchUsers', async () => {
-        const currentQuery = this.treeProvider.getSearchQuery();
-        const query = await vscode.window.showInputBox({
-          prompt: 'Search users by name, email, or username',
-          placeHolder: 'Enter search query',
-          value: currentQuery
-        });
-        if (query !== undefined) {
-          this.treeProvider.setSearchQuery(query);
-        }
-      })
-    );
+    register('computor.userManager.openUserDetails', async (item?: any) => {
+      await this.handleOpenUserDetails(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.userManager.clearSearch', () => {
-        this.treeProvider.clearSearch();
-      })
-    );
+    register('computor.userManager.searchUsers', async () => {
+      const currentQuery = this.treeProvider.getSearchQuery();
+      const query = await vscode.window.showInputBox({
+        prompt: 'Search users by name, email, or username',
+        placeHolder: 'Enter search query',
+        value: currentQuery
+      });
+      if (query !== undefined) {
+        this.treeProvider.setSearchQuery(query);
+      }
+    });
+
+    register('computor.userManager.clearSearch', () => {
+      this.treeProvider.clearSearch();
+    });
   }
 
   private async handleRefresh(): Promise<void> {

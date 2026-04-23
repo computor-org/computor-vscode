@@ -7,6 +7,7 @@ import { CourseSelectionService } from '../../../services/CourseSelectionService
 import { StudentRepositoryManager } from '../../../services/StudentRepositoryManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { WebSocketService } from '../../../services/WebSocketService';
+import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
@@ -48,8 +49,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private coursesSetupThisSession: Set<string> = new Set();
     // Track individual assignments where setup has already been attempted (to avoid repeated popups)
     private assignmentsSetupAttempted: Set<string> = new Set();
-    private wsService?: WebSocketService;
-    private subscribedCourseChannels: Set<string> = new Set();
+    private wsSubscription = new CourseChannelSubscription('student-tree');
     
     constructor(
         apiService: ComputorApiService, 
@@ -67,18 +67,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     }
     
     setWebSocketService(wsService: WebSocketService): void {
-        this.wsService = wsService;
+        this.wsSubscription.setService(wsService);
     }
 
     private subscribeToCourseChannels(courseIds: string[]): void {
-        if (!this.wsService) return;
-        const newChannels = courseIds
-            .map(id => `course:${id}`)
-            .filter(ch => !this.subscribedCourseChannels.has(ch));
-        if (newChannels.length === 0) return;
-
-        newChannels.forEach(ch => this.subscribedCourseChannels.add(ch));
-        this.wsService.subscribe(newChannels, 'student-tree', {
+        this.wsSubscription.subscribeCourses(courseIds, {
             onDeploymentStatusChanged: (event) => {
                 console.log(`[StudentTree/WS] Deployment status changed: ${event.course_content_id} -> ${event.new_status}`);
                 if (event.new_status === 'deployed' || event.new_status === 'failed') {

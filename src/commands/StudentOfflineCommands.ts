@@ -3,6 +3,7 @@ import * as path from 'path';
 import { StudentOfflineTreeProvider } from '../ui/tree/student/StudentOfflineTreeProvider';
 import { GitService } from '../services/GitService';
 import { OfflineRepositoryManager } from '../services/OfflineRepositoryManager';
+import { commandRegistrar } from './commandHelpers';
 
 /**
  * Commands for the student offline mode
@@ -26,54 +27,42 @@ export class StudentOfflineCommands {
     }
 
     registerCommands(): void {
+
+      const register = commandRegistrar(this.context);
         // Add new course
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('computor.student.offline.addCourse', async () => {
-                await this.addCourse();
-            })
-        );
+        register('computor.student.offline.addCourse', async () => {
+            await this.addCourse();
+        });
 
         // Refresh offline view
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('computor.student.offline.refresh', () => {
-                this.treeProvider.refresh();
-            })
-        );
+        register('computor.student.offline.refresh', () => {
+            this.treeProvider.refresh();
+        });
 
         // Save (add + commit + push) assignment
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('computor.student.offline.saveAssignment', async (item: any) => {
-                await this.saveAssignment(item);
-            })
-        );
+        register('computor.student.offline.saveAssignment', async (item: any) => {
+            await this.saveAssignment(item);
+        });
 
         // Open assignment in terminal
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('computor.student.offline.openInTerminal', async (item: any) => {
-                await this.openInTerminal(item);
-            })
-        );
+        register('computor.student.offline.openInTerminal', async (item: any) => {
+            await this.openInTerminal(item);
+        });
 
         // Open repository in terminal (course level)
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('computor.student.offline.openRepoInTerminal', async (item: any) => {
-                await this.openRepoInTerminal(item);
-            })
-        );
+        register('computor.student.offline.openRepoInTerminal', async (item: any) => {
+            await this.openRepoInTerminal(item);
+        });
 
         // Pull latest changes from remote
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('computor.student.offline.pullChanges', async (item: any) => {
-                await this.pullChanges(item);
-            })
-        );
+        register('computor.student.offline.pullChanges', async (item: any) => {
+            await this.pullChanges(item);
+        });
 
         // Show preview for README
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('computor.student.offline.showPreview', async (item: any) => {
-                await this.showReadmePreview(item);
-            })
-        );
+        register('computor.student.offline.showPreview', async (item: any) => {
+            await this.showReadmePreview(item);
+        });
     }
 
     /**

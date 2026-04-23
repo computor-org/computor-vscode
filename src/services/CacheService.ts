@@ -424,6 +424,5 @@ export class MultiTierCache {
   }
 }
 
-// Export singleton instances
-export const cacheService = new CacheService();
+// Export singleton instance
 export const multiTierCache = new MultiTierCache();

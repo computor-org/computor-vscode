@@ -1625,6 +1625,7 @@
     "lint": "eslint src --ext ts",
     "test": "mocha",
     "test:unit": "mocha --config .mocharc.unit.json",
+    "test:coverage": "c8 --config .c8rc.json mocha --config .mocharc.unit.json",
     "test:integration": "jest --config jest.integration.config.js",
     "test:all": "npm run test && npm run test:integration",
     "test:git-basic": "ts-node test/integration/manual/test-git-basic.ts",
@@ -1634,16 +1635,15 @@
   "devDependencies": {
     "@types/chai": "^4.3.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/lodash": "^4.17.20",
     "@types/mocha": "^10.0.1",
     "@types/node": "^16.18.126",
     "@types/node-fetch": "^2.6.0",
     "@types/semver": "^7.3.12",
-    "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "@vscode/vsce": "^3.6.2",
+    "c8": "^10.1.3",
     "chai": "^4.3.7",
     "copy-webpack-plugin": "^13.0.1",
     "eslint": "^8.28.0",
@@ -1656,16 +1656,13 @@
   },
   "dependencies": {
     "@types/jszip": "^3.4.0",
-    "date-fns": "^4.1.0",
     "fast-xml-parser": "^5.3.2",
     "form-data": "^4.0.0",
     "js-yaml": "^4.1.0",
     "jszip": "^3.10.1",
-    "lodash": "^4.17.21",
     "node-fetch": "^2.6.0",
     "semver": "^7.7.2",
     "simple-git": "^3.28.0",
-    "uuid": "^11.1.0",
     "xlsx": "^0.18.5"
   }
 }

@@ -98,11 +98,13 @@ describe('GitWrapper', () => {
     it('should detect new files', async () => {
       const testFile = path.join(testRepoPath, 'test.txt');
       await fs.promises.writeFile(testFile, 'test content');
-      
+
       const status = await gitWrapper.status(testRepoPath);
-      
+
       expect(status.isClean).to.be.false;
-      expect(status.created).to.include('test.txt');
+      // simple-git distinguishes staged additions (`created`) from untracked
+      // files; the latter surface in `files` with a '?' working_dir marker.
+      expect(status.files.some(f => f.path === 'test.txt')).to.be.true;
     });
   });
 

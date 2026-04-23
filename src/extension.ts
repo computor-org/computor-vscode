@@ -43,7 +43,7 @@ import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
-import { LoginWebviewProvider } from './ui/webviews/LoginWebviewProvider';
+import { LoginWebviewProvider, LoginCredentials } from './ui/webviews/LoginWebviewProvider';
 
 interface StoredAuth {
   accessToken: string;
@@ -105,17 +105,7 @@ async function attemptSilentAutoLogin(
     await controller.activate(client as any, onProgress);
     backendConnectionService.startHealthCheck(baseUrl);
 
-    activeSession = {
-      deactivate: () => controller.dispose().then(async () => {
-        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-        await context.globalState.update('computor.tutor.selection', undefined);
-        backendConnectionService.stopHealthCheck();
-      }),
-      getActiveViews: () => controller.getActiveViews(),
-      getHttpClient: () => controller.getHttpClient()
-    };
+    activeSession = createActiveSession(context, controller);
 
     await context.secrets.store('computor.auth', JSON.stringify(auth));
 
@@ -135,6 +125,43 @@ async function attemptSilentAutoLogin(
 // Login webview provider instance (lazily initialized per context)
 let loginWebviewProvider: LoginWebviewProvider | undefined;
 
+interface TreeViewRegistration<T> {
+  provider: vscode.TreeDataProvider<T>;
+  options?: Omit<vscode.TreeViewOptions<T>, 'treeDataProvider'>;
+  registerDataProvider?: boolean;
+  onExpand?: (event: vscode.TreeViewExpansionEvent<T>) => void;
+  onCollapse?: (event: vscode.TreeViewExpansionEvent<T>) => void;
+  onSelection?: (event: vscode.TreeViewSelectionChangeEvent<T>) => void;
+  onVisibility?: (event: vscode.TreeViewVisibilityChangeEvent) => void;
+}
+
+async function setViewContextKeys(enabled: readonly string[], all: readonly string[]): Promise<void> {
+  const enabledSet = new Set(enabled);
+  for (const view of all) {
+    await vscode.commands.executeCommand('setContext', `computor.${view}.show`, enabledSet.has(view));
+  }
+}
+
+function registerTreeView<T>(
+  id: string,
+  registration: TreeViewRegistration<T>,
+  disposables: vscode.Disposable[]
+): vscode.TreeView<T> {
+  if (registration.registerDataProvider) {
+    disposables.push(vscode.window.registerTreeDataProvider(id, registration.provider));
+  }
+  const treeView = vscode.window.createTreeView(id, {
+    treeDataProvider: registration.provider,
+    ...registration.options
+  });
+  disposables.push(treeView);
+  if (registration.onExpand) disposables.push(treeView.onDidExpandElement(registration.onExpand));
+  if (registration.onCollapse) disposables.push(treeView.onDidCollapseElement(registration.onCollapse));
+  if (registration.onSelection) disposables.push(treeView.onDidChangeSelection(registration.onSelection));
+  if (registration.onVisibility) disposables.push(treeView.onDidChangeVisibility(registration.onVisibility));
+  return treeView;
+}
+
 function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClient {
   const client = new BearerTokenHttpClient(baseUrl, 5000);
   client.setTokenData({
@@ -145,6 +172,20 @@ function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClie
     userId: auth.userId
   });
   return client;
+}
+
+function createActiveSession(context: vscode.ExtensionContext, controller: UnifiedController): UnifiedSession {
+  return {
+    deactivate: () => controller.dispose().then(async () => {
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+      await context.globalState.update('computor.tutor.selection', undefined);
+      backendConnectionService.stopHealthCheck();
+    }),
+    getActiveViews: () => controller.getActiveViews(),
+    getHttpClient: () => controller.getHttpClient()
+  };
 }
 
 async function readMarker(file: string): Promise<{ backendUrl?: string; courseId?: string } | undefined> {
@@ -159,6 +200,83 @@ async function readMarker(file: string): Promise<{ backendUrl?: string; courseId
 
 async function writeMarker(file: string, data: { backendUrl: string }): Promise<void> {
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+}
+
+type OnAuthenticatedResult = { done: true } | { done: false; retryMessage: string };
+
+async function runCredentialLoginLoop(
+  context: vscode.ExtensionContext,
+  baseUrl: string,
+  settings: ComputorSettingsManager,
+  onAuthenticated: (client: BearerTokenHttpClient, creds: LoginCredentials) => Promise<OnAuthenticatedResult>
+): Promise<void> {
+  const storedUsername = await context.secrets.get('computor.username');
+  const storedPassword = await context.secrets.get('computor.password');
+  const currentAutoLogin = await settings.isAutoLoginEnabled();
+
+  if (!loginWebviewProvider) { loginWebviewProvider = new LoginWebviewProvider(context); }
+  let creds = await loginWebviewProvider.promptCredentials(
+    storedUsername || storedPassword ? { username: storedUsername, password: storedPassword } : undefined,
+    currentAutoLogin
+  );
+
+  while (creds) {
+    backendConnectionService.setBaseUrl(baseUrl);
+    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+    if (!connectionStatus.isReachable) {
+      await backendConnectionService.showConnectionError(connectionStatus);
+      loginWebviewProvider.close();
+      return;
+    }
+
+    const client = new BearerTokenHttpClient(baseUrl, 5000);
+    try {
+      await client.authenticateWithCredentials(creds.username, creds.password);
+    } catch (error: any) {
+      creds = await loginWebviewProvider.notifyLoginFailed(error.message);
+      continue;
+    }
+
+    const result = await onAuthenticated(client, creds);
+    if (result.done) return;
+    creds = await loginWebviewProvider.notifyLoginFailed(result.retryMessage);
+  }
+}
+
+async function persistLoginCredentials(
+  context: vscode.ExtensionContext,
+  settings: ComputorSettingsManager,
+  auth: StoredAuth,
+  creds: LoginCredentials
+): Promise<void> {
+  await context.secrets.store('computor.auth', JSON.stringify(auth));
+  await context.secrets.store('computor.username', creds.username);
+  await context.secrets.store('computor.password', creds.password);
+  if (creds.enableAutoLogin !== undefined) {
+    await settings.setAutoLoginEnabled(creds.enableAutoLogin);
+  }
+}
+
+async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExistingFolders: boolean }> {
+  const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
+  if (action !== 'Open Folder') return { opened: false, hadExistingFolders: false };
+
+  const folderUri = await vscode.window.showOpenDialog({
+    canSelectFolders: true,
+    canSelectFiles: false,
+    canSelectMany: false,
+    openLabel: 'Select Workspace Folder'
+  });
+  if (!folderUri || folderUri.length === 0) return { opened: false, hadExistingFolders: false };
+
+  const workspaceFolders = vscode.workspace.workspaceFolders || [];
+  const hadExistingFolders = workspaceFolders.length > 0;
+  vscode.workspace.updateWorkspaceFolders(
+    workspaceFolders.length,
+    0,
+    { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
+  );
+  return { opened: true, hadExistingFolders };
 }
 
 /**
@@ -192,17 +310,7 @@ async function attemptApiTokenLogin(
     await controller.activate(client as any, onProgress);
     backendConnectionService.startHealthCheck(baseUrl);
 
-    activeSession = {
-      deactivate: () => controller.dispose().then(async () => {
-        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-        await context.globalState.update('computor.tutor.selection', undefined);
-        backendConnectionService.stopHealthCheck();
-      }),
-      getActiveViews: () => controller.getActiveViews(),
-      getHttpClient: () => controller.getHttpClient()
-    };
+    activeSession = createActiveSession(context, controller);
 
     if (extensionUpdateService) {
       extensionUpdateService.checkForUpdates().catch(err => {
@@ -358,41 +466,10 @@ async function performAutoLogin(
 async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
-    if (action === 'Open Folder') {
-      // Let the user select a folder to open as workspace
-      const folderUri = await vscode.window.showOpenDialog({
-        canSelectFolders: true,
-        canSelectFiles: false,
-        canSelectMany: false,
-        openLabel: 'Select Workspace Folder'
-      });
-
-      if (folderUri && folderUri.length > 0) {
-        // No longer storing pending login - will auto-detect .computor file instead
-
-        // Add the folder to the current workspace
-        // This will restart the extension if no workspace was open
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        vscode.workspace.updateWorkspaceFolders(
-          workspaceFolders.length,
-          0,
-          { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
-        );
-
-        // If we had existing workspace folders, the extension won't restart
-        // In that case, we can continue immediately
-        if (workspaceFolders.length > 0) {
-          // Give VS Code a moment to update
-          await new Promise(resolve => setTimeout(resolve, 100));
-          // Recursively call to handle the marker with the new workspace
-          await ensureWorkspaceMarker(baseUrl);
-          return;
-        }
-
-        // Extension will restart
-        return;
-      }
+    const result = await promptOpenWorkspaceFolder();
+    if (result.opened && result.hadExistingFolders) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await ensureWorkspaceMarker(baseUrl);
     }
     return;
   }
@@ -536,37 +613,21 @@ class UnifiedController {
     if (views.includes('student')) {
       report('Setting up student view...');
       await this.initializeStudentView(api, onProgress);
-      await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
     }
     if (views.includes('tutor')) {
       report('Setting up tutor view...');
       await this.initializeTutorView(api);
-      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
     }
     if (views.includes('lecturer')) {
       report('Setting up lecturer view...');
       await this.initializeLecturerView(api);
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
     }
     if (views.includes('user_manager')) {
       report('Setting up user manager view...');
       await this.initializeUserManagerView(api);
-      await vscode.commands.executeCommand('setContext', 'computor.user_manager.show', true);
     }
 
-    // Set context keys for views that are NOT available to false
-    if (!views.includes('student')) {
-      await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-    }
-    if (!views.includes('tutor')) {
-      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-    }
-    if (!views.includes('lecturer')) {
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-    }
-    if (!views.includes('user_manager')) {
-      await vscode.commands.executeCommand('setContext', 'computor.user_manager.show', false);
-    }
+    await setViewContextKeys(views, ['student', 'tutor', 'lecturer', 'user_manager']);
   }
 
   private async focusHighestPriorityView(views: string[]): Promise<void> {
@@ -639,40 +700,31 @@ class UnifiedController {
     // Initialize tree view
     const tree = new StudentCourseContentTreeProvider(api, courseSelectionService, repositoryManager, this.context);
     if (this.wsService) tree.setWebSocketService(this.wsService);
-    this.disposables.push(vscode.window.registerTreeDataProvider('computor.student.courses', tree));
-    const treeView = vscode.window.createTreeView('computor.student.courses', { treeDataProvider: tree, showCollapseAll: true });
-    this.disposables.push(treeView);
-
-    const studentExpandListener = treeView.onDidExpandElement((event) => {
-      const element = event.element;
-      if (!element) return;
-      void tree.onTreeItemExpanded(element);
-    });
-    const studentCollapseListener = treeView.onDidCollapseElement((event) => {
-      const element = event.element;
-      if (!element) return;
-      void tree.onTreeItemCollapsed(element);
-    });
-    const studentSelectionListener = treeView.onDidChangeSelection((event) => {
-      const selected = event.selection[0];
-      if (!selected) return;
-      // Show test results automatically when an assignment is selected
-      if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
-        if ((selected as any).courseContent?.result) {
-          void vscode.commands.executeCommand('computor.showTestResults', selected);
-        } else {
-          // Clear results view when selecting an assignment without results
-          void vscode.commands.executeCommand('computor.results.clear');
+    registerTreeView('computor.student.courses', {
+      provider: tree,
+      options: { showCollapseAll: true },
+      registerDataProvider: true,
+      onExpand: (event) => {
+        if (event.element) void tree.onTreeItemExpanded(event.element);
+      },
+      onCollapse: (event) => {
+        if (event.element) void tree.onTreeItemCollapsed(event.element);
+      },
+      onSelection: (event) => {
+        const selected = event.selection[0];
+        if (!selected) return;
+        if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
+          if ((selected as any).courseContent?.result) {
+            void vscode.commands.executeCommand('computor.showTestResults', selected);
+          } else {
+            void vscode.commands.executeCommand('computor.results.clear');
+          }
         }
+      },
+      onVisibility: (event) => {
+        if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
       }
-    });
-    const studentVisibilityListener = treeView.onDidChangeVisibility((event) => {
-      if (event.visible) {
-        // Clear results view when switching to student view
-        void vscode.commands.executeCommand('computor.results.clear');
-      }
-    });
-    this.disposables.push(studentExpandListener, studentCollapseListener, studentSelectionListener, studentVisibilityListener);
+    }, this.disposables);
 
     // No course pre-selection - tree will show all courses
 
@@ -864,23 +916,20 @@ class UnifiedController {
 
     // Register filter tree (replaces webview filter panel)
     const filterTree = new TutorFilterTreeProvider(api, selection);
-    const filterTreeView = vscode.window.createTreeView('computor.tutor.filters', {
-      treeDataProvider: filterTree,
-      showCollapseAll: true
-    });
-    this.disposables.push(filterTreeView);
-
-    // Select course when expanding a course node
-    this.disposables.push(filterTreeView.onDidExpandElement(async (event) => {
-      if (event.element instanceof TutorCourseFilterItem) {
-        const course = event.element.course;
-        const currentCourseId = selection.getCurrentCourseId();
-        if (currentCourseId !== course.id) {
-          await selection.selectCourse(course.id, course.title || course.path || course.name || course.id);
-          filterTree.refresh();
+    registerTreeView('computor.tutor.filters', {
+      provider: filterTree,
+      options: { showCollapseAll: true },
+      onExpand: async (event) => {
+        if (event.element instanceof TutorCourseFilterItem) {
+          const course = event.element.course;
+          const currentCourseId = selection.getCurrentCourseId();
+          if (currentCourseId !== course.id) {
+            await selection.selectCourse(course.id, course.title || course.path || course.name || course.id);
+            filterTree.refresh();
+          }
         }
       }
-    }));
+    }, this.disposables);
 
     // Register filter interaction commands
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectGroup', async (item: InstanceType<typeof TutorGroupOptionItem>) => {
@@ -906,34 +955,27 @@ class UnifiedController {
     const { TutorStudentTreeProvider } = await import('./ui/tree/tutor/TutorStudentTreeProvider');
     const tree = new TutorStudentTreeProvider(api, selection);
     if (this.wsService) tree.setWebSocketService(this.wsService);
-    this.disposables.push(vscode.window.registerTreeDataProvider('computor.tutor.courses', tree));
-    const treeView = vscode.window.createTreeView('computor.tutor.courses', { treeDataProvider: tree, showCollapseAll: true });
-    this.disposables.push(treeView);
-
-    const tutorCollapseListener = treeView.onDidCollapseElement((event) => {
-      tree.handleCollapse(event.element);
-    });
-    this.disposables.push(tutorCollapseListener);
-
-    const tutorSelectionListener = treeView.onDidChangeSelection((event) => {
-      const selected = event.selection[0];
-      if (!selected) return;
-      if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
-        void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
-
-        if ((selected as any).content?.result) {
-          void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
-        } else {
-          void vscode.commands.executeCommand('computor.results.clear');
+    registerTreeView('computor.tutor.courses', {
+      provider: tree,
+      options: { showCollapseAll: true },
+      registerDataProvider: true,
+      onCollapse: (event) => tree.handleCollapse(event.element),
+      onSelection: (event) => {
+        const selected = event.selection[0];
+        if (!selected) return;
+        if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
+          void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
+          if ((selected as any).content?.result) {
+            void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
+          } else {
+            void vscode.commands.executeCommand('computor.results.clear');
+          }
         }
+      },
+      onVisibility: (event) => {
+        if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
       }
-    });
-    const tutorVisibilityListener = treeView.onDidChangeVisibility((event) => {
-      if (event.visible) {
-        void vscode.commands.executeCommand('computor.results.clear');
-      }
-    });
-    this.disposables.push(tutorSelectionListener, tutorVisibilityListener);
+    }, this.disposables);
 
     // Status bar
     const tutorStatus = TutorStatusBarService.initialize();
@@ -967,42 +1009,34 @@ class UnifiedController {
   private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
     if (this.wsService) tree.setWebSocketService(this.wsService);
-    this.disposables.push(vscode.window.registerTreeDataProvider('computor.lecturer.courses', tree));
-
-    const treeView = vscode.window.createTreeView('computor.lecturer.courses', {
-      treeDataProvider: tree,
-      showCollapseAll: true,
-      canSelectMany: false,
-      dragAndDropController: tree
-    });
-    this.disposables.push(treeView);
-
-    const lecturerExpandListener = treeView.onDidExpandElement((event) => {
-      const elementId = event.element?.id;
-      if (!elementId) return;
-      void tree.setNodeExpanded(elementId, true);
-    });
-    const lecturerCollapseListener = treeView.onDidCollapseElement((event) => {
-      const elementId = event.element?.id;
-      if (!elementId) return;
-      void tree.setNodeExpanded(elementId, false);
-    });
-    const lecturerVisibilityListener = treeView.onDidChangeVisibility((event) => {
-      if (event.visible) {
-        // Clear results view when switching to lecturer view
-        void vscode.commands.executeCommand('computor.results.clear');
+    registerTreeView('computor.lecturer.courses', {
+      provider: tree,
+      options: {
+        showCollapseAll: true,
+        canSelectMany: false,
+        dragAndDropController: tree
+      },
+      registerDataProvider: true,
+      onExpand: (event) => {
+        if (event.element?.id) void tree.setNodeExpanded(event.element.id, true);
+      },
+      onCollapse: (event) => {
+        if (event.element?.id) void tree.setNodeExpanded(event.element.id, false);
+      },
+      onVisibility: (event) => {
+        if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
       }
-    });
-    this.disposables.push(lecturerExpandListener, lecturerCollapseListener, lecturerVisibilityListener);
+    }, this.disposables);
 
     const exampleTree = new LecturerExampleTreeProvider(this.context, api);
-    const exampleTreeView = vscode.window.createTreeView('computor.lecturer.examples', {
-      treeDataProvider: exampleTree,
-      showCollapseAll: true,
-      canSelectMany: true,
-      dragAndDropController: exampleTree
-    });
-    this.disposables.push(exampleTreeView);
+    const exampleTreeView = registerTreeView('computor.lecturer.examples', {
+      provider: exampleTree,
+      options: {
+        showCollapseAll: true,
+        canSelectMany: true,
+        dragAndDropController: exampleTree
+      }
+    }, this.disposables);
     exampleTree.setTreeView(exampleTreeView);
 
     this.context.subscriptions.push(
@@ -1109,21 +1143,14 @@ class UnifiedController {
     const { UserManagerCommands } = await import('./commands/UserManagerCommands');
 
     const tree = new UserManagerTreeProvider(api, this.context);
-    this.disposables.push(vscode.window.registerTreeDataProvider('computor.usermanager.users', tree));
-
-    const treeView = vscode.window.createTreeView('computor.usermanager.users', {
-      treeDataProvider: tree,
-      showCollapseAll: false
-    });
-    this.disposables.push(treeView);
-
-    const userManagerVisibilityListener = treeView.onDidChangeVisibility((event) => {
-      if (event.visible) {
-        // Clear results view when switching to user manager view
-        void vscode.commands.executeCommand('computor.results.clear');
+    registerTreeView('computor.usermanager.users', {
+      provider: tree,
+      options: { showCollapseAll: false },
+      registerDataProvider: true,
+      onVisibility: (event) => {
+        if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
       }
-    });
-    this.disposables.push(userManagerVisibilityListener);
+    }, this.disposables);
 
     const commands = new UserManagerCommands(this.context, tree, api);
     commands.registerCommands();
@@ -1224,12 +1251,12 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
     const { StudentOfflineCommands } = await import('./commands/StudentOfflineCommands');
 
     const offlineTree = new StudentOfflineTreeProvider(context);
-    const treeDisposable = vscode.window.registerTreeDataProvider('computor.student.offline.view', offlineTree);
-
-    const offlineTreeView = vscode.window.createTreeView('computor.student.offline.view', {
-      treeDataProvider: offlineTree,
-      showCollapseAll: true
-    });
+    const offlineDisposables: vscode.Disposable[] = [];
+    registerTreeView('computor.student.offline.view', {
+      provider: offlineTree,
+      options: { showCollapseAll: true },
+      registerDataProvider: true
+    }, offlineDisposables);
 
     // Register offline commands
     const offlineCommands = new StudentOfflineCommands(context, offlineTree);
@@ -1243,8 +1270,7 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
 
     offlineSession = {
       deactivate: async () => {
-        treeDisposable.dispose();
-        offlineTreeView.dispose();
+        for (const d of offlineDisposables) d.dispose();
         await vscode.commands.executeCommand('setContext', 'computor.student.offline.show', false);
       }
     };
@@ -1261,42 +1287,10 @@ async function performTokenRefresh(
   baseUrl: string,
   session: UnifiedSession
 ): Promise<void> {
-  const secretKey = 'computor.auth';
-  const usernameKey = 'computor.username';
-  const passwordKey = 'computor.password';
-
   const settings = new ComputorSettingsManager(context);
-  const storedUsername = await context.secrets.get(usernameKey);
-  const storedPassword = await context.secrets.get(passwordKey);
-  const currentAutoLogin = await settings.isAutoLoginEnabled();
 
-  if (!loginWebviewProvider) { loginWebviewProvider = new LoginWebviewProvider(context); }
-  let creds = await loginWebviewProvider.promptCredentials(
-    storedUsername || storedPassword
-      ? { username: storedUsername, password: storedPassword }
-      : undefined,
-    currentAutoLogin
-  );
-
-  while (creds) {
-    backendConnectionService.setBaseUrl(baseUrl);
-    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-    if (!connectionStatus.isReachable) {
-      await backendConnectionService.showConnectionError(connectionStatus);
-      loginWebviewProvider.close();
-      return;
-    }
-
-    const tempClient = new BearerTokenHttpClient(baseUrl, 5000);
-
-    try {
-      await tempClient.authenticateWithCredentials(creds.username, creds.password);
-    } catch (error: any) {
-      creds = await loginWebviewProvider.notifyLoginFailed(error.message);
-      continue;
-    }
-
-    const tokenData = tempClient.getTokenData();
+  await runCredentialLoginLoop(context, baseUrl, settings, async (client, creds) => {
+    const tokenData = client.getTokenData();
     const auth: StoredAuth = {
       accessToken: tokenData.accessToken!,
       refreshToken: tokenData.refreshToken || undefined,
@@ -1304,7 +1298,6 @@ async function performTokenRefresh(
       userId: tokenData.userId || undefined
     };
 
-    // Update the existing HTTP client with new tokens
     const existingClient = session.getHttpClient?.();
     if (existingClient && existingClient instanceof BearerTokenHttpClient) {
       existingClient.setTokens(
@@ -1316,19 +1309,12 @@ async function performTokenRefresh(
     }
 
     await ensureWorkspaceMarker(baseUrl);
+    await persistLoginCredentials(context, settings, auth, creds);
 
-    await context.secrets.store(secretKey, JSON.stringify(auth));
-    await context.secrets.store(usernameKey, creds.username);
-    await context.secrets.store(passwordKey, creds.password);
-
-    if (creds.enableAutoLogin !== undefined) {
-      await settings.setAutoLoginEnabled(creds.enableAutoLogin);
-    }
-
-    loginWebviewProvider.close();
+    loginWebviewProvider?.close();
     vscode.window.showInformationMessage(`Re-authenticated successfully: ${baseUrl}`);
-    return;
-  }
+    return { done: true };
+  });
 }
 
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
@@ -1339,29 +1325,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     // Require an open workspace before proceeding
     const root = getWorkspaceRoot();
     if (!root) {
-      const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
-      if (action === 'Open Folder') {
-        // Let the user select a folder to open as workspace
-        const folderUri = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          openLabel: 'Select Workspace Folder'
-        });
-
-        if (folderUri && folderUri.length > 0) {
-          // No longer storing pending login - will auto-detect .computor file instead
-
-          // Add the folder to the current workspace
-          // This will restart the extension if no workspace was open
-          const workspaceFolders = vscode.workspace.workspaceFolders || [];
-          vscode.workspace.updateWorkspaceFolders(
-            workspaceFolders.length,
-            0,
-            { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
-          );
-        }
-      }
+      await promptOpenWorkspaceFolder();
       return;
     }
 
@@ -1383,40 +1347,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       return;
     }
 
-    const secretKey = 'computor.auth';
-    const usernameKey = 'computor.username';
-    const passwordKey = 'computor.password';
-
-    const storedUsername = await context.secrets.get(usernameKey);
-    const storedPassword = await context.secrets.get(passwordKey);
-    const currentAutoLogin = await settings.isAutoLoginEnabled();
-
-    if (!loginWebviewProvider) { loginWebviewProvider = new LoginWebviewProvider(context); }
-    let creds = await loginWebviewProvider.promptCredentials(
-      storedUsername || storedPassword
-        ? { username: storedUsername, password: storedPassword }
-        : undefined,
-      currentAutoLogin
-    );
-
-    while (creds) {
-      backendConnectionService.setBaseUrl(baseUrl);
-      const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-      if (!connectionStatus.isReachable) {
-        await backendConnectionService.showConnectionError(connectionStatus);
-        loginWebviewProvider.close();
-        return;
-      }
-
-      const client = new BearerTokenHttpClient(baseUrl, 5000);
-
-      try {
-        await client.authenticateWithCredentials(creds.username, creds.password);
-      } catch (error: any) {
-        creds = await loginWebviewProvider.notifyLoginFailed(error.message);
-        continue;
-      }
-
+    await runCredentialLoginLoop(context, baseUrl, settings, async (client, creds) => {
       const tokenData = client.getTokenData();
       const auth: StoredAuth = {
         accessToken: tokenData.accessToken!,
@@ -1431,47 +1362,28 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
       try {
         await controller.activate(client as any);
-        backendConnectionService.startHealthCheck(baseUrl);
-
-        activeSession = {
-          deactivate: () => controller.dispose().then(async () => {
-            await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-            await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-            await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-            await context.globalState.update('computor.tutor.selection', undefined);
-            backendConnectionService.stopHealthCheck();
-          }),
-          getActiveViews: () => controller.getActiveViews(),
-          getHttpClient: () => controller.getHttpClient()
-        };
-
-        await context.secrets.store(secretKey, JSON.stringify(auth));
-        await context.secrets.store(usernameKey, creds.username);
-        await context.secrets.store(passwordKey, creds.password);
-
-        if (creds.enableAutoLogin !== undefined) {
-          await settings.setAutoLoginEnabled(creds.enableAutoLogin);
-        }
-
-        if (extensionUpdateService) {
-          extensionUpdateService.checkForUpdates().catch(err => {
-            console.warn('Extension update check failed:', err);
-          });
-        }
-
-        loginWebviewProvider.close();
-        vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
-        return;
       } catch (error: any) {
         console.error('Login failed:', error);
         await controller.dispose();
         backendConnectionService.stopHealthCheck();
-
-        const errorMessage = error?.message || String(error);
-        creds = await loginWebviewProvider.notifyLoginFailed(errorMessage);
-        continue;
+        return { done: false, retryMessage: error?.message || String(error) };
       }
-    }
+
+      backendConnectionService.startHealthCheck(baseUrl);
+      activeSession = createActiveSession(context, controller);
+
+      await persistLoginCredentials(context, settings, auth, creds);
+
+      if (extensionUpdateService) {
+        extensionUpdateService.checkForUpdates().catch(err => {
+          console.warn('Extension update check failed:', err);
+        });
+      }
+
+      loginWebviewProvider?.close();
+      vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
+      return { done: true };
+    });
   } finally {
     isAuthenticating = false;
   }
@@ -1491,10 +1403,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 
   // Initialize all view contexts to false to hide views until login
-  await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-  await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-  await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-  await vscode.commands.executeCommand('setContext', 'computor.student.offline.show', false);
+  await setViewContextKeys([], ['student', 'tutor', 'lecturer', 'student.offline']);
 
   // Unified login command
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { ComputorApiService } from '../services/ComputorApiService';
+import { commandRegistrar } from './commandHelpers';
 
 export class LecturerFsCommands {
   private repositoryManager: LecturerRepositoryManager;
@@ -15,14 +16,14 @@ export class LecturerFsCommands {
   }
 
   register(): void {
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.fs.rename', async (item: any) => {
-        await this.renameEntry(item);
-      }),
-      vscode.commands.registerCommand('computor.lecturer.fs.delete', async (item: any) => {
-        await this.deleteEntry(item);
-      })
-    );
+
+    const register = commandRegistrar(this.context);
+    register('computor.lecturer.fs.rename', async (item: any) => {
+      await this.renameEntry(item);
+    });
+    register('computor.lecturer.fs.delete', async (item: any) => {
+      await this.deleteEntry(item);
+    });
   }
 
   private async renameEntry(item: any): Promise<void> {

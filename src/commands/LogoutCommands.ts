@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
+import { commandRegistrar } from './commandHelpers';
 
 /**
  * Commands for logging out and clearing credentials
@@ -17,17 +18,15 @@ export class LogoutCommands {
   }
 
   registerCommands(): void {
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.logout', async () => {
-        await this.handleLogout();
-      })
-    );
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.clearAllData', async () => {
-        await this.handleClearAllData();
-      })
-    );
+    const register = commandRegistrar(this.context);
+    register('computor.logout', async () => {
+      await this.handleLogout();
+    });
+
+    register('computor.clearAllData', async () => {
+      await this.handleClearAllData();
+    });
   }
 
   /**
