@@ -165,6 +165,28 @@ async function writeMarker(file: string, data: { backendUrl: string }): Promise<
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
+async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExistingFolders: boolean }> {
+  const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
+  if (action !== 'Open Folder') return { opened: false, hadExistingFolders: false };
+
+  const folderUri = await vscode.window.showOpenDialog({
+    canSelectFolders: true,
+    canSelectFiles: false,
+    canSelectMany: false,
+    openLabel: 'Select Workspace Folder'
+  });
+  if (!folderUri || folderUri.length === 0) return { opened: false, hadExistingFolders: false };
+
+  const workspaceFolders = vscode.workspace.workspaceFolders || [];
+  const hadExistingFolders = workspaceFolders.length > 0;
+  vscode.workspace.updateWorkspaceFolders(
+    workspaceFolders.length,
+    0,
+    { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
+  );
+  return { opened: true, hadExistingFolders };
+}
+
 /**
  * Result of auto-login attempt
  */
@@ -352,41 +374,10 @@ async function performAutoLogin(
 async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
   const root = getWorkspaceRoot();
   if (!root) {
-    const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
-    if (action === 'Open Folder') {
-      // Let the user select a folder to open as workspace
-      const folderUri = await vscode.window.showOpenDialog({
-        canSelectFolders: true,
-        canSelectFiles: false,
-        canSelectMany: false,
-        openLabel: 'Select Workspace Folder'
-      });
-
-      if (folderUri && folderUri.length > 0) {
-        // No longer storing pending login - will auto-detect .computor file instead
-
-        // Add the folder to the current workspace
-        // This will restart the extension if no workspace was open
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        vscode.workspace.updateWorkspaceFolders(
-          workspaceFolders.length,
-          0,
-          { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
-        );
-
-        // If we had existing workspace folders, the extension won't restart
-        // In that case, we can continue immediately
-        if (workspaceFolders.length > 0) {
-          // Give VS Code a moment to update
-          await new Promise(resolve => setTimeout(resolve, 100));
-          // Recursively call to handle the marker with the new workspace
-          await ensureWorkspaceMarker(baseUrl);
-          return;
-        }
-
-        // Extension will restart
-        return;
-      }
+    const result = await promptOpenWorkspaceFolder();
+    if (result.opened && result.hadExistingFolders) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await ensureWorkspaceMarker(baseUrl);
     }
     return;
   }
@@ -1333,29 +1324,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     // Require an open workspace before proceeding
     const root = getWorkspaceRoot();
     if (!root) {
-      const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
-      if (action === 'Open Folder') {
-        // Let the user select a folder to open as workspace
-        const folderUri = await vscode.window.showOpenDialog({
-          canSelectFolders: true,
-          canSelectFiles: false,
-          canSelectMany: false,
-          openLabel: 'Select Workspace Folder'
-        });
-
-        if (folderUri && folderUri.length > 0) {
-          // No longer storing pending login - will auto-detect .computor file instead
-
-          // Add the folder to the current workspace
-          // This will restart the extension if no workspace was open
-          const workspaceFolders = vscode.workspace.workspaceFolders || [];
-          vscode.workspace.updateWorkspaceFolders(
-            workspaceFolders.length,
-            0,
-            { uri: folderUri[0]!, name: path.basename(folderUri[0]!.fsPath) }
-          );
-        }
-      }
+      await promptOpenWorkspaceFolder();
       return;
     }
 
