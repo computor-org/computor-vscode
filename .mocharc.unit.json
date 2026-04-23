@@ -1,12 +1,14 @@
 {
-  "require": ["ts-node/register"],
+  "require": ["ts-node/register", "test/helpers/register-vscode-stub.ts"],
   "extension": ["ts"],
   "spec": [
-    "test/authentication/TokenManager.test.ts",
     "test/git/*.test.ts",
     "test/http/**/*.test.ts",
-    "test/settings/JsonSettingsStorage.test.ts",
-    "test/utils/*.test.ts"
+    "test/settings/*.test.ts",
+    "test/services/**/*.test.ts",
+    "test/utils/*.test.ts",
+    "test/commands/*.test.ts",
+    "test/ui/**/*.test.ts"
   ],
   "timeout": 5000,
   "recursive": true

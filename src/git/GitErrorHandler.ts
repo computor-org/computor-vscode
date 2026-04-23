@@ -54,7 +54,11 @@ export class GitErrorHandler {
       return GitErrorCode.BRANCH_NOT_FOUND;
     }
     
-    if (lowerMessage.includes('uncommitted changes') || lowerMessage.includes('changes not staged')) {
+    if (
+      lowerMessage.includes('uncommitted changes') ||
+      lowerMessage.includes('changes not staged') ||
+      lowerMessage.includes('would be overwritten')
+    ) {
       return GitErrorCode.UNCOMMITTED_CHANGES;
     }
     
