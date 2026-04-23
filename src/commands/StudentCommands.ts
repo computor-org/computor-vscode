@@ -25,7 +25,6 @@ export class StudentCommands {
   private treeDataProvider: StudentCourseContentTreeProvider;
   private courseContentTreeProvider?: any; // Will be set after registration
   private apiService: ComputorApiService; // Used for future API calls
-  // private workspaceManager: WorkspaceManager;
   private repositoryManager?: StudentRepositoryManager;
   private gitService: GitService;
   private testResultService: TestResultService;
@@ -44,7 +43,6 @@ export class StudentCommands {
     this.treeDataProvider = treeDataProvider;
     // Use provided apiService || create a new one
     this.apiService = apiService || new ComputorApiService(context);
-    // this.workspaceManager = WorkspaceManager.getInstance(context);
     this.repositoryManager = repositoryManager;
     this.gitService = GitService.getInstance();
     this.testResultService = TestResultService.getInstance();
