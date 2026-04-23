@@ -105,17 +105,7 @@ async function attemptSilentAutoLogin(
     await controller.activate(client as any, onProgress);
     backendConnectionService.startHealthCheck(baseUrl);
 
-    activeSession = {
-      deactivate: () => controller.dispose().then(async () => {
-        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-        await context.globalState.update('computor.tutor.selection', undefined);
-        backendConnectionService.stopHealthCheck();
-      }),
-      getActiveViews: () => controller.getActiveViews(),
-      getHttpClient: () => controller.getHttpClient()
-    };
+    activeSession = createActiveSession(context, controller);
 
     await context.secrets.store('computor.auth', JSON.stringify(auth));
 
@@ -145,6 +135,20 @@ function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClie
     userId: auth.userId
   });
   return client;
+}
+
+function createActiveSession(context: vscode.ExtensionContext, controller: UnifiedController): UnifiedSession {
+  return {
+    deactivate: () => controller.dispose().then(async () => {
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+      await context.globalState.update('computor.tutor.selection', undefined);
+      backendConnectionService.stopHealthCheck();
+    }),
+    getActiveViews: () => controller.getActiveViews(),
+    getHttpClient: () => controller.getHttpClient()
+  };
 }
 
 async function readMarker(file: string): Promise<{ backendUrl?: string; courseId?: string } | undefined> {
@@ -192,17 +196,7 @@ async function attemptApiTokenLogin(
     await controller.activate(client as any, onProgress);
     backendConnectionService.startHealthCheck(baseUrl);
 
-    activeSession = {
-      deactivate: () => controller.dispose().then(async () => {
-        await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-        await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-        await context.globalState.update('computor.tutor.selection', undefined);
-        backendConnectionService.stopHealthCheck();
-      }),
-      getActiveViews: () => controller.getActiveViews(),
-      getHttpClient: () => controller.getHttpClient()
-    };
+    activeSession = createActiveSession(context, controller);
 
     if (extensionUpdateService) {
       extensionUpdateService.checkForUpdates().catch(err => {
@@ -1433,17 +1427,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
         await controller.activate(client as any);
         backendConnectionService.startHealthCheck(baseUrl);
 
-        activeSession = {
-          deactivate: () => controller.dispose().then(async () => {
-            await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-            await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-            await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-            await context.globalState.update('computor.tutor.selection', undefined);
-            backendConnectionService.stopHealthCheck();
-          }),
-          getActiveViews: () => controller.getActiveViews(),
-          getHttpClient: () => controller.getHttpClient()
-        };
+        activeSession = createActiveSession(context, controller);
 
         await context.secrets.store(secretKey, JSON.stringify(auth));
         await context.secrets.store(usernameKey, creds.username);
