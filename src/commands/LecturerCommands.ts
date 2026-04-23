@@ -30,6 +30,7 @@ import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
+import { commandRegistrar } from './commandHelpers';
 
 interface ReleaseScope {
   label?: string;
@@ -87,6 +88,8 @@ export class LecturerCommands {
   }
 
   registerCommands(): void {
+
+    const register = commandRegistrar(this.context);
     // Tree refresh - register both command names for compatibility
     const refreshHandler = async () => {
       console.log('=== LECTURER TREE REFRESH COMMAND TRIGGERED ===');
@@ -104,72 +107,52 @@ export class LecturerCommands {
     };
     
     // Register refresh commands with proper naming convention
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.refresh', refreshHandler)
-    );
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.refreshCourses', refreshHandler)
-    );
+    register('computor.lecturer.refresh', refreshHandler);
+    register('computor.lecturer.refreshCourses', refreshHandler);
 
     // Sync assignments repositories (manual trigger)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.syncAssignments', async () => {
-        try {
-          const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
-          const mgr = new LecturerRepositoryManager(this.context, this.apiService);
-          await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Syncing assignments repositories...', cancellable: false }, async (progress) => {
-            await mgr.syncAllAssignments((m) => progress.report({ message: m }));
-          });
-          vscode.window.showInformationMessage('Assignments repositories synced.');
-        } catch (e) {
-          vscode.window.showErrorMessage(`Failed to sync assignments: ${e}`);
-        }
-      })
-    );
+    register('computor.lecturer.syncAssignments', async () => {
+      try {
+        const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
+        const mgr = new LecturerRepositoryManager(this.context, this.apiService);
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Syncing assignments repositories...', cancellable: false }, async (progress) => {
+          await mgr.syncAllAssignments((m) => progress.report({ message: m }));
+        });
+        vscode.window.showInformationMessage('Assignments repositories synced.');
+      } catch (e) {
+        vscode.window.showErrorMessage(`Failed to sync assignments: ${e}`);
+      }
+    });
 
     // Organization, course family, and course creation
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createOrganization', async () => {
-        await this.createOrganization();
-      })
-    );
+    register('computor.lecturer.createOrganization', async () => {
+      await this.createOrganization();
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createCourseFamily', async (item: OrganizationTreeItem) => {
-        await this.createCourseFamily(item);
-      })
-    );
+    register('computor.lecturer.createCourseFamily', async (item: OrganizationTreeItem) => {
+      await this.createCourseFamily(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createCourse', async (item?: CourseFamilyTreeItem) => {
-        await this.createCourse(item);
-      })
-    );
+    register('computor.lecturer.createCourse', async (item?: CourseFamilyTreeItem) => {
+      await this.createCourse(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.manageCourse', async (item: CourseTreeItem) => {
-        await this.manageCourse(item);
-      })
-    );
+    register('computor.lecturer.manageCourse', async (item: CourseTreeItem) => {
+      await this.manageCourse(item);
+    });
 
     // Course content management
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createCourseContent', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
-        await this.createCourseContent(item);
-      })
-    );
+    register('computor.lecturer.createCourseContent', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
+      await this.createCourseContent(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showMessages', async (item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
-        await this.showMessages(item);
-      })
-    );
+    register('computor.lecturer.showMessages', async (item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
+      await this.showMessages(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseMemberComments', async (item: CourseMemberTreeItem) => {
-        await this.showCourseMemberComments(item);
-      })
-    );
+    register('computor.lecturer.showCourseMemberComments', async (item: CourseMemberTreeItem) => {
+      await this.showCourseMemberComments(item);
+    });
 
     // Deactivated: Sync GitLab Permissions command
     // this.context.subscriptions.push(
@@ -178,231 +161,169 @@ export class LecturerCommands {
     //   })
     // );
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.changeCourseContentType', async (item: CourseContentTreeItem) => {
-        await this.changeCourseContentType(item);
-      })
-    );
+    register('computor.lecturer.changeCourseContentType', async (item: CourseContentTreeItem) => {
+      await this.changeCourseContentType(item);
+    });
 
     // Course content type management
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createCourseContentType', async (item: CourseFolderTreeItem) => {
-        await this.createCourseContentType(item);
-      })
-    );
+    register('computor.lecturer.createCourseContentType', async (item: CourseFolderTreeItem) => {
+      await this.createCourseContentType(item);
+    });
 
     // Course group management
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createCourseGroup', async (item: CourseFolderTreeItem) => {
-        await this.courseGroupCommands.createCourseGroup(item);
-      })
-    );
+    register('computor.lecturer.createCourseGroup', async (item: CourseFolderTreeItem) => {
+      await this.courseGroupCommands.createCourseGroup(item);
+    });
 
     // Course member import with preview
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.importCourseMembersPreview', async (item: CourseTreeItem | CourseFolderTreeItem) => {
-        await this.importCourseMembersWithPreview(item);
-      })
-    );
+    register('computor.lecturer.importCourseMembersPreview', async (item: CourseTreeItem | CourseFolderTreeItem) => {
+      await this.importCourseMembersWithPreview(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.editCourseContentType', async (item: CourseContentTypeTreeItem) => {
-        await this.editCourseContentType(item);
-      })
-    );
+    register('computor.lecturer.editCourseContentType', async (item: CourseContentTypeTreeItem) => {
+      await this.editCourseContentType(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.deleteCourseContentType', async (item: CourseContentTypeTreeItem) => {
-        await this.deleteCourseContentType(item);
-      })
-    );
+    register('computor.lecturer.deleteCourseContentType', async (item: CourseContentTypeTreeItem) => {
+      await this.deleteCourseContentType(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.renameCourseContent', async (item: CourseContentTreeItem) => {
-        await this.renameCourseContent(item);
-      })
-    );
+    register('computor.lecturer.renameCourseContent', async (item: CourseContentTreeItem) => {
+      await this.renameCourseContent(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.renameCourseContentType', async (item: CourseContentTypeTreeItem) => {
-        await this.renameCourseContentType(item);
-      })
-    );
+    register('computor.lecturer.renameCourseContentType', async (item: CourseContentTypeTreeItem) => {
+      await this.renameCourseContentType(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.deleteCourseContent', async (item: CourseContentTreeItem) => {
-        await this.deleteCourseContent(item);
-      })
-    );
+    register('computor.lecturer.deleteCourseContent', async (item: CourseContentTreeItem) => {
+      await this.deleteCourseContent(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.archiveCourseContent', async (item: CourseContentTreeItem) => {
-        await this.archiveCourseContent(item);
-      })
-    );
+    register('computor.lecturer.archiveCourseContent', async (item: CourseContentTreeItem) => {
+      await this.archiveCourseContent(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.unarchiveCourseContent', async (item: CourseContentTreeItem) => {
-        await this.unarchiveCourseContent(item);
-      })
-    );
+    register('computor.lecturer.unarchiveCourseContent', async (item: CourseContentTreeItem) => {
+      await this.unarchiveCourseContent(item);
+    });
 
     // Example management
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.updateExampleVersion', async (item: CourseContentTreeItem) => {
-        await this.updateExampleVersion(item);
-      })
-    );
+    register('computor.lecturer.updateExampleVersion', async (item: CourseContentTreeItem) => {
+      await this.updateExampleVersion(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.updateExampleVersions', async (item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem) => {
-        await this.batchUpdateExampleVersions(item);
-      })
-    );
+    register('computor.lecturer.updateExampleVersions', async (item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem) => {
+      await this.batchUpdateExampleVersions(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.viewDeploymentInfo', async (item: CourseContentTreeItem) => {
-        await this.viewDeploymentInfo(item);
-      })
-    );
+    register('computor.lecturer.viewDeploymentInfo', async (item: CourseContentTreeItem) => {
+      await this.viewDeploymentInfo(item);
+    });
 
     // GitLab repository opening
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.openGitLabRepo', async (item: CourseTreeItem | CourseMemberTreeItem) => {
-        await this.openGitLabRepository(item);
-      })
-    );
+    register('computor.lecturer.openGitLabRepo', async (item: CourseTreeItem | CourseMemberTreeItem) => {
+      await this.openGitLabRepository(item);
+    });
 
     // Release/deployment commands
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.releaseCourseContent', async (item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem) => {
-        await this.releaseCourseContent(item);
-      })
-    );
+    register('computor.lecturer.releaseCourseContent', async (item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem) => {
+      await this.releaseCourseContent(item);
+    });
 
     // Release from webview (accepts course data directly)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.releaseCourseContentFromWebview', async (courseData: any) => {
-        await this.releaseCourseContentFromWebview(courseData);
-      })
-    );
+    register('computor.lecturer.releaseCourseContentFromWebview', async (courseData: any) => {
+      await this.releaseCourseContentFromWebview(courseData);
+    });
 
     // Webview commands
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseDetails', async (item: CourseTreeItem) => {
-        await this.showCourseDetails(item);
-      })
-    );
+    register('computor.lecturer.showCourseDetails', async (item: CourseTreeItem) => {
+      await this.showCourseDetails(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseContentDetails', async (item: CourseContentTreeItem) => {
-        await this.showCourseContentDetails(item);
-      })
-    );
+    register('computor.lecturer.showCourseContentDetails', async (item: CourseContentTreeItem) => {
+      await this.showCourseContentDetails(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showOrganizationDetails', async (item: OrganizationTreeItem) => {
-        await this.showOrganizationDetails(item);
-      })
-    );
+    register('computor.lecturer.showOrganizationDetails', async (item: OrganizationTreeItem) => {
+      await this.showOrganizationDetails(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseFamilyDetails', async (item: CourseFamilyTreeItem) => {
-        await this.showCourseFamilyDetails(item);
-      })
-    );
+    register('computor.lecturer.showCourseFamilyDetails', async (item: CourseFamilyTreeItem) => {
+      await this.showCourseFamilyDetails(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseContentTypeDetails', async (item: CourseContentTypeTreeItem) => {
-        await this.showCourseContentTypeDetails(item);
-      })
-    );
+    register('computor.lecturer.showCourseContentTypeDetails', async (item: CourseContentTypeTreeItem) => {
+      await this.showCourseContentTypeDetails(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
-        await this.showCourseGroupDetails(item);
-      })
-    );
+    register('computor.lecturer.showCourseGroupDetails', async (item: CourseGroupTreeItem) => {
+      await this.showCourseGroupDetails(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseMemberDetails', async (item: CourseMemberTreeItem) => {
-        await this.showCourseMemberDetails(item);
-      })
-    );
+    register('computor.lecturer.showCourseMemberDetails', async (item: CourseMemberTreeItem) => {
+      await this.showCourseMemberDetails(item);
+    });
 
     // Course progress overview - shows all students' progress for a course
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseProgressOverview', async (itemOrId: CourseTreeItem | string) => {
-        if (typeof itemOrId === 'string') {
-          // Called with course ID directly (from tutor view)
-          await this.showCourseProgressOverviewById(itemOrId);
-        } else {
-          // Called with tree item
-          await this.showCourseProgressOverview(itemOrId);
-        }
-      })
-    );
+    register('computor.lecturer.showCourseProgressOverview', async (itemOrId: CourseTreeItem | string) => {
+      if (typeof itemOrId === 'string') {
+        // Called with course ID directly (from tutor view)
+        await this.showCourseProgressOverviewById(itemOrId);
+      } else {
+        // Called with tree item
+        await this.showCourseProgressOverview(itemOrId);
+      }
+    });
 
     // Course member progress - shows detailed progress for a single student
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showCourseMemberProgress', async (itemOrId: CourseMemberTreeItem | string, memberName?: string) => {
-        if (typeof itemOrId === 'string') {
-          // Called with course member ID directly (from overview webview)
-          await this.courseMemberProgressWebviewProvider.showMemberProgress(itemOrId, memberName);
-        } else {
-          // Called with tree item
-          await this.showCourseMemberProgress(itemOrId);
-        }
-      })
-    );
+    register('computor.lecturer.showCourseMemberProgress', async (itemOrId: CourseMemberTreeItem | string, memberName?: string) => {
+      if (typeof itemOrId === 'string') {
+        // Called with course member ID directly (from overview webview)
+        await this.courseMemberProgressWebviewProvider.showMemberProgress(itemOrId, memberName);
+      } else {
+        // Called with tree item
+        await this.showCourseMemberProgress(itemOrId);
+      }
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createAssignmentFolder', async (item: CourseContentTreeItem) => {
-        await this.createAssignmentFolder(item);
-      })
-    );
+    register('computor.lecturer.createAssignmentFolder', async (item: CourseContentTreeItem) => {
+      await this.createAssignmentFolder(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createAssignmentFile', async (item: CourseContentTreeItem) => {
-        await this.createAssignmentFile(item);
-      })
-    );
+    register('computor.lecturer.createAssignmentFile', async (item: CourseContentTreeItem) => {
+      await this.createAssignmentFile(item);
+    });
 
     // Open local assignment folder for a content
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.openAssignmentFolder', async (item: CourseContentTreeItem) => {
-        if (!item || !item.courseContent?.id || !item.course?.id) { vscode.window.showWarningMessage('Select an assignment'); return; }
-        try {
-          const course = await this.apiService.getCourse(item.course.id);
-          const content = await this.apiService.getCourseContent(item.courseContent.id, true);
-          const deploymentPath = (content as any)?.deployment?.deployment_path || (content as any)?.deployment?.example_identifier || '';
-          if (!course || !deploymentPath) { vscode.window.showWarningMessage('Assignment not initialized in assignments repo yet.'); return; }
-          const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
-          const mgr = new LecturerRepositoryManager(this.context, this.apiService);
-          const folder = mgr.getAssignmentFolderPath(course, deploymentPath);
-          if (!folder || !fs.existsSync(folder)) {
-            const choice = await vscode.window.showWarningMessage('Assignment folder missing locally. Sync assignments now?', 'Sync', 'Cancel');
-            if (choice === 'Sync') { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
-            return;
-          }
-          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
-        } catch (e) {
-          vscode.window.showErrorMessage(`Failed to open assignment folder: ${e}`);
+    register('computor.lecturer.openAssignmentFolder', async (item: CourseContentTreeItem) => {
+      if (!item || !item.courseContent?.id || !item.course?.id) { vscode.window.showWarningMessage('Select an assignment'); return; }
+      try {
+        const course = await this.apiService.getCourse(item.course.id);
+        const content = await this.apiService.getCourseContent(item.courseContent.id, true);
+        const deploymentPath = (content as any)?.deployment?.deployment_path || (content as any)?.deployment?.example_identifier || '';
+        if (!course || !deploymentPath) { vscode.window.showWarningMessage('Assignment not initialized in assignments repo yet.'); return; }
+        const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
+        const mgr = new LecturerRepositoryManager(this.context, this.apiService);
+        const folder = mgr.getAssignmentFolderPath(course, deploymentPath);
+        if (!folder || !fs.existsSync(folder)) {
+          const choice = await vscode.window.showWarningMessage('Assignment folder missing locally. Sync assignments now?', 'Sync', 'Cancel');
+          if (choice === 'Sync') { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
+          return;
         }
-      })
-    );
+        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
+      } catch (e) {
+        vscode.window.showErrorMessage(`Failed to open assignment folder: ${e}`);
+      }
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.renameCourseGroup', async (item: CourseGroupTreeItem) => {
-        await this.renameCourseGroup(item);
-      })
-    );
+    register('computor.lecturer.renameCourseGroup', async (item: CourseGroupTreeItem) => {
+      await this.renameCourseGroup(item);
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.deleteCourseGroup', async (item: CourseGroupTreeItem) => {
-        await this.deleteCourseGroup(item);
-      })
-    );
+    register('computor.lecturer.deleteCourseGroup', async (item: CourseGroupTreeItem) => {
+      await this.deleteCourseGroup(item);
+    });
   }
 
   private async createOrganization(): Promise<void> {

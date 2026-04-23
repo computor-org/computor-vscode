@@ -19,6 +19,7 @@ interface TutorFilterRefreshable {
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { TutorTestService } from '../services/TutorTestService';
+import { commandRegistrar } from './commandHelpers';
 
 export class TutorCommands {
   private context: vscode.ExtensionContext;
@@ -59,404 +60,374 @@ export class TutorCommands {
   }
 
   registerCommands(): void {
+
+    const register = commandRegistrar(this.context);
     // Refresh tutor view: clear caches for current member to force API reload
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.refresh', async () => {
-        try {
-          const sel = TutorSelectionService.getInstance();
-          const memberId = sel.getCurrentMemberId();
-          const courseId = sel.getCurrentCourseId();
-          const groupId = sel.getCurrentGroupId();
-
-          // Clear all tutor-related caches to ensure fresh data
-          this.apiService.clearTutorCoursesCache();
-          if (courseId) {
-            this.apiService.clearTutorCourseGroupsCache(courseId);
-            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
-          }
-          if (memberId) {
-            this.apiService.clearTutorMemberCourseContentsCache(memberId);
-          }
-          // Also clear content kinds to be safe
-          this.apiService.clearCourseContentKindsCache();
-
-          // Proactively fetch fresh data to trigger API calls
-          if (courseId) {
-            await this.apiService.getTutorCourseMembers(courseId, groupId || undefined);
-          }
-          if (courseId && memberId) {
-            await this.apiService.getTutorCourseContents(courseId, memberId);
-          }
-        } catch (error) {
-          console.error('[TutorCommands] Error refreshing tutor data:', error);
-        }
-        this.treeDataProvider.refresh();
-        this.filterProvider?.refreshFilters();
-      })
-    );
-
-    // Refresh tree view only (without cache clearing/API re-fetch) - used after marking messages as read
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.refreshTree', () => {
-        this.treeDataProvider.refresh();
-      })
-    );
-
-    // Show Course Progress (uses current selected course from filters)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.showCourseProgress', async () => {
-        const sel = TutorSelectionService.getInstance();
-        const courseId = sel.getCurrentCourseId();
-        if (!courseId) {
-          vscode.window.showWarningMessage('Please select a course first.');
-          return;
-        }
-        await vscode.commands.executeCommand('computor.lecturer.showCourseProgressOverview', courseId);
-      })
-    );
-
-    // Show Member Progress (uses current selected member from filters)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.showMemberProgress', async () => {
+    register('computor.tutor.refresh', async () => {
+      try {
         const sel = TutorSelectionService.getInstance();
         const memberId = sel.getCurrentMemberId();
-        const memberName = sel.getCurrentMemberLabel();
-        if (!memberId) {
-          vscode.window.showWarningMessage('Please select a member first.');
-          return;
+        const courseId = sel.getCurrentCourseId();
+        const groupId = sel.getCurrentGroupId();
+
+        // Clear all tutor-related caches to ensure fresh data
+        this.apiService.clearTutorCoursesCache();
+        if (courseId) {
+          this.apiService.clearTutorCourseGroupsCache(courseId);
+          this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
         }
-        await vscode.commands.executeCommand('computor.lecturer.showCourseMemberProgress', memberId, memberName);
-      })
-    );
+        if (memberId) {
+          this.apiService.clearTutorMemberCourseContentsCache(memberId);
+        }
+        // Also clear content kinds to be safe
+        this.apiService.clearCourseContentKindsCache();
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.showCourseMemberComments', async () => {
-        await this.showCourseMemberComments();
-      })
-    );
+        // Proactively fetch fresh data to trigger API calls
+        if (courseId) {
+          await this.apiService.getTutorCourseMembers(courseId, groupId || undefined);
+        }
+        if (courseId && memberId) {
+          await this.apiService.getTutorCourseContents(courseId, memberId);
+        }
+      } catch (error) {
+        console.error('[TutorCommands] Error refreshing tutor data:', error);
+      }
+      this.treeDataProvider.refresh();
+      this.filterProvider?.refreshFilters();
+    });
 
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.showMessages', async (item?: any) => {
-        await this.showMessages(item);
-      })
-    );
+    // Refresh tree view only (without cache clearing/API re-fetch) - used after marking messages as read
+    register('computor.tutor.refreshTree', () => {
+      this.treeDataProvider.refresh();
+    });
+
+    // Show Course Progress (uses current selected course from filters)
+    register('computor.tutor.showCourseProgress', async () => {
+      const sel = TutorSelectionService.getInstance();
+      const courseId = sel.getCurrentCourseId();
+      if (!courseId) {
+        vscode.window.showWarningMessage('Please select a course first.');
+        return;
+      }
+      await vscode.commands.executeCommand('computor.lecturer.showCourseProgressOverview', courseId);
+    });
+
+    // Show Member Progress (uses current selected member from filters)
+    register('computor.tutor.showMemberProgress', async () => {
+      const sel = TutorSelectionService.getInstance();
+      const memberId = sel.getCurrentMemberId();
+      const memberName = sel.getCurrentMemberLabel();
+      if (!memberId) {
+        vscode.window.showWarningMessage('Please select a member first.');
+        return;
+      }
+      await vscode.commands.executeCommand('computor.lecturer.showCourseMemberProgress', memberId, memberName);
+    });
+
+    register('computor.tutor.showCourseMemberComments', async () => {
+      await this.showCourseMemberComments();
+    });
+
+    register('computor.tutor.showMessages', async (item?: any) => {
+      await this.showMessages(item);
+    });
 
     // Old tutor example/course commands removed in favor of TutorStudentTreeProvider actions
 
     // Tutor: Clone student repository (scaffold)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.cloneStudentRepository', async (item: any) => {
-        try {
-          // Prefer repository information from the clicked assignment's submission_group
-          const content: any = item?.content || item?.course_content;
-          const contentCourseId: string | undefined = content?.course_id;
-          const submission = content?.submission_group || content?.submission;
-          const submissionRepo = submission?.repository;
+    register('computor.tutor.cloneStudentRepository', async (item: any) => {
+      try {
+        // Prefer repository information from the clicked assignment's submission_group
+        const content: any = item?.content || item?.course_content;
+        const contentCourseId: string | undefined = content?.course_id;
+        const submission = content?.submission_group || content?.submission;
+        const submissionRepo = submission?.repository;
 
-          const sel = TutorSelectionService.getInstance();
-          let courseId = contentCourseId || sel.getCurrentCourseId() || '';
-          let memberId = sel.getCurrentMemberId() || '';
-          if (!courseId || !memberId) {
-            // Fallback prompts only if selection is missing
-            if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
-            if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+        const sel = TutorSelectionService.getInstance();
+        let courseId = contentCourseId || sel.getCurrentCourseId() || '';
+        let memberId = sel.getCurrentMemberId() || '';
+        if (!courseId || !memberId) {
+          // Fallback prompts only if selection is missing
+          if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
+          if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+        }
+        if (!courseId || !memberId) { return; }
+
+        // Build remote URL: prefer clone_url; then url/web_url; try to construct from provider_url + full_path; fallback to backend member repo; if still missing, throw
+        let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
+        if (!remoteUrl && submissionRepo) {
+          const base = (submissionRepo as any).provider_url || (submissionRepo as any).provider || submissionRepo.url || '';
+          const full = submissionRepo.full_path || '';
+          if (base && full) {
+            remoteUrl = `${base.replace(/\/$/, '')}/${full.replace(/^\//, '')}`;
+            if (!remoteUrl.endsWith('.git')) remoteUrl += '.git';
           }
-          if (!courseId || !memberId) { return; }
+        }
+        if (!remoteUrl) {
+          // Try backend member repository endpoint
+          const repoMeta = await this.apiService.getTutorStudentRepository(courseId, memberId);
+          remoteUrl = repoMeta?.remote_url;
+        }
+        if (!remoteUrl) {
+          vscode.window.showErrorMessage('No repository URL found for this student assignment.');
+          return;
+        }
 
-          // Build remote URL: prefer clone_url; then url/web_url; try to construct from provider_url + full_path; fallback to backend member repo; if still missing, throw
-          let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
-          if (!remoteUrl && submissionRepo) {
-            const base = (submissionRepo as any).provider_url || (submissionRepo as any).provider || submissionRepo.url || '';
-            const full = submissionRepo.full_path || '';
-            if (base && full) {
-              remoteUrl = `${base.replace(/\/$/, '')}/${full.replace(/^\//, '')}`;
-              if (!remoteUrl.endsWith('.git')) remoteUrl += '.git';
+        // Extract submission group ID if available
+        const submissionGroupId = submission?.id || content?.submission_group?.id;
+        // Include full repository data for full_path
+        const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
+        const repoName = deriveRepositoryDirectoryName({
+          submissionRepo: fullSubmissionRepo,
+          remoteUrl,
+          submissionGroupId,
+          courseId,
+          memberId
+        });
+
+        // Ensure workspace directories exist
+        await this.workspaceStructure.ensureDirectories();
+
+        // Use review directory for tutor repositories
+        const dir = this.workspaceStructure.getReviewRepositoryPath(repoName);
+        await fs.promises.mkdir(dir, { recursive: true });
+        // Git clone into the destination if empty
+        const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
+        if (exists) {
+          vscode.window.showWarningMessage(`Directory not empty: ${dir}. Skipping clone.`);
+        } else {
+          const origin = (() => { try { const u = new URL(remoteUrl!); return u.origin; } catch { return undefined; } })();
+          const tokenManager = GitLabTokenManager.getInstance(this.context);
+          let authUrl = remoteUrl!;
+          if (origin) {
+            const savedToken = await tokenManager.getToken(origin);
+            if (savedToken) {
+              authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, savedToken);
             }
           }
-          if (!remoteUrl) {
-            // Try backend member repository endpoint
-            const repoMeta = await this.apiService.getTutorStudentRepository(courseId, memberId);
-            remoteUrl = repoMeta?.remote_url;
-          }
-          if (!remoteUrl) {
-            vscode.window.showErrorMessage('No repository URL found for this student assignment.');
-            return;
-          }
-
-          // Extract submission group ID if available
-          const submissionGroupId = submission?.id || content?.submission_group?.id;
-          // Include full repository data for full_path
-          const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
-          const repoName = deriveRepositoryDirectoryName({
-            submissionRepo: fullSubmissionRepo,
-            remoteUrl,
-            submissionGroupId,
-            courseId,
-            memberId
-          });
-
-          // Ensure workspace directories exist
-          await this.workspaceStructure.ensureDirectories();
-
-          // Use review directory for tutor repositories
-          const dir = this.workspaceStructure.getReviewRepositoryPath(repoName);
-          await fs.promises.mkdir(dir, { recursive: true });
-          // Git clone into the destination if empty
-          const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
-          if (exists) {
-            vscode.window.showWarningMessage(`Directory not empty: ${dir}. Skipping clone.`);
-          } else {
-            const origin = (() => { try { const u = new URL(remoteUrl!); return u.origin; } catch { return undefined; } })();
-            const tokenManager = GitLabTokenManager.getInstance(this.context);
-            let authUrl = remoteUrl!;
-            if (origin) {
-              const savedToken = await tokenManager.getToken(origin);
-              if (savedToken) {
-                authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, savedToken);
-              }
-            }
-            try {
+          try {
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
+              await createSimpleGit().clone(authUrl, dir);
+            });
+            vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+            this.treeDataProvider.refresh();
+          } catch (e: any) {
+            const msg = String(e?.message || e || '');
+            if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('401'))) {
+              const newToken = await (async () => {
+                // Reuse token manager's prompt behavior
+                const t = await vscode.window.showInputBox({
+                  title: `GitLab Authentication for ${origin}`,
+                  prompt: `Enter your GitLab Personal Access Token for ${origin}`,
+                  placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
+                  password: true,
+                  ignoreFocusOut: true
+                });
+                if (t) await tokenManager.storeToken(origin, t);
+                return t || undefined;
+              })();
+              if (!newToken) throw e;
+              authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, newToken);
               await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
                 await createSimpleGit().clone(authUrl, dir);
               });
               vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
               this.treeDataProvider.refresh();
-            } catch (e: any) {
-              const msg = String(e?.message || e || '');
-              if (origin && (msg.includes('Authentication failed') || msg.includes('could not read Username') || msg.includes('401'))) {
-                const newToken = await (async () => {
-                  // Reuse token manager's prompt behavior
-                  const t = await vscode.window.showInputBox({
-                    title: `GitLab Authentication for ${origin}`,
-                    prompt: `Enter your GitLab Personal Access Token for ${origin}`,
-                    placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
-                    password: true,
-                    ignoreFocusOut: true
-                  });
-                  if (t) await tokenManager.storeToken(origin, t);
-                  return t || undefined;
-                })();
-                if (!newToken) throw e;
-                authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, newToken);
-                await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
-                  await createSimpleGit().clone(authUrl, dir);
-                });
-                vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
-                this.treeDataProvider.refresh();
-              } else {
-                throw e;
-              }
+            } else {
+              throw e;
             }
           }
-          // Directory is already inside the current workspace; no need to add a new folder
-        } catch (e: any) {
-          vscode.window.showErrorMessage(`Failed to clone student repository: ${e?.message || e}`);
         }
-      })
-    );
+        // Directory is already inside the current workspace; no need to add a new folder
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Failed to clone student repository: ${e?.message || e}`);
+      }
+    });
 
     // Tutor: Update student repository (pull latest changes)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.updateStudentRepository', async (item: any) => {
-        try {
-          const content: any = item?.content || item?.courseContent || item?.course_content || item;
-          const submission = content?.submission_group || content?.submission || content;
-          const submissionRepo = submission?.repository || content?.submission_group?.repository;
+    register('computor.tutor.updateStudentRepository', async (item: any) => {
+      try {
+        const content: any = item?.content || item?.courseContent || item?.course_content || item;
+        const submission = content?.submission_group || content?.submission || content;
+        const submissionRepo = submission?.repository || content?.submission_group?.repository;
 
-          // Get course and member context
-          const sel = TutorSelectionService.getInstance();
-          let courseId = sel.getCurrentCourseId();
-          let memberId = sel.getCurrentMemberId();
+        // Get course and member context
+        const sel = TutorSelectionService.getInstance();
+        let courseId = sel.getCurrentCourseId();
+        let memberId = sel.getCurrentMemberId();
 
-          if (!courseId || !memberId) {
-            if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
-            if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
-          }
-          if (!courseId || !memberId) { return; }
-
-          // Build remote URL
-          let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
-          if (!remoteUrl && submissionRepo) {
-            const base = (submissionRepo as any).provider_url || (submissionRepo as any).provider || submissionRepo.url || '';
-            const full = submissionRepo.full_path || '';
-            if (base && full) {
-              remoteUrl = `${base.replace(/\/$/, '')}/${full.replace(/^\//, '')}`;
-              if (!remoteUrl.endsWith('.git')) remoteUrl += '.git';
-            }
-          }
-
-          // Get repository directory name
-          const submissionGroupId = submission?.id || content?.submission_group?.id;
-          const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
-          const repoName = deriveRepositoryDirectoryName({
-            submissionRepo: fullSubmissionRepo,
-            remoteUrl,
-            submissionGroupId,
-            courseId,
-            memberId
-          });
-
-          const dir = this.workspaceStructure.getReviewRepositoryPath(repoName);
-          const gitDir = path.join(dir, '.git');
-
-          // Check if repository exists
-          if (!fs.existsSync(gitDir)) {
-            vscode.window.showErrorMessage('Repository not found. Please clone it first.');
-            return;
-          }
-
-          // Update the repository
-          await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Updating student repository...', cancellable: false },
-            async () => {
-              const git = createSimpleGit({ baseDir: dir });
-              await git.fetch(['--all']);
-              await git.pull(['--ff-only']);
-            }
-          );
-
-          vscode.window.showInformationMessage('Repository updated successfully.');
-          this.treeDataProvider.refresh();
-        } catch (e: any) {
-          vscode.window.showErrorMessage(`Failed to update repository: ${e?.message || e}`);
+        if (!courseId || !memberId) {
+          if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
+          if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
         }
-      })
-    );
+        if (!courseId || !memberId) { return; }
+
+        // Build remote URL
+        let remoteUrl: string | undefined = submissionRepo?.clone_url || submissionRepo?.url || submissionRepo?.web_url;
+        if (!remoteUrl && submissionRepo) {
+          const base = (submissionRepo as any).provider_url || (submissionRepo as any).provider || submissionRepo.url || '';
+          const full = submissionRepo.full_path || '';
+          if (base && full) {
+            remoteUrl = `${base.replace(/\/$/, '')}/${full.replace(/^\//, '')}`;
+            if (!remoteUrl.endsWith('.git')) remoteUrl += '.git';
+          }
+        }
+
+        // Get repository directory name
+        const submissionGroupId = submission?.id || content?.submission_group?.id;
+        const fullSubmissionRepo = submissionRepo || content?.submission_group?.repository;
+        const repoName = deriveRepositoryDirectoryName({
+          submissionRepo: fullSubmissionRepo,
+          remoteUrl,
+          submissionGroupId,
+          courseId,
+          memberId
+        });
+
+        const dir = this.workspaceStructure.getReviewRepositoryPath(repoName);
+        const gitDir = path.join(dir, '.git');
+
+        // Check if repository exists
+        if (!fs.existsSync(gitDir)) {
+          vscode.window.showErrorMessage('Repository not found. Please clone it first.');
+          return;
+        }
+
+        // Update the repository
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'Updating student repository...', cancellable: false },
+          async () => {
+            const git = createSimpleGit({ baseDir: dir });
+            await git.fetch(['--all']);
+            await git.pull(['--ff-only']);
+          }
+        );
+
+        vscode.window.showInformationMessage('Repository updated successfully.');
+        this.treeDataProvider.refresh();
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Failed to update repository: ${e?.message || e}`);
+      }
+    });
 
     // Tutor: Set grading and status together
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.assignment.grading', async (item: { content?: CourseContentStudentList; courseContent?: CourseContentStudentList }) => {
-        const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
-        const contentId = content?.id;
-        if (!content || !contentId) { vscode.window.showErrorMessage('No course content selected.'); return; }
+    register('computor.tutor.assignment.grading', async (item: { content?: CourseContentStudentList; courseContent?: CourseContentStudentList }) => {
+      const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
+      const contentId = content?.id;
+      if (!content || !contentId) { vscode.window.showErrorMessage('No course content selected.'); return; }
 
-        const sel = TutorSelectionService.getInstance();
-        const memberId = sel.getCurrentMemberId();
-        if (!memberId) { vscode.window.showErrorMessage('No course member selected.'); return; }
+      const sel = TutorSelectionService.getInstance();
+      const memberId = sel.getCurrentMemberId();
+      if (!memberId) { vscode.window.showErrorMessage('No course member selected.'); return; }
 
-        // Get the latest submitted artifact to ensure grade is applied correctly
-        const submissionGroup: SubmissionGroupStudentList | undefined | null = content.submission_group;
-        let latestSubmittedArtifactId: string | undefined;
-        if (submissionGroup?.id) {
-          const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroup.id, { latest: true });
-          if (artifacts && artifacts.length > 0 && artifacts[0]) {
-            latestSubmittedArtifactId = artifacts[0].id;
-          }
+      // Get the latest submitted artifact to ensure grade is applied correctly
+      const submissionGroup: SubmissionGroupStudentList | undefined | null = content.submission_group;
+      let latestSubmittedArtifactId: string | undefined;
+      if (submissionGroup?.id) {
+        const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroup.id, { latest: true });
+        if (artifacts && artifacts.length > 0 && artifacts[0]) {
+          latestSubmittedArtifactId = artifacts[0].id;
+        }
+      }
+
+      // Previous grade (0.0–1.0) from submission_group, previous status from content
+      const prevGrade: number | undefined = typeof submissionGroup?.grading === 'number' ? submissionGroup.grading : undefined;
+      const prevStatus: string | undefined = content.status ?? undefined;
+
+      const gradingInput = await vscode.window.showInputBox({
+        title: 'Grading',
+        prompt: 'Enter grade as percentage (0–100%)',
+        placeHolder: 'e.g., 85',
+        value: prevGrade != null ? String(Math.round(prevGrade * 100)) : undefined,
+        ignoreFocusOut: true,
+        validateInput: (v) => {
+          if (!v || !v.trim()) return 'Enter a percentage between 0 and 100';
+          const n = Number(v.replace('%', '').trim());
+          if (!isFinite(n)) return 'Not a number';
+          if (n < 0 || n > 100) return 'Value must be between 0 and 100';
+          return undefined;
+        }
+      });
+      if (gradingInput == null) return; // cancelled
+      const grade = Math.max(0, Math.min(1, Number(gradingInput.replace('%', '').trim()) / 100));
+
+      const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
+        { label: 'corrected', description: 'Mark as corrected', value: 1 as GradingStatus },
+        { label: 'correction_necessary', description: 'Correction necessary', value: 2 as GradingStatus },
+        { label: 'improvement_possible', description: 'Improvement possible', value: 3 as GradingStatus },
+        { label: 'not_reviewed', description: 'Not reviewed', value: 0 as GradingStatus },
+      ];
+      const statusPick = await vscode.window.showQuickPick(statusOptions, {
+        title: 'Status',
+        placeHolder: prevStatus ? `Current: ${prevStatus}` : 'Choose status',
+        canPickMany: false,
+        ignoreFocusOut: true
+      });
+      if (!statusPick) return; // cancelled
+
+      try {
+        const tutorGrade: TutorGradeCreate = {
+          artifact_id: latestSubmittedArtifactId,
+          grade,
+          status: statusPick.value,
+        };
+        await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
+
+        // Clear caches and refresh to get updated data
+        const courseId = sel.getCurrentCourseId();
+        const groupId = sel.getCurrentGroupId();
+
+        this.apiService.clearTutorMemberCourseContentsCache(memberId);
+        if (courseId) {
+          this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
         }
 
-        // Previous grade (0.0–1.0) from submission_group, previous status from content
-        const prevGrade: number | undefined = typeof submissionGroup?.grading === 'number' ? submissionGroup.grading : undefined;
-        const prevStatus: string | undefined = content.status ?? undefined;
+        // Full tree refresh: status changes affect parent unit items (aggregated from API)
+        this.treeDataProvider.refresh();
+        this.filterProvider?.refreshFilters();
 
-        const gradingInput = await vscode.window.showInputBox({
-          title: 'Grading',
-          prompt: 'Enter grade as percentage (0–100%)',
-          placeHolder: 'e.g., 85',
-          value: prevGrade != null ? String(Math.round(prevGrade * 100)) : undefined,
-          ignoreFocusOut: true,
-          validateInput: (v) => {
-            if (!v || !v.trim()) return 'Enter a percentage between 0 and 100';
-            const n = Number(v.replace('%', '').trim());
-            if (!isFinite(n)) return 'Not a number';
-            if (n < 0 || n > 100) return 'Value must be between 0 and 100';
-            return undefined;
-          }
-        });
-        if (gradingInput == null) return; // cancelled
-        const grade = Math.max(0, Math.min(1, Number(gradingInput.replace('%', '').trim()) / 100));
-
-        const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
-          { label: 'corrected', description: 'Mark as corrected', value: 1 as GradingStatus },
-          { label: 'correction_necessary', description: 'Correction necessary', value: 2 as GradingStatus },
-          { label: 'improvement_possible', description: 'Improvement possible', value: 3 as GradingStatus },
-          { label: 'not_reviewed', description: 'Not reviewed', value: 0 as GradingStatus },
-        ];
-        const statusPick = await vscode.window.showQuickPick(statusOptions, {
-          title: 'Status',
-          placeHolder: prevStatus ? `Current: ${prevStatus}` : 'Choose status',
-          canPickMany: false,
-          ignoreFocusOut: true
-        });
-        if (!statusPick) return; // cancelled
-
-        try {
-          const tutorGrade: TutorGradeCreate = {
-            artifact_id: latestSubmittedArtifactId,
-            grade,
-            status: statusPick.value,
-          };
-          await this.apiService.submitTutorGrade(memberId, contentId, tutorGrade);
-
-          // Clear caches and refresh to get updated data
-          const courseId = sel.getCurrentCourseId();
-          const groupId = sel.getCurrentGroupId();
-
-          this.apiService.clearTutorMemberCourseContentsCache(memberId);
-          if (courseId) {
-            this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
-          }
-
-          // Full tree refresh: status changes affect parent unit items (aggregated from API)
-          this.treeDataProvider.refresh();
-          this.filterProvider?.refreshFilters();
-
-          vscode.window.showInformationMessage(`Updated: ${Math.round(grade * 100)}% • ${statusPick.label}`);
-        } catch (e: any) {
-          vscode.window.showErrorMessage(`Failed to update grading: ${e?.message || e}`);
-        }
-      })
-    );
+        vscode.window.showInformationMessage(`Updated: ${Math.round(grade * 100)}% • ${statusPick.label}`);
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Failed to update grading: ${e?.message || e}`);
+      }
+    });
 
     // Tutor: Download reference (example version)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.downloadReference', async (item: any) => {
-        await this.downloadReference(item);
-      })
-    );
+    register('computor.tutor.downloadReference', async (item: any) => {
+      await this.downloadReference(item);
+    });
 
     // Tutor: Download submission artifact
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.downloadSubmissionArtifact', async (item: any) => {
-        await this.downloadSubmissionArtifact(item);
-      })
-    );
+    register('computor.tutor.downloadSubmissionArtifact', async (item: any) => {
+      await this.downloadSubmissionArtifact(item);
+    });
 
     // Tutor: Compare with reference
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.compareWithReference', async (item: any) => {
-        await this.compareWithReference(item);
-      })
-    );
+    register('computor.tutor.compareWithReference', async (item: any) => {
+      await this.compareWithReference(item);
+    });
 
     // Tutor: Show submission test results
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.showSubmissionTestResults', async (item: any) => {
-        await this.showSubmissionTestResults(item);
-      })
-    );
+    register('computor.tutor.showSubmissionTestResults', async (item: any) => {
+      await this.showSubmissionTestResults(item);
+    });
 
     // Tutor: Checkout - download reference and latest submission (or just reference if no submission)
     // When called from context menu (confirmRedownload=true), asks before re-downloading existing files
     // When called from selection (confirmRedownload=false), always downloads without asking
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.checkout', async (item: unknown, confirmRedownload?: boolean) => {
-        await this.queueCheckout(item, confirmRedownload ?? true);
-      })
-    );
+    register('computor.tutor.checkout', async (item: unknown, confirmRedownload?: boolean) => {
+      await this.queueCheckout(item, confirmRedownload ?? true);
+    });
 
     // Tutor: Show README preview for assignment
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.showReadme', async (item: any) => {
-        await this.showReadme(item);
-      })
-    );
+    register('computor.tutor.showReadme', async (item: any) => {
+      await this.showReadme(item);
+    });
 
     // Tutor: Run test on submission
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.tutor.runTest', async (item: any) => {
-        await this.runTestOnSubmission(item);
-      })
-    );
+    register('computor.tutor.runTest', async (item: any) => {
+      await this.runTestOnSubmission(item);
+    });
   }
 
   private async queueCheckout(item: unknown, confirmRedownload: boolean): Promise<void> {

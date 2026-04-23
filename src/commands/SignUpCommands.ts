@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { SignUpWebviewProvider } from '../ui/webviews/SignUpWebviewProvider';
+import { commandRegistrar } from './commandHelpers';
 
 export class SignUpCommands {
   private signUpWebviewProvider: SignUpWebviewProvider;
@@ -9,9 +10,9 @@ export class SignUpCommands {
   }
 
   register(): void {
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.signUp', () => this.signUp())
-    );
+
+    const register = commandRegistrar(this.context);
+    register('computor.signUp', () => this.signUp());
   }
 
   private async signUp(): Promise<void> {
