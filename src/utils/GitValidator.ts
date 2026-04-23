@@ -3,6 +3,7 @@ import * as fs from 'fs';
 
 export class GitValidator {
   private static readonly INVALID_BRANCH_CHARS = /[\s~^:?*\[\]\\]/;
+  private static readonly INVALID_BRANCH_CHARS_GLOBAL = /[\s~^:?*\[\]\\]/g;
   private static readonly INVALID_TAG_CHARS = /[\s~^:?*\[\]\\@{]/;
   private static readonly RESERVED_BRANCH_NAMES = [
     'HEAD',
@@ -104,6 +105,11 @@ export class GitValidator {
     if (!message || message.trim().length === 0) {
       return false;
     }
+    // Single-line messages over 72 chars break conventional commit formatting.
+    const firstLine = message.split(/\r?\n/, 1)[0] ?? '';
+    if (!message.includes('\n') && firstLine.length > 72) {
+      return false;
+    }
     return true;
   }
   
@@ -122,7 +128,7 @@ export class GitValidator {
   static sanitizeBranchName(branchName: string): string {
     let sanitized = branchName.trim();
     
-    sanitized = sanitized.replace(this.INVALID_BRANCH_CHARS, '-');
+    sanitized = sanitized.replace(this.INVALID_BRANCH_CHARS_GLOBAL, '-');
     
     sanitized = sanitized.replace(/^\.+|\.+$/g, '');
     sanitized = sanitized.replace(/\/+/g, '/');

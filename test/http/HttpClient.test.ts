@@ -148,9 +148,9 @@ describe('HttpClient', () => {
       expect(client['isRetryableError'](networkError)).to.be.true;
     });
 
-    it('should identify 500 errors as retryable', () => {
+    it('should not identify 500 errors as retryable (intentional: immediate retry will not fix a backend fault)', () => {
       const serverError = new HttpError('Server error', 500, 'Internal Server Error');
-      expect(client['isRetryableError'](serverError)).to.be.true;
+      expect(client['isRetryableError'](serverError)).to.be.false;
     });
 
     it('should identify 429 errors as retryable', () => {
