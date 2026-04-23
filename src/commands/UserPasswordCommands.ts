@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { UserPassword } from '../types/generated/users';
+import { commandRegistrar } from './commandHelpers';
 
 export class UserPasswordCommands {
   constructor(
@@ -9,9 +10,9 @@ export class UserPasswordCommands {
   ) {}
 
   register(): void {
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.user.changePassword', () => this.changePassword())
-    );
+
+    const register = commandRegistrar(this.context);
+    register('computor.user.changePassword', () => this.changePassword());
   }
 
   private async changePassword(): Promise<void> {

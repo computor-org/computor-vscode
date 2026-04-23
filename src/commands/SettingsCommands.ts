@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SettingsWebviewProvider } from '../ui/webviews/SettingsWebviewProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
+import { commandRegistrar } from './commandHelpers';
 
 export class SettingsCommands {
   private settingsWebviewProvider: SettingsWebviewProvider;
@@ -10,9 +11,9 @@ export class SettingsCommands {
   }
 
   register(): void {
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.settingsView', () => this.openSettings())
-    );
+
+    const register = commandRegistrar(this.context);
+    register('computor.settingsView', () => this.openSettings());
   }
 
   setApiService(apiService: ComputorApiService): void {

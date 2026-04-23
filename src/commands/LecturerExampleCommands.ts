@@ -16,6 +16,7 @@ import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
 import { ComputorTestingInstaller } from '../services/ComputorTestingInstaller';
 import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
 import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
+import { commandRegistrar } from './commandHelpers';
 
 /**
  * Simplified example commands for the lecturer view
@@ -38,339 +39,260 @@ export class LecturerExampleCommands {
     this.registerCommands();
   }
   private registerCommands(): void {
+    const register = commandRegistrar(this.context);
     // Search examples - already registered in extension.ts but we'll override with better implementation
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.searchExamples', async () => {
-        // Get current search query to prefill the input
-        const currentQuery = this.treeProvider.getSearchQuery();
-        
-        const query = await vscode.window.showInputBox({
-          prompt: 'Search examples by title, identifier, or tags',
-          placeHolder: 'Enter search query',
-          value: currentQuery  // Prefill with current search
-        });
-        
-        if (query !== undefined) {
-          this.treeProvider.setSearchQuery(query);
-          if (query) {
-            vscode.window.showInformationMessage(`Searching for: ${query}`);
-          } else {
-            vscode.window.showInformationMessage('Search cleared');
-          }
+    register('computor.lecturer.searchExamples', async () => {
+      // Get current search query to prefill the input
+      const currentQuery = this.treeProvider.getSearchQuery();
+      
+      const query = await vscode.window.showInputBox({
+        prompt: 'Search examples by title, identifier, or tags',
+        placeHolder: 'Enter search query',
+        value: currentQuery  // Prefill with current search
+      });
+      
+      if (query !== undefined) {
+        this.treeProvider.setSearchQuery(query);
+        if (query) {
+          vscode.window.showInformationMessage(`Searching for: ${query}`);
+        } else {
+          vscode.window.showInformationMessage('Search cleared');
         }
-      })
-    );
+      }
+    });
 
     // Clear search
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.clearExampleSearch', () => {
-        this.treeProvider.clearSearch();
-        vscode.window.showInformationMessage('Search cleared');
-      })
-    );
+    register('computor.lecturer.clearExampleSearch', () => {
+      this.treeProvider.clearSearch();
+      vscode.window.showInformationMessage('Search cleared');
+    });
 
     // Also register clearSearch for the tree item click
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.clearSearch', () => {
-        this.treeProvider.clearSearch();
-        vscode.window.showInformationMessage('Search cleared');
-      })
-    );
+    register('computor.lecturer.clearSearch', () => {
+      this.treeProvider.clearSearch();
+      vscode.window.showInformationMessage('Search cleared');
+    });
 
     // Filter by category
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.filterExamplesByCategory', async () => {
-        const currentCategory = this.treeProvider.getSelectedCategory();
-        const category = await vscode.window.showInputBox({
-          prompt: 'Enter category to filter by (leave empty to clear)',
-          placeHolder: 'e.g., Introduction, Advanced',
-          value: currentCategory || ''
-        });
-        
-        if (category !== undefined) {
-          this.treeProvider.setCategory(category || undefined);
-          if (category) {
-            vscode.window.showInformationMessage(`Filtering by category: ${category}`);
-          } else {
-            vscode.window.showInformationMessage('Category filter cleared');
-          }
+    register('computor.lecturer.filterExamplesByCategory', async () => {
+      const currentCategory = this.treeProvider.getSelectedCategory();
+      const category = await vscode.window.showInputBox({
+        prompt: 'Enter category to filter by (leave empty to clear)',
+        placeHolder: 'e.g., Introduction, Advanced',
+        value: currentCategory || ''
+      });
+      
+      if (category !== undefined) {
+        this.treeProvider.setCategory(category || undefined);
+        if (category) {
+          vscode.window.showInformationMessage(`Filtering by category: ${category}`);
+        } else {
+          vscode.window.showInformationMessage('Category filter cleared');
         }
-      })
-    );
+      }
+    });
 
     // Filter by tags
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.filterExamplesByTags', async () => {
-        const currentTags = this.treeProvider.getSelectedTags();
-        const tagsInput = await vscode.window.showInputBox({
-          prompt: 'Enter tags to filter by (comma-separated, leave empty to clear)',
-          placeHolder: 'e.g., beginner, loops, functions',
-          value: currentTags.join(', ')
-        });
-        
-        if (tagsInput !== undefined) {
-          const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
-          this.treeProvider.setTags(tags);
-          if (tags.length > 0) {
-            vscode.window.showInformationMessage(`Filtering by tags: ${tags.join(', ')}`);
-          } else {
-            vscode.window.showInformationMessage('Tag filter cleared');
-          }
+    register('computor.lecturer.filterExamplesByTags', async () => {
+      const currentTags = this.treeProvider.getSelectedTags();
+      const tagsInput = await vscode.window.showInputBox({
+        prompt: 'Enter tags to filter by (comma-separated, leave empty to clear)',
+        placeHolder: 'e.g., beginner, loops, functions',
+        value: currentTags.join(', ')
+      });
+      
+      if (tagsInput !== undefined) {
+        const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+        this.treeProvider.setTags(tags);
+        if (tags.length > 0) {
+          vscode.window.showInformationMessage(`Filtering by tags: ${tags.join(', ')}`);
+        } else {
+          vscode.window.showInformationMessage('Tag filter cleared');
         }
-      })
-    );
+      }
+    });
 
     // Clear category filter
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.clearCategoryFilter', () => {
-        this.treeProvider.clearCategoryFilter();
-        vscode.window.showInformationMessage('Category filter cleared');
-      })
-    );
+    register('computor.lecturer.clearCategoryFilter', () => {
+      this.treeProvider.clearCategoryFilter();
+      vscode.window.showInformationMessage('Category filter cleared');
+    });
 
     // Clear tags filter
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.clearTagsFilter', () => {
-        this.treeProvider.clearTagsFilter();
-        vscode.window.showInformationMessage('Tags filter cleared');
-      })
-    );
+    register('computor.lecturer.clearTagsFilter', () => {
+      this.treeProvider.clearTagsFilter();
+      vscode.window.showInformationMessage('Tags filter cleared');
+    });
 
     // Checkout example (latest version)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.checkoutExample', async (item: ExampleTreeItem) => {
-        await this.checkoutExample(item);
-      })
-    );
+    register('computor.lecturer.checkoutExample', async (item: ExampleTreeItem) => {
+      await this.checkoutExample(item);
+    });
 
     // Checkout specific version
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.checkoutExampleVersion', async (item: ExampleTreeItem) => {
-        await this.checkoutExample(item, true);
-      })
-    );
+    register('computor.lecturer.checkoutExampleVersion', async (item: ExampleTreeItem) => {
+      await this.checkoutExample(item, true);
+    });
 
     // Checkout all filtered examples from repository
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.checkoutAllFilteredExamples', async (item: ExampleRepositoryTreeItem) => {
-        await this.checkoutAllFilteredExamples(item);
-      })
-    );
+    register('computor.lecturer.checkoutAllFilteredExamples', async (item: ExampleRepositoryTreeItem) => {
+      await this.checkoutAllFilteredExamples(item);
+    });
 
     // Upload working copy
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uploadExample', async (item: ExampleTreeItem | CheckedOutVersionTreeItem) => {
-        if (item instanceof CheckedOutVersionTreeItem) {
-          await this.uploadCheckedOutVersion(item);
-        } else {
-          await this.uploadExample(item);
-        }
-      })
-    );
+    register('computor.lecturer.uploadExample', async (item: ExampleTreeItem | CheckedOutVersionTreeItem) => {
+      if (item instanceof CheckedOutVersionTreeItem) {
+        await this.uploadCheckedOutVersion(item);
+      } else {
+        await this.uploadExample(item);
+      }
+    });
 
     // Bump version on working copy
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.bumpExampleVersion', async (item: CheckedOutVersionTreeItem) => {
-        await this.bumpCheckedOutVersion(item);
-      })
-    );
+    register('computor.lecturer.bumpExampleVersion', async (item: CheckedOutVersionTreeItem) => {
+      await this.bumpCheckedOutVersion(item);
+    });
 
     // Reveal checked-out version in explorer
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.revealCheckedOutInExplorer', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem) => {
-        const p = item instanceof CheckedOutVersionTreeItem ? item.version.fullPath : item.group.fullPath;
-        await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p));
-      })
-    );
+    register('computor.lecturer.revealCheckedOutInExplorer', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem) => {
+      const p = item instanceof CheckedOutVersionTreeItem ? item.version.fullPath : item.group.fullPath;
+      await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p));
+    });
 
     // Delete entire checked-out example group
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem) => {
-        await this.deleteCheckedOutGroup(item);
-      })
-    );
+    register('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem) => {
+      await this.deleteCheckedOutGroup(item);
+    });
 
     // Delete single checked-out version
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.deleteCheckedOutVersion', async (item: CheckedOutVersionTreeItem) => {
-        await this.deleteCheckedOutVersion(item);
-      })
-    );
+    register('computor.lecturer.deleteCheckedOutVersion', async (item: CheckedOutVersionTreeItem) => {
+      await this.deleteCheckedOutVersion(item);
+    });
 
     // Restore version to working copy
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.restoreVersionToWorking', async (item: CheckedOutVersionTreeItem) => {
-        await this.restoreVersionToWorking(item);
-      })
-    );
+    register('computor.lecturer.restoreVersionToWorking', async (item: CheckedOutVersionTreeItem) => {
+      await this.restoreVersionToWorking(item);
+    });
 
     // Compare version with working copy
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.compareWithWorking', async (item: CheckedOutVersionTreeItem) => {
-        await this.compareWithWorking(item);
-      })
-    );
+    register('computor.lecturer.compareWithWorking', async (item: CheckedOutVersionTreeItem) => {
+      await this.compareWithWorking(item);
+    });
 
     // Compare a single version file with its working counterpart
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.compareFileWithWorking', async (item: FileSystemTreeItem) => {
-        await this.compareFileWithWorking(item);
-      })
-    );
+    register('computor.lecturer.compareFileWithWorking', async (item: FileSystemTreeItem) => {
+      await this.compareFileWithWorking(item);
+    });
 
     // File management commands
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.newFile', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
-        await this.createFileOrFolder(item, false);
-      })
-    );
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.newFolder', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
-        await this.createFileOrFolder(item, true);
-      })
-    );
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.renameItem', async (item: FileSystemTreeItem) => {
-        await this.renameFileSystemItem(item);
-      })
-    );
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.deleteItem', async (item: FileSystemTreeItem) => {
-        await this.deleteFileSystemItem(item);
-      })
-    );
+    register('computor.lecturer.newFile', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+      await this.createFileOrFolder(item, false);
+    });
+    register('computor.lecturer.newFolder', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+      await this.createFileOrFolder(item, true);
+    });
+    register('computor.lecturer.renameItem', async (item: FileSystemTreeItem) => {
+      await this.renameFileSystemItem(item);
+    });
+    register('computor.lecturer.deleteItem', async (item: FileSystemTreeItem) => {
+      await this.deleteFileSystemItem(item);
+    });
 
     // Create new example
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createNewExample', async () => {
-        await this.createNewExample();
-      })
-    );
+    register('computor.lecturer.createNewExample', async () => {
+      await this.createNewExample();
+    });
 
     // Upload new example
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uploadNewExample', async () => {
-        await this.uploadNewExample();
-      })
-    );
+    register('computor.lecturer.uploadNewExample', async () => {
+      await this.uploadNewExample();
+    });
 
     // Checkout multiple examples
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.checkoutMultipleExamples', async () => {
-        vscode.window.showInformationMessage('Checkout multiple examples - not yet implemented');
-      })
-    );
+    register('computor.lecturer.checkoutMultipleExamples', async () => {
+      vscode.window.showInformationMessage('Checkout multiple examples - not yet implemented');
+    });
 
     // Upload examples from ZIP
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uploadExamplesFromZip', async (item?: ExampleRepositoryTreeItem) => {
-        await this.uploadExamplesFromZip(item);
-      })
-    );
+    register('computor.lecturer.uploadExamplesFromZip', async (item?: ExampleRepositoryTreeItem) => {
+      await this.uploadExamplesFromZip(item);
+    });
 
     // create content from example
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.createCourseContentFromExample', async (item: ExampleTreeItem) => {
-        await this.createCourseContentFromExample(item);
-      })
-    );
+    register('computor.lecturer.createCourseContentFromExample', async (item: ExampleTreeItem) => {
+      await this.createCourseContentFromExample(item);
+    });
 
     // Refresh examples tree (clear caches first)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.refreshExamples', async () => {
-        try {
-          this.apiService.clearExamplesCache();
-        } catch {}
-        this.treeProvider.refresh();
-      })
-    );
+    register('computor.lecturer.refreshExamples', async () => {
+      try {
+        this.apiService.clearExamplesCache();
+      } catch {}
+      this.treeProvider.refresh();
+    });
 
     // Reveal downloaded example in explorer
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.revealExampleInExplorer', async (item: ExampleTreeItem) => {
-        await this.revealExampleInExplorer(item);
-      })
-    );
+    register('computor.lecturer.revealExampleInExplorer', async (item: ExampleTreeItem) => {
+      await this.revealExampleInExplorer(item);
+    });
 
     // Show example details in webview side panel
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.showExampleDetails', async (item: ExampleTreeItem) => {
-        await this.showExampleDetails(item);
-      })
-    );
+    register('computor.lecturer.showExampleDetails', async (item: ExampleTreeItem) => {
+      await this.showExampleDetails(item);
+    });
 
     // Open test.yaml editor
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.editTestYaml', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
-        await this.editTestYaml(item);
-      })
-    );
+    register('computor.lecturer.editTestYaml', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+      await this.editTestYaml(item);
+    });
 
     // Add test.yaml to working example
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.addTests', async (item: CheckedOutVersionTreeItem) => {
-        await this.addTests(item);
-      })
-    );
+    register('computor.lecturer.addTests', async (item: CheckedOutVersionTreeItem) => {
+      await this.addTests(item);
+    });
 
     // Open meta.yaml editor (from meta.yaml file or working example root)
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.editMetaYaml', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
-        await this.editMetaYaml(item);
-      })
-    );
+    register('computor.lecturer.editMetaYaml', async (item: FileSystemTreeItem | CheckedOutVersionTreeItem) => {
+      await this.editMetaYaml(item);
+    });
 
     // Create new readme in content directory
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.newReadme', async (item: FileSystemTreeItem) => {
-        await this.createNewReadme(item);
-      })
-    );
+    register('computor.lecturer.newReadme', async (item: FileSystemTreeItem) => {
+      await this.createNewReadme(item);
+    });
 
     // Import examples from directory
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.importExamples', async () => {
-        await this.importExamples();
-      })
-    );
+    register('computor.lecturer.importExamples', async () => {
+      await this.importExamples();
+    });
 
     // Upload all examples
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uploadAllExamples', async () => {
-        await this.uploadAllProvider.show('Upload All Examples');
-      })
-    );
+    register('computor.lecturer.uploadAllExamples', async () => {
+      await this.uploadAllProvider.show('Upload All Examples');
+    });
 
     // Install computor-testing tools
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.installTestingTools', async () => {
-        const installer = ComputorTestingInstaller.getInstance();
-        await installer.install();
-      })
-    );
+    register('computor.lecturer.installTestingTools', async () => {
+      const installer = ComputorTestingInstaller.getInstance();
+      await installer.install();
+    });
 
     // Update computor-testing tools
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.updateTestingTools', async () => {
-        const installer = ComputorTestingInstaller.getInstance();
-        await installer.update();
-      })
-    );
+    register('computor.lecturer.updateTestingTools', async () => {
+      const installer = ComputorTestingInstaller.getInstance();
+      await installer.update();
+    });
 
     // Uninstall computor-testing tools
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.uninstallTestingTools', async () => {
-        const installer = ComputorTestingInstaller.getInstance();
-        await installer.uninstall();
-      })
-    );
+    register('computor.lecturer.uninstallTestingTools', async () => {
+      const installer = ComputorTestingInstaller.getInstance();
+      await installer.uninstall();
+    });
 
     // Run tests on checked-out example
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.runExampleTests', async (item: CheckedOutVersionTreeItem) => {
-        await this.runExampleTests(item);
-      })
-    );
+    register('computor.lecturer.runExampleTests', async (item: CheckedOutVersionTreeItem) => {
+      await this.runExampleTests(item);
+    });
   }
 
   private async checkoutExample(item: ExampleTreeItem, pickVersion: boolean = false): Promise<void> {
