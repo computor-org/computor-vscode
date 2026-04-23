@@ -166,15 +166,22 @@ export class ComputorApiService {
    * Checks multiTierCache first; on miss, runs `fetch` via executeWithRecovery,
    * stores the result in the requested tier, and returns it. Errors bubble —
    * callers that want a fallback (e.g. `return undefined`) wrap this in try/catch.
+   * Pass `force: true` to invalidate the cache entry before fetching; additional
+   * cascade invalidations remain the caller's responsibility.
    */
   private async cachedRequest<T>(opts: {
     cacheKey: string;
     tier: 'hot' | 'warm' | 'cold';
     fetch: () => Promise<T>;
     retry?: RetryOptions;
+    force?: boolean;
   }): Promise<T> {
-    const cached = multiTierCache.get<T>(opts.cacheKey);
-    if (cached) return cached;
+    if (opts.force) {
+      multiTierCache.delete(opts.cacheKey);
+    } else {
+      const cached = multiTierCache.get<T>(opts.cacheKey);
+      if (cached) return cached;
+    }
 
     const retry: RetryOptions = {
       maxRetries: 3,
@@ -347,32 +354,17 @@ export class ComputorApiService {
   }
 
   async getCourseContents(courseId: string, skipCache: boolean = false, includeDeployment: boolean = false): Promise<CourseContentList[]> {
-    const cacheKey = `courseContents-${courseId}-${includeDeployment}`;
-    
-    // Check cache first (unless explicitly skipping)
-    if (!skipCache) {
-      const cached = multiTierCache.get<CourseContentList[]>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    }
-    
-    // Fetch with error recovery
-    const result = await errorRecoveryService.executeWithRecovery(async () => {
-      const client = await this.getHttpClient();
-      const params = includeDeployment ? '&include=deployment' : '';
-      const response = await client.get<CourseContentList[]>(`/course-contents?course_id=${courseId}${params}`);
-      return response.data;
-    }, {
-      maxRetries: 2,
-      exponentialBackoff: true
+    return this.cachedRequest({
+      cacheKey: `courseContents-${courseId}-${includeDeployment}`,
+      tier: 'warm',
+      fetch: async () => {
+        const client = await this.getHttpClient();
+        const params = includeDeployment ? '&include=deployment' : '';
+        return (await client.get<CourseContentList[]>(`/course-contents?course_id=${courseId}${params}`)).data;
+      },
+      retry: { maxRetries: 2 },
+      force: skipCache
     });
-    
-    // Always update cache with fresh data, even if skipCache was true
-    // This ensures the cache is always up-to-date after a fresh fetch
-    multiTierCache.set(cacheKey, result, 'warm');
-    
-    return result;
   }
 
 
@@ -594,27 +586,16 @@ export class ComputorApiService {
   }
 
   async getExampleVersion(exampleVersionId: string): Promise<ExampleVersionGet | undefined> {
-    const cacheKey = `exampleVersion-${exampleVersionId}`;
-
-    const cached = multiTierCache.get<ExampleVersionGet>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<ExampleVersionGet>(`/examples/versions/${exampleVersionId}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey: `exampleVersion-${exampleVersionId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<ExampleVersionGet>(`/examples/versions/${exampleVersionId}`)).data;
+        },
+        retry: { maxRetries: 2 }
       });
-
-      if (result) {
-        multiTierCache.set(cacheKey, result, 'warm');
-      }
-      return result;
     } catch (error) {
       console.error('Failed to get example version:', error);
       return undefined;
@@ -1200,41 +1181,22 @@ export class ComputorApiService {
     limit?: number;
     offset?: number;
   }): Promise<ExampleGet[]> {
-    // Create cache key from parameters
-    const cacheKey = `availableExamples-${JSON.stringify(params || {})}`;
-    
-    // Check cache first (hot tier for frequently accessed)
-    const cached = multiTierCache.get<ExampleGet[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
-    // Fetch with error recovery
-    const result = await errorRecoveryService.executeWithRecovery(async () => {
-      const client = await this.getHttpClient();
-      const queryParams = new URLSearchParams();
-      
-      if (params?.search) queryParams.append('search', params.search);
-      if (params?.category) queryParams.append('category', params.category);
-      if (params?.language) queryParams.append('language', params.language);
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-      if (params?.offset) queryParams.append('offset', params.offset.toString());
-      
-      const url = queryParams.toString() 
-        ? `/examples?${queryParams.toString()}`
-        : '/examples';
-      
-      const response = await client.get<ExampleGet[]>(url);
-      return response.data;
-    }, {
-      maxRetries: 2,
-      exponentialBackoff: true
+    return this.cachedRequest({
+      cacheKey: `availableExamples-${JSON.stringify(params || {})}`,
+      tier: 'hot',
+      fetch: async () => {
+        const client = await this.getHttpClient();
+        const queryParams = new URLSearchParams();
+        if (params?.search) queryParams.append('search', params.search);
+        if (params?.category) queryParams.append('category', params.category);
+        if (params?.language) queryParams.append('language', params.language);
+        if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.offset) queryParams.append('offset', params.offset.toString());
+        const url = queryParams.toString() ? `/examples?${queryParams.toString()}` : '/examples';
+        return (await client.get<ExampleGet[]>(url)).data;
+      },
+      retry: { maxRetries: 2 }
     });
-    
-    // Cache in hot tier for frequently accessed queries
-    multiTierCache.set(cacheKey, result, 'hot');
-    
-    return result;
   }
 
   // Course Groups API methods
@@ -1713,30 +1675,17 @@ export class ComputorApiService {
   }
 
   async getStudentCourses(options?: { force?: boolean }): Promise<any[]> {
-    const cacheKey = 'studentCourses';
-
-    if (options?.force) {
-      multiTierCache.delete(cacheKey);
-    } else {
-      const cached = multiTierCache.get<any[]>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<any[]>('/students/courses');
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey: 'studentCourses',
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<any[]>('/students/courses')).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
       });
-      
-      // Cache in warm tier
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
     } catch (error) {
       console.error('Failed to get student courses:', error);
       return [];
@@ -1744,30 +1693,17 @@ export class ComputorApiService {
   }
 
   async getStudentCourse(courseId: string, options?: { force?: boolean }): Promise<any | undefined> {
-    const cacheKey = `studentCourse-${courseId}`;
-
-    if (options?.force) {
-      multiTierCache.delete(cacheKey);
-    } else {
-      const cached = multiTierCache.get<any>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<any>(`/students/courses/${courseId}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey: `studentCourse-${courseId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<any>(`/students/courses/${courseId}`)).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
       });
-      
-      // Cache in warm tier
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
     } catch (error) {
       console.error('Failed to get student course:', error);
       return undefined;
@@ -1779,33 +1715,21 @@ export class ComputorApiService {
     options?: { force?: boolean }
   ): Promise<CourseContentStudentList[]> {
     const cacheKey = courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all';
-
-    if (options?.force) {
-      multiTierCache.delete(cacheKey);
-      if (courseId) {
-        multiTierCache.delete('studentCourseContents-all');
-      }
-    } else {
-      const cached = multiTierCache.get<CourseContentStudentList[]>(cacheKey);
-      if (cached) {
-        return cached;
-      }
+    if (options?.force && courseId) {
+      multiTierCache.delete('studentCourseContents-all');
     }
-    
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const params = courseId ? `?course_id=${courseId}` : '';
-        const response = await client.get<CourseContentStudentList[]>(`/students/course-contents${params}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          const params = courseId ? `?course_id=${courseId}` : '';
+          return (await client.get<CourseContentStudentList[]>(`/students/course-contents${params}`)).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
       });
-      
-      // Cache in warm tier
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
     } catch (error) {
       console.error('Failed to get student course contents:', error);
       return [];
@@ -1816,30 +1740,17 @@ export class ComputorApiService {
     contentId: string,
     options?: { force?: boolean }
   ): Promise<CourseContentStudentGet | undefined> {
-    const cacheKey = `studentCourseContent-${contentId}`;
-
-    if (options?.force) {
-      multiTierCache.delete(cacheKey);
-    } else {
-      const cached = multiTierCache.get<CourseContentStudentGet>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    }
-    
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey: `studentCourseContent-${contentId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`)).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
       });
-      
-      // Cache in warm tier
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
     } catch (error) {
       console.error('Failed to get student course content:', error);
       return undefined;
@@ -1850,29 +1761,17 @@ export class ComputorApiService {
     contentId: string,
     options?: { force?: boolean }
   ): Promise<CourseContentStudentGet | undefined> {
-    const cacheKey = `studentCourseContentDetails-${contentId}`;
-
-    if (options?.force) {
-      multiTierCache.delete(cacheKey);
-    } else {
-      const cached = multiTierCache.get<CourseContentStudentGet>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey: `studentCourseContentDetails-${contentId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`)).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
       });
-
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
     } catch (error) {
       console.error('Failed to get student course content details:', error);
       return undefined;
@@ -1931,27 +1830,16 @@ export class ComputorApiService {
   }
 
   async getCourseMember(memberId: string): Promise<CourseMemberGet | undefined> {
-    const cacheKey = `courseMember-${memberId}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<CourseMemberGet>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<CourseMemberGet>(`/course-members/${memberId}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey: `courseMember-${memberId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<CourseMemberGet>(`/course-members/${memberId}`)).data;
+        },
+        retry: { maxRetries: 2 }
       });
-      
-      // Cache in warm tier
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
     } catch (error) {
       console.error('Failed to get course member:', error);
       return undefined;
@@ -2000,26 +1888,16 @@ export class ComputorApiService {
 
   async getExampleRepositories(organizationId?: string): Promise<ExampleRepositoryList[]> {
     const queryParams = organizationId ? `?organization_id=${organizationId}&limit=10000` : '?limit=10000';
-    const cacheKey = `exampleRepositories-${organizationId || 'all'}`;
-    
-    // Check cache first
-    const cached = multiTierCache.get<ExampleRepositoryList[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<ExampleRepositoryList[]>(`/example-repositories${queryParams}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      const result = await this.cachedRequest({
+        cacheKey: `exampleRepositories-${organizationId || 'all'}`,
+        tier: 'cold',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<ExampleRepositoryList[]>(`/example-repositories${queryParams}`)).data;
+        },
+        retry: { maxRetries: 2 }
       });
-      
-      // Cache in cold tier (repositories rarely change)
-      multiTierCache.set(cacheKey, result, 'cold');
       return result || [];
     } catch (error) {
       console.error('Failed to get example repositories:', error);
@@ -2029,56 +1907,26 @@ export class ComputorApiService {
 
   async getExamples(repositoryId?: string): Promise<ExampleList[]> {
     const query: ExampleQuery = repositoryId ? { repository_id: repositoryId } : {};
-    const cacheKey = `examples-${JSON.stringify(query)}`;
-
-    // Check cache first
-    const cached = multiTierCache.get<ExampleList[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const params = new URLSearchParams();
-
-        if (query.repository_id) {
-          params.append('repository_id', query.repository_id);
-        }
-        if (query.identifier) {
-          params.append('identifier', query.identifier);
-        }
-        if (query.title) {
-          params.append('title', query.title);
-        }
-        if (query.category) {
-          params.append('category', query.category);
-        }
-        if (query.tags && query.tags.length > 0) {
-          query.tags.forEach(tag => params.append('tags', tag));
-        }
-        if (query.search) {
-          params.append('search', query.search);
-        }
-        if (query.directory) {
-          params.append('directory', query.directory);
-        }
-
-        // Override default backend limit (100) to fetch all examples
-        if (!params.has('limit')) {
-          params.append('limit', '10000');
-        }
-
-        const url = `/examples?${params.toString()}`;
-        const response = await client.get<ExampleList[]>(url);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      const result = await this.cachedRequest({
+        cacheKey: `examples-${JSON.stringify(query)}`,
+        tier: 'hot',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          const params = new URLSearchParams();
+          if (query.repository_id) params.append('repository_id', query.repository_id);
+          if (query.identifier) params.append('identifier', query.identifier);
+          if (query.title) params.append('title', query.title);
+          if (query.category) params.append('category', query.category);
+          if (query.tags && query.tags.length > 0) query.tags.forEach(tag => params.append('tags', tag));
+          if (query.search) params.append('search', query.search);
+          if (query.directory) params.append('directory', query.directory);
+          // Override default backend limit (100) to fetch all examples
+          if (!params.has('limit')) params.append('limit', '10000');
+          return (await client.get<ExampleList[]>(`/examples?${params.toString()}`)).data;
+        },
+        retry: { maxRetries: 2 }
       });
-
-      // Cache in hot tier for frequently accessed queries
-      multiTierCache.set(cacheKey, result, 'hot');
       return result || [];
     } catch (error) {
       console.error('Failed to get examples:', error);
@@ -2087,27 +1935,19 @@ export class ComputorApiService {
   }
 
   async getExampleByIdentifier(identifier: string): Promise<ExampleList | null> {
-    const cacheKey = `example-identifier-${identifier}`;
-
-    const cached = multiTierCache.get<ExampleList | null>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const params = new URLSearchParams();
-        params.append('identifier', identifier);
-
-        const response = await client.get<ExampleList[]>(`/examples?${params.toString()}`);
-        return response.data && response.data.length > 0 ? response.data[0] : null;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      const result = await this.cachedRequest<ExampleList | null>({
+        cacheKey: `example-identifier-${identifier}`,
+        tier: 'hot',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          const params = new URLSearchParams();
+          params.append('identifier', identifier);
+          const response = await client.get<ExampleList[]>(`/examples?${params.toString()}`);
+          return response.data && response.data.length > 0 ? response.data[0]! : null;
+        },
+        retry: { maxRetries: 2 }
       });
-
-      multiTierCache.set(cacheKey, result ?? null, 'hot');
       return result ?? null;
     } catch (error) {
       console.error(`Failed to get example by identifier "${identifier}":`, error);
@@ -2139,17 +1979,16 @@ export class ComputorApiService {
   }
 
   async getTutorCourse(courseId: string): Promise<any | undefined> {
-    const cacheKey = `tutorCourse-${courseId}`;
-    const cached = multiTierCache.get<any>(cacheKey);
-    if (cached) return cached;
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<any>(`/tutors/courses/${courseId}`);
-        return response.data;
-      }, { maxRetries: 2, exponentialBackoff: true });
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
+      return await this.cachedRequest({
+        cacheKey: `tutorCourse-${courseId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<any>(`/tutors/courses/${courseId}`)).data;
+        },
+        retry: { maxRetries: 2 }
+      });
     } catch (e) {
       console.error('Failed to get tutor course:', e);
       return undefined;
@@ -2163,23 +2002,23 @@ export class ComputorApiService {
   }
 
   async getTutorCourseMembers(courseId: string, groupId?: string): Promise<any[]> {
-    const cacheKey = groupId ? `tutorCourseMembers-${courseId}-${groupId}` : `tutorCourseMembers-${courseId}`;
-    const cached = multiTierCache.get<any[]>(cacheKey);
-    if (cached) return cached;
     try {
       // Do not retry: this endpoint backs a heavy aggregation on the server.
       // Retries on a slow call amplify DB load without helping the user, so
       // fail fast and rely on backend caching to make the next call cheap.
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const params = new URLSearchParams();
-        if (courseId) params.append('course_id', courseId);
-        if (groupId) params.append('course_group_id', groupId);
-        const url = params.toString() ? `/tutors/course-members?${params.toString()}` : '/tutors/course-members';
-        const response = await client.get<any[]>(url);
-        return response.data;
-      }, { maxRetries: 0 });
-      multiTierCache.set(cacheKey, result, 'warm');
+      const result = await this.cachedRequest({
+        cacheKey: groupId ? `tutorCourseMembers-${courseId}-${groupId}` : `tutorCourseMembers-${courseId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          const params = new URLSearchParams();
+          if (courseId) params.append('course_id', courseId);
+          if (groupId) params.append('course_group_id', groupId);
+          const url = params.toString() ? `/tutors/course-members?${params.toString()}` : '/tutors/course-members';
+          return (await client.get<any[]>(url)).data;
+        },
+        retry: { maxRetries: 0 }
+      });
       return result || [];
     } catch (e) {
       console.error('Failed to get tutor course members:', e);
@@ -2188,29 +2027,29 @@ export class ComputorApiService {
   }
 
   async getTutorSubmissionGroups(query?: TutorSubmissionGroupQuery): Promise<TutorSubmissionGroupList[]> {
-    const cacheKey = `tutorSubmissionGroups-${JSON.stringify(query || {})}`;
-    const cached = multiTierCache.get<TutorSubmissionGroupList[]>(cacheKey);
-    if (cached) return cached;
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const params = new URLSearchParams();
-        if (query?.course_id) params.append('course_id', query.course_id);
-        if (query?.course_content_id) params.append('course_content_id', query.course_content_id);
-        if (query?.course_group_id) params.append('course_group_id', query.course_group_id);
-        if (query?.has_submissions !== undefined && query.has_submissions !== null) {
-          params.append('has_submissions', String(query.has_submissions));
-        }
-        if (query?.has_ungraded_submissions !== undefined && query.has_ungraded_submissions !== null) {
-          params.append('has_ungraded_submissions', String(query.has_ungraded_submissions));
-        }
-        if (query?.limit !== undefined && query.limit !== null) params.append('limit', String(query.limit));
-        if (query?.offset !== undefined && query.offset !== null) params.append('offset', String(query.offset));
-        const url = params.toString() ? `/tutors/submission-groups?${params.toString()}` : '/tutors/submission-groups';
-        const response = await client.get<TutorSubmissionGroupList[]>(url);
-        return response.data;
-      }, { maxRetries: 2, exponentialBackoff: true });
-      multiTierCache.set(cacheKey, result, 'warm');
+      const result = await this.cachedRequest({
+        cacheKey: `tutorSubmissionGroups-${JSON.stringify(query || {})}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          const params = new URLSearchParams();
+          if (query?.course_id) params.append('course_id', query.course_id);
+          if (query?.course_content_id) params.append('course_content_id', query.course_content_id);
+          if (query?.course_group_id) params.append('course_group_id', query.course_group_id);
+          if (query?.has_submissions !== undefined && query.has_submissions !== null) {
+            params.append('has_submissions', String(query.has_submissions));
+          }
+          if (query?.has_ungraded_submissions !== undefined && query.has_ungraded_submissions !== null) {
+            params.append('has_ungraded_submissions', String(query.has_ungraded_submissions));
+          }
+          if (query?.limit !== undefined && query.limit !== null) params.append('limit', String(query.limit));
+          if (query?.offset !== undefined && query.offset !== null) params.append('offset', String(query.offset));
+          const url = params.toString() ? `/tutors/submission-groups?${params.toString()}` : '/tutors/submission-groups';
+          return (await client.get<TutorSubmissionGroupList[]>(url)).data;
+        },
+        retry: { maxRetries: 2 }
+      });
       return result || [];
     } catch (e) {
       console.error('Failed to get tutor submission groups:', e);
@@ -2219,17 +2058,16 @@ export class ComputorApiService {
   }
 
   async getTutorSubmissionGroup(submissionGroupId: string): Promise<TutorSubmissionGroupGet | null> {
-    const cacheKey = `tutorSubmissionGroup-${submissionGroupId}`;
-    const cached = multiTierCache.get<TutorSubmissionGroupGet>(cacheKey);
-    if (cached) return cached;
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<TutorSubmissionGroupGet>(`/tutors/submission-groups/${submissionGroupId}`);
-        return response.data;
-      }, { maxRetries: 2, exponentialBackoff: true });
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
+      return await this.cachedRequest({
+        cacheKey: `tutorSubmissionGroup-${submissionGroupId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<TutorSubmissionGroupGet>(`/tutors/submission-groups/${submissionGroupId}`)).data;
+        },
+        retry: { maxRetries: 2 }
+      });
     } catch (e) {
       console.error('Failed to get tutor submission group:', e);
       return null;
@@ -2243,26 +2081,17 @@ export class ComputorApiService {
 
   // User Management: List all users
   async getUsers(options?: { force?: boolean }): Promise<UserList[]> {
-    const cacheKey = 'allUsers';
-
-    if (!options?.force) {
-      const cached = multiTierCache.get<UserList[]>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<UserList[]>('/users', { limit: 10000 });
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      const result = await this.cachedRequest({
+        cacheKey: 'allUsers',
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<UserList[]>('/users', { limit: 10000 })).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
       });
-
-      multiTierCache.set(cacheKey, result, 'warm');
       return result || [];
     } catch (error) {
       console.error('[getUsers] Failed to fetch users:', error);
@@ -2272,27 +2101,17 @@ export class ComputorApiService {
 
   // User Management: Get a specific user by ID
   async getUserById(userId: string, options?: { force?: boolean }): Promise<UserGet | undefined> {
-    const cacheKey = `user-${userId}`;
-
-    if (!options?.force) {
-      const cached = multiTierCache.get<UserGet>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    }
-
     try {
-      const result = await errorRecoveryService.executeWithRecovery(async () => {
-        const client = await this.getHttpClient();
-        const response = await client.get<UserGet>(`/users/${userId}`);
-        return response.data;
-      }, {
-        maxRetries: 2,
-        exponentialBackoff: true
+      return await this.cachedRequest({
+        cacheKey: `user-${userId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<UserGet>(`/users/${userId}`)).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
       });
-
-      multiTierCache.set(cacheKey, result, 'warm');
-      return result;
     } catch (error) {
       console.error(`[getUserById] Failed to fetch user ${userId}:`, error);
       throw error;
