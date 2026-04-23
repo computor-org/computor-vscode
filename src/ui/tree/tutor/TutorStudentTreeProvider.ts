@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import type { WebSocketService } from '../../../services/WebSocketService';
+import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
 import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../utils/repositoryNaming';
@@ -38,29 +39,18 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   private expandedContentIds = new Set<string>();
   private expandedVirtualFolderIds = new Set<string>();
   private expandedSubmissionIds = new Set<string>();
-  private wsService?: WebSocketService;
-  private subscribedCourseChannel?: string;
+  private wsSubscription = new CourseChannelSubscription('tutor-tree');
 
   constructor(private api: ComputorApiService, private selection: TutorSelectionService) {
     selection.onDidChangeSelection(() => this.refresh());
   }
 
   setWebSocketService(wsService: WebSocketService): void {
-    this.wsService = wsService;
+    this.wsSubscription.setService(wsService);
   }
 
   private subscribeToCourseChannel(courseId: string): void {
-    if (!this.wsService) return;
-    const channel = `course:${courseId}`;
-    if (this.subscribedCourseChannel === channel) return;
-
-    // Unsubscribe from previous course channel
-    if (this.subscribedCourseChannel) {
-      this.wsService.unsubscribe([this.subscribedCourseChannel], 'tutor-tree');
-    }
-
-    this.subscribedCourseChannel = channel;
-    this.wsService.subscribe([channel], 'tutor-tree', {
+    this.wsSubscription.switchToCourse(courseId, {
       onDeploymentStatusChanged: (event) => {
         console.log(`[TutorTree/WS] Deployment status changed: ${event.course_content_id} -> ${event.new_status}`);
         if (event.new_status === 'deployed' || event.new_status === 'failed') {

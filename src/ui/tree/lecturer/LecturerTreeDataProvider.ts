@@ -6,6 +6,7 @@ import * as path from 'path';
 import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { WebSocketService } from '../../../services/WebSocketService';
+import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
@@ -105,8 +106,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private assignmentIdentifierCache: Map<string, string | null> = new Map();
   private fullCourseCache: Map<string, Promise<any>> = new Map();
   private rolesTitleCache: Map<string, string> = new Map();
-  private wsService?: WebSocketService;
-  private subscribedCourseChannels: Set<string> = new Set();
+  private wsSubscription = new CourseChannelSubscription('lecturer-tree');
 
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
     // Use provided apiService or create a new one
@@ -120,18 +120,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   }
 
   setWebSocketService(wsService: WebSocketService): void {
-    this.wsService = wsService;
+    this.wsSubscription.setService(wsService);
   }
 
   private subscribeToCourseChannels(courseIds: string[]): void {
-    if (!this.wsService) return;
-    const newChannels = courseIds
-      .map(id => `course:${id}`)
-      .filter(ch => !this.subscribedCourseChannels.has(ch));
-    if (newChannels.length === 0) return;
-
-    newChannels.forEach(ch => this.subscribedCourseChannels.add(ch));
-    this.wsService.subscribe(newChannels, 'lecturer-tree', {
+    this.wsSubscription.subscribeCourses(courseIds, {
       onDeploymentStatusChanged: (event) => {
         console.log(`[LecturerTree/WS] Deployment status changed: ${event.course_content_id} -> ${event.new_status}`);
         void this.forceRefreshCourse(event.course_id);
