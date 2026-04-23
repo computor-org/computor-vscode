@@ -7,6 +7,13 @@ export interface ExecGitCloneOptions {
   cancellationToken?: CancellationToken;
   /** Working directory for the clone command (rarely needed). */
   cwd?: string;
+  /**
+   * @internal Override for tests. Callers SHOULD NOT supply this — the default
+   * is `execAsyncWithTimeout` from `src/utils/exec.ts`. Carrying it as an
+   * option avoids module-cache hacks in unit tests under either Node CJS or
+   * Node ESM loader paths.
+   */
+  exec?: typeof execAsyncWithTimeout;
 }
 
 /**
@@ -20,7 +27,8 @@ export async function execGitClone(
   targetPath: string,
   options: ExecGitCloneOptions = {}
 ): Promise<void> {
-  await execAsyncWithTimeout(
+  const exec = options.exec ?? execAsyncWithTimeout;
+  await exec(
     `git clone "${authenticatedUrl}" "${targetPath}"`,
     {
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
