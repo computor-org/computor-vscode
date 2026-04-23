@@ -1,0 +1,11 @@
+{
+  "all": true,
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/types/generated/**",
+    "src/**/*.d.ts",
+    "src/extension.ts"
+  ],
+  "reporter": ["text-summary", "html", "lcov"],
+  "check-coverage": false
+}
