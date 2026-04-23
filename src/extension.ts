@@ -145,6 +145,13 @@ interface TreeViewRegistration<T> {
   onVisibility?: (event: vscode.TreeViewVisibilityChangeEvent) => void;
 }
 
+async function setViewContextKeys(enabled: readonly string[], all: readonly string[]): Promise<void> {
+  const enabledSet = new Set(enabled);
+  for (const view of all) {
+    await vscode.commands.executeCommand('setContext', `computor.${view}.show`, enabledSet.has(view));
+  }
+}
+
 function registerTreeView<T>(
   id: string,
   registration: TreeViewRegistration<T>,
@@ -566,37 +573,21 @@ class UnifiedController {
     if (views.includes('student')) {
       report('Setting up student view...');
       await this.initializeStudentView(api, onProgress);
-      await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
     }
     if (views.includes('tutor')) {
       report('Setting up tutor view...');
       await this.initializeTutorView(api);
-      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', true);
     }
     if (views.includes('lecturer')) {
       report('Setting up lecturer view...');
       await this.initializeLecturerView(api);
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', true);
     }
     if (views.includes('user_manager')) {
       report('Setting up user manager view...');
       await this.initializeUserManagerView(api);
-      await vscode.commands.executeCommand('setContext', 'computor.user_manager.show', true);
     }
 
-    // Set context keys for views that are NOT available to false
-    if (!views.includes('student')) {
-      await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-    }
-    if (!views.includes('tutor')) {
-      await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-    }
-    if (!views.includes('lecturer')) {
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-    }
-    if (!views.includes('user_manager')) {
-      await vscode.commands.executeCommand('setContext', 'computor.user_manager.show', false);
-    }
+    await setViewContextKeys(views, ['student', 'tutor', 'lecturer', 'user_manager']);
   }
 
   private async focusHighestPriorityView(views: string[]): Promise<void> {
@@ -1486,10 +1477,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
 
   // Initialize all view contexts to false to hide views until login
-  await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
-  await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
-  await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
-  await vscode.commands.executeCommand('setContext', 'computor.student.offline.show', false);
+  await setViewContextKeys([], ['student', 'tutor', 'lecturer', 'student.offline']);
 
   // Unified login command
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
