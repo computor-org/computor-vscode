@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
-import { execAsync, execAsyncWithTimeout } from '../utils/exec';
+import { execAsync } from '../utils/exec';
+import { execGitClone } from '../git/gitCloneHelpers';
 import { GitLabTokenManager } from './GitLabTokenManager';
 
 interface CourseInfo {
@@ -280,23 +281,10 @@ export class StudentWorkspaceManager {
         
         if (isEmpty && fs.existsSync(targetPath)) {
           // Clone directly
-          await execAsyncWithTimeout(`git clone "${authenticatedUrl}" .`, {
-            cwd: targetPath,
-            env: {
-              ...process.env,
-              GIT_TERMINAL_PROMPT: '0'
-            },
-            timeout: 40_000
-          });
+          await execGitClone(authenticatedUrl, '.', { cwd: targetPath });
         } else {
           // Clone normally
-          await execAsyncWithTimeout(`git clone "${authenticatedUrl}" "${targetPath}"`, {
-            env: {
-              ...process.env,
-              GIT_TERMINAL_PROMPT: '0'
-            },
-            timeout: 40_000
-          });
+          await execGitClone(authenticatedUrl, targetPath);
         }
 
         vscode.window.showInformationMessage(`Successfully cloned ${course.title || course.path}`);
