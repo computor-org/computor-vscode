@@ -1,5 +1,5 @@
 {
-  "require": ["ts-node/register", "test/helpers/register-vscode-stub.ts"],
+  "require": ["ts-node/register", "test/helpers/register-vscode-stub.cjs"],
   "extension": ["ts"],
   "spec": [
     "test/git/*.test.ts",
