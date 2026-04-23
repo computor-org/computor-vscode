@@ -1,46 +1,19 @@
 import { expect } from 'chai';
-import * as path from 'path';
-
-/**
- * Tests for execGitClone. The helper delegates to execAsyncWithTimeout
- * (src/utils/exec.ts); we intercept that by rewriting the module cache.
- */
-type ExecArgs = { command: string; options: any };
-
-function loadHelperWithStub(): {
-  execGitClone: typeof import('../../src/git/gitCloneHelpers').execGitClone;
-  calls: ExecArgs[];
-  setResolved: (value: { stdout?: string; stderr?: string } | Error) => void;
-} {
-  const execPath = require.resolve(path.resolve(__dirname, '../../src/utils/exec.ts'));
-  delete require.cache[execPath];
-
-  const actual = require(path.resolve(__dirname, '../../src/utils/exec.ts'));
-  const calls: ExecArgs[] = [];
-  let pending: { stdout?: string; stderr?: string } | Error = { stdout: '', stderr: '' };
-
-  // Overwrite just the function we care about; keep the error classes + other
-  // exports intact so consumers that type-check against them still compile.
-  actual.execAsyncWithTimeout = async (command: string, options: any) => {
-    calls.push({ command, options });
-    if (pending instanceof Error) throw pending;
-    return pending;
+// Loaded via the shared .cjs helper because we mutate `execAsyncWithTimeout`
+// through the CommonJS module cache — a pattern that only works in CJS
+// context, not under Mocha's ESM loader path.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { loadGitCloneHelperWithStub } = require('../helpers/loadGitCloneHelperWithStub.cjs') as {
+  loadGitCloneHelperWithStub: () => {
+    execGitClone: typeof import('../../src/git/gitCloneHelpers').execGitClone;
+    calls: Array<{ command: string; options: any }>;
+    setResolved: (value: { stdout?: string; stderr?: string } | Error) => void;
   };
-
-  const helperPath = path.resolve(__dirname, '../../src/git/gitCloneHelpers.ts');
-  delete require.cache[require.resolve(helperPath)];
-  const helper = require(helperPath) as typeof import('../../src/git/gitCloneHelpers');
-
-  return {
-    execGitClone: helper.execGitClone,
-    calls,
-    setResolved(value) { pending = value; }
-  };
-}
+};
 
 describe('execGitClone', () => {
   it('runs a git clone with the authenticated URL, default 40s timeout, GIT_TERMINAL_PROMPT=0', async () => {
-    const { execGitClone, calls } = loadHelperWithStub();
+    const { execGitClone, calls } = loadGitCloneHelperWithStub();
 
     await execGitClone('https://oauth2:token@gitlab.example/foo.git', '/tmp/foo');
 
@@ -52,7 +25,7 @@ describe('execGitClone', () => {
   });
 
   it('propagates a custom timeout', async () => {
-    const { execGitClone, calls } = loadHelperWithStub();
+    const { execGitClone, calls } = loadGitCloneHelperWithStub();
 
     await execGitClone('https://x/y.git', '/tmp/y', { timeout: 10_000 });
 
@@ -60,7 +33,7 @@ describe('execGitClone', () => {
   });
 
   it('propagates cancellationToken and cwd', async () => {
-    const { execGitClone, calls } = loadHelperWithStub();
+    const { execGitClone, calls } = loadGitCloneHelperWithStub();
     const fakeToken = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
 
     await execGitClone('https://x/y.git', '.', { cancellationToken: fakeToken as any, cwd: '/work' });
@@ -70,7 +43,7 @@ describe('execGitClone', () => {
   });
 
   it('keeps the parent env vars and only overrides GIT_TERMINAL_PROMPT', async () => {
-    const { execGitClone, calls } = loadHelperWithStub();
+    const { execGitClone, calls } = loadGitCloneHelperWithStub();
     const prevValue = process.env.PATH;
     expect(prevValue).to.be.a('string');
 
@@ -81,7 +54,7 @@ describe('execGitClone', () => {
   });
 
   it('propagates errors from execAsyncWithTimeout', async () => {
-    const { execGitClone, setResolved } = loadHelperWithStub();
+    const { execGitClone, setResolved } = loadGitCloneHelperWithStub();
     setResolved(new Error('clone failed'));
 
     try {

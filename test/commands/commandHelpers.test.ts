@@ -1,10 +1,10 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
-import * as path from 'path';
+import { commandRegistrar } from '../../src/commands/commandHelpers';
 
-// Capture command registrations made by the vscode-stub so we can assert
-// against them. We install a temporary override on the stub's
-// commands.registerCommand before each test.
+// The vscode module is a singleton, so mutating its `commands.registerCommand`
+// stub is visible inside `commandRegistrar` immediately — no module reload
+// required.
 type RegisterCall = { id: string; handler: (...args: any[]) => any };
 
 describe('commandHelpers', () => {
@@ -24,17 +24,7 @@ describe('commandHelpers', () => {
     (vscode.commands as any).registerCommand = originalRegister;
   });
 
-  // Load the module after the vscode stub override so the helper sees our
-  // registerCommand. Using require() to avoid hoisting the import.
-  const loadHelper = () => {
-    const helperPath = path.resolve(__dirname, '../../src/commands/commandHelpers.ts');
-    // Clear the module cache entry so each test picks up the latest override.
-    delete require.cache[require.resolve(helperPath)];
-    return require(helperPath) as typeof import('../../src/commands/commandHelpers');
-  };
-
   it('commandRegistrar returns a function bound to the provided context', () => {
-    const { commandRegistrar } = loadHelper();
     const subs: { dispose(): void }[] = [];
     const ctx = { subscriptions: subs } as unknown as vscode.ExtensionContext;
 
@@ -51,7 +41,6 @@ describe('commandHelpers', () => {
   });
 
   it('each call pushes a new disposable onto the supplied context', () => {
-    const { commandRegistrar } = loadHelper();
     const subs: { dispose(): void }[] = [];
     const ctx = { subscriptions: subs } as unknown as vscode.ExtensionContext;
 
@@ -70,7 +59,6 @@ describe('commandHelpers', () => {
   });
 
   it('two registrars bound to different contexts do not cross-push', () => {
-    const { commandRegistrar } = loadHelper();
     const subsA: { dispose(): void }[] = [];
     const subsB: { dispose(): void }[] = [];
     const ctxA = { subscriptions: subsA } as unknown as vscode.ExtensionContext;
