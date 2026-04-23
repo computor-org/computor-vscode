@@ -1,6 +1,8 @@
 # Compiled output
 out/
 dist/
+coverage/
+.nyc_output/
 *.js
 !webpack.config.js
 *.js.map
