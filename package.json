@@ -520,18 +520,6 @@
         "category": "Computor Lecturer"
       },
       {
-        "command": "computor.lecturer.filterChangedAssignments",
-        "title": "Show Only Assignments With Changes",
-        "icon": "$(filter)",
-        "category": "Computor Lecturer"
-      },
-      {
-        "command": "computor.lecturer.clearChangedFilter",
-        "title": "Show All Assignments",
-        "icon": "$(filter-filled)",
-        "category": "Computor Lecturer"
-      },
-      {
         "command": "computor.lecturer.createOrganization",
         "title": "Create New Organization",
         "icon": "$(add)",
@@ -987,19 +975,9 @@
           "group": "navigation@1"
         },
         {
-          "command": "computor.lecturer.filterChangedAssignments",
-          "when": "view == computor.lecturer.courses && !computor.lecturer.showOnlyChanged",
-          "group": "navigation@2"
-        },
-        {
-          "command": "computor.lecturer.clearChangedFilter",
-          "when": "view == computor.lecturer.courses && computor.lecturer.showOnlyChanged",
-          "group": "navigation@2"
-        },
-        {
           "command": "computor.lecturer.createOrganization",
           "when": "view == computor.lecturer.courses",
-          "group": "navigation@3"
+          "group": "navigation@2"
         },
         {
           "command": "computor.user.profile",

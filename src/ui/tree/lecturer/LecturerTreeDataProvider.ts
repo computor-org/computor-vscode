@@ -107,7 +107,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private fullCourseCache: Map<string, Promise<any>> = new Map();
   private rolesTitleCache: Map<string, string> = new Map();
   private wsSubscription = new CourseChannelSubscription('lecturer-tree');
-  private showOnlyChangedAssignments = false;
 
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
     // Use provided apiService or create a new one
@@ -386,56 +385,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     }
   }
 
-  isShowOnlyChangedActive(): boolean {
-    return this.showOnlyChangedAssignments;
-  }
-
-  setShowOnlyChangedAssignments(value: boolean): void {
-    if (this.showOnlyChangedAssignments === value) { return; }
-    this.showOnlyChangedAssignments = value;
-    void vscode.commands.executeCommand('setContext', 'computor.lecturer.showOnlyChanged', value);
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
-  private contentNeedsAttention(content: CourseContentLecturerList): boolean {
-    const dep = (content as any).deployment;
-    if (!dep) { return true; }
-    if (dep.has_newer_version === true) { return true; }
-    if (dep.deployment_status !== 'released') { return true; }
-    return false;
-  }
-
-  private subtreeNeedsAttention(
-    content: CourseContentLecturerList,
-    allContents: CourseContentLecturerList[],
-    contentTypeMap: Map<string, CourseContentTypeList>
-  ): boolean {
-    const ct = contentTypeMap.get(content.course_content_type_id);
-    if (ct?.course_content_kind?.submittable) {
-      return this.contentNeedsAttention(content);
-    }
-    const prefix = content.path + '.';
-    for (const d of allContents) {
-      if (!d.path.startsWith(prefix)) { continue; }
-      const dct = contentTypeMap.get(d.course_content_type_id);
-      if (dct?.course_content_kind?.submittable && this.contentNeedsAttention(d)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private async filterChangedSubtrees(
-    contents: CourseContentLecturerList[],
-    allContents: CourseContentLecturerList[],
-    courseId: string
-  ): Promise<CourseContentLecturerList[]> {
-    if (!this.showOnlyChangedAssignments) { return contents; }
-    const types = await this.getCourseContentTypes(courseId);
-    const ctMap = new Map(types.map(t => [t.id, t]));
-    return contents.filter(c => this.subtreeNeedsAttention(c, allContents, ctMap));
-  }
-
   getTreeItem(element: TreeItem): vscode.TreeItem {
     // The expanded state is now handled when creating the tree items
     // This method just returns the element as-is
@@ -523,11 +472,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         if (element.folderType === 'contents') {
           await this.getCourseContentTypes(element.course.id);
           const allContents = await this.getCourseContents(element.course.id);
-          const rootContents = await this.filterChangedSubtrees(
-            this.getRootContents(allContents),
-            allContents,
-            element.course.id
-          );
+          const rootContents = this.getRootContents(allContents);
 
           return Promise.all(rootContents.map(content =>
             this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
@@ -598,11 +543,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       if (element instanceof CourseContentTreeItem) {
         // Show child course contents or, for assignments (leaves), show local repo files
         const allContents = await this.getCourseContents(element.course.id);
-        const childContents = await this.filterChangedSubtrees(
-          this.getChildContents(element.courseContent as CourseContentLecturerList, allContents),
-          allContents,
-          element.course.id
-        );
+        const childContents = this.getChildContents(element.courseContent as CourseContentLecturerList, allContents);
 
         const childItems = await Promise.all(childContents.map(content =>
           this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)

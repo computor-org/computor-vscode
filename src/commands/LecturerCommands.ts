@@ -95,14 +95,6 @@ export class LecturerCommands {
       this.treeDataProvider.refresh();
     });
 
-    register('computor.lecturer.filterChangedAssignments', () => {
-      this.treeDataProvider.setShowOnlyChangedAssignments(true);
-    });
-
-    register('computor.lecturer.clearChangedFilter', () => {
-      this.treeDataProvider.setShowOnlyChangedAssignments(false);
-    });
-
     // Sync assignments repositories (manual trigger)
     register('computor.lecturer.syncAssignments', async () => {
       try {
