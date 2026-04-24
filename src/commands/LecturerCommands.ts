@@ -2027,7 +2027,9 @@ export class LecturerCommands {
         const updateIds = updateCandidates.map(c => c.content.id);
         const upgradeResult = await this.apiService.lecturerBatchUpgradeVersions(courseId, updateIds);
         if (upgradeResult.total_failed > 0) {
-          console.warn(`${upgradeResult.total_failed} version upgrade(s) failed during release`);
+          vscode.window.showWarningMessage(
+            `${upgradeResult.total_failed} of ${updateIds.length} version upgrade(s) failed. The release will continue with the items that did upgrade.`
+          );
         }
       }
 
@@ -2041,7 +2043,15 @@ export class LecturerCommands {
           commit_message: 'Sync assignments prior to student-template release'
         });
       } catch (e) {
-        console.warn('Assignments generation failed or not available; continuing to student-template.', e);
+        const detail = e instanceof Error ? e.message : String(e);
+        const choice = await vscode.window.showWarningMessage(
+          `Failed to sync assignments before release: ${detail}. Continue with student-template release anyway?`,
+          { modal: true },
+          'Continue', 'Cancel'
+        );
+        if (choice !== 'Continue') {
+          throw new Error('Release cancelled after assignments sync failure');
+        }
       }
 
       progress.report({ message: 'Starting student-template release...' });

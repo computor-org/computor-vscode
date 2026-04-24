@@ -521,63 +521,17 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
       if (element instanceof CourseFolderTreeItem) {
         if (element.folderType === 'contents') {
-          // Ensure content types are loaded for this course
           await this.getCourseContentTypes(element.course.id);
-          
-          // Show course contents for course with virtual scrolling for large lists
           const allContents = await this.getCourseContents(element.course.id);
-
-          // Build tree structure from ltree paths
           const rootContents = await this.filterChangedSubtrees(
             this.getRootContents(allContents),
             allContents,
             element.course.id
           );
-          
-          // Use virtual scrolling for large lists (> 100 items)
-          if (rootContents.length > 100) {
-            const virtualKey = `contents-${element.course.id}`;
 
-            // Get or create virtual scrolling service
-            let virtualService = this.virtualScrollServices.get(virtualKey);
-            if (!virtualService) {
-              virtualService = new VirtualScrollingService(
-                async (page: number, pageSize: number) => {
-                  const start = page * pageSize;
-                  const items = rootContents.slice(start, start + pageSize);
-
-                  const treeItems = await Promise.all(items.map(content =>
-                    this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
-                  ));
-                  
-                  return { items: treeItems, total: rootContents.length };
-                },
-                { pageSize: 50, preloadPages: 2, maxCachedPages: 10 }
-              );
-              
-              this.virtualScrollServices.set(virtualKey, virtualService);
-            }
-            
-            // Get first page of items
-            const items = await virtualService.getItems(0, 50);
-            
-            // Add load more if there are more items
-            if (rootContents.length > items.length) {
-              items.push(new LoadMoreTreeItem(
-                element.course.id,
-                'contents',
-                items.length,
-                50
-              ));
-            }
-            
-            return items;
-          } else {
-            const contentItems = await Promise.all(rootContents.map(content =>
-              this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
-            ));
-            return contentItems;
-          }
+          return Promise.all(rootContents.map(content =>
+            this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
+          ));
         } else if (element.folderType === 'groups') {
           // Show course groups and ungrouped members
           const groups = await this.getCourseGroups(element.course.id);
