@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
-import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, FileSystemTreeItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
+import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, FileSystemTreeItem, RepositoryFilterToggleItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList, CodeAbilityMeta } from '../types/generated';
 import { writeExampleFiles } from '../utils/exampleFileWriter';
 import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
@@ -124,6 +124,18 @@ export class LecturerExampleCommands {
       vscode.window.showInformationMessage('Tags filter cleared');
     });
 
+    // Toggle a repository in the repository filter
+    register('computor.lecturer.toggleRepositoryFilter', (item: RepositoryFilterToggleItem) => {
+      if (!item?.repository?.id) { return; }
+      this.treeProvider.toggleRepositoryFilter(item.repository.id);
+    });
+
+    // Clear repository filter
+    register('computor.lecturer.clearRepositoriesFilter', () => {
+      this.treeProvider.clearRepositoriesFilter();
+      vscode.window.showInformationMessage('Repositories filter cleared');
+    });
+
     // Checkout example (latest version)
     register('computor.lecturer.checkoutExample', async (item: ExampleTreeItem) => {
       await this.checkoutExample(item);
@@ -154,14 +166,30 @@ export class LecturerExampleCommands {
     });
 
     // Reveal checked-out version in explorer
-    register('computor.lecturer.revealCheckedOutInExplorer', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem) => {
-      const p = item instanceof CheckedOutVersionTreeItem ? item.version.fullPath : item.group.fullPath;
-      await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p));
+    register('computor.lecturer.revealCheckedOutInExplorer', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem | ExampleTreeItem) => {
+      let target: string | undefined;
+      if (item instanceof CheckedOutVersionTreeItem) {
+        target = item.version.fullPath;
+      } else if (item instanceof CheckedOutGroupTreeItem) {
+        target = item.group.fullPath;
+      } else if (item instanceof ExampleTreeItem) {
+        target = item.merged.local?.fullPath;
+      }
+      if (!target) {
+        vscode.window.showWarningMessage('No local copy to reveal.');
+        return;
+      }
+      await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(target));
     });
 
     // Delete entire checked-out example group
-    register('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem) => {
-      await this.deleteCheckedOutGroup(item);
+    register('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem | ExampleTreeItem) => {
+      const group = item instanceof ExampleTreeItem ? item.merged.local : item?.group;
+      if (!group) {
+        vscode.window.showWarningMessage('No local copy to delete.');
+        return;
+      }
+      await this.deleteCheckedOutGroup({ group } as CheckedOutGroupTreeItem);
     });
 
     // Delete single checked-out version
@@ -922,7 +950,7 @@ export class LecturerExampleCommands {
 
       this.treeProvider.refreshAndExpand(directory);
 
-      vscode.window.showInformationMessage(`Created new example "${title}" in Local Examples`);
+      vscode.window.showInformationMessage(`Created new example "${title}" — checked out locally.`);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create example: ${error}`);
     }

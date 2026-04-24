@@ -766,9 +766,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       if (deployment.example_version) {
         exampleVersionInfo = deployment.example_version;
       }
-      // Synthesize minimal exampleInfo from deployment's example_identifier
       if (deployment.example_identifier) {
-        exampleInfo = { title: deployment.example_identifier } as any;
+        exampleInfo = {
+          identifier: deployment.example_identifier,
+          title: deployment.example_identifier
+        } as any;
       }
     }
 
@@ -883,7 +885,6 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
     let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
     let folderExists = folder ? fs.existsSync(folder) : false;
-    console.log(`[FOLDER-CHECK] dir="${sanitizedDirectoryName}" folder="${folder}" exists=${folderExists} repoRoot="${repoRoot}"`);
     let statusMessage: AssignmentDirectoryStatus | undefined;
 
     if (!folder && attemptSync) {
@@ -1181,14 +1182,16 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
           let exampleInfo = null;
           let exampleVersionInfo = null;
 
-          // Use deployment data from the list endpoint
           const parentDeployment = (parentContent as any).deployment;
           if (hasExampleAssigned(parentContent) && parentDeployment) {
             if (parentDeployment.example_version) {
               exampleVersionInfo = parentDeployment.example_version;
             }
             if (parentDeployment.example_identifier) {
-              exampleInfo = { title: parentDeployment.example_identifier } as any;
+              exampleInfo = {
+                identifier: parentDeployment.example_identifier,
+                title: parentDeployment.example_identifier
+              } as any;
             }
           }
           

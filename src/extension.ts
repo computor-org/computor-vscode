@@ -1041,11 +1041,17 @@ class UnifiedController {
 
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.revealInExamples', async (item: any) => {
-        if (!item?.exampleInfo?.id) {
+        const identifier = item?.exampleInfo?.identifier;
+        const id = item?.exampleInfo?.id;
+        if (!identifier && !id) {
           vscode.window.showWarningMessage('No example assigned to this content.');
           return;
         }
-        const found = await exampleTree.revealExample(item.exampleInfo.id);
+        const found = await exampleTree.revealExample({
+          identifier,
+          id,
+          repositoryId: item?.exampleInfo?.example_repository_id
+        });
         if (!found) {
           vscode.window.showWarningMessage('Example not found in the examples tree.');
         }
