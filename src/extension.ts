@@ -20,6 +20,18 @@ import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
+import {
+  OrganizationTreeItem as LecturerOrganizationTreeItem,
+  CourseFamilyTreeItem as LecturerCourseFamilyTreeItem,
+  CourseTreeItem as LecturerCourseTreeItem,
+  CourseFolderTreeItem as LecturerCourseFolderTreeItem,
+  CourseContentTreeItem as LecturerCourseContentTreeItem,
+  CourseContentTypeTreeItem as LecturerCourseContentTypeTreeItem,
+  CourseGroupTreeItem as LecturerCourseGroupTreeItem,
+  NoGroupTreeItem as LecturerNoGroupTreeItem,
+  CourseMemberTreeItem as LecturerCourseMemberTreeItem
+} from './ui/tree/lecturer/LecturerTreeItems';
+import { LecturerBreadcrumbStatusBar } from './ui/LecturerBreadcrumbStatusBar';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
@@ -140,6 +152,38 @@ async function setViewContextKeys(enabled: readonly string[], all: readonly stri
   for (const view of all) {
     await vscode.commands.executeCommand('setContext', `computor.${view}.show`, enabledSet.has(view));
   }
+}
+
+function extractLecturerBreadcrumb(item: vscode.TreeItem): { organization?: string | null; courseFamily?: string | null; course?: string | null } | undefined {
+  const orgLabel = (org: { title?: string | null; path: string }) => org.title || org.path;
+  const familyLabel = (f: { title?: string | null; path: string }) => f.title || f.path;
+  const courseLabel = (c: { title?: string | null; path: string }) => c.title || c.path;
+
+  if (item instanceof LecturerOrganizationTreeItem) {
+    return { organization: orgLabel(item.organization) };
+  }
+  if (item instanceof LecturerCourseFamilyTreeItem) {
+    return {
+      organization: orgLabel(item.organization),
+      courseFamily: familyLabel(item.courseFamily)
+    };
+  }
+  if (
+    item instanceof LecturerCourseTreeItem ||
+    item instanceof LecturerCourseFolderTreeItem ||
+    item instanceof LecturerCourseContentTreeItem ||
+    item instanceof LecturerCourseContentTypeTreeItem ||
+    item instanceof LecturerCourseGroupTreeItem ||
+    item instanceof LecturerNoGroupTreeItem ||
+    item instanceof LecturerCourseMemberTreeItem
+  ) {
+    return {
+      organization: orgLabel(item.organization),
+      courseFamily: familyLabel(item.courseFamily),
+      course: courseLabel(item.course)
+    };
+  }
+  return undefined;
 }
 
 function registerTreeView<T>(
@@ -1009,6 +1053,10 @@ class UnifiedController {
   private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
     if (this.wsService) tree.setWebSocketService(this.wsService);
+
+    const breadcrumb = new LecturerBreadcrumbStatusBar();
+    this.disposables.push(breadcrumb);
+
     registerTreeView('computor.lecturer.courses', {
       provider: tree,
       options: {
@@ -1023,7 +1071,21 @@ class UnifiedController {
       onCollapse: (event) => {
         if (event.element?.id) void tree.setNodeExpanded(event.element.id, false);
       },
+      onSelection: (event) => {
+        const selected = event.selection?.[0];
+        if (!selected) {
+          breadcrumb.clear();
+          return;
+        }
+        const labels = extractLecturerBreadcrumb(selected);
+        if (labels) {
+          breadcrumb.update(labels);
+        } else {
+          breadcrumb.clear();
+        }
+      },
       onVisibility: (event) => {
+        breadcrumb.setViewVisible(event.visible);
         if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
       }
     }, this.disposables);

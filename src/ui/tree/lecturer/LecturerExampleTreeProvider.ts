@@ -294,12 +294,25 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   private treeView?: vscode.TreeView<vscode.TreeItem>;
   private parentMap = new Map<string, vscode.TreeItem>();
 
+  private static readonly REPO_FILTER_STATE_KEY = 'computor.lecturer.examples.repoFilter';
+  private context: vscode.ExtensionContext;
+
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
+    this.context = context;
     this.apiService = providedApiService || new ComputorApiService(context);
+    const storedRepoIds = context.globalState.get<string[]>(LecturerExampleTreeProvider.REPO_FILTER_STATE_KEY, []);
+    this.selectedRepositoryIds = new Set(storedRepoIds);
     this.setupFileWatchers(context);
+  }
+
+  private persistRepoFilter(): void {
+    void this.context.globalState.update(
+      LecturerExampleTreeProvider.REPO_FILTER_STATE_KEY,
+      Array.from(this.selectedRepositoryIds)
+    );
   }
 
   private setupFileWatchers(context: vscode.ExtensionContext): void {
@@ -674,11 +687,13 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     } else {
       this.selectedRepositoryIds.add(repositoryId);
     }
+    this.persistRepoFilter();
     this._onDidChangeTreeData.fire(undefined);
   }
 
   clearRepositoriesFilter(): void {
     this.selectedRepositoryIds.clear();
+    this.persistRepoFilter();
     this._onDidChangeTreeData.fire(undefined);
   }
 
