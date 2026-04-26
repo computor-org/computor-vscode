@@ -80,7 +80,7 @@ export class LecturerFsCommands {
     try {
       await fs.rename(absPath, target);
       vscode.window.showInformationMessage(`Renamed to ${newName}`);
-      await vscode.commands.executeCommand('computor.lecturer.refreshCourses');
+      await vscode.commands.executeCommand('computor.lecturer.refresh');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to rename: ${error?.message || error}`);
     }
@@ -116,7 +116,7 @@ export class LecturerFsCommands {
     try {
       await fs.rm(absPath, { recursive: true, force: true });
       vscode.window.showInformationMessage(`Deleted ${label}`);
-      await vscode.commands.executeCommand('computor.lecturer.refreshCourses');
+      await vscode.commands.executeCommand('computor.lecturer.refresh');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to delete: ${error?.message || error}`);
     }

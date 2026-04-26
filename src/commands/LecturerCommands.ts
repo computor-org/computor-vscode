@@ -90,25 +90,10 @@ export class LecturerCommands {
   registerCommands(): void {
 
     const register = commandRegistrar(this.context);
-    // Tree refresh - register both command names for compatibility
-    const refreshHandler = async () => {
-      console.log('=== LECTURER TREE REFRESH COMMAND TRIGGERED ===');
-      
-      // Clear ALL API caches first - this is crucial
-      console.log('Clearing all API caches...');
-      this.apiService.clearCourseCache(''); // Clear all course caches
-      
-      // Use the standard refresh mechanism
-      console.log('Refreshing lecturer tree...');
+    register('computor.lecturer.refresh', async () => {
+      this.apiService.clearCourseCache('');
       this.treeDataProvider.refresh();
-      
-      console.log('Tree refresh completed');
-      vscode.window.showInformationMessage('✅ Lecturer tree refreshed successfully!');
-    };
-    
-    // Register refresh commands with proper naming convention
-    register('computor.lecturer.refresh', refreshHandler);
-    register('computor.lecturer.refreshCourses', refreshHandler);
+    });
 
     // Sync assignments repositories (manual trigger)
     register('computor.lecturer.syncAssignments', async () => {
@@ -142,8 +127,12 @@ export class LecturerCommands {
     });
 
     // Course content management
-    register('computor.lecturer.createCourseContent', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
-      await this.createCourseContent(item);
+    register('computor.lecturer.createUnit', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
+      await this.createUnit(item);
+    });
+
+    register('computor.lecturer.createAssignment', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
+      await this.createAssignment(item);
     });
 
     register('computor.lecturer.showMessages', async (item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
@@ -153,13 +142,6 @@ export class LecturerCommands {
     register('computor.lecturer.showCourseMemberComments', async (item: CourseMemberTreeItem) => {
       await this.showCourseMemberComments(item);
     });
-
-    // Deactivated: Sync GitLab Permissions command
-    // this.context.subscriptions.push(
-    //   vscode.commands.registerCommand('computor.lecturer.syncMemberGitlabPermissions', async (item: CourseMemberTreeItem) => {
-    //     await this.syncMemberGitlabPermissions(item);
-    //   })
-    // );
 
     register('computor.lecturer.changeCourseContentType', async (item: CourseContentTreeItem) => {
       await this.changeCourseContentType(item);
@@ -727,103 +709,115 @@ export class LecturerCommands {
     }
   }
 
-  private async createCourseContent(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
-    let parentPath: string | undefined;
-    let folderItem: CourseFolderTreeItem;
-    let course: CourseList;
-
+  private resolveCreateTarget(item: CourseFolderTreeItem | CourseContentTreeItem): {
+    folderItem: CourseFolderTreeItem;
+    course: CourseList;
+    parentPath?: string;
+  } | undefined {
     if (item instanceof CourseFolderTreeItem && item.folderType === 'contents') {
-      folderItem = item;
-      course = item.course;
-    } else if (item instanceof CourseContentTreeItem) {
-      parentPath = item.courseContent.path;
-      folderItem = new CourseFolderTreeItem('contents', item.course, item.courseFamily, item.organization);
-      course = item.course;
-    } else {
-      vscode.window.showErrorMessage('Course contents can only be created under the Contents folder or another content item');
-      return;
+      return { folderItem: item, course: item.course };
     }
+    if (item instanceof CourseContentTreeItem) {
+      return {
+        folderItem: new CourseFolderTreeItem('contents', item.course, item.courseFamily, item.organization),
+        course: item.course,
+        parentPath: item.courseContent.path
+      };
+    }
+    vscode.window.showErrorMessage('Course contents can only be created under the Contents folder or another content item.');
+    return undefined;
+  }
 
-    const contentTypes = await this.apiService.getCourseContentTypes(course.id);
-    if (contentTypes.length === 0) {
+  private async pickContentType(
+    courseId: string,
+    opts: { submittable: boolean; noneMessage: string }
+  ): Promise<CourseContentTypeList | undefined> {
+    const types = await this.apiService.getCourseContentTypes(courseId);
+    if (types.length === 0) {
       vscode.window.showWarningMessage('No content types available. Please create a content type first.');
-      return;
+      return undefined;
     }
 
-    // Sort content types alphabetically by title
-    const sortedContentTypes = [...contentTypes].sort((a, b) => {
-      const titleA = (a.title || a.slug || '').toLowerCase();
-      const titleB = (b.title || b.slug || '').toLowerCase();
-      return titleA.localeCompare(titleB);
-    });
-
-    // Fetch full content type info to get course_content_kind
-    const contentTypesWithKind = await Promise.all(sortedContentTypes.map(async (t) => {
+    const detailed = await Promise.all(types.map(async (t) => {
       try {
-        const fullType = await this.apiService.getCourseContentType(t.id);
-        return {
-          label: t.title || t.slug,
-          description: fullType?.course_content_kind?.title || fullType?.course_content_kind_id || '',
-          id: t.id,
-          contentType: fullType || t
-        };
-      } catch (error) {
-        console.warn(`Failed to fetch content type details for ${t.id}:`, error);
-        return {
-          label: t.title || t.slug,
-          description: t.course_content_kind_id || '',
-          id: t.id,
-          contentType: t
-        };
+        const full = await this.apiService.getCourseContentType(t.id);
+        return full || t;
+      } catch {
+        return t;
       }
     }));
 
-    const selectedType = await vscode.window.showQuickPick(
-      contentTypesWithKind,
+    const matching = detailed
+      .filter(t => this.isContentTypeSubmittable(t) === opts.submittable)
+      .sort((a, b) => (a.title || a.slug || '').localeCompare(b.title || b.slug || ''));
+
+    if (matching.length === 0) {
+      vscode.window.showWarningMessage(opts.noneMessage);
+      return undefined;
+    }
+
+    if (matching.length === 1) {
+      return matching[0];
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      matching.map(t => ({
+        label: t.title || t.slug,
+        description: t.course_content_kind?.title || t.course_content_kind_id || '',
+        contentType: t
+      })),
       { placeHolder: 'Select content type' }
     );
+    return picked?.contentType;
+  }
 
-    if (!selectedType) {
-      return;
-    }
+  private slugify(input: string, fallback: string): string {
+    const slug = input.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    return slug || fallback;
+  }
 
-    const isAssignment = this.isContentTypeSubmittable(selectedType.contentType);
+  private async createUnit(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
+    const target = this.resolveCreateTarget(item);
+    if (!target) { return; }
 
-    if (!isAssignment) {
-      const title = await vscode.window.showInputBox({
-        prompt: 'Enter course content title',
-        placeHolder: 'e.g., Week 1: Introduction'
-      });
-
-      if (!title) {
-        return;
-      }
-
-      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-      await this.treeDataProvider.createCourseContent(
-        folderItem,
-        title,
-        selectedType.id,
-        parentPath,
-        slug,
-        undefined
-      );
-      return;
-    }
-
-    // For assignments: pick an existing example and version
-    const examples = await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'Loading examples...',
-      cancellable: false
-    }, async () => {
-      return await this.apiService.getAvailableExamples();
+    const contentType = await this.pickContentType(target.course.id, {
+      submittable: false,
+      noneMessage: 'No non-submittable content types are configured for this course. Create one first.'
     });
+    if (!contentType) { return; }
 
+    const title = await vscode.window.showInputBox({
+      prompt: 'Enter unit title',
+      placeHolder: 'e.g., Week 1: Introduction'
+    });
+    if (!title) { return; }
+
+    await this.treeDataProvider.createCourseContent(
+      target.folderItem,
+      title,
+      contentType.id,
+      target.parentPath,
+      this.slugify(title, 'unit'),
+      undefined
+    );
+  }
+
+  private async createAssignment(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
+    const target = this.resolveCreateTarget(item);
+    if (!target) { return; }
+
+    const contentType = await this.pickContentType(target.course.id, {
+      submittable: true,
+      noneMessage: 'No submittable content types (assignments, exercises) are configured for this course. Create one first.'
+    });
+    if (!contentType) { return; }
+
+    const examples = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Loading examples...' },
+      () => this.apiService.getAvailableExamples()
+    );
     if (!examples || examples.length === 0) {
-      vscode.window.showWarningMessage(
-        'No examples available. Upload examples in the Examples view first.'
-      );
+      vscode.window.showWarningMessage('No examples available. Upload examples in the Examples view first.');
       return;
     }
 
@@ -842,73 +836,54 @@ export class LecturerCommands {
         matchOnDetail: true
       }
     );
+    if (!selectedExample) { return; }
 
-    if (!selectedExample) {
-      return;
-    }
-
-    const versions = await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'Loading versions...',
-      cancellable: false
-    }, async () => {
-      return await this.apiService.getExampleVersions(selectedExample.id);
-    });
-
-    if (!versions || versions.length === 0) {
-      vscode.window.showWarningMessage('No versions available for this example');
-      return;
-    }
-
-    const selectedVersion = await vscode.window.showQuickPick(
-      versions.map(v => ({
-        label: v.version_tag,
-        description: `Created: ${new Date(v.created_at).toLocaleDateString()}`,
-        versionTag: v.version_tag
-      })),
-      {
-        placeHolder: 'Select version'
-      }
+    const versions = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Loading versions...' },
+      () => this.apiService.getExampleVersions(selectedExample.id)
     );
-
-    if (!selectedVersion) {
+    if (!versions || versions.length === 0) {
+      vscode.window.showWarningMessage('No versions available for this example.');
       return;
     }
+
+    const sortedVersions = [...versions].sort((a, b) => b.version_number - a.version_number);
+    const latest = sortedVersions[0];
+    const selectedVersion = sortedVersions.length === 1 && latest
+      ? { versionTag: latest.version_tag }
+      : await vscode.window.showQuickPick(
+          sortedVersions.map(v => ({
+            label: v.version_tag,
+            description: `Created: ${new Date(v.created_at).toLocaleDateString()}`,
+            versionTag: v.version_tag
+          })),
+          { placeHolder: 'Select version (latest first)' }
+        );
+    if (!selectedVersion) { return; }
 
     const title = await vscode.window.showInputBox({
       prompt: 'Enter assignment title',
       value: selectedExample.exampleTitle,
       placeHolder: 'Assignment title'
     });
-
-    if (!title) {
-      return;
-    }
-
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    if (!title) { return; }
 
     try {
       const createdContent = await this.treeDataProvider.createCourseContent(
-        folderItem,
+        target.folderItem,
         title,
-        selectedType.id,
-        parentPath,
-        slug || 'assignment',
+        contentType.id,
+        target.parentPath,
+        this.slugify(title, 'assignment'),
         undefined
       );
-
-      if (!createdContent) {
-        return;
-      }
+      if (!createdContent) { return; }
 
       try {
-        await this.apiService.lecturerAssignExample(
-          createdContent.id,
-          {
-            example_identifier: selectedExample.identifier,
-            version_tag: selectedVersion.versionTag
-          }
-        );
+        await this.apiService.lecturerAssignExample(createdContent.id, {
+          example_identifier: selectedExample.identifier,
+          version_tag: selectedVersion.versionTag
+        });
       } catch (assignError: any) {
         const assignMessage = assignError?.response?.data?.detail || assignError.message || 'Unknown error';
         const action = await vscode.window.showWarningMessage(
@@ -916,17 +891,18 @@ export class LecturerCommands {
           'Keep', 'Delete'
         );
         if (action === 'Delete') {
-          await this.apiService.deleteCourseContent(course.id, createdContent.id);
+          await this.apiService.deleteCourseContent(target.course.id, createdContent.id);
         }
-        this.apiService.clearCourseCache(course.id);
+        this.apiService.clearCourseCache(target.course.id);
         this.treeDataProvider.refresh();
         return;
       }
 
-      await this.treeDataProvider.forceRefreshCourse(course.id);
-      vscode.window.showInformationMessage(`Created assignment "${title}" with example "${selectedExample.label}" v${selectedVersion.versionTag}`);
+      await this.treeDataProvider.forceRefreshCourse(target.course.id);
+      vscode.window.showInformationMessage(
+        `Created assignment "${title}" with example "${selectedExample.label}" ${selectedVersion.versionTag}`
+      );
     } catch (error: any) {
-      console.error('Failed to create assignment:', error);
       const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
       vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
     }
@@ -1826,21 +1802,11 @@ export class LecturerCommands {
   }
 
   private async releaseCourseContent(item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
-    console.log('============================================');
-    console.log('releaseCourseContent CALLED');
-    console.log('Item type:', item.constructor.name);
-    console.log('============================================');
     try {
       const scopeInfo = this.buildReleaseScopeFromTreeItem(item);
-      console.log('Scope info:', scopeInfo);
-      if (!scopeInfo) {
-        console.log('❌ No scope info, returning');
-        return;
-      }
-      console.log('Calling startReleaseWorkflow with courseId:', scopeInfo.courseId);
+      if (!scopeInfo) { return; }
       await this.startReleaseWorkflow(scopeInfo.courseId, scopeInfo.scope);
     } catch (error) {
-      console.error('❌ Error in releaseCourseContent:', error);
       vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
     }
   }
@@ -2053,7 +2019,9 @@ export class LecturerCommands {
         const updateIds = updateCandidates.map(c => c.content.id);
         const upgradeResult = await this.apiService.lecturerBatchUpgradeVersions(courseId, updateIds);
         if (upgradeResult.total_failed > 0) {
-          console.warn(`${upgradeResult.total_failed} version upgrade(s) failed during release`);
+          vscode.window.showWarningMessage(
+            `${upgradeResult.total_failed} of ${updateIds.length} version upgrade(s) failed. The release will continue with the items that did upgrade.`
+          );
         }
       }
 
@@ -2067,7 +2035,15 @@ export class LecturerCommands {
           commit_message: 'Sync assignments prior to student-template release'
         });
       } catch (e) {
-        console.warn('Assignments generation failed or not available; continuing to student-template.', e);
+        const detail = e instanceof Error ? e.message : String(e);
+        const choice = await vscode.window.showWarningMessage(
+          `Failed to sync assignments before release: ${detail}. Continue with student-template release anyway?`,
+          { modal: true },
+          'Continue', 'Cancel'
+        );
+        if (choice !== 'Continue') {
+          throw new Error('Release cancelled after assignments sync failure');
+        }
       }
 
       progress.report({ message: 'Starting student-template release...' });

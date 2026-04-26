@@ -14,19 +14,32 @@ import type { CheckedOutExampleGroup, CheckedOutVersion } from '../../../utils/c
 export {
   ExampleRepositoryTreeItem,
   ExampleTreeItem,
+  RepositoryFilterToggleItem,
   CheckedOutGroupTreeItem,
   CheckedOutVersionTreeItem,
   FileSystemTreeItem,
   RootSectionTreeItem
 };
 
+interface MergedExample {
+  identifier: string;
+  title: string;
+  repositoryId: string | null;
+  repositoryName: string | null;
+  remote?: ExampleList;
+  local?: CheckedOutExampleGroup;
+  category?: string | null;
+  tags?: string[];
+}
+
 class RootSectionTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly section: 'repositories' | 'checkedOut',
+    public readonly section: 'repositories' | 'examples',
     label: string,
-    icon: string
+    icon: string,
+    collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Expanded
   ) {
-    super(label, vscode.TreeItemCollapsibleState.Expanded);
+    super(label, collapsibleState);
     this.id = `root-${section}`;
     this.contextValue = `rootSection_${section}`;
     this.iconPath = new vscode.ThemeIcon(icon);
@@ -36,7 +49,7 @@ class RootSectionTreeItem extends vscode.TreeItem {
 class ExampleRepositoryTreeItem extends vscode.TreeItem {
   constructor(
     public readonly repository: ExampleRepositoryList,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
+    public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None
   ) {
     super(repository.name, collapsibleState);
     this.id = `example-repo-${repository.id}`;
@@ -47,40 +60,106 @@ class ExampleRepositoryTreeItem extends vscode.TreeItem {
   }
 }
 
+class RepositoryFilterToggleItem extends vscode.TreeItem {
+  constructor(
+    public readonly repository: ExampleRepositoryList,
+    public readonly selected: boolean
+  ) {
+    super(repository.name, vscode.TreeItemCollapsibleState.None);
+    this.id = `repo-filter-${repository.id}`;
+    this.contextValue = 'repositoryFilterToggle';
+    this.iconPath = new vscode.ThemeIcon(selected ? 'pass-filled' : 'circle-large-outline');
+    this.tooltip = `${repository.name} — click to ${selected ? 'remove from' : 'add to'} filter`;
+    this.description = repository.source_type;
+    this.command = {
+      command: 'computor.lecturer.toggleRepositoryFilter',
+      title: 'Toggle Repository Filter',
+      arguments: [this]
+    };
+  }
+}
+
 class ExampleTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly example: ExampleList,
-    public readonly repository: ExampleRepositoryList,
-    public readonly isCheckedOut: boolean = false
+    public readonly merged: MergedExample
   ) {
-    super(example.identifier, vscode.TreeItemCollapsibleState.None);
-    this.id = `example-${example.id}`;
-    this.contextValue = isCheckedOut ? 'exampleCheckedOut' : 'example';
-    this.iconPath = new vscode.ThemeIcon(isCheckedOut ? 'check' : 'file-code');
-    this.tooltip = this.getTooltip();
-    this.description = this.getDescription();
-    this.command = undefined;
+    const isLocal = !!merged.local;
+    const collapsible = isLocal
+      ? vscode.TreeItemCollapsibleState.Collapsed
+      : vscode.TreeItemCollapsibleState.None;
+    super(merged.identifier, collapsible);
+    this.id = `example-${merged.repositoryId ?? 'local-only'}-${merged.identifier}`;
+    if (merged.remote && merged.local) {
+      this.contextValue = 'exampleCheckedOut';
+    } else if (merged.local) {
+      this.contextValue = 'exampleLocalOnly';
+    } else {
+      this.contextValue = 'example';
+    }
+    this.iconPath = new vscode.ThemeIcon(isLocal ? 'check' : 'file-code');
+    this.tooltip = this.buildTooltip();
+    this.description = this.buildDescription();
   }
 
-  private getTooltip(): string {
+  public get group(): CheckedOutExampleGroup | undefined {
+    return this.merged.local;
+  }
+
+  // Aliases used by checkout / upload / reveal commands. Callers must guard via
+  // contextValue (`example` / `exampleCheckedOut`) — local-only rows have no remote.
+  public get example(): ExampleList {
+    return this.merged.remote!;
+  }
+
+  public get repository(): { id: string; name: string } {
+    return { id: this.merged.repositoryId!, name: this.merged.repositoryName! };
+  }
+
+  public get isCheckedOut(): boolean {
+    return !!this.merged.local;
+  }
+
+  private buildTooltip(): string {
     const parts = [
-      `Title: ${this.example.title}`,
-      `Identifier: ${this.example.identifier}`
+      `Title: ${this.merged.title}`,
+      `Identifier: ${this.merged.identifier}`
     ];
-    if (this.example.subject) { parts.push(`Subject: ${this.example.subject}`); }
-    if (this.example.category) { parts.push(`Category: ${this.example.category}`); }
-    if (this.example.tags && this.example.tags.length > 0) {
-      parts.push(`Tags: ${this.example.tags.join(', ')}`);
+    if (this.merged.repositoryName) {
+      parts.push(`Repository: ${this.merged.repositoryName}`);
+    } else {
+      parts.push('Repository: (local only)');
     }
-    if (this.isCheckedOut) { parts.push('Status: Checked out locally'); }
+    if (this.merged.remote?.subject) { parts.push(`Subject: ${this.merged.remote.subject}`); }
+    if (this.merged.category) { parts.push(`Category: ${this.merged.category}`); }
+    if (this.merged.tags && this.merged.tags.length > 0) {
+      parts.push(`Tags: ${this.merged.tags.join(', ')}`);
+    }
+    if (this.merged.local) {
+      const versionCount = this.merged.local.versions.length;
+      parts.push(`Local versions: ${versionCount}`);
+      if (this.merged.local.workingVersion) {
+        parts.push('Working copy: editable');
+      }
+    } else {
+      parts.push('Status: remote only');
+    }
     return parts.join('\n');
   }
 
-  private getDescription(): string {
-    const parts = [];
-    if (this.isCheckedOut) { parts.push('checked out'); }
-    parts.push(this.example.title);
-    return parts.join(' · ');
+  private buildDescription(): string {
+    const parts: string[] = [];
+    if (this.merged.title && this.merged.title !== this.merged.identifier) {
+      parts.push(this.merged.title);
+    }
+    if (this.merged.repositoryName) {
+      parts.push(`· ${this.merged.repositoryName}`);
+    } else {
+      parts.push('· local only');
+    }
+    if (this.merged.local) {
+      parts.push('[local]');
+    }
+    return parts.join(' ');
   }
 }
 
@@ -92,29 +171,14 @@ class CheckedOutGroupTreeItem extends vscode.TreeItem {
     this.id = `checked-out-group-${group.directory}`;
     this.contextValue = 'checkedOutGroup';
     this.iconPath = new vscode.ThemeIcon('folder-library');
-    this.tooltip = this.getTooltip();
-    this.description = this.getDescription();
-  }
-
-  private getTooltip(): string {
-    const parts = [`Directory: ${this.group.directory}`];
-    const w = this.group.workingVersion;
-    if (w) {
-      parts.push(`Working version: ${w.localVersion || w.metadata.versionTag}`);
-      parts.push(`Example ID: ${w.metadata.exampleId}`);
-    }
-    parts.push(`${this.group.versions.length} version(s) locally`);
-    return parts.join('\n');
-  }
-
-  private getDescription(): string {
-    const versionCount = this.group.versions.length;
-    const w = this.group.workingVersion;
-    if (w) {
-      const version = w.localVersion || w.metadata.versionTag;
-      return versionCount > 1 ? `${version} (${versionCount} versions)` : version;
-    }
-    return `${versionCount} version(s)`;
+    const w = group.workingVersion;
+    const versionCount = group.versions.length;
+    this.tooltip = w
+      ? `Directory: ${group.directory}\nWorking version: ${w.localVersion || w.metadata.versionTag}\n${versionCount} version(s) locally`
+      : `Directory: ${group.directory}\n${versionCount} version(s) locally`;
+    this.description = w
+      ? (versionCount > 1 ? `${w.localVersion || w.metadata.versionTag} (${versionCount} versions)` : (w.localVersion || w.metadata.versionTag))
+      : `${versionCount} version(s)`;
   }
 }
 
@@ -130,11 +194,11 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
     this.id = `checked-out-version-${groupDirectory}-${version.isWorking ? 'working' : version.versionTag}`;
     this.contextValue = version.isWorking ? 'checkedOutWorking' : 'checkedOutVersion';
     this.iconPath = new vscode.ThemeIcon(version.isWorking ? 'edit' : 'tag');
-    this.tooltip = this.getTooltip();
-    this.description = this.getDescription();
+    this.tooltip = this.buildTooltip();
+    this.description = this.buildDescription();
   }
 
-  private getTooltip(): string {
+  private buildTooltip(): string {
     const m = this.version.metadata;
     const parts: string[] = [];
     if (this.version.isWorking) {
@@ -150,7 +214,7 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
     return parts.join('\n');
   }
 
-  private getDescription(): string {
+  private buildDescription(): string {
     if (this.version.isWorking && this.version.localVersion) {
       return this.version.localVersion;
     }
@@ -212,24 +276,43 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   public readonly dragMimeTypes = ['application/vnd.code.tree.computorexample', LecturerExampleTreeProvider.FS_MIME_TYPE];
 
   private apiService: ComputorApiService;
+
+  // Filter state
   private searchQuery: string = '';
   private selectedCategory: string | undefined;
   private selectedTags: string[] = [];
+  private selectedRepositoryIds: Set<string> = new Set();
 
+  // Caches
   private repositoriesCache: ExampleRepositoryList[] | null = null;
   private examplesCache: Map<string, ExampleList[]> = new Map();
   private checkedOutCache: CheckedOutExampleGroup[] | null = null;
+  private mergedCache: MergedExample[] | null = null;
+
   private fileWatchers: vscode.Disposable[] = [];
-  private expandDirectory: string | undefined;
+  private expandIdentifier: string | undefined;
   private treeView?: vscode.TreeView<vscode.TreeItem>;
   private parentMap = new Map<string, vscode.TreeItem>();
+
+  private static readonly REPO_FILTER_STATE_KEY = 'computor.lecturer.examples.repoFilter';
+  private context: vscode.ExtensionContext;
 
   constructor(
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
+    this.context = context;
     this.apiService = providedApiService || new ComputorApiService(context);
+    const storedRepoIds = context.globalState.get<string[]>(LecturerExampleTreeProvider.REPO_FILTER_STATE_KEY, []);
+    this.selectedRepositoryIds = new Set(storedRepoIds);
     this.setupFileWatchers(context);
+  }
+
+  private persistRepoFilter(): void {
+    void this.context.globalState.update(
+      LecturerExampleTreeProvider.REPO_FILTER_STATE_KEY,
+      Array.from(this.selectedRepositoryIds)
+    );
   }
 
   private setupFileWatchers(context: vscode.ExtensionContext): void {
@@ -260,6 +343,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       if (timeout) { clearTimeout(timeout); }
       timeout = setTimeout(() => {
         this.checkedOutCache = null;
+        this.mergedCache = null;
         this._onDidChangeTreeData.fire(undefined);
       }, 300);
     };
@@ -269,12 +353,13 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this.repositoriesCache = null;
     this.examplesCache.clear();
     this.checkedOutCache = null;
+    this.mergedCache = null;
     this.parentMap.clear();
     this._onDidChangeTreeData.fire(undefined);
   }
 
   refreshAndExpand(directory: string): void {
-    this.expandDirectory = directory;
+    this.expandIdentifier = directory;
     this.refresh();
   }
 
@@ -299,29 +384,18 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
 
       if (element instanceof RootSectionTreeItem) {
         if (element.section === 'repositories') {
-          const repos = await this.getRepositorySectionItems();
-          for (const repo of repos) {
-            if (repo.id) { this.parentMap.set(repo.id, element); }
-          }
-          return repos;
+          return this.getRepositoryFilterToggles(element);
         }
-        if (element.section === 'checkedOut') {
-          return this.getCheckedOutGroups();
+        if (element.section === 'examples') {
+          return this.getMergedExampleItems(element);
         }
       }
 
-      if (element instanceof ExampleRepositoryTreeItem) {
-        const examples = await this.getExamplesForRepository(element.repository);
-        for (const ex of examples) {
-          if (ex.id) { this.parentMap.set(ex.id, element); }
-        }
-        return examples;
-      }
-
-      if (element instanceof CheckedOutGroupTreeItem) {
+      if (element instanceof ExampleTreeItem) {
+        if (!element.merged.local) { return []; }
         const shouldExpand = element.collapsibleState === vscode.TreeItemCollapsibleState.Expanded;
-        return element.group.versions.map(v => {
-          const item = new CheckedOutVersionTreeItem(v, element.group.directory);
+        return element.merged.local.versions.map(v => {
+          const item = new CheckedOutVersionTreeItem(v, element.merged.local!.directory);
           if (shouldExpand && v.isWorking) {
             item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
           }
@@ -377,13 +451,92 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       items.push(tagsItem);
     }
 
-    items.push(new RootSectionTreeItem('checkedOut', 'Local Examples', 'folder-library'));
-    items.push(new RootSectionTreeItem('repositories', 'Repositories', 'cloud'));
+    if (this.selectedRepositoryIds.size > 0) {
+      const repoItem = new vscode.TreeItem(
+        `Repositories: ${this.selectedRepositoryIds.size} selected`,
+        vscode.TreeItemCollapsibleState.None
+      );
+      repoItem.iconPath = new vscode.ThemeIcon('repo');
+      repoItem.contextValue = 'repositoryFilter';
+      repoItem.tooltip = 'Click to clear repository filter';
+      repoItem.command = { command: 'computor.lecturer.clearRepositoriesFilter', title: 'Clear Repositories Filter', arguments: [] };
+      items.push(repoItem);
+    }
+
+    items.push(new RootSectionTreeItem(
+      'repositories',
+      'Repositories',
+      'cloud',
+      vscode.TreeItemCollapsibleState.Collapsed
+    ));
+    items.push(new RootSectionTreeItem(
+      'examples',
+      'Examples',
+      'package',
+      vscode.TreeItemCollapsibleState.Expanded
+    ));
 
     return items;
   }
 
-  private async getRepositorySectionItems(): Promise<ExampleRepositoryTreeItem[]> {
+  private async getRepositoryFilterToggles(parent: RootSectionTreeItem): Promise<vscode.TreeItem[]> {
+    const repositories = await this.getRepositories();
+    return repositories.map(repo => {
+      const item = new RepositoryFilterToggleItem(repo, this.selectedRepositoryIds.has(repo.id));
+      if (item.id) { this.parentMap.set(item.id, parent); }
+      return item;
+    });
+  }
+
+  private async getMergedExampleItems(parent: RootSectionTreeItem): Promise<vscode.TreeItem[]> {
+    const merged = await this.getMergedExamples();
+
+    // Apply filters
+    let filtered = merged;
+    if (this.selectedRepositoryIds.size > 0) {
+      filtered = filtered.filter(m =>
+        m.repositoryId !== null && this.selectedRepositoryIds.has(m.repositoryId)
+      );
+    }
+    if (this.searchQuery) {
+      const query = this.searchQuery.toLowerCase();
+      filtered = filtered.filter(m =>
+        m.title.toLowerCase().includes(query) ||
+        m.identifier.toLowerCase().includes(query) ||
+        (m.tags || []).some(t => t.toLowerCase().includes(query))
+      );
+    }
+    if (this.selectedCategory) {
+      filtered = filtered.filter(m => m.category === this.selectedCategory);
+    }
+    if (this.selectedTags.length > 0) {
+      filtered = filtered.filter(m =>
+        m.tags && this.selectedTags.every(tag => m.tags?.includes(tag))
+      );
+    }
+
+    if (filtered.length === 0) {
+      const empty = new vscode.TreeItem('No examples match the current filters', vscode.TreeItemCollapsibleState.None);
+      empty.iconPath = new vscode.ThemeIcon('info');
+      return [empty];
+    }
+
+    filtered.sort((a, b) => a.identifier.localeCompare(b.identifier));
+
+    const expandIdentifier = this.expandIdentifier;
+    this.expandIdentifier = undefined;
+
+    return filtered.map(m => {
+      const item = new ExampleTreeItem(m);
+      if (expandIdentifier && m.identifier === expandIdentifier && m.local) {
+        item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      }
+      if (item.id) { this.parentMap.set(item.id, parent); }
+      return item;
+    });
+  }
+
+  private async getRepositories(): Promise<ExampleRepositoryList[]> {
     if (!this.repositoriesCache) {
       try {
         this.repositoriesCache = await this.apiService.getExampleRepositories();
@@ -392,100 +545,96 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
         this.repositoriesCache = [];
       }
     }
-    return this.repositoriesCache.map(repo => new ExampleRepositoryTreeItem(repo));
+    return this.repositoriesCache;
   }
 
-  private getCheckedOutGroups(): vscode.TreeItem[] {
-    if (!this.checkedOutCache) {
-      this.checkedOutCache = scanCheckedOutExamples();
-    }
-
-    if (this.checkedOutCache.length === 0) {
-      const empty = new vscode.TreeItem('No local examples', vscode.TreeItemCollapsibleState.None);
-      empty.iconPath = new vscode.ThemeIcon('info');
-      empty.tooltip = 'Check out an example from Repositories or create a new one';
-      return [empty];
-    }
-
-    const expandDir = this.expandDirectory;
-    this.expandDirectory = undefined;
-    return this.checkedOutCache.map(group => {
-      const item = new CheckedOutGroupTreeItem(group);
-      if (expandDir && group.directory === expandDir) {
-        item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-      }
-      return item;
-    });
-  }
-
-  private getCheckedOutExampleIds(): Set<string> {
-    if (!this.checkedOutCache) {
-      this.checkedOutCache = scanCheckedOutExamples();
-    }
-    const ids = new Set<string>();
-    for (const group of this.checkedOutCache) {
-      for (const version of group.versions) {
-        ids.add(version.metadata.exampleId);
-      }
-    }
-    return ids;
-  }
-
-  private async getExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleTreeItem[]> {
-    const cacheKey = repository.id;
-
-    if (!this.examplesCache.has(cacheKey)) {
+  private async getExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleList[]> {
+    if (!this.examplesCache.has(repository.id)) {
       try {
         const examples = await this.apiService.getExamples(repository.id);
-        this.examplesCache.set(cacheKey, examples);
+        this.examplesCache.set(repository.id, examples);
       } catch (error) {
         console.error(`Failed to load examples for repository ${repository.name}:`, error);
-        this.examplesCache.set(cacheKey, []);
+        this.examplesCache.set(repository.id, []);
+      }
+    }
+    return this.examplesCache.get(repository.id) || [];
+  }
+
+  private getCheckedOut(): CheckedOutExampleGroup[] {
+    if (!this.checkedOutCache) {
+      this.checkedOutCache = scanCheckedOutExamples();
+    }
+    return this.checkedOutCache;
+  }
+
+  private async getMergedExamples(): Promise<MergedExample[]> {
+    if (this.mergedCache) { return this.mergedCache; }
+
+    const repositories = await this.getRepositories();
+    const localGroups = this.getCheckedOut();
+
+    // Index local groups by exampleId (from metadata) and by directory
+    const localByExampleId = new Map<string, CheckedOutExampleGroup>();
+    const localByRepoDir = new Map<string, CheckedOutExampleGroup>();
+    for (const group of localGroups) {
+      const meta = group.versions[0]?.metadata;
+      if (meta?.exampleId) {
+        localByExampleId.set(meta.exampleId, group);
+      }
+      if (meta?.repositoryId && meta.directory) {
+        localByRepoDir.set(`${meta.repositoryId}::${meta.directory}`, group);
       }
     }
 
-    const examples = this.examplesCache.get(cacheKey) || [];
-    const checkedOutIds = this.getCheckedOutExampleIds();
+    const merged: MergedExample[] = [];
+    const consumedLocal = new Set<CheckedOutExampleGroup>();
 
-    let filteredExamples = examples;
-
-    if (this.searchQuery) {
-      const query = this.searchQuery.toLowerCase();
-      filteredExamples = filteredExamples.filter(ex =>
-        ex.title.toLowerCase().includes(query) ||
-        ex.identifier.toLowerCase().includes(query) ||
-        ex.directory.toLowerCase().includes(query) ||
-        (ex.tags && ex.tags.some(tag => tag.toLowerCase().includes(query)))
-      );
+    for (const repo of repositories) {
+      const examples = await this.getExamplesForRepository(repo);
+      for (const ex of examples) {
+        const local = localByExampleId.get(ex.id) || localByRepoDir.get(`${repo.id}::${ex.directory}`);
+        if (local) { consumedLocal.add(local); }
+        merged.push({
+          identifier: ex.identifier,
+          title: ex.title,
+          repositoryId: repo.id,
+          repositoryName: repo.name,
+          remote: ex,
+          local,
+          category: ex.category,
+          tags: ex.tags
+        });
+      }
     }
 
-    if (this.selectedCategory) {
-      filteredExamples = filteredExamples.filter(ex => ex.category === this.selectedCategory);
+    // Local-only orphans (checked out but no matching remote)
+    for (const group of localGroups) {
+      if (consumedLocal.has(group)) { continue; }
+      const meta = group.versions[0]?.metadata;
+      const repoId = meta?.repositoryId || null;
+      const repoName = repositories.find(r => r.id === repoId)?.name ?? null;
+      merged.push({
+        identifier: group.directory,
+        title: group.workingVersion?.localVersion || group.directory,
+        repositoryId: repoId,
+        repositoryName: repoName,
+        local: group
+      });
     }
 
-    if (this.selectedTags.length > 0) {
-      filteredExamples = filteredExamples.filter(ex =>
-        ex.tags && this.selectedTags.every(tag => ex.tags?.includes(tag))
-      );
-    }
-
-    const sorted = filteredExamples.sort((a, b) =>
-      a.identifier.localeCompare(b.identifier)
-    );
-
-    return sorted.map(example =>
-      new ExampleTreeItem(example, repository, checkedOutIds.has(example.id))
-    );
+    this.mergedCache = merged;
+    return merged;
   }
 
   private getFileSystemItems(dirPath: string, isWorking: boolean = false): vscode.TreeItem[] {
     try {
       if (!fs.existsSync(dirPath)) { return []; }
 
-      const items = fs.readdirSync(dirPath);
+      const entries = fs.readdirSync(dirPath);
       const treeItems: vscode.TreeItem[] = [];
 
-      for (const item of items) {
+      for (const item of entries) {
         if (item === '.computor-example.json') { continue; }
         const fullPath = path.join(dirPath, item);
         const stat = fs.statSync(fullPath);
@@ -508,44 +657,90 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     }
   }
 
-  getSearchQuery(): string { return this.searchQuery; }
+  // ------- Filter API (called by commands) -------
 
+  getSearchQuery(): string { return this.searchQuery; }
   setSearchQuery(query: string): void {
     this.searchQuery = query;
+    this.mergedCache = null;
     this._onDidChangeTreeData.fire(undefined);
   }
-
-  clearSearch(): void {
-    this.searchQuery = '';
-    this._onDidChangeTreeData.fire(undefined);
-  }
+  clearSearch(): void { this.setSearchQuery(''); }
 
   getSelectedCategory(): string | undefined { return this.selectedCategory; }
-
   setCategory(category: string | undefined): void {
     this.selectedCategory = category;
     this._onDidChangeTreeData.fire(undefined);
   }
-
-  clearCategoryFilter(): void {
-    this.selectedCategory = undefined;
-    this._onDidChangeTreeData.fire(undefined);
-  }
+  clearCategoryFilter(): void { this.setCategory(undefined); }
 
   getSelectedTags(): string[] { return this.selectedTags; }
-
   setTags(tags: string[]): void {
     this.selectedTags = tags;
     this._onDidChangeTreeData.fire(undefined);
   }
+  clearTagsFilter(): void { this.setTags([]); }
 
-  clearTagsFilter(): void {
-    this.selectedTags = [];
+  toggleRepositoryFilter(repositoryId: string): void {
+    if (this.selectedRepositoryIds.has(repositoryId)) {
+      this.selectedRepositoryIds.delete(repositoryId);
+    } else {
+      this.selectedRepositoryIds.add(repositoryId);
+    }
+    this.persistRepoFilter();
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  clearRepositoriesFilter(): void {
+    this.selectedRepositoryIds.clear();
+    this.persistRepoFilter();
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  getSelectedRepositoryIds(): string[] {
+    return Array.from(this.selectedRepositoryIds);
+  }
+
   async getFilteredExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleTreeItem[]> {
-    return this.getExamplesForRepository(repository);
+    const examples = await this.getExamplesForRepository(repository);
+    const localGroups = this.getCheckedOut();
+    const localByExampleId = new Map<string, CheckedOutExampleGroup>();
+    for (const group of localGroups) {
+      const meta = group.versions[0]?.metadata;
+      if (meta?.exampleId) { localByExampleId.set(meta.exampleId, group); }
+    }
+
+    let filtered = examples;
+    if (this.searchQuery) {
+      const query = this.searchQuery.toLowerCase();
+      filtered = filtered.filter(ex =>
+        ex.title.toLowerCase().includes(query) ||
+        ex.identifier.toLowerCase().includes(query) ||
+        ex.directory.toLowerCase().includes(query) ||
+        (ex.tags && ex.tags.some(tag => tag.toLowerCase().includes(query)))
+      );
+    }
+    if (this.selectedCategory) {
+      filtered = filtered.filter(ex => ex.category === this.selectedCategory);
+    }
+    if (this.selectedTags.length > 0) {
+      filtered = filtered.filter(ex =>
+        ex.tags && this.selectedTags.every(tag => ex.tags?.includes(tag))
+      );
+    }
+
+    return filtered
+      .sort((a, b) => a.identifier.localeCompare(b.identifier))
+      .map(ex => new ExampleTreeItem({
+        identifier: ex.identifier,
+        title: ex.title,
+        repositoryId: repository.id,
+        repositoryName: repository.name,
+        remote: ex,
+        local: localByExampleId.get(ex.id),
+        category: ex.category,
+        tags: ex.tags
+      }));
   }
 
   getExamplesPath(): string | undefined {
@@ -560,49 +755,49 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     this.treeView = view;
   }
 
-  async revealExample(exampleId: string): Promise<boolean> {
+  async revealExample(params: { identifier?: string; id?: string; repositoryId?: string }): Promise<boolean> {
     if (!this.treeView) { return false; }
+    if (!params.identifier && !params.id) { return false; }
 
-    if (!this.repositoriesCache) {
-      this.repositoriesCache = await this.apiService.getExampleRepositories() || [];
-    }
+    // Make sure the merged list is built and parentMap is populated.
+    const examplesSection = new RootSectionTreeItem('examples', 'Examples', 'package');
+    await this.getMergedExampleItems(examplesSection);
 
-    const repoRoot = new RootSectionTreeItem('repositories', 'Repositories', 'cloud');
+    const merged = await this.getMergedExamples();
+    const match = merged.find(m =>
+      (params.id && m.remote?.id === params.id) ||
+      (params.identifier && m.identifier === params.identifier &&
+        (!params.repositoryId || m.repositoryId === params.repositoryId))
+    );
+    if (!match) { return false; }
 
-    for (const repo of this.repositoriesCache) {
-      const repoItem = new ExampleRepositoryTreeItem(repo);
-      if (repoItem.id) { this.parentMap.set(repoItem.id, repoRoot); }
-
-      const examples = await this.getExamplesForRepository(repo);
-      for (const ex of examples) {
-        if (ex.id) { this.parentMap.set(ex.id, repoItem); }
-      }
-
-      const match = examples.find(e => e.example.id === exampleId);
-      if (match) {
-        await this.treeView.reveal(match, { select: true, focus: true, expand: true });
-        return true;
-      }
-    }
-    return false;
+    const item = new ExampleTreeItem(match);
+    if (item.id) { this.parentMap.set(item.id, examplesSection); }
+    await this.treeView.reveal(item, { select: true, focus: true, expand: true });
+    return true;
   }
 
   public handleDrag(source: readonly vscode.TreeItem[], treeDataTransfer: vscode.DataTransfer, _token: vscode.CancellationToken): void | Thenable<void> {
     const exampleItems = source.filter((s): s is ExampleTreeItem => s instanceof ExampleTreeItem);
     if (exampleItems.length > 0) {
-      const draggedExamples = exampleItems.map(item => ({
-        exampleId: item.example.id,
-        title: item.example.title,
-        description: null,
-        identifier: item.example.identifier,
-        repositoryId: item.example.example_repository_id
-      }));
+      const draggable = exampleItems
+        .filter(item => item.merged.remote)
+        .map(item => ({
+          exampleId: item.merged.remote!.id,
+          title: item.merged.title,
+          description: null,
+          identifier: item.merged.identifier,
+          repositoryId: item.merged.remote!.example_repository_id
+        }));
 
-      const dragDropManager = DragDropManager.getInstance();
-      dragDropManager.setDraggedData(draggedExamples);
-
-      const jsonData = JSON.stringify(draggedExamples);
-      treeDataTransfer.set('application/vnd.code.tree.computorexample', new vscode.DataTransferItem(jsonData));
+      if (draggable.length > 0) {
+        const dragDropManager = DragDropManager.getInstance();
+        dragDropManager.setDraggedData(draggable);
+        treeDataTransfer.set(
+          'application/vnd.code.tree.computorexample',
+          new vscode.DataTransferItem(JSON.stringify(draggable))
+        );
+      }
     }
 
     const fsItems = source.filter((s): s is FileSystemTreeItem => s instanceof FileSystemTreeItem && s.isWorking);

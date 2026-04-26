@@ -20,6 +20,18 @@ import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
+import {
+  OrganizationTreeItem as LecturerOrganizationTreeItem,
+  CourseFamilyTreeItem as LecturerCourseFamilyTreeItem,
+  CourseTreeItem as LecturerCourseTreeItem,
+  CourseFolderTreeItem as LecturerCourseFolderTreeItem,
+  CourseContentTreeItem as LecturerCourseContentTreeItem,
+  CourseContentTypeTreeItem as LecturerCourseContentTypeTreeItem,
+  CourseGroupTreeItem as LecturerCourseGroupTreeItem,
+  NoGroupTreeItem as LecturerNoGroupTreeItem,
+  CourseMemberTreeItem as LecturerCourseMemberTreeItem
+} from './ui/tree/lecturer/LecturerTreeItems';
+import { LecturerBreadcrumbStatusBar } from './ui/LecturerBreadcrumbStatusBar';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
@@ -140,6 +152,38 @@ async function setViewContextKeys(enabled: readonly string[], all: readonly stri
   for (const view of all) {
     await vscode.commands.executeCommand('setContext', `computor.${view}.show`, enabledSet.has(view));
   }
+}
+
+function extractLecturerBreadcrumb(item: vscode.TreeItem): { organization?: string | null; courseFamily?: string | null; course?: string | null } | undefined {
+  const orgLabel = (org: { title?: string | null; path: string }) => org.title || org.path;
+  const familyLabel = (f: { title?: string | null; path: string }) => f.title || f.path;
+  const courseLabel = (c: { title?: string | null; path: string }) => c.title || c.path;
+
+  if (item instanceof LecturerOrganizationTreeItem) {
+    return { organization: orgLabel(item.organization) };
+  }
+  if (item instanceof LecturerCourseFamilyTreeItem) {
+    return {
+      organization: orgLabel(item.organization),
+      courseFamily: familyLabel(item.courseFamily)
+    };
+  }
+  if (
+    item instanceof LecturerCourseTreeItem ||
+    item instanceof LecturerCourseFolderTreeItem ||
+    item instanceof LecturerCourseContentTreeItem ||
+    item instanceof LecturerCourseContentTypeTreeItem ||
+    item instanceof LecturerCourseGroupTreeItem ||
+    item instanceof LecturerNoGroupTreeItem ||
+    item instanceof LecturerCourseMemberTreeItem
+  ) {
+    return {
+      organization: orgLabel(item.organization),
+      courseFamily: familyLabel(item.courseFamily),
+      course: courseLabel(item.course)
+    };
+  }
+  return undefined;
 }
 
 function registerTreeView<T>(
@@ -1009,6 +1053,10 @@ class UnifiedController {
   private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
     if (this.wsService) tree.setWebSocketService(this.wsService);
+
+    const breadcrumb = new LecturerBreadcrumbStatusBar();
+    this.disposables.push(breadcrumb);
+
     registerTreeView('computor.lecturer.courses', {
       provider: tree,
       options: {
@@ -1023,7 +1071,21 @@ class UnifiedController {
       onCollapse: (event) => {
         if (event.element?.id) void tree.setNodeExpanded(event.element.id, false);
       },
+      onSelection: (event) => {
+        const selected = event.selection?.[0];
+        if (!selected) {
+          breadcrumb.clear();
+          return;
+        }
+        const labels = extractLecturerBreadcrumb(selected);
+        if (labels) {
+          breadcrumb.update(labels);
+        } else {
+          breadcrumb.clear();
+        }
+      },
       onVisibility: (event) => {
+        breadcrumb.setViewVisible(event.visible);
         if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
       }
     }, this.disposables);
@@ -1041,77 +1103,19 @@ class UnifiedController {
 
     this.context.subscriptions.push(
       vscode.commands.registerCommand('computor.lecturer.revealInExamples', async (item: any) => {
-        if (!item?.exampleInfo?.id) {
+        const identifier = item?.exampleInfo?.identifier;
+        const id = item?.exampleInfo?.id;
+        if (!identifier && !id) {
           vscode.window.showWarningMessage('No example assigned to this content.');
           return;
         }
-        const found = await exampleTree.revealExample(item.exampleInfo.id);
+        const found = await exampleTree.revealExample({
+          identifier,
+          id,
+          repositoryId: item?.exampleInfo?.example_repository_id
+        });
         if (!found) {
           vscode.window.showWarningMessage('Example not found in the examples tree.');
-        }
-      })
-    );
-
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand('computor.lecturer.checkoutAssignmentExample', async (item: any) => {
-        if (!item?.exampleVersionInfo?.id || !item?.exampleInfo) {
-          vscode.window.showWarningMessage('No example version assigned to this content.');
-          return;
-        }
-
-        const fs = await import('fs');
-        const { writeExampleFiles } = await import('./utils/exampleFileWriter');
-        const { writeCheckoutMetadata, getWorkingPath, getVersionPath } = await import('./utils/checkedOutExampleManager');
-        const { WorkspaceStructureManager } = await import('./utils/workspaceStructure');
-
-        try {
-          const dirs = WorkspaceStructureManager.getInstance().getDirectories();
-          const exampleData = await api.downloadExampleVersion(item.exampleVersionInfo.id);
-          if (!exampleData) {
-            vscode.window.showErrorMessage('Failed to download example version.');
-            return;
-          }
-
-          const directory = item.exampleInfo.directory || exampleData.directory;
-          const versionTag = item.exampleVersionInfo.version_tag || exampleData.version_tag;
-          const metadata = {
-            exampleId: item.exampleInfo.id,
-            repositoryId: item.exampleInfo.example_repository_id || '',
-            directory,
-            versionId: item.exampleVersionInfo.id,
-            versionTag,
-            versionNumber: item.exampleVersionInfo.version_number ?? 0,
-            checkedOutAt: new Date().toISOString()
-          };
-
-          const workingDir = getWorkingPath(dirs.examples, directory);
-          const versionDir = getVersionPath(dirs.exampleVersions, directory, versionTag);
-
-          if (fs.existsSync(workingDir)) {
-            const overwrite = await vscode.window.showWarningMessage(
-              `Working copy of '${directory}' already exists. Overwrite?`, 'Yes', 'No'
-            );
-            if (overwrite !== 'Yes') { return; }
-            fs.rmSync(workingDir, { recursive: true, force: true });
-          }
-
-          fs.mkdirSync(workingDir, { recursive: true });
-          writeExampleFiles(exampleData.files, workingDir);
-          writeCheckoutMetadata(workingDir, metadata);
-
-          if (fs.existsSync(versionDir)) {
-            fs.rmSync(versionDir, { recursive: true, force: true });
-          }
-          fs.mkdirSync(versionDir, { recursive: true });
-          fs.cpSync(workingDir, versionDir, { recursive: true });
-
-          exampleTree.refresh();
-          vscode.window.showInformationMessage(
-            `Checked out '${item.exampleInfo.title || directory}' [${versionTag}]`
-          );
-        } catch (error) {
-          console.error('Failed to checkout assignment example:', error);
-          vscode.window.showErrorMessage(`Failed to checkout: ${error}`);
         }
       })
     );
