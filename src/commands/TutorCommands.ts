@@ -61,7 +61,17 @@ export class TutorCommands {
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
     this.filterProvider = filterProvider;
     this.tutorTestService = TutorTestService.getInstance(this.apiService);
-    // No workspace manager needed for current tutor actions
+
+    // When the tutor selects a different course member in the filter tree, and the
+    // comments webview is currently open, switch it to the new member automatically.
+    const selectionService = TutorSelectionService.getInstance();
+    this.context.subscriptions.push(selectionService.onDidChangeSelection(() => {
+      if (!this.commentsWebviewProvider.isOpen()) { return; }
+      const memberId = selectionService.getCurrentMemberId();
+      if (!memberId) { return; }
+      if (this.commentsWebviewProvider.getCurrentCourseMemberId() === memberId) { return; }
+      void this.showCourseMemberComments();
+    }));
   }
 
   registerCommands(): void {

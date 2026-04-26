@@ -1402,8 +1402,8 @@
         },
         {
           "command": "computor.tutor.showCourseMemberComments",
-          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent/",
-          "group": "2_discussion@2"
+          "when": "view == computor.tutor.filters && viewItem =~ /^tutorMember/",
+          "group": "2_discussion@1"
         },
         {
           "command": "computor.lecturer.checkoutExample",

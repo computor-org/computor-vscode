@@ -26,6 +26,15 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     });
   }
 
+  public isOpen(): boolean {
+    return !!this.panel;
+  }
+
+  public getCurrentCourseMemberId(): string | undefined {
+    const data = this.currentData as CommentsWebviewData | undefined;
+    return data?.courseMemberId;
+  }
+
   async showComments(courseMemberId: string, title: string): Promise<void> {
     const comments = await this.apiService.listCourseMemberComments(courseMemberId);
     const payload: CommentsWebviewData = { courseMemberId, title, comments };
