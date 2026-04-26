@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberCommentList } from '../../types/generated';
+import { CourseMemberCommentsInputPanelProvider } from '../panels/CourseMemberCommentsInputPanel';
 
 interface CommentsWebviewData {
   courseMemberId: string;
@@ -11,16 +12,28 @@ interface CommentsWebviewData {
 
 export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
+  private inputPanel?: CourseMemberCommentsInputPanelProvider;
 
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.courseMemberComments');
     this.apiService = apiService;
   }
 
+  public setInputPanel(inputPanel: CourseMemberCommentsInputPanelProvider): void {
+    this.inputPanel = inputPanel;
+    inputPanel.setOnCommentChanged(async () => {
+      await this.refreshComments();
+    });
+  }
+
   async showComments(courseMemberId: string, title: string): Promise<void> {
     const comments = await this.apiService.listCourseMemberComments(courseMemberId);
     const payload: CommentsWebviewData = { courseMemberId, title, comments };
     await this.show(`Comments: ${title}`, payload);
+    if (this.inputPanel) {
+      this.inputPanel.setTarget(courseMemberId, title);
+      void this.inputPanel.reveal();
+    }
   }
 
   protected async getWebviewContent(data?: CommentsWebviewData): Promise<string> {
@@ -64,11 +77,8 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     if (!message) { return; }
 
     switch (message.command) {
-      case 'createComment':
-        await this.createComment(message.data);
-        break;
-      case 'updateComment':
-        await this.updateComment(message.data);
+      case 'editComment':
+        this.handleEditComment(message.data);
         break;
       case 'requestDeleteComment':
         await this.requestDeleteComment(message.data);
@@ -116,43 +126,17 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     this.panel.webview.postMessage({ command: 'updateComments', data: comments });
   }
 
-  private async createComment(data: { message: string }): Promise<void> {
-    const courseMemberId = this.getCourseMemberId();
-    if (!courseMemberId) {
-      vscode.window.showWarningMessage('Unable to create comment: missing course member context.');
+  private handleEditComment(data: { commentId: string }): void {
+    if (!data?.commentId) { return; }
+    const current = this.currentData as CommentsWebviewData | undefined;
+    const comment = current?.comments.find(c => c.id === data.commentId);
+    if (!comment) { return; }
+    if (!this.inputPanel) {
+      vscode.window.showWarningMessage('Comment input panel is not available.');
       return;
     }
-
-    try {
-      this.postLoadingState(true);
-      const comments = await this.apiService.createCourseMemberComment(courseMemberId, data.message);
-      this.updateCurrentData(comments);
-      this.postComments(comments);
-      this.postLoadingState(false);
-      vscode.window.showInformationMessage('Comment added.');
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create comment: ${error?.message || error}`);
-      this.postLoadingState(false);
-    }
-  }
-
-  private async updateComment(data: { commentId: string; message: string }): Promise<void> {
-    const courseMemberId = this.getCourseMemberId();
-    if (!courseMemberId || !data?.commentId) {
-      return;
-    }
-
-    try {
-      this.postLoadingState(true);
-      const comments = await this.apiService.updateCourseMemberComment(courseMemberId, data.commentId, data.message);
-      this.updateCurrentData(comments);
-      this.postComments(comments);
-      this.postLoadingState(false);
-      vscode.window.showInformationMessage('Comment updated.');
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to update comment: ${error?.message || error}`);
-      this.postLoadingState(false);
-    }
+    this.inputPanel.setEditingComment(comment);
+    void this.inputPanel.reveal();
   }
 
   private async requestDeleteComment(data: { commentId: string; courseMemberId?: string }): Promise<void> {
@@ -184,6 +168,8 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       this.updateCurrentData(comments);
       this.postComments(comments);
       this.postLoadingState(false);
+      // If the input panel was editing this comment, clear that state.
+      this.inputPanel?.clearEditing();
       vscode.window.showInformationMessage('Comment deleted.');
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to delete comment: ${error?.message || error}`);

@@ -10,6 +10,7 @@ import { deriveRepositoryDirectoryName } from '../utils/repositoryNaming';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
+import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMemberCommentsInputPanel';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
@@ -39,13 +40,17 @@ export class TutorCommands {
     apiService?: ComputorApiService,
     filterProvider?: TutorFilterRefreshable,
     messagesInputPanel?: MessagesInputPanelProvider,
-    wsService?: WebSocketService
+    wsService?: WebSocketService,
+    commentsInputPanel?: CourseMemberCommentsInputPanelProvider
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
+    if (commentsInputPanel) {
+      this.commentsWebviewProvider.setInputPanel(commentsInputPanel);
+    }
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);

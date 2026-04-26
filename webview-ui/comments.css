@@ -70,41 +70,10 @@
   gap: 8px;
 }
 
-.form-card {
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
-  background: var(--vscode-editorWidget-background);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.form-context {
-  margin: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
-}
-
-.form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-row label {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-
 .empty-state,
 .error-state {
   text-align: center;
   padding: 24px;
   border: 1px dashed var(--vscode-editorWidget-border);
   color: var(--vscode-descriptionForeground);
-}
-
-.comment-card.editing {
-  border-color: var(--vscode-focusBorder);
 }

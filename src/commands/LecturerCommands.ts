@@ -15,6 +15,7 @@ import { CourseMemberWebviewProvider } from '../ui/webviews/CourseMemberWebviewP
 import { CourseMemberImportWebviewProvider } from '../ui/webviews/CourseMemberImportWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
+import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMemberCommentsInputPanel';
 import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebviewProvider';
 import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
@@ -61,7 +62,8 @@ export class LecturerCommands {
     private treeDataProvider: LecturerTreeDataProvider,
     apiService?: ComputorApiService,
     messagesInputPanel?: MessagesInputPanelProvider,
-    wsService?: WebSocketService
+    wsService?: WebSocketService,
+    commentsInputPanel?: CourseMemberCommentsInputPanelProvider
   ) {
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
@@ -80,6 +82,9 @@ export class LecturerCommands {
       this.messagesWebviewProvider.setWebSocketService(wsService);
     }
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
+    if (commentsInputPanel) {
+      this.commentsWebviewProvider.setInputPanel(commentsInputPanel);
+    }
     this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
     this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
     this.courseProgressOverviewWebviewProvider = new CourseProgressOverviewWebviewProvider(context, this.apiService);

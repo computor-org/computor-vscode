@@ -869,6 +869,11 @@
           "id": "computor-messages-input",
           "title": "Message Input",
           "icon": "$(comment)"
+        },
+        {
+          "id": "computor-comments-input",
+          "title": "Comment Input",
+          "icon": "$(note)"
         }
       ]
     },
@@ -954,6 +959,15 @@
           "name": "Compose",
           "icon": "$(comment)",
           "contextualTitle": "Message Input"
+        }
+      ],
+      "computor-comments-input": [
+        {
+          "id": "computor.courseMemberCommentsInputPanel",
+          "type": "webview",
+          "name": "Compose",
+          "icon": "$(note)",
+          "contextualTitle": "Comment Input"
         }
       ]
     },

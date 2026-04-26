@@ -8,7 +8,6 @@
     comments: [],
     loading: false,
     error: undefined,
-    editingComment: undefined,
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -114,9 +113,7 @@
         return aTime.localeCompare(bTime);
       })
       .forEach((comment) => {
-        const card = createElement('article', {
-          className: `comment-card${state.editingComment?.id === comment.id ? ' editing' : ''}`
-        });
+        const card = createElement('article', { className: 'comment-card' });
 
         const authorName = comment.transmitter?.user
           ? `${comment.transmitter.user.given_name || ''} ${comment.transmitter.user.family_name || ''}`.trim() || comment.transmitter.user.username || comment.transmitter.user.email
@@ -146,7 +143,12 @@
             text: 'Edit',
             size: 'sm',
             variant: 'secondary',
-            onClick: () => setState({ editingComment: comment })
+            onClick: () => {
+              vscode.postMessage({
+                command: 'editComment',
+                data: { commentId: comment.id }
+              });
+            }
           });
           actions.appendChild(editBtn.render());
         }
@@ -154,7 +156,7 @@
         const deleteBtn = createElement('button', {
           className: 'vscode-button vscode-button--tertiary vscode-button--sm',
           textContent: 'Delete',
-          type: 'button'
+          attributes: { type: 'button' }
         });
 
         deleteBtn.addEventListener('click', () => {
@@ -169,78 +171,6 @@
 
         container.appendChild(card);
       });
-  }
-
-  function renderForm(wrapper) {
-    wrapper.innerHTML = '';
-
-    const textarea = createElement('textarea', {
-      className: 'vscode-input',
-      attributes: {
-        rows: '5',
-        placeholder: 'Add a comment…'
-      }
-    });
-    textarea.value = state.editingComment ? state.editingComment.message || '' : '';
-
-    const actions = createElement('div', { className: 'toolbar' });
-
-    if (createButton) {
-      const saveBtn = createButton({
-        text: state.editingComment ? 'Save Changes' : 'Add Comment',
-        variant: 'primary',
-        loading: state.loading,
-        onClick: () => {
-          const message = textarea.value.trim();
-          if (!message) {
-            vscode.postMessage({ command: 'showWarning', data: 'Comment text is required.' });
-            return;
-          }
-          setState({ loading: true });
-          if (state.editingComment) {
-            vscode.postMessage({
-              command: 'updateComment',
-              data: {
-                commentId: state.editingComment.id,
-                message
-              }
-            });
-          } else {
-            vscode.postMessage({
-              command: 'createComment',
-              data: { message }
-            });
-          }
-        }
-      });
-      actions.appendChild(saveBtn.render());
-
-      if (state.editingComment) {
-        const cancelBtn = createButton({
-          text: 'Cancel',
-          variant: 'secondary',
-          onClick: () => setState({ editingComment: undefined })
-        });
-        actions.appendChild(cancelBtn.render());
-      }
-    }
-
-    const bodyRow = createElement('div', { className: 'form-row' });
-    bodyRow.appendChild(createElement('label', { textContent: 'Comment', attributes: { for: 'comment-body' } }));
-    textarea.id = 'comment-body';
-    bodyRow.appendChild(textarea);
-
-    if (state.editingComment) {
-      wrapper.appendChild(
-        createElement('p', {
-          className: 'form-context',
-          textContent: 'Editing existing comment'
-        })
-      );
-    }
-
-    wrapper.appendChild(bodyRow);
-    wrapper.appendChild(actions);
   }
 
   function render() {
@@ -274,18 +204,9 @@
     const commentsContainer = createElement('div', { className: 'comments-container' });
     renderComments(commentsContainer);
 
-    const formCard = createElement('div', { className: 'form-card' });
-    formCard.appendChild(
-      createElement('h2', {
-        textContent: state.editingComment ? 'Edit Comment' : 'New Comment'
-      })
-    );
-    renderForm(formCard);
-
     view.appendChild(header);
     view.appendChild(toolbar);
     view.appendChild(commentsContainer);
-    view.appendChild(formCard);
 
     mount.appendChild(view);
   }
@@ -296,7 +217,7 @@
 
     switch (message.command) {
       case 'updateComments':
-        setState({ comments: message.data || [], loading: false, editingComment: undefined });
+        setState({ comments: message.data || [], loading: false });
         break;
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
@@ -305,8 +226,6 @@
         setState({ error: message.data, loading: false });
         break;
       case 'updateState':
-        setState(message.data || {});
-        break;
       case 'update':
         setState(message.data || {});
         break;

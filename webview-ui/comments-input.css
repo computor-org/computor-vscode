@@ -1,0 +1,51 @@
+.comments-input-root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.comments-input-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin: 0;
+  padding: 12px 0;
+}
+
+.comments-input-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comments-input-title {
+  font-weight: 600;
+}
+
+.comments-input-target {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.comments-input-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  font-family: var(--vscode-font-family);
+  box-sizing: border-box;
+}
+
+.comments-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comments-input-hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  margin-left: auto;
+}
