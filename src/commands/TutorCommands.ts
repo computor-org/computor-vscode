@@ -336,20 +336,23 @@ export class TutorCommands {
 
       const gradingInput = await vscode.window.showInputBox({
         title: 'Grading',
-        prompt: 'Enter grade as percentage (0–100%)',
-        placeHolder: 'e.g., 85',
-        value: prevGrade != null ? String(Math.round(prevGrade * 100)) : undefined,
+        prompt: 'Enter grade between 0.00 and 1.00 (max 2 decimal places)',
+        placeHolder: 'e.g., 0.85',
+        value: prevGrade != null ? prevGrade.toFixed(2) : undefined,
         ignoreFocusOut: true,
         validateInput: (v) => {
-          if (!v || !v.trim()) return 'Enter a percentage between 0 and 100';
-          const n = Number(v.replace('%', '').trim());
-          if (!isFinite(n)) return 'Not a number';
-          if (n < 0 || n > 100) return 'Value must be between 0 and 100';
+          if (!v || !v.trim()) return 'Enter a value between 0 and 1';
+          const trimmed = v.trim();
+          if (!/^(?:0(?:\.\d{1,2})?|1(?:\.0{1,2})?|\.\d{1,2})$/.test(trimmed)) {
+            return 'Value must be between 0 and 1 with at most 2 decimal places';
+          }
+          const n = Number(trimmed);
+          if (!isFinite(n) || n < 0 || n > 1) return 'Value must be between 0 and 1';
           return undefined;
         }
       });
       if (gradingInput == null) return; // cancelled
-      const grade = Math.max(0, Math.min(1, Number(gradingInput.replace('%', '').trim()) / 100));
+      const grade = Math.max(0, Math.min(1, Number(gradingInput.trim())));
 
       const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
         { label: 'corrected', description: 'Mark as corrected', value: 1 as GradingStatus },
@@ -386,7 +389,7 @@ export class TutorCommands {
         this.treeDataProvider.refresh();
         this.filterProvider?.refreshFilters();
 
-        vscode.window.showInformationMessage(`Updated: ${Math.round(grade * 100)}% • ${statusPick.label}`);
+        vscode.window.showInformationMessage(`Updated: ${grade.toFixed(2)} • ${statusPick.label}`);
       } catch (e: any) {
         vscode.window.showErrorMessage(`Failed to update grading: ${e?.message || e}`);
       }
