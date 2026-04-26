@@ -45,6 +45,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private expandedStates: Record<string, boolean> = {};
     private itemIndex: Map<string, TreeItem> = new Map();
     private forceRefresh: boolean = false;
+    // Per-render grouping cache so org/family children resolve without refetching.
+    private orgGrouping: Map<string, any[]> = new Map();
+    private organizationInfoCache: Map<string, { id: string; title: string; path: string }> = new Map();
+    private courseFamilyInfoCache: Map<string, { id: string; title: string; path: string }> = new Map();
+    private courseInfoCache: Map<string, { orgId: string | null; familyId: string | null }> = new Map();
     // Track courses that have been set up in this session (to avoid redundant bulk setup on course expand)
     private coursesSetupThisSession: Set<string> = new Set();
     // Track individual assignments where setup has already been attempted (to avoid repeated popups)
@@ -141,6 +146,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         this.courseContentsCache.clear();
         this.contentKinds = [];
         this.itemIndex.clear();
+        this.orgGrouping.clear();
+        this.courseInfoCache.clear();
+        // Org/family name caches are kept — they rarely change and avoid redundant lookups.
         // Clear assignment setup tracking so failed assignments can retry on refresh
         this.assignmentsSetupAttempted.clear();
         // Don't clear expanded states on refresh - preserve them
@@ -510,7 +518,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         }
         
         if (!element) {
-            // Root level - show all available courses
+            // Root level - group courses by organization
             try {
                 const shouldForce = this.forceRefresh;
                 const courses = await this.apiService.getStudentCourses({ force: shouldForce });
@@ -524,43 +532,114 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     this.contentKinds = await this.apiService.getCourseContentKinds() || [];
                 }
 
-                // Create a tree item for each course
-                const courseItems: TreeItem[] = [];
+                // Group courses by organization id and pre-fetch contents (preserves
+                // existing side-effects like repository path updates).
+                this.orgGrouping.clear();
+                this.courseInfoCache.clear();
                 for (const course of courses) {
-                    const courseId = course.id;
-                    const title = (course.title || course.name || course.path || `Course ${courseId}`) as string;
+                    const orgId = (course.organization_id ?? '__no_org__') as string;
+                    const familyId = (course.course_family_id ?? null) as string | null;
+                    this.courseInfoCache.set(course.id, { orgId: course.organization_id ?? null, familyId });
+                    if (!this.orgGrouping.has(orgId)) this.orgGrouping.set(orgId, []);
+                    this.orgGrouping.get(orgId)!.push(course);
 
-                    // Pre-fetch contents for count if not cached
-                    let courseContents = this.courseContentsCache.get(courseId);
+                    let courseContents = this.courseContentsCache.get(course.id);
                     if (!courseContents || shouldForce) {
-                        courseContents = await this.apiService.getStudentCourseContents(courseId, { force: shouldForce }) || [];
-                        this.courseContentsCache.set(courseId, courseContents);
-                        if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(courseId, courseContents);
+                        courseContents = await this.apiService.getStudentCourseContents(course.id, { force: shouldForce }) || [];
+                        this.courseContentsCache.set(course.id, courseContents);
+                        if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(course.id, courseContents);
                     }
+                }
 
-                    const itemCount = courseContents.length;
-                    const rootId = `course-${courseId}`;
-                    const courseItem = new CourseRootItem(title, courseId, itemCount, this.getExpandedState(rootId));
-                    courseItem.id = rootId;
-                    this.itemIndex.set(rootId, courseItem);
-                    courseItems.push(courseItem);
+                // Resolve organization names for all real org ids in parallel.
+                const realOrgIds = [...this.orgGrouping.keys()].filter(id => id !== '__no_org__');
+                await Promise.all(realOrgIds.map(id => this.resolveOrganization(id)));
+
+                const items: TreeItem[] = [];
+
+                for (const orgId of realOrgIds) {
+                    const orgInfo = this.organizationInfoCache.get(orgId)!;
+                    const courseCount = this.orgGrouping.get(orgId)!.length;
+                    const nodeId = `org-${orgId}`;
+                    const expanded = this.getExpandedState(nodeId);
+                    const item = new OrganizationItem(orgInfo, courseCount, expanded);
+                    item.id = nodeId;
+                    this.itemIndex.set(nodeId, item);
+                    items.push(item);
+                }
+
+                // Courses without an organization id render at root as a fallback.
+                const orphanCourses = this.orgGrouping.get('__no_org__') || [];
+                for (const course of orphanCourses) {
+                    items.push(await this.buildCourseRootItem(course, shouldForce));
                 }
 
                 if (this.forceRefresh) {
                     this.forceRefresh = false;
                 }
 
-                // Subscribe to WS channels for all loaded courses
                 this.subscribeToCourseChannels(courses.map((c: any) => c.id));
 
-                return courseItems;
+                return items;
             } catch (error: any) {
                 console.error('Failed to load course root:', error);
                 const message = error?.response?.data?.message || error?.message || 'Unknown error';
                 return [new MessageItem(`Error loading course: ${message}`, 'error')];
             }
         }
-        
+
+        // Organization expanded -> show its course families
+        if (element instanceof OrganizationItem) {
+            const courses = this.orgGrouping.get(element.organizationInfo.id) || [];
+            const familyGroups = new Map<string, any[]>();
+            for (const c of courses) {
+                const fid = (c.course_family_id ?? '__no_family__') as string;
+                if (!familyGroups.has(fid)) familyGroups.set(fid, []);
+                familyGroups.get(fid)!.push(c);
+            }
+
+            const realFamilyIds = [...familyGroups.keys()].filter(id => id !== '__no_family__');
+            await Promise.all(realFamilyIds.map(id => this.resolveCourseFamily(id)));
+
+            const items: TreeItem[] = [];
+            for (const familyId of realFamilyIds) {
+                const familyInfo = this.courseFamilyInfoCache.get(familyId)!;
+                const fcourses = familyGroups.get(familyId)!;
+                const nodeId = `family-${familyId}`;
+                const expanded = this.getExpandedState(nodeId);
+                const item = new CourseFamilyItem(
+                    familyInfo,
+                    element.organizationInfo.id,
+                    element.organizationInfo,
+                    fcourses.length,
+                    expanded
+                );
+                item.id = nodeId;
+                this.itemIndex.set(nodeId, item);
+                items.push(item);
+            }
+
+            // Courses with no course family fall through directly under the org.
+            const orphanCourses = familyGroups.get('__no_family__') || [];
+            for (const course of orphanCourses) {
+                items.push(await this.buildCourseRootItem(course, false));
+            }
+
+            return items;
+        }
+
+        // Course family expanded -> show its courses
+        if (element instanceof CourseFamilyItem) {
+            const courses = (this.orgGrouping.get(element.organizationId) || [])
+                .filter(c => (c.course_family_id ?? null) === element.courseFamilyInfo.id);
+            const items: TreeItem[] = [];
+            for (const course of courses) {
+                items.push(await this.buildCourseRootItem(course, false));
+            }
+            return items;
+        }
+
+
         // Handle course root node
         if (element instanceof CourseRootItem) {
             const selectedCourseId = element.courseId;
@@ -879,6 +958,63 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         // Default to collapsed for better performance
         return false;
     }
+
+    private async resolveOrganization(orgId: string): Promise<{ id: string; title: string; path: string }> {
+        const cached = this.organizationInfoCache.get(orgId);
+        if (cached) return cached;
+        try {
+            const org = await this.apiService.getOrganization(orgId);
+            if (org) {
+                const info = { id: org.id, title: org.title || org.path, path: org.path };
+                this.organizationInfoCache.set(orgId, info);
+                return info;
+            }
+        } catch (err) {
+            console.warn(`[StudentTree] Failed to resolve organization ${orgId}:`, err);
+        }
+        const fallback = { id: orgId, title: 'Organization', path: orgId };
+        this.organizationInfoCache.set(orgId, fallback);
+        return fallback;
+    }
+
+    private async resolveCourseFamily(familyId: string): Promise<{ id: string; title: string; path: string }> {
+        const cached = this.courseFamilyInfoCache.get(familyId);
+        if (cached) return cached;
+        try {
+            const family = await this.apiService.getCourseFamily(familyId);
+            if (family) {
+                const info = { id: family.id, title: family.title || family.path, path: family.path };
+                this.courseFamilyInfoCache.set(familyId, info);
+                return info;
+            }
+        } catch (err) {
+            console.warn(`[StudentTree] Failed to resolve course family ${familyId}:`, err);
+        }
+        const fallback = { id: familyId, title: 'Course Family', path: familyId };
+        this.courseFamilyInfoCache.set(familyId, fallback);
+        return fallback;
+    }
+
+    private async buildCourseRootItem(course: any, shouldForce: boolean): Promise<CourseRootItem> {
+        const courseId = course.id;
+        const title = (course.title || course.name || course.path || `Course ${courseId}`) as string;
+
+        let courseContents = this.courseContentsCache.get(courseId);
+        if (!courseContents || shouldForce) {
+            courseContents = await this.apiService.getStudentCourseContents(courseId, { force: shouldForce }) || [];
+            this.courseContentsCache.set(courseId, courseContents);
+            if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(courseId, courseContents);
+        }
+
+        const itemCount = courseContents.length;
+        const rootId = `course-${courseId}`;
+        const orgInfo = course.organization_id ? this.organizationInfoCache.get(course.organization_id) : undefined;
+        const familyInfo = course.course_family_id ? this.courseFamilyInfoCache.get(course.course_family_id) : undefined;
+        const courseItem = new CourseRootItem(title, courseId, itemCount, this.getExpandedState(rootId), orgInfo, familyInfo);
+        courseItem.id = rootId;
+        this.itemIndex.set(rootId, courseItem);
+        return courseItem;
+    }
     
     async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
         console.log(`Setting student node ${nodeId} expanded state to: ${expanded}`);
@@ -915,18 +1051,61 @@ class CourseRootItem extends TreeItem {
         public readonly title: string,
         public readonly courseId: string,
         itemCount: number,
-        expanded: boolean = true
+        expanded: boolean = true,
+        public readonly organizationInfo?: { title: string; path: string },
+        public readonly courseFamilyInfo?: { title: string; path: string }
     ) {
         super(title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('book');
         this.contextValue = 'studentCourseRoot';
         this.updateCounts(itemCount);
-        this.tooltip = `Course: ${title}`;
+        this.tooltip = this.buildTooltip();
+    }
+
+    private buildTooltip(): string {
+        const parts = [`Course: ${this.title}`];
+        if (this.courseFamilyInfo) {
+            parts.push(`Course Family: ${this.courseFamilyInfo.title}`);
+        }
+        if (this.organizationInfo) {
+            parts.push(`Organization: ${this.organizationInfo.title}`);
+        }
+        return parts.join('\n');
     }
 
     updateCounts(itemCount: number): void {
         // Intentionally no item count in the root title/description
         this.description = undefined;
+    }
+}
+
+class OrganizationItem extends TreeItem {
+    constructor(
+        public readonly organizationInfo: { id: string; title: string; path: string },
+        public readonly courseCount: number,
+        expanded: boolean
+    ) {
+        super(organizationInfo.title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+        this.iconPath = new vscode.ThemeIcon('organization');
+        this.contextValue = 'studentOrganization';
+        this.tooltip = `Organization: ${organizationInfo.title}`;
+        this.description = courseCount > 1 ? `${courseCount} courses` : undefined;
+    }
+}
+
+class CourseFamilyItem extends TreeItem {
+    constructor(
+        public readonly courseFamilyInfo: { id: string; title: string; path: string },
+        public readonly organizationId: string,
+        public readonly organizationInfo: { id: string; title: string; path: string },
+        public readonly courseCount: number,
+        expanded: boolean
+    ) {
+        super(courseFamilyInfo.title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+        this.iconPath = new vscode.ThemeIcon('folder-library');
+        this.contextValue = 'studentCourseFamily';
+        this.tooltip = `Course Family: ${courseFamilyInfo.title}\nOrganization: ${organizationInfo.title}`;
+        this.description = courseCount > 1 ? `${courseCount} courses` : undefined;
     }
 }
 
