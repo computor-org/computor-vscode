@@ -73,6 +73,12 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     </html>`;
   }
 
+  protected onPanelDisposed(): void {
+    // Reset the input panel so it shows its empty-state hint again,
+    // matching the behaviour of the messages view + input pair.
+    this.inputPanel?.clearState();
+  }
+
   protected async handleMessage(message: any): Promise<void> {
     if (!message) { return; }
 
