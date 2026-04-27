@@ -1233,6 +1233,28 @@ class UnifiedController {
 
     // Initial load.
     tree.refresh();
+
+    // VS Code can't declare the secondary (right) sidebar as a default location
+    // for a view container, so we move it there programmatically the first time
+    // a user activates the extension. Wrapped in best-effort: if the workbench
+    // command names ever change, the user can still drag it manually.
+    void this.moveChatToSecondarySidebarOnce();
+  }
+
+  private async moveChatToSecondarySidebarOnce(): Promise<void> {
+    const flagKey = 'computor.chat.movedToSecondarySidebar';
+    if (this.context.globalState.get<boolean>(flagKey)) {
+      return;
+    }
+    try {
+      // Reveal the chat view so the move targets the right element, then move it
+      // to the secondary (auxiliary) sidebar.
+      await vscode.commands.executeCommand('computor.chat.inbox.focus');
+      await vscode.commands.executeCommand('workbench.action.moveViewToAuxiliarySideBar');
+      await this.context.globalState.update(flagKey, true);
+    } catch (err) {
+      console.warn('[ChatInbox] Could not auto-move to secondary sidebar:', err);
+    }
   }
 
   async dispose(): Promise<void> {
