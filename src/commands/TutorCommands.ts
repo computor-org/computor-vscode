@@ -64,13 +64,14 @@ export class TutorCommands {
 
     // When the tutor selects a different course member in the filter tree, and the
     // comments webview is currently open, switch it to the new member automatically.
+    // preserveFocus keeps the keyboard caret in the filter tree so up/down keep working.
     const selectionService = TutorSelectionService.getInstance();
     this.context.subscriptions.push(selectionService.onDidChangeSelection(() => {
       if (!this.commentsWebviewProvider.isOpen()) { return; }
       const memberId = selectionService.getCurrentMemberId();
       if (!memberId) { return; }
       if (this.commentsWebviewProvider.getCurrentCourseMemberId() === memberId) { return; }
-      void this.showCourseMemberComments();
+      void this.showCourseMemberComments({ preserveFocus: true });
     }));
   }
 
@@ -472,7 +473,7 @@ export class TutorCommands {
     }
   }
 
-  private async showCourseMemberComments(): Promise<void> {
+  private async showCourseMemberComments(opts?: { preserveFocus?: boolean }): Promise<void> {
     try {
       const selection = TutorSelectionService.getInstance();
       const memberId = selection.getCurrentMemberId();
@@ -491,7 +492,7 @@ export class TutorCommands {
         segments.push(courseLabel);
       }
       const title = segments.length > 0 ? segments.join(' — ') : memberId;
-      await this.commentsWebviewProvider.showComments(memberId, title);
+      await this.commentsWebviewProvider.showComments(memberId, title, opts);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
     }

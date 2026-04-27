@@ -90,10 +90,13 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
     }
   }
 
-  public async reveal(): Promise<void> {
+  public async reveal(opts?: { preserveFocus?: boolean }): Promise<void> {
+    const preserveFocus = opts?.preserveFocus ?? false;
     if (this.view) {
-      this.view.show(false);
-    } else {
+      this.view.show(preserveFocus);
+    } else if (!preserveFocus) {
+      // Only force-focus the view if the caller actually wants focus there;
+      // otherwise leave the view hidden until the user opens it themselves.
       await vscode.commands.executeCommand('computor.courseMemberCommentsInputPanel.focus');
     }
   }

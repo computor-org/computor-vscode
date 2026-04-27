@@ -35,13 +35,17 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     return data?.courseMemberId;
   }
 
-  async showComments(courseMemberId: string, title: string): Promise<void> {
+  async showComments(
+    courseMemberId: string,
+    title: string,
+    opts?: { preserveFocus?: boolean }
+  ): Promise<void> {
     const comments = await this.apiService.listCourseMemberComments(courseMemberId);
     const payload: CommentsWebviewData = { courseMemberId, title, comments };
-    await this.show(`Comments: ${title}`, payload);
+    await this.show(`Comments: ${title}`, payload, { preserveFocus: opts?.preserveFocus });
     if (this.inputPanel) {
       this.inputPanel.setTarget(courseMemberId, title);
-      void this.inputPanel.reveal();
+      void this.inputPanel.reveal({ preserveFocus: opts?.preserveFocus });
     }
   }
 
