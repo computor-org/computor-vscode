@@ -341,6 +341,41 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.chat.refresh",
+        "title": "Refresh Chat",
+        "icon": "$(refresh)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.showUnreadOnly",
+        "title": "Show Only Unread",
+        "icon": "$(eye-closed)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.showAll",
+        "title": "Show All",
+        "icon": "$(eye)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.markScopeRead",
+        "title": "Mark All as Read",
+        "icon": "$(check-all)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.markThreadRead",
+        "title": "Mark Thread as Read",
+        "icon": "$(check)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.openThread",
+        "title": "Open Conversation",
+        "category": "Computor Chat"
+      },
+      {
         "command": "computor.lecturer.checkoutMultipleExamples",
         "title": "Checkout Multiple Examples",
         "icon": "$(cloud-download)",
@@ -857,6 +892,12 @@
           "title": "Computor User Manager",
           "icon": "$(organization)",
           "when": "computor.user_manager.show"
+        },
+        {
+          "id": "computor-chat",
+          "title": "Computor Chat",
+          "icon": "$(comment-discussion)",
+          "when": "computor.chat.show"
         }
       ],
       "panel": [
@@ -937,6 +978,15 @@
           "when": "computor.user_manager.show"
         }
       ],
+      "computor-chat": [
+        {
+          "id": "computor.chat.inbox",
+          "name": "Inbox",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "Computor Chat",
+          "when": "computor.chat.show"
+        }
+      ],
       "computor-test-results": [
         {
           "id": "computor.testResultsPanel",
@@ -977,6 +1027,21 @@
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.chat.refresh",
+          "when": "view == computor.chat.inbox",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.chat.showUnreadOnly",
+          "when": "view == computor.chat.inbox && !computor.chat.unreadOnly",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.chat.showAll",
+          "when": "view == computor.chat.inbox && computor.chat.unreadOnly",
+          "group": "navigation@2"
         },
         {
           "command": "computor.user.profile",
@@ -1110,6 +1175,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "computor.chat.markScopeRead",
+          "when": "view == computor.chat.inbox && viewItem == chatScope.unread",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "computor.chat.markThreadRead",
+          "when": "view == computor.chat.inbox && viewItem == chatThread.unread",
+          "group": "1_actions@1"
+        },
         {
           "command": "computor.lecturer.createNewExample",
           "when": "view == computor.lecturer.examples && viewItem == exampleRepository",

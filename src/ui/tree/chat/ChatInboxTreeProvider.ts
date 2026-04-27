@@ -1,0 +1,524 @@
+import * as vscode from 'vscode';
+import { ComputorApiService } from '../../../services/ComputorApiService';
+import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
+import type { MessageList } from '../../../types/generated';
+import {
+  ChatScopeItem,
+  ChatThreadItem,
+  ChatThread,
+  ChatEmptyItem,
+  ChatLoadingItem,
+  ChatErrorItem,
+  MessageScope,
+  scopeLabel
+} from './ChatInboxTreeItems';
+
+const SCOPE_ORDER: MessageScope[] = [
+  'user',
+  'course_member',
+  'submission_group',
+  'course_group',
+  'course_content',
+  'course',
+  'course_family',
+  'organization',
+  'global'
+];
+
+const STATE_KEY = 'computor.chat.inbox.state';
+
+interface PersistedState {
+  expandedScopes: MessageScope[];
+  unreadOnly: boolean;
+}
+
+type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem;
+
+export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
+  private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+
+  private readonly api: ComputorApiService;
+  private readonly context: vscode.ExtensionContext;
+  private readonly messagesProvider: MessagesWebviewProvider;
+
+  private loading = false;
+  private loadError: string | undefined;
+  private scopeItems: ChatScopeItem[] = [];
+  private currentUserId?: string;
+
+  // Persisted UI state
+  private expandedScopes: Set<MessageScope> = new Set();
+  private unreadOnly = false;
+
+  // Label caches keyed by id
+  private readonly orgLabels = new Map<string, string>();
+  private readonly familyLabels = new Map<string, string>();
+  private readonly courseLabels = new Map<string, string>();
+  private readonly contentLabels = new Map<string, { title: string; subtitle?: string }>();
+  private readonly groupLabels = new Map<string, { title: string; subtitle?: string }>();
+  private readonly memberLabels = new Map<string, { title: string; subtitle?: string }>();
+
+  constructor(
+    context: vscode.ExtensionContext,
+    api: ComputorApiService,
+    messagesProvider: MessagesWebviewProvider
+  ) {
+    this.context = context;
+    this.api = api;
+    this.messagesProvider = messagesProvider;
+    this.loadPersistedState();
+  }
+
+  // ----- Public API -----
+
+  refresh(): void {
+    this.scopeItems = [];
+    this.loadError = undefined;
+    void this.reload();
+  }
+
+  isUnreadOnly(): boolean {
+    return this.unreadOnly;
+  }
+
+  setUnreadOnly(value: boolean): void {
+    if (this.unreadOnly === value) { return; }
+    this.unreadOnly = value;
+    void this.persistState();
+    void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', value);
+    this.refresh();
+  }
+
+  recordExpanded(scope: MessageScope, expanded: boolean): void {
+    if (expanded) {
+      this.expandedScopes.add(scope);
+    } else {
+      this.expandedScopes.delete(scope);
+    }
+    void this.persistState();
+  }
+
+  async openThread(threadItem: ChatThreadItem): Promise<void> {
+    const ctx = await this.buildTargetContext(threadItem.thread);
+    if (!ctx) {
+      vscode.window.showWarningMessage('Cannot open this conversation: target context unavailable.');
+      return;
+    }
+    await this.messagesProvider.showMessages(ctx);
+  }
+
+  async markThreadRead(threadItem: ChatThreadItem): Promise<void> {
+    const unread = threadItem.thread.messages.filter(m => !m.is_read);
+    if (unread.length === 0) { return; }
+    await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
+    this.refresh();
+  }
+
+  async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
+    const ids = scopeItem.threads.flatMap(t => t.messages.filter(m => !m.is_read).map(m => m.id));
+    if (ids.length === 0) { return; }
+    await Promise.all(ids.map(id => this.api.markMessageRead(id).catch(() => undefined)));
+    this.refresh();
+  }
+
+  // ----- TreeDataProvider -----
+
+  getTreeItem(element: AnyTreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  async getChildren(element?: AnyTreeItem): Promise<AnyTreeItem[]> {
+    if (!element) {
+      if (this.loading) { return [new ChatLoadingItem()]; }
+      if (this.loadError) { return [new ChatErrorItem(this.loadError)]; }
+      if (this.scopeItems.length === 0) { return [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')]; }
+      return this.scopeItems;
+    }
+
+    if (element instanceof ChatScopeItem) {
+      return element.threads.map(t => new ChatThreadItem(t));
+    }
+
+    return [];
+  }
+
+  // ----- Internals -----
+
+  private async reload(): Promise<void> {
+    this.loading = true;
+    this.loadError = undefined;
+    this._onDidChangeTreeData.fire(undefined);
+
+    try {
+      const [identity, messages] = await Promise.all([
+        this.api.getCurrentUser().catch(() => undefined),
+        this.api.listMessages(this.unreadOnly ? { unread: true } : {})
+      ]);
+      this.currentUserId = identity?.id;
+
+      const grouped = this.groupMessages(messages || []);
+      await this.resolveLabels(grouped);
+      this.scopeItems = this.buildScopeItems(grouped);
+    } catch (error: any) {
+      this.loadError = `Failed to load messages: ${error?.message || error}`;
+      this.scopeItems = [];
+    } finally {
+      this.loading = false;
+      this._onDidChangeTreeData.fire(undefined);
+    }
+  }
+
+  private groupMessages(messages: MessageList[]): Map<MessageScope, Map<string, MessageList[]>> {
+    const grouped = new Map<MessageScope, Map<string, MessageList[]>>();
+    for (const m of messages) {
+      const scope = (m.scope || 'global') as MessageScope;
+      const targetId = this.targetIdFor(scope, m) ?? '__none__';
+      if (!grouped.has(scope)) { grouped.set(scope, new Map()); }
+      const byTarget = grouped.get(scope)!;
+      if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
+      byTarget.get(targetId)!.push(m);
+    }
+    return grouped;
+  }
+
+  private targetIdFor(scope: MessageScope, m: MessageList): string | null {
+    switch (scope) {
+      case 'user': return m.user_id ?? null;
+      case 'course_member': return m.course_member_id ?? null;
+      case 'submission_group': return m.submission_group_id ?? null;
+      case 'course_group': return m.course_group_id ?? null;
+      case 'course_content': return m.course_content_id ?? null;
+      case 'course': return m.course_id ?? null;
+      case 'course_family': return m.course_family_id ?? null;
+      case 'organization': return m.organization_id ?? null;
+      case 'global': return null;
+    }
+  }
+
+  private async resolveLabels(grouped: Map<MessageScope, Map<string, MessageList[]>>): Promise<void> {
+    // Best-effort batched lookups; failures fall back to id truncation.
+    const tasks: Promise<unknown>[] = [];
+
+    for (const [scope, byTarget] of grouped) {
+      for (const [targetId] of byTarget) {
+        if (targetId === '__none__') { continue; }
+        tasks.push(this.ensureLabel(scope, targetId).catch(() => undefined));
+      }
+    }
+    await Promise.all(tasks);
+  }
+
+  private async ensureLabel(scope: MessageScope, targetId: string): Promise<void> {
+    switch (scope) {
+      case 'organization':
+        if (!this.orgLabels.has(targetId)) {
+          const org = await this.api.getOrganization(targetId);
+          this.orgLabels.set(targetId, org?.title || org?.path || shortId(targetId));
+        }
+        break;
+      case 'course_family':
+        if (!this.familyLabels.has(targetId)) {
+          const fam = await this.api.getCourseFamily(targetId);
+          this.familyLabels.set(targetId, fam?.title || fam?.path || shortId(targetId));
+        }
+        break;
+      case 'course':
+        if (!this.courseLabels.has(targetId)) {
+          const course = await this.api.getCourse(targetId);
+          this.courseLabels.set(targetId, course?.title || course?.path || shortId(targetId));
+        }
+        break;
+      case 'course_content':
+        if (!this.contentLabels.has(targetId)) {
+          const content = await this.api.getCourseContent(targetId);
+          if (content) {
+            const courseLabel = content.course_id
+              ? await this.resolveCourseLabelLazy(content.course_id)
+              : undefined;
+            this.contentLabels.set(targetId, {
+              title: content.title || content.path || shortId(targetId),
+              subtitle: courseLabel
+            });
+          } else {
+            this.contentLabels.set(targetId, { title: shortId(targetId) });
+          }
+        }
+        break;
+      case 'course_group':
+        if (!this.groupLabels.has(targetId)) {
+          const group = await this.api.getCourseGroup(targetId);
+          if (group) {
+            const courseLabel = group.course_id
+              ? await this.resolveCourseLabelLazy(group.course_id)
+              : undefined;
+            this.groupLabels.set(targetId, {
+              title: group.title || `Group ${shortId(targetId)}`,
+              subtitle: courseLabel
+            });
+          } else {
+            this.groupLabels.set(targetId, { title: `Group ${shortId(targetId)}` });
+          }
+        }
+        break;
+      case 'course_member':
+        if (!this.memberLabels.has(targetId)) {
+          const member = await this.api.getCourseMember(targetId);
+          if (member) {
+            const user = (member as any).user;
+            const name = user
+              ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || user.username || user.email
+              : `Member ${shortId(targetId)}`;
+            const courseLabel = member.course_id
+              ? await this.resolveCourseLabelLazy(member.course_id)
+              : undefined;
+            this.memberLabels.set(targetId, { title: name, subtitle: courseLabel });
+          } else {
+            this.memberLabels.set(targetId, { title: `Member ${shortId(targetId)}` });
+          }
+        }
+        break;
+      default:
+        // user / submission_group: derived from the message data inline.
+        break;
+    }
+  }
+
+  private async resolveCourseLabelLazy(courseId: string): Promise<string | undefined> {
+    if (this.courseLabels.has(courseId)) { return this.courseLabels.get(courseId); }
+    try {
+      const course = await this.api.getCourse(courseId);
+      const label = course?.title || course?.path || shortId(courseId);
+      this.courseLabels.set(courseId, label);
+      return label;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private buildScopeItems(grouped: Map<MessageScope, Map<string, MessageList[]>>): ChatScopeItem[] {
+    const result: ChatScopeItem[] = [];
+
+    for (const scope of SCOPE_ORDER) {
+      const byTarget = grouped.get(scope);
+      if (!byTarget || byTarget.size === 0) { continue; }
+
+      const threads: ChatThread[] = [];
+      for (const [targetId, msgs] of byTarget) {
+        const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
+        const lastMessage = sortedMessages[sortedMessages.length - 1];
+        const unreadCount = msgs.filter(m => !m.is_read).length;
+        if (this.unreadOnly && unreadCount === 0) { continue; }
+
+        const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
+        threads.push({
+          scope,
+          targetId: targetId === '__none__' ? null : targetId,
+          title,
+          subtitle,
+          lastMessage,
+          unreadCount,
+          messageCount: msgs.length,
+          messages: sortedMessages
+        });
+      }
+
+      if (threads.length === 0) { continue; }
+
+      threads.sort((a, b) => {
+        if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
+          return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+        }
+        return compareThreadRecency(b, a);
+      });
+
+      const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
+      const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
+      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded));
+    }
+
+    return result;
+  }
+
+  private threadLabels(scope: MessageScope, targetId: string | null, msgs: MessageList[]): { title: string; subtitle?: string } {
+    switch (scope) {
+      case 'global':
+        return { title: 'Global Announcements' };
+      case 'organization': {
+        const label = targetId ? this.orgLabels.get(targetId) || shortId(targetId) : 'Organization';
+        return { title: label };
+      }
+      case 'course_family': {
+        const label = targetId ? this.familyLabels.get(targetId) || shortId(targetId) : 'Course Family';
+        return { title: label };
+      }
+      case 'course': {
+        const label = targetId ? this.courseLabels.get(targetId) || shortId(targetId) : 'Course';
+        return { title: label };
+      }
+      case 'course_content': {
+        const info = targetId ? this.contentLabels.get(targetId) : undefined;
+        return { title: info?.title || (targetId ? shortId(targetId) : 'Course Content'), subtitle: info?.subtitle };
+      }
+      case 'course_group': {
+        const info = targetId ? this.groupLabels.get(targetId) : undefined;
+        return { title: info?.title || (targetId ? `Group ${shortId(targetId)}` : 'Course Group'), subtitle: info?.subtitle };
+      }
+      case 'course_member': {
+        const info = targetId ? this.memberLabels.get(targetId) : undefined;
+        return { title: info?.title || (targetId ? `Member ${shortId(targetId)}` : 'Course Member'), subtitle: info?.subtitle };
+      }
+      case 'submission_group': {
+        // Try to find a useful subtitle from any message that carries course_content_id (sibling field).
+        const sample = msgs[0];
+        const contentId = sample?.course_content_id;
+        const contentLabel = contentId ? this.contentLabels.get(contentId)?.title : undefined;
+        return {
+          title: contentLabel || (targetId ? `Submission Group ${shortId(targetId)}` : 'Submission Group'),
+          subtitle: contentLabel ? 'Submission group' : undefined
+        };
+      }
+      case 'user': {
+        // DM target: pick the "other person" from the messages.
+        const other = msgs
+          .map(m => m.author)
+          .find(a => a && this.currentUserId && (a as any).id !== this.currentUserId);
+        if (other) {
+          const name = `${other.given_name || ''} ${other.family_name || ''}`.trim()
+            || (other as any).username
+            || (other as any).email
+            || (targetId ? shortId(targetId) : 'User');
+          return { title: name };
+        }
+        return { title: targetId ? `User ${shortId(targetId)}` : 'User' };
+      }
+    }
+  }
+
+  private async buildTargetContext(thread: ChatThread): Promise<MessageTargetContext | undefined> {
+    const { scope, targetId } = thread;
+    const labels = this.threadLabels(scope, targetId, thread.messages);
+    const titleSegments: string[] = [];
+    if (labels.subtitle) { titleSegments.push(labels.subtitle); }
+    titleSegments.push(labels.title);
+    const title = titleSegments.join(' / ');
+
+    const baseQuery: Record<string, string> = {};
+    const basePayload: Record<string, unknown> = {};
+    let wsChannel: string | undefined;
+
+    switch (scope) {
+      case 'global':
+        return undefined;
+      case 'organization':
+        if (!targetId) { return undefined; }
+        baseQuery.organization_id = targetId;
+        basePayload.organization_id = targetId;
+        wsChannel = `organization:${targetId}`;
+        break;
+      case 'course_family':
+        if (!targetId) { return undefined; }
+        baseQuery.course_family_id = targetId;
+        basePayload.course_family_id = targetId;
+        wsChannel = `course_family:${targetId}`;
+        break;
+      case 'course':
+        if (!targetId) { return undefined; }
+        baseQuery.course_id = targetId;
+        basePayload.course_id = targetId;
+        wsChannel = `course:${targetId}`;
+        break;
+      case 'course_content': {
+        if (!targetId) { return undefined; }
+        baseQuery.course_content_id = targetId;
+        basePayload.course_content_id = targetId;
+        const contentInfo = this.contentLabels.get(targetId);
+        if (contentInfo) {
+          // Course content lookup may have set the course relation; surface it for create payloads.
+          // We don't have direct course_id here unless the message carried it, so leave as is.
+        }
+        wsChannel = `course_content:${targetId}`;
+        break;
+      }
+      case 'course_group':
+        if (!targetId) { return undefined; }
+        baseQuery.course_group_id = targetId;
+        basePayload.course_group_id = targetId;
+        wsChannel = `course_group:${targetId}`;
+        break;
+      case 'submission_group':
+        if (!targetId) { return undefined; }
+        baseQuery.submission_group_id = targetId;
+        basePayload.submission_group_id = targetId;
+        wsChannel = `submission_group:${targetId}`;
+        break;
+      case 'course_member':
+        if (!targetId) { return undefined; }
+        baseQuery.course_member_id = targetId;
+        basePayload.course_member_id = targetId;
+        wsChannel = `course_member:${targetId}`;
+        break;
+      case 'user':
+        if (!targetId) { return undefined; }
+        baseQuery.user_id = targetId;
+        basePayload.user_id = targetId;
+        wsChannel = `user:${targetId}`;
+        break;
+    }
+
+    return {
+      title,
+      subtitle: scopeLabel(scope),
+      query: baseQuery,
+      createPayload: basePayload,
+      wsChannel
+    };
+  }
+
+  // ----- Persistence -----
+
+  private loadPersistedState(): void {
+    try {
+      const stored = this.context.globalState.get<PersistedState>(STATE_KEY);
+      if (stored) {
+        if (Array.isArray(stored.expandedScopes)) {
+          this.expandedScopes = new Set(stored.expandedScopes);
+        }
+        if (typeof stored.unreadOnly === 'boolean') {
+          this.unreadOnly = stored.unreadOnly;
+        }
+      }
+    } catch (err) {
+      console.warn('[ChatInbox] Failed to load persisted state:', err);
+    }
+    void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', this.unreadOnly);
+  }
+
+  private async persistState(): Promise<void> {
+    const state: PersistedState = {
+      expandedScopes: Array.from(this.expandedScopes),
+      unreadOnly: this.unreadOnly
+    };
+    try {
+      await this.context.globalState.update(STATE_KEY, state);
+    } catch (err) {
+      console.warn('[ChatInbox] Failed to persist state:', err);
+    }
+  }
+}
+
+function shortId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function compareCreated(a: MessageList, b: MessageList): number {
+  const ta = a.created_at ? Date.parse(a.created_at) : 0;
+  const tb = b.created_at ? Date.parse(b.created_at) : 0;
+  return ta - tb;
+}
+
+function compareThreadRecency(a: ChatThread, b: ChatThread): number {
+  const ta = a.lastMessage?.created_at ? Date.parse(a.lastMessage.created_at) : 0;
+  const tb = b.lastMessage?.created_at ? Date.parse(b.lastMessage.created_at) : 0;
+  return ta - tb;
+}
