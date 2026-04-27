@@ -459,10 +459,17 @@ export class LecturerExampleCommands {
         return;
       }
 
-      const directory = item.exampleInfo.directory || exampleData.directory;
+      // The lecturer assignment tree carries a synthetic `exampleInfo` stub
+      // (identifier + title only). Trust the download response for the real
+      // example id / directory / identifier so the local checkout merges
+      // back into the same row in the examples tree.
+      const exampleId = exampleData.example_id;
+      const directory = exampleData.directory;
+      const identifier = exampleData.identifier;
       const versionTag = item.exampleVersionInfo.version_tag || exampleData.version_tag;
+
       const metadata: CheckoutMetadata = {
-        exampleId: item.exampleInfo.id,
+        exampleId,
         repositoryId: item.exampleInfo.example_repository_id || '',
         directory,
         versionId: item.exampleVersionInfo.id,
@@ -496,6 +503,10 @@ export class LecturerExampleCommands {
       vscode.window.showInformationMessage(
         `Checked out '${item.exampleInfo.title || directory}' [${versionTag}]`
       );
+
+      // Reveal the (now merged) example row in the examples tree so the
+      // user can immediately see + interact with the local copy.
+      void this.treeProvider.revealExample({ identifier });
     } catch (error) {
       console.error('Failed to checkout assignment example:', error);
       vscode.window.showErrorMessage(`Failed to checkout: ${error}`);
