@@ -225,6 +225,7 @@ function createActiveSession(context: vscode.ExtensionContext, controller: Unifi
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
+      await vscode.commands.executeCommand('setContext', 'computor.chat.show', false);
       await context.globalState.update('computor.tutor.selection', undefined);
       backendConnectionService.stopHealthCheck();
     }),
@@ -679,7 +680,12 @@ class UnifiedController {
       await this.initializeUserManagerView(api);
     }
 
+    // Computor Chat is available to every authenticated user, regardless of role.
+    report('Setting up chat view...');
+    await this.initializeChatView(api);
+
     await setViewContextKeys(views, ['student', 'tutor', 'lecturer', 'user_manager']);
+    await vscode.commands.executeCommand('setContext', 'computor.chat.show', true);
   }
 
   private async focusHighestPriorityView(views: string[]): Promise<void> {
@@ -1166,6 +1172,67 @@ class UnifiedController {
 
     const commands = new UserManagerCommands(this.context, tree, api);
     commands.registerCommands();
+  }
+
+  private async initializeChatView(api: ComputorApiService): Promise<void> {
+    const { ChatInboxTreeProvider } = await import('./ui/tree/chat/ChatInboxTreeProvider');
+    const { ChatScopeItem, ChatThreadItem } = await import('./ui/tree/chat/ChatInboxTreeItems');
+
+    // The chat view drives the existing MessagesWebviewProvider + bottom Compose
+    // panel, so reuse the input panel + WebSocket service we already instantiated.
+    const messagesWebview = new (await import('./ui/webviews/MessagesWebviewProvider')).MessagesWebviewProvider(this.context, api);
+    if (this.messagesInputPanel) {
+      messagesWebview.setInputPanel(this.messagesInputPanel);
+    }
+    if (this.wsService) {
+      messagesWebview.setWebSocketService(this.wsService);
+    }
+
+    const tree = new ChatInboxTreeProvider(this.context, api, messagesWebview);
+    registerTreeView('computor.chat.inbox', {
+      provider: tree,
+      options: { showCollapseAll: true },
+      registerDataProvider: true,
+      onExpand: (event) => {
+        if (event.element instanceof ChatScopeItem) {
+          tree.recordExpanded(event.element.scope, true);
+        }
+      },
+      onCollapse: (event) => {
+        if (event.element instanceof ChatScopeItem) {
+          tree.recordExpanded(event.element.scope, false);
+        }
+      },
+      onVisibility: (event) => {
+        if (event.visible) {
+          tree.refresh();
+        }
+      }
+    }, this.disposables);
+
+    this.disposables.push(
+      vscode.commands.registerCommand('computor.chat.refresh', () => tree.refresh()),
+      vscode.commands.registerCommand('computor.chat.showUnreadOnly', () => tree.setUnreadOnly(true)),
+      vscode.commands.registerCommand('computor.chat.showAll', () => tree.setUnreadOnly(false)),
+      vscode.commands.registerCommand('computor.chat.openThread', (item: any) => {
+        if (item instanceof ChatThreadItem) {
+          void tree.openThread(item);
+        }
+      }),
+      vscode.commands.registerCommand('computor.chat.markScopeRead', (item: any) => {
+        if (item instanceof ChatScopeItem) {
+          void tree.markScopeRead(item);
+        }
+      }),
+      vscode.commands.registerCommand('computor.chat.markThreadRead', (item: any) => {
+        if (item instanceof ChatThreadItem) {
+          void tree.markThreadRead(item);
+        }
+      })
+    );
+
+    // Initial load.
+    tree.refresh();
   }
 
   async dispose(): Promise<void> {
