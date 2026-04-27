@@ -869,6 +869,11 @@
           "id": "computor-messages-input",
           "title": "Message Input",
           "icon": "$(comment)"
+        },
+        {
+          "id": "computor-comments-input",
+          "title": "Comment Input",
+          "icon": "$(note)"
         }
       ]
     },
@@ -954,6 +959,15 @@
           "name": "Compose",
           "icon": "$(comment)",
           "contextualTitle": "Message Input"
+        }
+      ],
+      "computor-comments-input": [
+        {
+          "id": "computor.courseMemberCommentsInputPanel",
+          "type": "webview",
+          "name": "Compose",
+          "icon": "$(note)",
+          "contextualTitle": "Comment Input"
         }
       ]
     },
@@ -1388,8 +1402,8 @@
         },
         {
           "command": "computor.tutor.showCourseMemberComments",
-          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent/",
-          "group": "2_discussion@2"
+          "when": "view == computor.tutor.filters && viewItem =~ /^tutorMember/",
+          "group": "2_discussion@1"
         },
         {
           "command": "computor.lecturer.checkoutExample",

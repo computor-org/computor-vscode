@@ -52,6 +52,7 @@ import { TutorCommands } from './commands/TutorCommands';
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
 import { TestResultService } from './services/TestResultService';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
+import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
@@ -537,6 +538,7 @@ class UnifiedController {
   private activeViews: string[] = [];
   private profileWebviewProvider?: UserProfileWebviewProvider;
   private messagesInputPanel?: MessagesInputPanelProvider;
+  private commentsInputPanel?: CourseMemberCommentsInputPanelProvider;
   private wsService?: WebSocketService;
 
   constructor(context: vscode.ExtensionContext) {
@@ -567,6 +569,12 @@ class UnifiedController {
     this.messagesInputPanel = new MessagesInputPanelProvider(this.context.extensionUri, api);
     this.disposables.push(
       vscode.window.registerWebviewViewProvider(MessagesInputPanelProvider.viewType, this.messagesInputPanel)
+    );
+
+    // Course-member comments input panel (shared across lecturer + tutor views)
+    this.commentsInputPanel = new CourseMemberCommentsInputPanelProvider(this.context.extensionUri, api);
+    this.disposables.push(
+      vscode.window.registerWebviewViewProvider(CourseMemberCommentsInputPanelProvider.viewType, this.commentsInputPanel)
     );
 
     // Initialize WebSocket service for real-time messaging
@@ -1046,7 +1054,7 @@ class UnifiedController {
       filterTree.refresh();
     }));
 
-    const commands = new TutorCommands(this.context, tree, api, filterTree, this.messagesInputPanel, this.wsService);
+    const commands = new TutorCommands(this.context, tree, api, filterTree, this.messagesInputPanel, this.wsService, this.commentsInputPanel);
     commands.registerCommands();
   }
 
@@ -1120,7 +1128,7 @@ class UnifiedController {
       })
     );
 
-    const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService);
+    const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService, this.commentsInputPanel);
     commands.registerCommands();
 
     // Register example-related commands (search, upload from ZIP, etc.)

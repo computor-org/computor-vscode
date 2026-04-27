@@ -19,17 +19,17 @@ export abstract class BaseWebviewProvider {
     ];
   }
 
-  public async show(title: string, data?: any): Promise<void> {
+  public async show(title: string, data?: any, opts?: { preserveFocus?: boolean }): Promise<void> {
     // Store current data
     this.currentData = data;
-    
+
     if (this.panel) {
-      this.panel.reveal();
+      this.panel.reveal(undefined, opts?.preserveFocus ?? false);
     } else {
       this.panel = vscode.window.createWebviewPanel(
         this.viewType,
         title,
-        vscode.ViewColumn.One,
+        { viewColumn: vscode.ViewColumn.One, preserveFocus: opts?.preserveFocus ?? false },
         {
           enableScripts: true,
           retainContextWhenHidden: true,

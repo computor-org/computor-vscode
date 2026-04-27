@@ -1,0 +1,87 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--vscode-panel-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+}
+
+.comments-input-root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.comments-input-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin: 0;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.comments-input-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border);
+}
+
+.comments-input-title {
+  font-weight: 600;
+}
+
+.comments-input-target {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.comments-input-textarea {
+  flex: 1 1 auto;
+  width: 100%;
+  resize: none;
+  min-height: 60px;
+  font-family: var(--vscode-font-family);
+  font-size: inherit;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+}
+
+.comments-input-textarea:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.comments-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.comments-input-actions .vscode-button {
+  flex: 0 0 auto;
+}
+
+.comments-input-hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  margin-left: auto;
+}

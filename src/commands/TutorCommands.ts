@@ -10,6 +10,7 @@ import { deriveRepositoryDirectoryName } from '../utils/repositoryNaming';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
+import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMemberCommentsInputPanel';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
@@ -39,13 +40,17 @@ export class TutorCommands {
     apiService?: ComputorApiService,
     filterProvider?: TutorFilterRefreshable,
     messagesInputPanel?: MessagesInputPanelProvider,
-    wsService?: WebSocketService
+    wsService?: WebSocketService,
+    commentsInputPanel?: CourseMemberCommentsInputPanelProvider
   ) {
     this.context = context;
     this.treeDataProvider = treeDataProvider;
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.commentsWebviewProvider = new CourseMemberCommentsWebviewProvider(context, this.apiService);
+    if (commentsInputPanel) {
+      this.commentsWebviewProvider.setInputPanel(commentsInputPanel);
+    }
     this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
@@ -56,7 +61,18 @@ export class TutorCommands {
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
     this.filterProvider = filterProvider;
     this.tutorTestService = TutorTestService.getInstance(this.apiService);
-    // No workspace manager needed for current tutor actions
+
+    // When the tutor selects a different course member in the filter tree, and the
+    // comments webview is currently open, switch it to the new member automatically.
+    // preserveFocus keeps the keyboard caret in the filter tree so up/down keep working.
+    const selectionService = TutorSelectionService.getInstance();
+    this.context.subscriptions.push(selectionService.onDidChangeSelection(() => {
+      if (!this.commentsWebviewProvider.isOpen()) { return; }
+      const memberId = selectionService.getCurrentMemberId();
+      if (!memberId) { return; }
+      if (this.commentsWebviewProvider.getCurrentCourseMemberId() === memberId) { return; }
+      void this.showCourseMemberComments({ preserveFocus: true });
+    }));
   }
 
   registerCommands(): void {
@@ -457,7 +473,7 @@ export class TutorCommands {
     }
   }
 
-  private async showCourseMemberComments(): Promise<void> {
+  private async showCourseMemberComments(opts?: { preserveFocus?: boolean }): Promise<void> {
     try {
       const selection = TutorSelectionService.getInstance();
       const memberId = selection.getCurrentMemberId();
@@ -476,7 +492,7 @@ export class TutorCommands {
         segments.push(courseLabel);
       }
       const title = segments.length > 0 ? segments.join(' — ') : memberId;
-      await this.commentsWebviewProvider.showComments(memberId, title);
+      await this.commentsWebviewProvider.showComments(memberId, title, opts);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
     }
