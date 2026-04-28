@@ -51,6 +51,8 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private currentUserId?: string;
   private userScopes?: import('../../../types/generated').UserScopes;
   private userScopesPromise?: Promise<void>;
+  private reloadInFlight?: Promise<void>;
+  private reloadQueued = false;
 
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
@@ -78,9 +80,23 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // ----- Public API -----
 
   refresh(): void {
-    this.scopeItems = [];
-    this.loadError = undefined;
-    void this.reload();
+    void this.requestReload();
+  }
+
+  private requestReload(): Promise<void> {
+    if (this.reloadInFlight) {
+      // Coalesce — at most one extra reload queued after the current one.
+      this.reloadQueued = true;
+      return this.reloadInFlight;
+    }
+    this.reloadInFlight = this.reload().finally(() => {
+      this.reloadInFlight = undefined;
+      if (this.reloadQueued) {
+        this.reloadQueued = false;
+        void this.requestReload();
+      }
+    });
+    return this.reloadInFlight;
   }
 
   getTotalUnread(): number {
@@ -177,9 +193,15 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // ----- Internals -----
 
   private async reload(): Promise<void> {
+    // Only show the loading spinner on initial load. On subsequent reloads,
+    // keep the current scope items visible so the tree doesn't flicker to
+    // "Loading…" between the user's click and the new data arriving.
+    const showSpinner = this.scopeItems.length === 0 && !this.loadError;
     this.loading = true;
     this.loadError = undefined;
-    this._onDidChangeTreeData.fire(undefined);
+    if (showSpinner) {
+      this._onDidChangeTreeData.fire(undefined);
+    }
 
     try {
       const [identity, messages, scopes] = await Promise.all([
