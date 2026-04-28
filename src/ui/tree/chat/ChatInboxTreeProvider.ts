@@ -59,6 +59,8 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private wsService?: WebSocketService;
   private wsSubscribedForUserId?: string;
   private readonly wsHandlerId = `chat-inbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  private wsReloadTimer?: ReturnType<typeof setTimeout>;
+  private static readonly WS_RELOAD_DEBOUNCE_MS = 250;
 
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
@@ -594,12 +596,12 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
   private handleInboxEvent(channel: string): void {
     if (!this.isInboxChannel(channel)) { return; }
-    void this.requestReload();
+    this.scheduleWsReload();
   }
 
   private handleInboxNewMessage(channel: string, data: Record<string, unknown>): void {
     if (!this.isInboxChannel(channel)) { return; }
-    void this.requestReload();
+    this.scheduleWsReload();
     // WS payload nests the MessageGet under `data` for message:new (see
     // MessagesWebviewProvider.handleWsMessageNew for the same unwrap).
     const inner = (data && typeof data === 'object' && 'data' in data ? (data as any).data : data) as Record<string, unknown> | undefined;
@@ -609,6 +611,20 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       return;
     }
     void this.showNewMessageToast(inner);
+  }
+
+  private scheduleWsReload(): void {
+    // Bursts of WS events (e.g., N read:update events when opening a thread
+    // with N unread messages) would otherwise produce N back-to-back reloads
+    // and visible flicker as state converges. Debounce so the burst becomes
+    // a single reload once events stop arriving.
+    if (this.wsReloadTimer) {
+      clearTimeout(this.wsReloadTimer);
+    }
+    this.wsReloadTimer = setTimeout(() => {
+      this.wsReloadTimer = undefined;
+      void this.requestReload();
+    }, ChatInboxTreeProvider.WS_RELOAD_DEBOUNCE_MS);
   }
 
   private async showNewMessageToast(message: Record<string, unknown>): Promise<void> {
