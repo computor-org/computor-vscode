@@ -42,6 +42,27 @@ body {
   max-width: 200px;
 }
 
+.read-only-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.read-only-icon {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.read-only-text {
+  flex: 1;
+}
+
 .input-container {
   display: flex;
   flex-direction: column;

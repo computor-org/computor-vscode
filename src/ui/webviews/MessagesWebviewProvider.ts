@@ -5,8 +5,6 @@ import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
 
-export type MessageTargetType = 'course' | 'courseGroup' | 'courseContent' | 'submissionGroup' | 'courseMember';
-
 export interface MessageFilters {
   unread?: boolean;
   created_after?: string;
@@ -23,6 +21,10 @@ export interface MessageTargetContext {
   sourceRole?: 'student' | 'tutor' | 'lecturer';
   /** WebSocket channel for real-time updates (e.g., "submission_group:uuid") */
   wsChannel?: string;
+  /** When true, the input panel hides compose UI and shows a read-only notice. */
+  readOnly?: boolean;
+  /** Optional reason shown alongside the read-only notice. */
+  readOnlyReason?: string;
 }
 
 interface MessagesWebviewData {
@@ -251,6 +253,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       .markMessageRead(messageId)
       .then(() => {
         console.log('[MessagesWebviewProvider] Successfully marked message as read via API:', messageId);
+        // Inbox unread badges depend on this; see notifyIndicatorsUpdated for context.
+        void vscode.commands.executeCommand('computor.chat.refresh');
       })
       .catch((error) => {
         console.error(`Failed to mark message ${messageId} as read:`, error);
@@ -457,6 +461,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       default:
         break;
     }
+
+    // Refresh the chat inbox so its unread badges drop after a read sweep.
+    // Backend WS read:update only fires for submission_group today, so any
+    // other scope (course_group, course_content, course, family, org, global)
+    // would otherwise show stale unread counts until manual refresh.
+    void vscode.commands.executeCommand('computor.chat.refresh');
   }
 
   private async handleConfirmDeleteMessage(data: { messageId: string; title?: string }): Promise<void> {

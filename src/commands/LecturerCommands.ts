@@ -29,6 +29,7 @@ import type { OrganizationList, OrganizationTaskRequest } from '../types/generat
 import type { GitLabCredentials } from '../types/generated/common';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
+import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -140,7 +141,7 @@ export class LecturerCommands {
       await this.createAssignment(item);
     });
 
-    register('computor.lecturer.showMessages', async (item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
+    register('computor.lecturer.showMessages', async (item: OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
       await this.showMessages(item);
     });
 
@@ -1181,11 +1182,37 @@ export class LecturerCommands {
     return type.course_content_kind?.submittable || false;
   }
 
-  private async showMessages(item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem): Promise<void> {
+  private async showMessages(item: OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem): Promise<void> {
     try {
       let target: MessageTargetContext | undefined;
 
-      if (item instanceof CourseTreeItem) {
+      if (item instanceof OrganizationTreeItem) {
+        const scopes = await this.apiService.getUserScopes();
+        const canPost = canPostToOrganization(scopes, item.organization.id);
+        target = {
+          title: item.organization.title || item.organization.path,
+          subtitle: 'Organization',
+          query: { organization_id: item.organization.id },
+          createPayload: { organization_id: item.organization.id },
+          sourceRole: 'lecturer',
+          wsChannel: `organization:${item.organization.id}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : 'Posting to this organization requires manager or owner role.'
+        };
+      } else if (item instanceof CourseFamilyTreeItem) {
+        const scopes = await this.apiService.getUserScopes();
+        const canPost = canPostToCourseFamily(scopes, item.courseFamily.id);
+        target = {
+          title: item.courseFamily.title || item.courseFamily.path,
+          subtitle: `${item.organization.title || item.organization.path} › Course Family`,
+          query: { course_family_id: item.courseFamily.id },
+          createPayload: { course_family_id: item.courseFamily.id },
+          sourceRole: 'lecturer',
+          wsChannel: `course_family:${item.courseFamily.id}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : 'Posting to this course family requires manager or owner role.'
+        };
+      } else if (item instanceof CourseTreeItem) {
         target = {
           title: item.course.title || item.course.path,
           subtitle: this.buildCourseSubtitle(item.course, item.courseFamily, item.organization),

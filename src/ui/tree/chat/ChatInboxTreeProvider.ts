@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
+import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../../../services/MessagePermissions';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageList } from '../../../types/generated';
 import {
@@ -46,6 +47,8 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private loadError: string | undefined;
   private scopeItems: ChatScopeItem[] = [];
   private currentUserId?: string;
+  private userScopes?: import('../../../types/generated').UserScopes;
+  private userScopesPromise?: Promise<void>;
 
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
@@ -108,15 +111,37 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     await this.messagesProvider.showMessages(ctx);
   }
 
+  private async ensureUserScopes(): Promise<void> {
+    if (this.userScopes !== undefined || this.userScopesPromise) {
+      if (this.userScopesPromise) {
+        await this.userScopesPromise;
+      }
+      return;
+    }
+    this.userScopesPromise = this.api.getUserScopes()
+      .then(value => {
+        this.userScopes = value;
+      })
+      .catch(() => {
+        this.userScopes = undefined;
+      })
+      .finally(() => {
+        this.userScopesPromise = undefined;
+      });
+    await this.userScopesPromise;
+  }
+
   async markThreadRead(threadItem: ChatThreadItem): Promise<void> {
-    const unread = threadItem.thread.messages.filter(m => !m.is_read);
+    const unread = threadItem.thread.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId);
     if (unread.length === 0) { return; }
     await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
     this.refresh();
   }
 
   async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
-    const ids = scopeItem.threads.flatMap(t => t.messages.filter(m => !m.is_read).map(m => m.id));
+    const ids = scopeItem.threads.flatMap(t =>
+      t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId).map(m => m.id)
+    );
     if (ids.length === 0) { return; }
     await Promise.all(ids.map(id => this.api.markMessageRead(id).catch(() => undefined)));
     this.refresh();
@@ -151,11 +176,13 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this._onDidChangeTreeData.fire(undefined);
 
     try {
-      const [identity, messages] = await Promise.all([
+      const [identity, messages, scopes] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
-        this.api.listMessages(this.unreadOnly ? { unread: true } : {})
+        this.api.listMessages(this.unreadOnly ? { unread: true } : {}),
+        this.api.getUserScopes().catch(() => undefined)
       ]);
       this.currentUserId = identity?.id;
+      this.userScopes = scopes;
 
       const grouped = this.groupMessages(messages || []);
       await this.resolveLabels(grouped);
@@ -307,7 +334,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       for (const [targetId, msgs] of byTarget) {
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
-        const unreadCount = msgs.filter(m => !m.is_read).length;
+        // Exclude the user's own messages — backend doesn't auto-stamp authors
+        // as readers of their own posts, so without this they'd show as
+        // permanently unread to themselves.
+        const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
         if (this.unreadOnly && unreadCount === 0) { continue; }
 
         const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
@@ -406,21 +436,36 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const baseQuery: Record<string, string> = {};
     const basePayload: Record<string, unknown> = {};
     let wsChannel: string | undefined;
+    let readOnly = false;
+    let readOnlyReason: string | undefined;
+
+    await this.ensureUserScopes();
 
     switch (scope) {
       case 'global':
-        return undefined;
+        // Global threads carry no target IDs, so /messages without a scope
+        // filter returns the user's full inbox — not just globals. Pin the
+        // scope explicitly so the panel only shows global announcements.
+        baseQuery.scope = 'global';
+        readOnly = !canPostGlobal(this.userScopes);
+        readOnlyReason = readOnly ? 'Only administrators can post global announcements.' : undefined;
+        // wsChannel intentionally undefined — no per-target channel for global.
+        break;
       case 'organization':
         if (!targetId) { return undefined; }
         baseQuery.organization_id = targetId;
         basePayload.organization_id = targetId;
         wsChannel = `organization:${targetId}`;
+        readOnly = !canPostToOrganization(this.userScopes, targetId);
+        readOnlyReason = readOnly ? 'Posting to this organization requires manager or owner role.' : undefined;
         break;
       case 'course_family':
         if (!targetId) { return undefined; }
         baseQuery.course_family_id = targetId;
         basePayload.course_family_id = targetId;
         wsChannel = `course_family:${targetId}`;
+        readOnly = !canPostToCourseFamily(this.userScopes, targetId);
+        readOnlyReason = readOnly ? 'Posting to this course family requires manager or owner role.' : undefined;
         break;
       case 'course':
         if (!targetId) { return undefined; }
@@ -471,7 +516,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       subtitle: scopeLabel(scope),
       query: baseQuery,
       createPayload: basePayload,
-      wsChannel
+      wsChannel,
+      readOnly,
+      readOnlyReason
     };
   }
 

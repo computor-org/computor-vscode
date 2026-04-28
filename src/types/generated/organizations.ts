@@ -10,7 +10,63 @@
 
 import type { GitLabConfig, GitLabConfigGet, GitLabCredentials } from './common';
 
+import type { UserList } from './users';
 
+
+
+export interface OrganizationMemberCreate {
+  id?: string | null;
+  properties?: any | null;
+  user_id: string;
+  organization_id: string;
+  organization_role_id: string;
+}
+
+export interface OrganizationMemberGet {
+  /** Creation timestamp */
+  created_at?: string | null;
+  /** Update timestamp */
+  updated_at?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  id: string;
+  properties?: any | null;
+  user_id: string;
+  organization_id: string;
+  organization_role_id: string;
+  user?: UserList | null;
+}
+
+export interface OrganizationMemberList {
+  id: string;
+  user_id: string;
+  organization_id: string;
+  organization_role_id: string;
+  user?: UserList | null;
+}
+
+export interface OrganizationMemberUpdate {
+  properties?: any | null;
+  organization_role_id?: string | null;
+}
+
+export interface OrganizationMemberQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  user_id?: string | null;
+  organization_id?: string | null;
+  organization_role_id?: string | null;
+}
+
+/**
+ * Request to create an organization via Temporal workflow.
+ */
+export interface OrganizationTaskRequest {
+  organization: Record<string, any>;
+  gitlab: GitLabCredentials;
+  parent_group_id: number;
+}
 
 export interface OrganizationProperties {
   gitlab?: GitLabConfig | null;
@@ -157,13 +213,27 @@ export interface OrganizationQuery {
   country?: string | null;
 }
 
-/**
- * Request to create an organization via Temporal workflow.
- */
-export interface OrganizationTaskRequest {
-  organization: Record<string, any>;
-  gitlab: GitLabCredentials;
-  parent_group_id: number;
+export interface OrganizationRoleGet {
+  id: string;
+  title?: string | null;
+  description?: string | null;
+  builtin?: boolean;
+}
+
+export interface OrganizationRoleList {
+  id: string;
+  title?: string | null;
+  description?: string | null;
+  builtin?: boolean;
+}
+
+export interface OrganizationRoleQuery {
+  skip?: number | null;
+  limit?: number | null;
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  builtin?: boolean | null;
 }
 
 
