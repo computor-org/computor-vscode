@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
+import { canReplyInScope, deriveScopeFromCreatePayload } from '../../services/MessagePermissions';
 import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
@@ -25,6 +26,8 @@ export interface MessageTargetContext {
   readOnly?: boolean;
   /** Optional reason shown alongside the read-only notice. */
   readOnlyReason?: string;
+  /** Whether replies are permitted in this scope (computed from createPayload). */
+  allowReplies?: boolean;
 }
 
 interface MessagesWebviewData {
@@ -60,11 +63,20 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     this.inputPanel = inputPanel;
   }
 
+  private withReplyPolicy(target: MessageTargetContext): MessageTargetContext {
+    if (target.allowReplies !== undefined) {
+      return target;
+    }
+    const scope = deriveScopeFromCreatePayload(target.createPayload);
+    return { ...target, allowReplies: canReplyInScope(scope) };
+  }
+
   public setWebSocketService(wsService: WebSocketService): void {
     this.wsService = wsService;
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
+    target = this.withReplyPolicy(target);
     const currentUserId = this.apiService.getCurrentUserId();
     const [identity, rawMessages] = await Promise.all([
       currentUserId ? this.apiService.getCurrentUser().catch(() => undefined) : Promise.resolve(undefined),
@@ -312,6 +324,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     switch (message.command) {
       case 'replyTo':
         if (this.inputPanel && message.data) {
+          const target = this.getCurrentTarget();
+          if (target && target.allowReplies === false) {
+            // Webview button should already be hidden, but defend in case the
+            // command arrives via a stale render or another path.
+            return;
+          }
           this.inputPanel.setReplyTo(message.data);
           await this.inputPanel.reveal();
         }
