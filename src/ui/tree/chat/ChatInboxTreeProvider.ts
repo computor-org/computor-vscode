@@ -38,6 +38,8 @@ type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingI
 export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+  private readonly _onDidChangeUnread = new vscode.EventEmitter<number>();
+  readonly onDidChangeUnread = this._onDidChangeUnread.event;
 
   private readonly api: ComputorApiService;
   private readonly context: vscode.ExtensionContext;
@@ -79,6 +81,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.scopeItems = [];
     this.loadError = undefined;
     void this.reload();
+  }
+
+  getTotalUnread(): number {
+    return this.scopeItems.reduce((sum, item) => sum + item.unreadCount, 0);
   }
 
   isUnreadOnly(): boolean {
@@ -193,6 +199,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     } finally {
       this.loading = false;
       this._onDidChangeTreeData.fire(undefined);
+      this._onDidChangeUnread.fire(this.getTotalUnread());
     }
   }
 

@@ -1189,7 +1189,7 @@ class UnifiedController {
     }
 
     const tree = new ChatInboxTreeProvider(this.context, api, messagesWebview);
-    registerTreeView('computor.chat.inbox', {
+    const chatTreeView = registerTreeView('computor.chat.inbox', {
       provider: tree,
       options: { showCollapseAll: true },
       registerDataProvider: true,
@@ -1209,6 +1209,14 @@ class UnifiedController {
         }
       }
     }, this.disposables);
+
+    this.disposables.push(
+      tree.onDidChangeUnread((count) => {
+        chatTreeView.badge = count > 0
+          ? { value: count, tooltip: `${count} unread message${count === 1 ? '' : 's'}` }
+          : undefined;
+      })
+    );
 
     this.disposables.push(
       vscode.commands.registerCommand('computor.chat.refresh', () => tree.refresh()),
