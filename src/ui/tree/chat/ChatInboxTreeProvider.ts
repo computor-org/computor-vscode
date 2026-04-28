@@ -579,7 +579,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     // Backend auto-subscribes both `user:<own_id>` and `global` on WS connect,
     // but we still register a local handler so events get dispatched here.
     this.wsService.subscribe([userChannel, GLOBAL_CHANNEL], this.wsHandlerId, {
-      onMessageNew: (channel) => this.handleInboxEvent(channel),
+      onMessageNew: (channel, data) => this.handleInboxNewMessage(channel, data),
       onMessageUpdate: (channel) => this.handleInboxEvent(channel),
       onMessageDelete: (channel) => this.handleInboxEvent(channel),
       onReadUpdate: (channel) => this.handleInboxEvent(channel)
@@ -587,14 +587,61 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.wsSubscribedForUserId = this.currentUserId;
   }
 
+  private isInboxChannel(channel: string): boolean {
+    if (!this.currentUserId) { return false; }
+    return channel === `user:${this.currentUserId}` || channel === GLOBAL_CHANNEL;
+  }
+
   private handleInboxEvent(channel: string): void {
-    if (!this.currentUserId) {
-      return;
-    }
-    if (channel !== `user:${this.currentUserId}` && channel !== GLOBAL_CHANNEL) {
-      return;
-    }
+    if (!this.isInboxChannel(channel)) { return; }
     void this.requestReload();
+  }
+
+  private handleInboxNewMessage(channel: string, data: Record<string, unknown>): void {
+    if (!this.isInboxChannel(channel)) { return; }
+    void this.requestReload();
+    // WS payload nests the MessageGet under `data` for message:new (see
+    // MessagesWebviewProvider.handleWsMessageNew for the same unwrap).
+    const inner = (data && typeof data === 'object' && 'data' in data ? (data as any).data : data) as Record<string, unknown> | undefined;
+    if (!inner) { return; }
+    if (inner.author_id && inner.author_id === this.currentUserId) {
+      // Don't notify the user about their own posts.
+      return;
+    }
+    void this.showNewMessageToast(inner);
+  }
+
+  private async showNewMessageToast(message: Record<string, unknown>): Promise<void> {
+    const scope = (typeof message.scope === 'string' ? message.scope : 'global') as MessageScope;
+    const author = formatToastAuthor(message);
+    const preview = formatToastPreview(message);
+    const scopeText = scopeLabel(scope);
+    const text = author
+      ? `${author} (${scopeText}): ${preview}`
+      : `${scopeText}: ${preview}`;
+
+    const choice = await vscode.window.showInformationMessage(text, 'Open');
+    if (choice !== 'Open') { return; }
+    await this.openMessageInPanel(message, scope);
+  }
+
+  private async openMessageInPanel(message: Record<string, unknown>, scope: MessageScope): Promise<void> {
+    const messageAsList = message as unknown as MessageList;
+    const targetId = this.targetIdFor(scope, messageAsList);
+    // Reveal the chat container alongside the panel for context.
+    void vscode.commands.executeCommand('computor.chat.inbox.focus');
+    const synthetic: ChatThread = {
+      scope,
+      targetId,
+      title: '',
+      lastMessage: messageAsList,
+      unreadCount: 0,
+      messageCount: 1,
+      messages: [messageAsList]
+    };
+    const target = await this.buildTargetContext(synthetic);
+    if (!target) { return; }
+    await this.messagesProvider.showMessages(target);
   }
 
   // ----- Persistence -----
@@ -643,4 +690,22 @@ function compareThreadRecency(a: ChatThread, b: ChatThread): number {
   const ta = a.lastMessage?.created_at ? Date.parse(a.lastMessage.created_at) : 0;
   const tb = b.lastMessage?.created_at ? Date.parse(b.lastMessage.created_at) : 0;
   return ta - tb;
+}
+
+function formatToastAuthor(message: Record<string, unknown>): string {
+  const author = (message.author ?? {}) as Record<string, unknown>;
+  const given = typeof author.given_name === 'string' ? author.given_name : '';
+  const family = typeof author.family_name === 'string' ? author.family_name : '';
+  const full = `${given} ${family}`.trim();
+  if (full) { return full; }
+  if (typeof author.username === 'string' && author.username) { return author.username; }
+  if (typeof author.email === 'string' && author.email) { return author.email; }
+  return '';
+}
+
+function formatToastPreview(message: Record<string, unknown>): string {
+  const content = typeof message.content === 'string' ? message.content : '';
+  const cleaned = content.replace(/\s+/g, ' ').trim();
+  if (cleaned.length === 0) { return '(no content)'; }
+  return cleaned.length > 120 ? `${cleaned.slice(0, 117)}…` : cleaned;
 }
