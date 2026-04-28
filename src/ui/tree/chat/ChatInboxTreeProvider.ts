@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../../../services/MessagePermissions';
+import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageList } from '../../../types/generated';
+
+const GLOBAL_CHANNEL = 'global';
 import {
   ChatScopeItem,
   ChatThreadItem,
@@ -53,6 +56,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private userScopesPromise?: Promise<void>;
   private reloadInFlight?: Promise<void>;
   private reloadQueued = false;
+  private wsService?: WebSocketService;
+  private wsSubscribedForUserId?: string;
+  private readonly wsHandlerId = `chat-inbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
@@ -78,6 +84,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   }
 
   // ----- Public API -----
+
+  setWebSocketService(wsService: WebSocketService): void {
+    this.wsService = wsService;
+    // If we already know who we are, subscribe immediately. Otherwise the
+    // subscription happens at the end of the next reload, when currentUserId
+    // is set.
+    this.maybeSubscribeUserChannels();
+  }
 
   refresh(): void {
     void this.requestReload();
@@ -211,6 +225,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       ]);
       this.currentUserId = identity?.id;
       this.userScopes = scopes;
+      this.maybeSubscribeUserChannels();
 
       const grouped = this.groupMessages(messages || []);
       await this.resolveLabels(grouped);
@@ -549,6 +564,37 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       readOnly,
       readOnlyReason
     };
+  }
+
+  // ----- WebSocket -----
+
+  private maybeSubscribeUserChannels(): void {
+    if (!this.wsService || !this.currentUserId) {
+      return;
+    }
+    if (this.wsSubscribedForUserId === this.currentUserId) {
+      return;
+    }
+    const userChannel = `user:${this.currentUserId}`;
+    // Backend auto-subscribes both `user:<own_id>` and `global` on WS connect,
+    // but we still register a local handler so events get dispatched here.
+    this.wsService.subscribe([userChannel, GLOBAL_CHANNEL], this.wsHandlerId, {
+      onMessageNew: (channel) => this.handleInboxEvent(channel),
+      onMessageUpdate: (channel) => this.handleInboxEvent(channel),
+      onMessageDelete: (channel) => this.handleInboxEvent(channel),
+      onReadUpdate: (channel) => this.handleInboxEvent(channel)
+    });
+    this.wsSubscribedForUserId = this.currentUserId;
+  }
+
+  private handleInboxEvent(channel: string): void {
+    if (!this.currentUserId) {
+      return;
+    }
+    if (channel !== `user:${this.currentUserId}` && channel !== GLOBAL_CHANNEL) {
+      return;
+    }
+    void this.requestReload();
   }
 
   // ----- Persistence -----

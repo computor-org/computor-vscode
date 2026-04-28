@@ -36,6 +36,8 @@ export interface WsReadUpdate {
   channel: string;
   message_id: string;
   user_id: string;
+  /** True when marked read, false when marked unread. Optional for older payloads. */
+  read?: boolean;
 }
 
 export interface WsPong {
@@ -149,7 +151,7 @@ export interface WebSocketEventHandlers {
   onMessageUpdate?: (channel: string, messageId: string, data: Record<string, unknown>) => void;
   onMessageDelete?: (channel: string, messageId: string) => void;
   onTypingUpdate?: (channel: string, userId: string, userName: string, isTyping: boolean) => void;
-  onReadUpdate?: (channel: string, messageId: string, userId: string) => void;
+  onReadUpdate?: (channel: string, messageId: string, userId: string, read?: boolean) => void;
   onMaintenanceActivated?: (message: string, activatedAt: string) => void;
   onMaintenanceDeactivated?: (message: string) => void;
   onMaintenanceScheduled?: (scheduledAt: string, message: string) => void;
@@ -492,7 +494,7 @@ export class WebSocketService {
 
         case 'read:update':
           this.eventHandlers.forEach((handlers) => {
-            handlers.onReadUpdate?.(message.channel, message.message_id, message.user_id);
+            handlers.onReadUpdate?.(message.channel, message.message_id, message.user_id, message.read);
           });
           break;
 

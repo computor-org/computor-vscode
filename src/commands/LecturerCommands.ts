@@ -1219,7 +1219,10 @@ export class LecturerCommands {
           query: { course_id: item.course.id },
           createPayload: { course_id: item.course.id },
           sourceRole: 'lecturer',
-          // Lecturers subscribe to course channel to receive ALL messages including submission groups
+          // Course channel only carries course-scoped messages now — the
+          // hierarchical cascade (submission_group → course) was dropped
+          // along with the single-target invariant. The chat inbox covers
+          // cross-scope live updates via the per-user channel.
           wsChannel: `course:${item.course.id}`
         };
       } else if (item instanceof CourseGroupTreeItem) {

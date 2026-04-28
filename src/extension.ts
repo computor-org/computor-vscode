@@ -1189,6 +1189,9 @@ class UnifiedController {
     }
 
     const tree = new ChatInboxTreeProvider(this.context, api, messagesWebview);
+    if (this.wsService) {
+      tree.setWebSocketService(this.wsService);
+    }
     const chatTreeView = registerTreeView('computor.chat.inbox', {
       provider: tree,
       options: { showCollapseAll: true },
