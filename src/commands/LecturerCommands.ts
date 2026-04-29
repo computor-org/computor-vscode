@@ -20,6 +20,7 @@ import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebv
 import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
 import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMemberProgressWebviewProvider';
+import { ScopeMembershipWebviewProvider } from '../ui/webviews/ScopeMembershipWebviewProvider';
 import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../http/errors/HttpError';
@@ -58,6 +59,7 @@ export class LecturerCommands {
   private releaseValidationWebviewProvider: ReleaseValidationWebviewProvider;
   private courseProgressOverviewWebviewProvider: CourseProgressOverviewWebviewProvider;
   private courseMemberProgressWebviewProvider: CourseMemberProgressWebviewProvider;
+  private scopeMembershipWebviewProvider: ScopeMembershipWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -91,6 +93,7 @@ export class LecturerCommands {
     this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
     this.courseProgressOverviewWebviewProvider = new CourseProgressOverviewWebviewProvider(context, this.apiService);
     this.courseMemberProgressWebviewProvider = new CourseMemberProgressWebviewProvider(context, this.apiService);
+    this.scopeMembershipWebviewProvider = new ScopeMembershipWebviewProvider(context, this.apiService);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
@@ -144,6 +147,23 @@ export class LecturerCommands {
 
     register('computor.lecturer.showMessages', async (item: OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
       await this.showMessages(item);
+    });
+
+    register('computor.lecturer.manageOrganizationMembers', async (item: OrganizationTreeItem) => {
+      await this.scopeMembershipWebviewProvider.open({
+        kind: 'organization',
+        scopeId: item.organization.id,
+        scopeTitle: item.organization.title || item.organization.path
+      });
+    });
+
+    register('computor.lecturer.manageCourseFamilyMembers', async (item: CourseFamilyTreeItem) => {
+      await this.scopeMembershipWebviewProvider.open({
+        kind: 'course_family',
+        scopeId: item.courseFamily.id,
+        scopeTitle: item.courseFamily.title || item.courseFamily.path,
+        scopeSubtitle: item.organization.title || item.organization.path
+      });
     });
 
     register('computor.lecturer.showCourseMemberComments', async (item: CourseMemberTreeItem) => {
