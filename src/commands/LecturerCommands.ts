@@ -32,6 +32,7 @@ import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
 import { runLockedWithProgress } from '../utils/progressLock';
+import { canManageAnyCourseFamilyMembers, canManageAnyOrganizationMembers } from '../services/ScopePermissions';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -2501,48 +2502,26 @@ export class LecturerCommands {
     );
   }
 
-  // Sets the per-scope-kind "Manage Members" context keys. The menu shows when:
-  //   - the user is admin, OR
-  //   - holds the global system role for that scope kind
-  //     (`_organization_manager` / `_course_family_manager`), OR
-  //   - holds an `_owner`/`_manager` claim on at least one scope of that kind.
-  // Per-scope precision is enforced inside the webview and on the backend.
+  // Sets the per-scope-kind "Manage Members" context keys. See
+  // `services/ScopePermissions.ts` for the rules.
   private async applyScopeMembershipContextKey(): Promise<void> {
     try {
       const [scopes, currentUser] = await Promise.all([
         this.apiService.getUserScopes(),
         this.apiService.getUserAccount().catch(() => undefined)
       ]);
-      const isAdmin = scopes?.is_admin === true;
       const globalRoles = new Set(
         (currentUser?.user_roles ?? [])
           .map(r => r?.role_id)
           .filter((id): id is string => typeof id === 'string')
       );
-
-      const canManageOrg = isAdmin
-        || globalRoles.has('_organization_manager')
-        || hasManagerClaim(scopes?.organization);
-      const canManageFamily = isAdmin
-        || globalRoles.has('_course_family_manager')
-        || hasManagerClaim(scopes?.course_family);
-
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', canManageOrg);
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', canManageFamily);
+      const ctx = { scopes, globalRoles };
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', canManageAnyOrganizationMembers(ctx));
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', canManageAnyCourseFamilyMembers(ctx));
     } catch (err) {
       console.warn('[LecturerCommands] Failed to compute scope-membership context keys:', err);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', false);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', false);
     }
   }
-}
-
-function hasManagerClaim(map: Record<string, string[]> | undefined): boolean {
-  if (!map) { return false; }
-  for (const roles of Object.values(map)) {
-    if (Array.isArray(roles) && roles.some(r => r === '_owner' || r === '_manager')) {
-      return true;
-    }
-  }
-  return false;
 }

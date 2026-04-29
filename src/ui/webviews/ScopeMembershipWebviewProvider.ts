@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
+import { canManageScopeMembership } from '../../services/ScopePermissions';
 import type { UserList } from '../../types/generated/users';
 
 export type ScopeKind = 'organization' | 'course_family';
@@ -122,14 +123,20 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
   // ----- State loading -----
 
   private async loadState(target: ScopeMembershipTarget): Promise<ScopeMembershipViewState> {
-    const [members, roles, users, scopes] = await Promise.all([
+    const [members, roles, users, scopes, currentUser] = await Promise.all([
       this.fetchMembers(target),
       this.fetchRoles(target),
       this.apiService.getUsers().catch(() => []),
-      this.apiService.getUserScopes().catch(() => undefined)
+      this.apiService.getUserScopes().catch(() => undefined),
+      this.apiService.getUserAccount().catch(() => undefined)
     ]);
 
-    const canManage = this.canManageScope(target, scopes);
+    const globalRoles = new Set(
+      (currentUser?.user_roles ?? [])
+        .map(r => r?.role_id)
+        .filter((id): id is string => typeof id === 'string')
+    );
+    const canManage = canManageScopeMembership(target.kind, target.scopeId, { scopes, globalRoles });
 
     return {
       target,
@@ -138,18 +145,6 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       availableUsers: users || [],
       canManage
     };
-  }
-
-  private canManageScope(
-    target: ScopeMembershipTarget,
-    scopes: import('../../types/generated/users').UserScopes | undefined
-  ): boolean {
-    if (!scopes) { return false; }
-    if (scopes.is_admin) { return true; }
-    const map = target.kind === 'organization' ? scopes.organization : scopes.course_family;
-    const roles = map?.[target.scopeId];
-    if (!roles) { return false; }
-    return roles.some(r => r === '_owner' || r === '_manager');
   }
 
   private async refreshState(notice?: NoticeMessage): Promise<void> {
