@@ -126,9 +126,11 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
       // Root: show selection context headers, then course contents
       const memberLabel = this.selection.getCurrentMemberLabel() || memberId;
       const memberGroupLabel = this.selection.getMemberCourseGroupLabel();
+      const courseLabel = this.selection.getCurrentCourseLabel() || courseId;
       const headerItems: vscode.TreeItem[] = [
-        new TutorSelectionMemberItem(memberLabel, this.selection.getMemberEmail(), this.selection.getMemberUsername()),
-        new TutorSelectionGroupItem(memberGroupLabel || 'No Group')
+        new TutorSelectionCourseItem(courseLabel),
+        new TutorSelectionGroupItem(memberGroupLabel || 'No Group'),
+        new TutorSelectionMemberItem(memberLabel, this.selection.getMemberEmail(), this.selection.getMemberUsername())
       ];
 
       const courseContents = await (this.api as any).getTutorCourseContents?.(courseId, memberId) || [];
@@ -668,6 +670,16 @@ interface ContentNode {
   unreviewedCount?: number;
   submissionGroup?: SubmissionGroupStudentList;
   aggregatedColor?: string;
+}
+
+class TutorSelectionCourseItem extends vscode.TreeItem {
+  constructor(courseLabel: string) {
+    super(courseLabel, vscode.TreeItemCollapsibleState.None);
+    this.id = 'tutor-content-course';
+    this.contextValue = 'tutorFilterCourse.selected';
+    this.iconPath = new vscode.ThemeIcon('mortar-board');
+    this.tooltip = courseLabel;
+  }
 }
 
 class TutorSelectionMemberItem extends vscode.TreeItem {
