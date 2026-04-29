@@ -890,7 +890,7 @@
         {
           "id": "computor-user-manager",
           "title": "Computor User Manager",
-          "icon": "$(organization)",
+          "icon": "$(account)",
           "when": "computor.user_manager.show"
         },
         {
