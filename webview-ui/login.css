@@ -47,6 +47,77 @@ html, body {
   gap: 4px;
 }
 
+/* Backend-URL combobox: text input + chevron + themed dropdown */
+.combo-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.combo-wrap .combo-input {
+  flex: 1 1 auto;
+  padding-right: 32px; /* space for the chevron button */
+}
+
+.combo-toggle {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 28px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-input-foreground);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 0 4px 4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.combo-toggle:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.18));
+  opacity: 1;
+}
+
+.combo-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-input-border, rgba(128, 128, 128, 0.4)));
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.combo-option {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.combo-option:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.18));
+}
+
+.combo-option.selected {
+  background: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.4));
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+
 .form-field label {
   font-size: 13px;
   font-weight: 500;

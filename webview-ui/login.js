@@ -75,24 +75,36 @@
         escapeHtml(state.notice.message) + '</div>';
     }
 
-    var datalistOptions = '';
     var seen = {};
     var allUrls = (Array.isArray(state.previousBackendUrls) ? state.previousBackendUrls.slice() : []);
     if (state.backendUrl && allUrls.indexOf(state.backendUrl) === -1) {
       allUrls.unshift(state.backendUrl);
     }
+    var deduped = [];
     for (var i = 0; i < allUrls.length; i++) {
       var u = (allUrls[i] || '').trim();
       if (!u) { continue; }
       var key = u.toLowerCase();
       if (seen[key]) { continue; }
       seen[key] = true;
-      datalistOptions += '<option value="' + escapeHtml(u) + '"></option>';
+      deduped.push(u);
+    }
+    var hasOptions = deduped.length > 0;
+    var optionsHtml = '';
+    for (var j = 0; j < deduped.length; j++) {
+      var url = deduped[j];
+      var selected = url === state.backendUrl ? ' selected' : '';
+      optionsHtml += '<li class="combo-option' + selected + '" data-url="' + escapeHtml(url) + '">' + escapeHtml(url) + '</li>';
     }
     var serverInfoHtml = '<div class="form-field">' +
         '<label for="backend-url">Backend URL</label>' +
-        '<input type="url" id="backend-url" list="backend-url-options" value="' + escapeHtml(state.backendUrl) + '" placeholder="https://computor.example.com" autocomplete="url">' +
-        (datalistOptions ? '<datalist id="backend-url-options">' + datalistOptions + '</datalist>' : '') +
+        '<div class="combo-wrap" id="backend-url-combo">' +
+          '<input type="url" id="backend-url" class="combo-input" value="' + escapeHtml(state.backendUrl) + '" placeholder="https://computor.example.com" autocomplete="url">' +
+          (hasOptions
+            ? '<button type="button" class="combo-toggle" id="backend-url-toggle" aria-label="Show recent backends" tabindex="-1">▾</button>' +
+              '<ul class="combo-list" id="backend-url-list" role="listbox" hidden>' + optionsHtml + '</ul>'
+            : '') +
+        '</div>' +
         '<span class="field-error"></span>' +
       '</div>';
 
@@ -145,6 +157,7 @@
     bindInput('username', function (v) { state.username = v; });
     bindInput('password', function (v) { state.password = v; });
     bindClick('login-btn', handleSubmit);
+    attachBackendUrlCombo();
 
     var checkbox = document.getElementById('auto-login-checkbox');
     if (checkbox) {
@@ -197,6 +210,51 @@
     if (el) {
       el.addEventListener('input', function (e) { setter(e.target.value); });
     }
+  }
+
+  function attachBackendUrlCombo() {
+    var wrap = document.getElementById('backend-url-combo');
+    var input = document.getElementById('backend-url');
+    var toggle = document.getElementById('backend-url-toggle');
+    var list = document.getElementById('backend-url-list');
+    if (!wrap || !input || !toggle || !list) { return; }
+
+    var setOpen = function (open) {
+      list.hidden = !open;
+      wrap.classList.toggle('open', open);
+    };
+
+    toggle.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(list.hidden);
+    });
+
+    list.addEventListener('click', function (e) {
+      var target = e.target;
+      while (target && target !== list) {
+        if (target.classList && target.classList.contains('combo-option')) {
+          var url = target.getAttribute('data-url') || '';
+          input.value = url;
+          state.backendUrl = url;
+          setOpen(false);
+          input.focus();
+          return;
+        }
+        target = target.parentElement;
+      }
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) { setOpen(false); }
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !list.hidden) {
+        setOpen(false);
+        e.stopPropagation();
+      }
+    });
   }
 
   function bindClick(id, handler) {
