@@ -103,16 +103,12 @@
       ${archivedBanner}
       ${serviceAccountBanner}
 
-      <section class="user-section">
+      <section class="user-section" aria-labelledby="section-identity">
         <div>
-          <h2>User Information</h2>
-          <p class="section-description">Core user account details (read-only except email).</p>
+          <h2 id="section-identity">Identity</h2>
+          <p class="section-description">Core account fields. Name and username edits are admin-only.</p>
         </div>
         <div class="info-grid">
-          <div class="info-field">
-            <label>User ID</label>
-            <div class="info-value">${escapeHtml(user.id)}</div>
-          </div>
           <div class="info-field">
             <label>Given Name</label>
             <div class="info-value">${escapeHtml(user.given_name || 'Not set')}</div>
@@ -125,25 +121,6 @@
             <label>Username</label>
             <div class="info-value">${escapeHtml(user.username || 'Not set')}</div>
           </div>
-          <div class="info-field">
-            <label>Created</label>
-            <div class="info-value">${formatDate(user.created_at)}</div>
-          </div>
-          <div class="info-field">
-            <label>Updated</label>
-            <div class="info-value">${formatDate(user.updated_at)}</div>
-          </div>
-          <div class="info-field full-width">
-            <label>Roles</label>
-            <div class="info-value">${userRolesHtml}</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="user-section">
-        <div>
-          <h2>Email Address</h2>
-          <p class="section-description">Update the user's email address.</p>
         </div>
         <form id="email-form">
           <div class="form-field">
@@ -156,9 +133,19 @@
         </form>
       </section>
 
-      <section class="user-section">
+      <section class="user-section" aria-labelledby="section-roles">
         <div>
-          <h2>Profile</h2>
+          <h2 id="section-roles">Roles</h2>
+          <p class="section-description">System roles assigned to this user.</p>
+        </div>
+        <div class="info-field full-width">
+          <div class="info-value">${userRolesHtml}</div>
+        </div>
+      </section>
+
+      <section class="user-section" aria-labelledby="section-profile">
+        <div>
+          <h2 id="section-profile">Profile</h2>
           <p class="section-description">User profile information (read-only).</p>
         </div>
         <div class="info-grid">
@@ -183,19 +170,44 @@
             <div class="info-value">${escapeHtml(profile.bio || 'Not set')}</div>
           </div>
         </div>
-      </section>
-
-      <section class="user-section">
+        ${studentProfiles.length > 0 ? `
         <div>
-          <h2>Student Profiles</h2>
-          <p class="section-description">Student profiles associated with this user (read-only).</p>
+          <h3>Student Profiles</h3>
+          ${studentProfilesHtml}
         </div>
-        ${studentProfilesHtml}
+        ` : ''}
       </section>
 
-      <section class="user-section danger-zone">
+      <section class="user-section" aria-labelledby="section-audit">
         <div>
-          <h2>Password Reset</h2>
+          <h2 id="section-audit">Audit</h2>
+          <p class="section-description">Identifiers and timestamps.</p>
+        </div>
+        <div class="info-grid">
+          <div class="info-field">
+            <label>User ID</label>
+            <div class="info-value">${escapeHtml(user.id)}</div>
+          </div>
+          <div class="info-field">
+            <label>Created</label>
+            <div class="info-value">${formatDate(user.created_at)}</div>
+          </div>
+          <div class="info-field">
+            <label>Updated</label>
+            <div class="info-value">${formatDate(user.updated_at)}</div>
+          </div>
+          ${user.archived_at ? `
+          <div class="info-field">
+            <label>Archived</label>
+            <div class="info-value">${formatDate(user.archived_at)}</div>
+          </div>
+          ` : ''}
+        </div>
+      </section>
+
+      <section class="user-section danger-zone" aria-labelledby="section-danger">
+        <div>
+          <h2 id="section-danger">Danger Zone</h2>
           <p class="section-description">Reset this user's password. This will set their password to NULL and they will need to set a new password on their next login.</p>
         </div>
         <form id="password-reset-form">
