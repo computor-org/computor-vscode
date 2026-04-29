@@ -73,10 +73,11 @@ export class TutorCourseFamilyFilterItem extends vscode.TreeItem {
 export class TutorCourseFilterItem extends vscode.TreeItem {
   constructor(
     public readonly course: { id: string; title?: string | null; path?: string; name?: string },
-    public readonly isSelected: boolean
+    public readonly isSelected: boolean,
+    expanded: boolean = isSelected
   ) {
     const label = course.title || course.path || course.name || course.id;
-    super(label, isSelected ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+    super(label, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
     this.id = `tutor-filter-course-${course.id}`;
     this.contextValue = isSelected ? 'tutorFilterCourse.selected' : 'tutorFilterCourse';
     this.iconPath = new vscode.ThemeIcon(isSelected ? 'book' : 'book');

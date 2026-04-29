@@ -22,6 +22,9 @@ export interface UISettings {
   studentTree?: {
     expandedStates: Record<string, boolean>; // Maps tree node ID to expanded state
   };
+  tutorTree?: {
+    expandedStates: Record<string, boolean>; // Maps tree node ID to expanded state
+  };
 }
 
 export const defaultSettings: ComputorSettings = {

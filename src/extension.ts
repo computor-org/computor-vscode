@@ -973,11 +973,16 @@ class UnifiedController {
     editorDecorationService.connectToSelectionService(selection);
 
     // Register filter tree (replaces webview filter panel)
-    const filterTree = new TutorFilterTreeProvider(api, selection);
+    const tutorSettingsManager = new ComputorSettingsManager(this.context);
+    const filterTree = new TutorFilterTreeProvider(api, selection, tutorSettingsManager);
     registerTreeView('computor.tutor.filters', {
       provider: filterTree,
       options: { showCollapseAll: true },
       onExpand: async (event) => {
+        const id = event.element.id;
+        if (id) {
+          await filterTree.setNodeExpanded(id, true);
+        }
         if (event.element instanceof TutorCourseFilterItem) {
           const course = event.element.course;
           const currentCourseId = selection.getCurrentCourseId();
@@ -985,6 +990,12 @@ class UnifiedController {
             await selection.selectCourse(course.id, course.title || course.path || course.name || course.id);
             filterTree.refresh();
           }
+        }
+      },
+      onCollapse: async (event) => {
+        const id = event.element.id;
+        if (id) {
+          await filterTree.setNodeExpanded(id, false);
         }
       }
     }, this.disposables);

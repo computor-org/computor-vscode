@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ComputorApiService } from '../../../services/ComputorApiService';
+import type { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { TutorSelectionService } from '../../../services/TutorSelectionService';
 import type { CourseTutorList, TutorCourseMemberList, CourseGroupList } from '../../../types/generated/courses';
 import {
@@ -43,10 +44,44 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
   private currentGroupFetchCourseId?: string | null;
   private currentMemberFetchKey?: { courseId: string | null; groupId: string | null };
 
+  private expandedStates: Record<string, boolean> = {};
+
   constructor(
     private readonly api: ComputorApiService,
-    private readonly selection: TutorSelectionService
-  ) {}
+    private readonly selection: TutorSelectionService,
+    private readonly settingsManager?: ComputorSettingsManager
+  ) {
+    void this.loadExpandedStates();
+  }
+
+  private async loadExpandedStates(): Promise<void> {
+    if (!this.settingsManager) { return; }
+    try {
+      this.expandedStates = await this.settingsManager.getTutorTreeExpandedStates();
+    } catch (error) {
+      console.error('[TutorFilterTree] Failed to load expanded states:', error);
+      this.expandedStates = {};
+    }
+  }
+
+  async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
+    if (expanded) {
+      this.expandedStates[nodeId] = true;
+    } else {
+      delete this.expandedStates[nodeId];
+    }
+    if (this.settingsManager) {
+      try {
+        await this.settingsManager.setTutorNodeExpandedState(nodeId, expanded);
+      } catch (error) {
+        console.error('[TutorFilterTree] Failed to persist expanded state:', error);
+      }
+    }
+  }
+
+  private isExpanded(nodeId: string): boolean {
+    return this.expandedStates[nodeId] === true;
+  }
 
   getTreeItem(element: FilterTreeItem): vscode.TreeItem {
     return element;
@@ -161,7 +196,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     return orgKeys.map(orgKey => new TutorOrganizationFilterItem(
       orgKey,
       this.resolveOrgLabel(orgKey),
-      orgKey === selectedOrgId
+      orgKey === selectedOrgId || this.isExpanded(`tutor-filter-org-${orgKey}`)
     ));
   }
 
@@ -177,7 +212,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
       familyKey,
       orgItem.organizationId,
       this.resolveFamilyLabel(familyKey),
-      familyKey === selectedFamilyId
+      familyKey === selectedFamilyId || this.isExpanded(`tutor-filter-family-${familyKey}`)
     ));
   }
 
@@ -189,7 +224,11 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
       return aLabel.localeCompare(bLabel);
     });
     const selectedCourseId = this.selection.getCurrentCourseId();
-    return courses.map(course => new TutorCourseFilterItem(course, course.id === selectedCourseId));
+    return courses.map(course => {
+      const isSelected = course.id === selectedCourseId;
+      const expanded = isSelected || this.isExpanded(`tutor-filter-course-${course.id}`);
+      return new TutorCourseFilterItem(course, isSelected, expanded);
+    });
   }
 
   private resolveOrgLabel(orgKey: string): string {

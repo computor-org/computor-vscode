@@ -154,9 +154,9 @@ export class ComputorSettingsManager {
   async setStudentNodeExpandedState(nodeId: string, expanded: boolean): Promise<void> {
     const settings = await this.settingsStorage.load();
     if (!settings.ui) {
-      settings.ui = { 
+      settings.ui = {
         lecturerTree: { expandedStates: {} },
-        studentTree: { expandedStates: {} } 
+        studentTree: { expandedStates: {} }
       };
     }
     if (!settings.ui.studentTree) {
@@ -172,7 +172,35 @@ export class ComputorSettingsManager {
     }
     await this.settingsStorage.save(settings);
   }
-  
+
+  // Tutor tree expanded states
+  async getTutorTreeExpandedStates(): Promise<Record<string, boolean>> {
+    const settings = await this.settingsStorage.load();
+    return settings.ui?.tutorTree?.expandedStates || {};
+  }
+
+  async setTutorNodeExpandedState(nodeId: string, expanded: boolean): Promise<void> {
+    const settings = await this.settingsStorage.load();
+    if (!settings.ui) {
+      settings.ui = {
+        lecturerTree: { expandedStates: {} },
+        tutorTree: { expandedStates: {} }
+      };
+    }
+    if (!settings.ui.tutorTree) {
+      settings.ui.tutorTree = { expandedStates: {} };
+    }
+    if (!settings.ui.tutorTree.expandedStates) {
+      settings.ui.tutorTree.expandedStates = {};
+    }
+    if (expanded) {
+      settings.ui.tutorTree.expandedStates[nodeId] = true;
+    } else {
+      delete settings.ui.tutorTree.expandedStates[nodeId];
+    }
+    await this.settingsStorage.save(settings);
+  }
+
   async clearSettings(): Promise<void> {
     await this.settingsStorage.clear();
   }
