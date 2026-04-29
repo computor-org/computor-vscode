@@ -41,6 +41,35 @@ export function compareMembersByName(a: TutorCourseMemberList, b: TutorCourseMem
   return formatMemberName(a).localeCompare(formatMemberName(b));
 }
 
+export class TutorOrganizationFilterItem extends vscode.TreeItem {
+  constructor(
+    public readonly organizationId: string,
+    label: string,
+    expanded: boolean
+  ) {
+    super(label, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+    this.id = `tutor-filter-org-${organizationId}`;
+    this.contextValue = 'tutorFilterOrganization';
+    this.iconPath = new vscode.ThemeIcon('organization');
+    this.description = 'Organization';
+  }
+}
+
+export class TutorCourseFamilyFilterItem extends vscode.TreeItem {
+  constructor(
+    public readonly courseFamilyId: string,
+    public readonly organizationId: string,
+    label: string,
+    expanded: boolean
+  ) {
+    super(label, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+    this.id = `tutor-filter-family-${courseFamilyId}`;
+    this.contextValue = 'tutorFilterCourseFamily';
+    this.iconPath = new vscode.ThemeIcon('folder-library');
+    this.description = 'Course Family';
+  }
+}
+
 export class TutorCourseFilterItem extends vscode.TreeItem {
   constructor(
     public readonly course: { id: string; title?: string | null; path?: string; name?: string },
