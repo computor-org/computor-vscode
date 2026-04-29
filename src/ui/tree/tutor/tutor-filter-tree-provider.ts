@@ -208,11 +208,13 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
       return aLabel.localeCompare(bLabel);
     });
     const selectedFamilyId = this.findCourseFamilyId(this.selection.getCurrentCourseId());
+    const orgLabel = this.resolveOrgLabel(orgItem.organizationId);
     return familyKeys.map(familyKey => new TutorCourseFamilyFilterItem(
       familyKey,
       orgItem.organizationId,
       this.resolveFamilyLabel(familyKey),
-      familyKey === selectedFamilyId || this.isExpanded(`tutor-filter-family-${familyKey}`)
+      familyKey === selectedFamilyId || this.isExpanded(`tutor-filter-family-${familyKey}`),
+      orgLabel
     ));
   }
 
@@ -224,10 +226,12 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
       return aLabel.localeCompare(bLabel);
     });
     const selectedCourseId = this.selection.getCurrentCourseId();
+    const courseFamilyLabel = this.resolveFamilyLabel(familyItem.courseFamilyId);
+    const organizationLabel = this.resolveOrgLabel(familyItem.organizationId);
     return courses.map(course => {
       const isSelected = course.id === selectedCourseId;
       const expanded = isSelected || this.isExpanded(`tutor-filter-course-${course.id}`);
-      return new TutorCourseFilterItem(course, isSelected, expanded);
+      return new TutorCourseFilterItem(course, isSelected, expanded, { courseFamilyLabel, organizationLabel });
     });
   }
 
