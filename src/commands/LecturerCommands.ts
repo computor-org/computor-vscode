@@ -100,6 +100,7 @@ export class LecturerCommands {
   registerCommands(): void {
 
     const register = commandRegistrar(this.context);
+    void this.applyScopeMembershipContextKey();
     register('computor.lecturer.refresh', async () => {
       this.apiService.clearCourseCache('');
       this.treeDataProvider.refresh();
@@ -2499,4 +2500,33 @@ export class LecturerCommands {
       }
     );
   }
+
+  // Sets the `computor.lecturer.canManageScopeMembership` context key so the
+  // org/course-family "Manage Members" entries only appear for users who hold
+  // an `_owner` or `_manager` claim somewhere (or are admin). Per-scope
+  // precision is enforced inside the webview itself.
+  private async applyScopeMembershipContextKey(): Promise<void> {
+    try {
+      const scopes = await this.apiService.getUserScopes();
+      const canManage = !!scopes && (
+        scopes.is_admin === true ||
+        hasManagerClaim(scopes.organization) ||
+        hasManagerClaim(scopes.course_family)
+      );
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageScopeMembership', canManage);
+    } catch (err) {
+      console.warn('[LecturerCommands] Failed to compute scope-membership context key:', err);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageScopeMembership', false);
+    }
+  }
+}
+
+function hasManagerClaim(map: Record<string, string[]> | undefined): boolean {
+  if (!map) { return false; }
+  for (const roles of Object.values(map)) {
+    if (Array.isArray(roles) && roles.some(r => r === '_owner' || r === '_manager')) {
+      return true;
+    }
+  }
+  return false;
 }
