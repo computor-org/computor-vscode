@@ -20,6 +20,7 @@ import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebv
 import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
 import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMemberProgressWebviewProvider';
+import { ScopeMembershipWebviewProvider } from '../ui/webviews/ScopeMembershipWebviewProvider';
 import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../http/errors/HttpError';
@@ -31,6 +32,7 @@ import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
 import { runLockedWithProgress } from '../utils/progressLock';
+import { canManageAnyCourseFamilyMembers, canManageAnyOrganizationMembers } from '../services/ScopePermissions';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -58,6 +60,7 @@ export class LecturerCommands {
   private releaseValidationWebviewProvider: ReleaseValidationWebviewProvider;
   private courseProgressOverviewWebviewProvider: CourseProgressOverviewWebviewProvider;
   private courseMemberProgressWebviewProvider: CourseMemberProgressWebviewProvider;
+  private scopeMembershipWebviewProvider: ScopeMembershipWebviewProvider;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -91,12 +94,14 @@ export class LecturerCommands {
     this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
     this.courseProgressOverviewWebviewProvider = new CourseProgressOverviewWebviewProvider(context, this.apiService);
     this.courseMemberProgressWebviewProvider = new CourseMemberProgressWebviewProvider(context, this.apiService);
+    this.scopeMembershipWebviewProvider = new ScopeMembershipWebviewProvider(context, this.apiService);
     this.courseGroupCommands = new CourseGroupCommands(this.apiService, this.treeDataProvider);
   }
 
   registerCommands(): void {
 
     const register = commandRegistrar(this.context);
+    void this.applyScopeMembershipContextKey();
     register('computor.lecturer.refresh', async () => {
       this.apiService.clearCourseCache('');
       this.treeDataProvider.refresh();
@@ -144,6 +149,23 @@ export class LecturerCommands {
 
     register('computor.lecturer.showMessages', async (item: OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
       await this.showMessages(item);
+    });
+
+    register('computor.lecturer.manageOrganizationMembers', async (item: OrganizationTreeItem) => {
+      await this.scopeMembershipWebviewProvider.open({
+        kind: 'organization',
+        scopeId: item.organization.id,
+        scopeTitle: item.organization.title || item.organization.path
+      });
+    });
+
+    register('computor.lecturer.manageCourseFamilyMembers', async (item: CourseFamilyTreeItem) => {
+      await this.scopeMembershipWebviewProvider.open({
+        kind: 'course_family',
+        scopeId: item.courseFamily.id,
+        scopeTitle: item.courseFamily.title || item.courseFamily.path,
+        scopeSubtitle: item.organization.title || item.organization.path
+      });
     });
 
     register('computor.lecturer.showCourseMemberComments', async (item: CourseMemberTreeItem) => {
@@ -2478,5 +2500,28 @@ export class LecturerCommands {
         }
       }
     );
+  }
+
+  // Sets the per-scope-kind "Manage Members" context keys. See
+  // `services/ScopePermissions.ts` for the rules.
+  private async applyScopeMembershipContextKey(): Promise<void> {
+    try {
+      const [scopes, currentUser] = await Promise.all([
+        this.apiService.getUserScopes(),
+        this.apiService.getUserAccount().catch(() => undefined)
+      ]);
+      const globalRoles = new Set(
+        (currentUser?.user_roles ?? [])
+          .map(r => r?.role_id)
+          .filter((id): id is string => typeof id === 'string')
+      );
+      const ctx = { scopes, globalRoles };
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', canManageAnyOrganizationMembers(ctx));
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', canManageAnyCourseFamilyMembers(ctx));
+    } catch (err) {
+      console.warn('[LecturerCommands] Failed to compute scope-membership context keys:', err);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', false);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', false);
+    }
   }
 }

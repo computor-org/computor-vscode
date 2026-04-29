@@ -2110,6 +2110,21 @@ export class ComputorApiService {
     await client.post('/user/password', payload);
   }
 
+  // User Management: lookup by exact filter (email / username / etc).
+  // Bypasses the cached "all users" list so the call still works for users
+  // who lack list-all permission but have access via the filtered endpoint.
+  async findUsers(query: { email?: string; username?: string; given_name?: string; family_name?: string }): Promise<UserList[]> {
+    const client = await this.getHttpClient();
+    const params: Record<string, string> = {};
+    if (query.email) { params.email = query.email; }
+    if (query.username) { params.username = query.username; }
+    if (query.given_name) { params.given_name = query.given_name; }
+    if (query.family_name) { params.family_name = query.family_name; }
+    if (Object.keys(params).length === 0) { return []; }
+    const response = await client.get<UserList[]>('/users', { ...params, limit: 25 });
+    return response.data || [];
+  }
+
   // User Management: List all users
   async getUsers(options?: { force?: boolean }): Promise<UserList[]> {
     try {
@@ -2161,6 +2176,238 @@ export class ComputorApiService {
       return response.data;
     } catch (error) {
       console.error(`[updateUser] Failed to update user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async listRoles(): Promise<import('../types/generated/roles').RoleList[]> {
+    try {
+      const result = await this.cachedRequest({
+        cacheKey: 'allRoles',
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<import('../types/generated/roles').RoleList[]>('/roles')).data;
+        },
+        retry: { maxRetries: 2 }
+      });
+      return result || [];
+    } catch (error) {
+      console.error('[listRoles] Failed to list roles:', error);
+      throw error;
+    }
+  }
+
+  async assignUserRole(userId: string, roleId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.post('/user-roles', { user_id: userId, role_id: roleId });
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[assignUserRole] Failed to assign role ${roleId} to user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async revokeUserRole(userId: string, roleId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.delete(`/user-roles/users/${userId}/roles/${roleId}`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[revokeUserRole] Failed to revoke role ${roleId} from user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  // ----- Organization members & roles -----
+
+  async listOrganizationRoles(): Promise<import('../types/generated/organizations').OrganizationRoleList[]> {
+    try {
+      const result = await this.cachedRequest({
+        cacheKey: 'organizationRoles',
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<import('../types/generated/organizations').OrganizationRoleList[]>('/organization-roles')).data;
+        },
+        retry: { maxRetries: 2 }
+      });
+      return result || [];
+    } catch (error) {
+      console.error('[listOrganizationRoles] Failed:', error);
+      throw error;
+    }
+  }
+
+  async listOrganizationMembers(organizationId: string): Promise<import('../types/generated/organizations').OrganizationMemberList[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<import('../types/generated/organizations').OrganizationMemberList[]>(
+        '/organization-members',
+        { organization_id: organizationId, limit: 10000 }
+      );
+      return response.data || [];
+    } catch (error) {
+      console.error(`[listOrganizationMembers] Failed for ${organizationId}:`, error);
+      throw error;
+    }
+  }
+
+  async createOrganizationMember(
+    payload: import('../types/generated/organizations').OrganizationMemberCreate
+  ): Promise<import('../types/generated/organizations').OrganizationMemberGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<import('../types/generated/organizations').OrganizationMemberGet>(
+        '/organization-members',
+        payload
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[createOrganizationMember] Failed:', error);
+      throw error;
+    }
+  }
+
+  async updateOrganizationMember(
+    memberId: string,
+    updates: import('../types/generated/organizations').OrganizationMemberUpdate
+  ): Promise<import('../types/generated/organizations').OrganizationMemberGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.patch<import('../types/generated/organizations').OrganizationMemberGet>(
+        `/organization-members/${memberId}`,
+        updates
+      );
+      return response.data;
+    } catch (error) {
+      console.error(`[updateOrganizationMember] Failed for ${memberId}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteOrganizationMember(memberId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.delete(`/organization-members/${memberId}`);
+    } catch (error) {
+      console.error(`[deleteOrganizationMember] Failed for ${memberId}:`, error);
+      throw error;
+    }
+  }
+
+  // ----- Course-family members & roles -----
+
+  async listCourseFamilyRoles(): Promise<import('../types/generated/courses').CourseFamilyRoleList[]> {
+    try {
+      const result = await this.cachedRequest({
+        cacheKey: 'courseFamilyRoles',
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<import('../types/generated/courses').CourseFamilyRoleList[]>('/course-family-roles')).data;
+        },
+        retry: { maxRetries: 2 }
+      });
+      return result || [];
+    } catch (error) {
+      console.error('[listCourseFamilyRoles] Failed:', error);
+      throw error;
+    }
+  }
+
+  async listCourseFamilyMembers(courseFamilyId: string): Promise<import('../types/generated/courses').CourseFamilyMemberList[]> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<import('../types/generated/courses').CourseFamilyMemberList[]>(
+        '/course-family-members',
+        { course_family_id: courseFamilyId, limit: 10000 }
+      );
+      return response.data || [];
+    } catch (error) {
+      console.error(`[listCourseFamilyMembers] Failed for ${courseFamilyId}:`, error);
+      throw error;
+    }
+  }
+
+  async createCourseFamilyMember(
+    payload: import('../types/generated/courses').CourseFamilyMemberCreate
+  ): Promise<import('../types/generated/courses').CourseFamilyMemberGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<import('../types/generated/courses').CourseFamilyMemberGet>(
+        '/course-family-members',
+        payload
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[createCourseFamilyMember] Failed:', error);
+      throw error;
+    }
+  }
+
+  async updateCourseFamilyMember(
+    memberId: string,
+    updates: import('../types/generated/courses').CourseFamilyMemberUpdate
+  ): Promise<import('../types/generated/courses').CourseFamilyMemberGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.patch<import('../types/generated/courses').CourseFamilyMemberGet>(
+        `/course-family-members/${memberId}`,
+        updates
+      );
+      return response.data;
+    } catch (error) {
+      console.error(`[updateCourseFamilyMember] Failed for ${memberId}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteCourseFamilyMember(memberId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.delete(`/course-family-members/${memberId}`);
+    } catch (error) {
+      console.error(`[deleteCourseFamilyMember] Failed for ${memberId}:`, error);
+      throw error;
+    }
+  }
+
+  async createUser(payload: import('../types/generated/users').UserCreate): Promise<UserGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<UserGet>('/users', payload);
+      multiTierCache.delete('allUsers');
+      return response.data;
+    } catch (error) {
+      console.error('[createUser] Failed to create user:', error);
+      throw error;
+    }
+  }
+
+  async archiveUser(userId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/archive`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[archiveUser] Failed to archive user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async unarchiveUser(userId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/unarchive`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[unarchiveUser] Failed to unarchive user ${userId}:`, error);
       throw error;
     }
   }
