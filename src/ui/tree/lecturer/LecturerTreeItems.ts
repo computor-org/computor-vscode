@@ -36,11 +36,12 @@ export class OrganizationTreeItem extends vscode.TreeItem {
     public readonly organization: OrganizationList,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
-    super(organization.title || organization.path, collapsibleState);
+    const orgTitle = organization.title || organization.path;
+    super(orgTitle, collapsibleState);
     this.id = `org-${organization.id}`;
     this.contextValue = 'organization';
     this.iconPath = new vscode.ThemeIcon('organization');
-    this.tooltip = organization.title || organization.path;
+    this.tooltip = `Organization: ${orgTitle}`;
     this.description = 'Organization';
   }
 }
@@ -51,11 +52,13 @@ export class CourseFamilyTreeItem extends vscode.TreeItem {
     public readonly organization: OrganizationList,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
-    super(courseFamily.title || courseFamily.path, collapsibleState);
+    const familyTitle = courseFamily.title || courseFamily.path;
+    const orgTitle = organization.title || organization.path;
+    super(familyTitle, collapsibleState);
     this.id = `family-${courseFamily.id}`;
     this.contextValue = 'courseFamily';
     this.iconPath = new vscode.ThemeIcon('folder-library');
-    this.tooltip = courseFamily.title || courseFamily.path;
+    this.tooltip = `Course Family: ${familyTitle}\nOrganization: ${orgTitle}`;
     this.description = 'Course Family';
   }
 }
@@ -67,12 +70,15 @@ export class CourseTreeItem extends vscode.TreeItem {
     public readonly organization: OrganizationList,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
-    super(course.title || course.path, collapsibleState);
+    const courseTitle = course.title || course.path;
+    const familyTitle = courseFamily.title || courseFamily.path;
+    const orgTitle = organization.title || organization.path;
+    super(courseTitle, collapsibleState);
     this.id = `course-${course.id}`;
     this.contextValue = 'course';
     this.iconPath = new vscode.ThemeIcon('book');
-    this.tooltip = course.title || course.path;
-    
+    this.tooltip = `Course: ${courseTitle}\nCourse Family: ${familyTitle}\nOrganization: ${orgTitle}`;
+
     // Set description to indicate this is a Course
     this.description = 'Course';
   }

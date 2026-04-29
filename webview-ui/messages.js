@@ -303,7 +303,8 @@
 
     const metaRight = createElement('div', { className: 'message-meta-right' });
 
-    if (createButton) {
+    const repliesAllowed = state.target?.allowReplies !== false;
+    if (createButton && repliesAllowed) {
       const replyButton = createButton({
         text: 'Reply',
         size: 'xs',

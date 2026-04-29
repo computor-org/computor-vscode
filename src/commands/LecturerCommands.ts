@@ -29,6 +29,8 @@ import type { OrganizationList, OrganizationTaskRequest } from '../types/generat
 import type { GitLabCredentials } from '../types/generated/common';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
+import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
+import { runLockedWithProgress } from '../utils/progressLock';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -140,7 +142,7 @@ export class LecturerCommands {
       await this.createAssignment(item);
     });
 
-    register('computor.lecturer.showMessages', async (item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
+    register('computor.lecturer.showMessages', async (item: OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem) => {
       await this.showMessages(item);
     });
 
@@ -267,7 +269,7 @@ export class LecturerCommands {
     register('computor.lecturer.showCourseMemberProgress', async (itemOrId: CourseMemberTreeItem | string, memberName?: string) => {
       if (typeof itemOrId === 'string') {
         // Called with course member ID directly (from overview webview)
-        await this.courseMemberProgressWebviewProvider.showMemberProgress(itemOrId, memberName);
+        await this.showCourseMemberProgressById(itemOrId, memberName);
       } else {
         // Called with tree item
         await this.showCourseMemberProgress(itemOrId);
@@ -1181,18 +1183,47 @@ export class LecturerCommands {
     return type.course_content_kind?.submittable || false;
   }
 
-  private async showMessages(item: CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem): Promise<void> {
+  private async showMessages(item: OrganizationTreeItem | CourseFamilyTreeItem | CourseTreeItem | CourseGroupTreeItem | CourseContentTreeItem): Promise<void> {
     try {
       let target: MessageTargetContext | undefined;
 
-      if (item instanceof CourseTreeItem) {
+      if (item instanceof OrganizationTreeItem) {
+        const scopes = await this.apiService.getUserScopes();
+        const canPost = canPostToOrganization(scopes, item.organization.id);
+        target = {
+          title: item.organization.title || item.organization.path,
+          subtitle: 'Organization',
+          query: { organization_id: item.organization.id },
+          createPayload: { organization_id: item.organization.id },
+          sourceRole: 'lecturer',
+          wsChannel: `organization:${item.organization.id}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : 'Posting to this organization requires manager or owner role.'
+        };
+      } else if (item instanceof CourseFamilyTreeItem) {
+        const scopes = await this.apiService.getUserScopes();
+        const canPost = canPostToCourseFamily(scopes, item.courseFamily.id);
+        target = {
+          title: item.courseFamily.title || item.courseFamily.path,
+          subtitle: `${item.organization.title || item.organization.path} › Course Family`,
+          query: { course_family_id: item.courseFamily.id },
+          createPayload: { course_family_id: item.courseFamily.id },
+          sourceRole: 'lecturer',
+          wsChannel: `course_family:${item.courseFamily.id}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : 'Posting to this course family requires manager or owner role.'
+        };
+      } else if (item instanceof CourseTreeItem) {
         target = {
           title: item.course.title || item.course.path,
           subtitle: this.buildCourseSubtitle(item.course, item.courseFamily, item.organization),
           query: { course_id: item.course.id },
           createPayload: { course_id: item.course.id },
           sourceRole: 'lecturer',
-          // Lecturers subscribe to course channel to receive ALL messages including submission groups
+          // Course channel only carries course-scoped messages now — the
+          // hierarchical cascade (submission_group → course) was dropped
+          // along with the single-target invariant. The chat inbox covers
+          // cross-scope live updates via the per-user channel.
           wsChannel: `course:${item.course.id}`
         };
       } else if (item instanceof CourseGroupTreeItem) {
@@ -2381,39 +2412,71 @@ export class LecturerCommands {
   }
 
   private async showCourseProgressOverview(item: CourseTreeItem): Promise<void> {
-    try {
-      const course = await this.apiService.getCourse(item.course.id);
-      if (!course) {
-        vscode.window.showErrorMessage('Failed to load course details');
-        return;
+    const courseLabel = item.course.title || item.course.path;
+    await runLockedWithProgress(
+      {
+        key: `course-progress:${item.course.id}`,
+        title: `Loading course progress: ${courseLabel}`,
+        duplicateMessage: 'Course progress is already loading…'
+      },
+      async () => {
+        try {
+          const course = await this.apiService.getCourse(item.course.id);
+          if (!course) {
+            vscode.window.showErrorMessage('Failed to load course details');
+            return;
+          }
+          await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+        }
       }
-      await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
-    }
+    );
   }
 
   private async showCourseProgressOverviewById(courseId: string): Promise<void> {
-    try {
-      const course = await this.apiService.getCourse(courseId);
-      if (!course) {
-        vscode.window.showErrorMessage('Failed to load course details');
-        return;
+    await runLockedWithProgress(
+      {
+        key: `course-progress:${courseId}`,
+        title: 'Loading course progress…',
+        duplicateMessage: 'Course progress is already loading…'
+      },
+      async () => {
+        try {
+          const course = await this.apiService.getCourse(courseId);
+          if (!course) {
+            vscode.window.showErrorMessage('Failed to load course details');
+            return;
+          }
+          await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+        }
       }
-      await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
-    }
+    );
   }
 
   private async showCourseMemberProgress(item: CourseMemberTreeItem): Promise<void> {
-    try {
-      const memberName = item.member.user
-        ? [item.member.user.given_name, item.member.user.family_name].filter(Boolean).join(' ') || item.member.user.username || undefined
-        : undefined;
-      await this.courseMemberProgressWebviewProvider.showMemberProgress(item.member.id, memberName);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to show member progress: ${error}`);
-    }
+    const memberName = item.member.user
+      ? [item.member.user.given_name, item.member.user.family_name].filter(Boolean).join(' ') || item.member.user.username || undefined
+      : undefined;
+    await this.showCourseMemberProgressById(item.member.id, memberName);
+  }
+
+  private async showCourseMemberProgressById(memberId: string, memberName?: string): Promise<void> {
+    await runLockedWithProgress(
+      {
+        key: `member-progress:${memberId}`,
+        title: `Loading progress: ${memberName || 'student'}`,
+        duplicateMessage: 'Student progress is already loading…'
+      },
+      async () => {
+        try {
+          await this.courseMemberProgressWebviewProvider.showMemberProgress(memberId, memberName);
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to show member progress: ${error}`);
+        }
+      }
+    );
   }
 }

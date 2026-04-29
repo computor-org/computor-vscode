@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
+import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../../../services/MessagePermissions';
+import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageList } from '../../../types/generated';
+
+const GLOBAL_CHANNEL = 'global';
 import {
   ChatScopeItem,
   ChatThreadItem,
@@ -37,6 +41,8 @@ type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingI
 export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+  private readonly _onDidChangeUnread = new vscode.EventEmitter<number>();
+  readonly onDidChangeUnread = this._onDidChangeUnread.event;
 
   private readonly api: ComputorApiService;
   private readonly context: vscode.ExtensionContext;
@@ -46,6 +52,15 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private loadError: string | undefined;
   private scopeItems: ChatScopeItem[] = [];
   private currentUserId?: string;
+  private userScopes?: import('../../../types/generated').UserScopes;
+  private userScopesPromise?: Promise<void>;
+  private reloadInFlight?: Promise<void>;
+  private reloadQueued = false;
+  private wsService?: WebSocketService;
+  private wsSubscribedForUserId?: string;
+  private readonly wsHandlerId = `chat-inbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  private wsReloadTimer?: ReturnType<typeof setTimeout>;
+  private static readonly WS_RELOAD_DEBOUNCE_MS = 250;
 
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
@@ -72,10 +87,36 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
   // ----- Public API -----
 
+  setWebSocketService(wsService: WebSocketService): void {
+    this.wsService = wsService;
+    // If we already know who we are, subscribe immediately. Otherwise the
+    // subscription happens at the end of the next reload, when currentUserId
+    // is set.
+    this.maybeSubscribeUserChannels();
+  }
+
   refresh(): void {
-    this.scopeItems = [];
-    this.loadError = undefined;
-    void this.reload();
+    void this.requestReload();
+  }
+
+  private requestReload(): Promise<void> {
+    if (this.reloadInFlight) {
+      // Coalesce — at most one extra reload queued after the current one.
+      this.reloadQueued = true;
+      return this.reloadInFlight;
+    }
+    this.reloadInFlight = this.reload().finally(() => {
+      this.reloadInFlight = undefined;
+      if (this.reloadQueued) {
+        this.reloadQueued = false;
+        void this.requestReload();
+      }
+    });
+    return this.reloadInFlight;
+  }
+
+  getTotalUnread(): number {
+    return this.scopeItems.reduce((sum, item) => sum + item.unreadCount, 0);
   }
 
   isUnreadOnly(): boolean {
@@ -108,15 +149,37 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     await this.messagesProvider.showMessages(ctx);
   }
 
+  private async ensureUserScopes(): Promise<void> {
+    if (this.userScopes !== undefined || this.userScopesPromise) {
+      if (this.userScopesPromise) {
+        await this.userScopesPromise;
+      }
+      return;
+    }
+    this.userScopesPromise = this.api.getUserScopes()
+      .then(value => {
+        this.userScopes = value;
+      })
+      .catch(() => {
+        this.userScopes = undefined;
+      })
+      .finally(() => {
+        this.userScopesPromise = undefined;
+      });
+    await this.userScopesPromise;
+  }
+
   async markThreadRead(threadItem: ChatThreadItem): Promise<void> {
-    const unread = threadItem.thread.messages.filter(m => !m.is_read);
+    const unread = threadItem.thread.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId);
     if (unread.length === 0) { return; }
     await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
     this.refresh();
   }
 
   async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
-    const ids = scopeItem.threads.flatMap(t => t.messages.filter(m => !m.is_read).map(m => m.id));
+    const ids = scopeItem.threads.flatMap(t =>
+      t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId).map(m => m.id)
+    );
     if (ids.length === 0) { return; }
     await Promise.all(ids.map(id => this.api.markMessageRead(id).catch(() => undefined)));
     this.refresh();
@@ -146,16 +209,25 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // ----- Internals -----
 
   private async reload(): Promise<void> {
+    // Only show the loading spinner on initial load. On subsequent reloads,
+    // keep the current scope items visible so the tree doesn't flicker to
+    // "Loading…" between the user's click and the new data arriving.
+    const showSpinner = this.scopeItems.length === 0 && !this.loadError;
     this.loading = true;
     this.loadError = undefined;
-    this._onDidChangeTreeData.fire(undefined);
+    if (showSpinner) {
+      this._onDidChangeTreeData.fire(undefined);
+    }
 
     try {
-      const [identity, messages] = await Promise.all([
+      const [identity, messages, scopes] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
-        this.api.listMessages(this.unreadOnly ? { unread: true } : {})
+        this.api.listMessages(this.unreadOnly ? { unread: true } : {}),
+        this.api.getUserScopes().catch(() => undefined)
       ]);
       this.currentUserId = identity?.id;
+      this.userScopes = scopes;
+      this.maybeSubscribeUserChannels();
 
       const grouped = this.groupMessages(messages || []);
       await this.resolveLabels(grouped);
@@ -166,6 +238,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     } finally {
       this.loading = false;
       this._onDidChangeTreeData.fire(undefined);
+      this._onDidChangeUnread.fire(this.getTotalUnread());
     }
   }
 
@@ -307,7 +380,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       for (const [targetId, msgs] of byTarget) {
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
-        const unreadCount = msgs.filter(m => !m.is_read).length;
+        // Exclude the user's own messages — backend doesn't auto-stamp authors
+        // as readers of their own posts, so without this they'd show as
+        // permanently unread to themselves.
+        const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
         if (this.unreadOnly && unreadCount === 0) { continue; }
 
         const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
@@ -406,21 +482,36 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const baseQuery: Record<string, string> = {};
     const basePayload: Record<string, unknown> = {};
     let wsChannel: string | undefined;
+    let readOnly = false;
+    let readOnlyReason: string | undefined;
+
+    await this.ensureUserScopes();
 
     switch (scope) {
       case 'global':
-        return undefined;
+        // Global threads carry no target IDs, so /messages without a scope
+        // filter returns the user's full inbox — not just globals. Pin the
+        // scope explicitly so the panel only shows global announcements.
+        baseQuery.scope = 'global';
+        readOnly = !canPostGlobal(this.userScopes);
+        readOnlyReason = readOnly ? 'Only administrators can post global announcements.' : undefined;
+        // wsChannel intentionally undefined — no per-target channel for global.
+        break;
       case 'organization':
         if (!targetId) { return undefined; }
         baseQuery.organization_id = targetId;
         basePayload.organization_id = targetId;
         wsChannel = `organization:${targetId}`;
+        readOnly = !canPostToOrganization(this.userScopes, targetId);
+        readOnlyReason = readOnly ? 'Posting to this organization requires manager or owner role.' : undefined;
         break;
       case 'course_family':
         if (!targetId) { return undefined; }
         baseQuery.course_family_id = targetId;
         basePayload.course_family_id = targetId;
         wsChannel = `course_family:${targetId}`;
+        readOnly = !canPostToCourseFamily(this.userScopes, targetId);
+        readOnlyReason = readOnly ? 'Posting to this course family requires manager or owner role.' : undefined;
         break;
       case 'course':
         if (!targetId) { return undefined; }
@@ -471,8 +562,102 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       subtitle: scopeLabel(scope),
       query: baseQuery,
       createPayload: basePayload,
-      wsChannel
+      wsChannel,
+      readOnly,
+      readOnlyReason
     };
+  }
+
+  // ----- WebSocket -----
+
+  private maybeSubscribeUserChannels(): void {
+    if (!this.wsService || !this.currentUserId) {
+      return;
+    }
+    if (this.wsSubscribedForUserId === this.currentUserId) {
+      return;
+    }
+    const userChannel = `user:${this.currentUserId}`;
+    // Backend auto-subscribes both `user:<own_id>` and `global` on WS connect,
+    // but we still register a local handler so events get dispatched here.
+    this.wsService.subscribe([userChannel, GLOBAL_CHANNEL], this.wsHandlerId, {
+      onMessageNew: (channel, data) => this.handleInboxNewMessage(channel, data),
+      onMessageUpdate: (channel) => this.handleInboxEvent(channel),
+      onMessageDelete: (channel) => this.handleInboxEvent(channel),
+      onReadUpdate: (channel) => this.handleInboxEvent(channel)
+    });
+    this.wsSubscribedForUserId = this.currentUserId;
+  }
+
+  private isInboxChannel(channel: string): boolean {
+    if (!this.currentUserId) { return false; }
+    return channel === `user:${this.currentUserId}` || channel === GLOBAL_CHANNEL;
+  }
+
+  private handleInboxEvent(channel: string): void {
+    if (!this.isInboxChannel(channel)) { return; }
+    this.scheduleWsReload();
+  }
+
+  private handleInboxNewMessage(channel: string, data: Record<string, unknown>): void {
+    if (!this.isInboxChannel(channel)) { return; }
+    this.scheduleWsReload();
+    // WS payload nests the MessageGet under `data` for message:new (see
+    // MessagesWebviewProvider.handleWsMessageNew for the same unwrap).
+    const inner = (data && typeof data === 'object' && 'data' in data ? (data as any).data : data) as Record<string, unknown> | undefined;
+    if (!inner) { return; }
+    if (inner.author_id && inner.author_id === this.currentUserId) {
+      // Don't notify the user about their own posts.
+      return;
+    }
+    void this.showNewMessageToast(inner);
+  }
+
+  private scheduleWsReload(): void {
+    // Bursts of WS events (e.g., N read:update events when opening a thread
+    // with N unread messages) would otherwise produce N back-to-back reloads
+    // and visible flicker as state converges. Debounce so the burst becomes
+    // a single reload once events stop arriving.
+    if (this.wsReloadTimer) {
+      clearTimeout(this.wsReloadTimer);
+    }
+    this.wsReloadTimer = setTimeout(() => {
+      this.wsReloadTimer = undefined;
+      void this.requestReload();
+    }, ChatInboxTreeProvider.WS_RELOAD_DEBOUNCE_MS);
+  }
+
+  private async showNewMessageToast(message: Record<string, unknown>): Promise<void> {
+    const scope = (typeof message.scope === 'string' ? message.scope : 'global') as MessageScope;
+    const author = formatToastAuthor(message);
+    const preview = formatToastPreview(message);
+    const scopeText = scopeLabel(scope);
+    const text = author
+      ? `${author} (${scopeText}): ${preview}`
+      : `${scopeText}: ${preview}`;
+
+    const choice = await vscode.window.showInformationMessage(text, 'Open');
+    if (choice !== 'Open') { return; }
+    await this.openMessageInPanel(message, scope);
+  }
+
+  private async openMessageInPanel(message: Record<string, unknown>, scope: MessageScope): Promise<void> {
+    const messageAsList = message as unknown as MessageList;
+    const targetId = this.targetIdFor(scope, messageAsList);
+    // Reveal the chat container alongside the panel for context.
+    void vscode.commands.executeCommand('computor.chat.inbox.focus');
+    const synthetic: ChatThread = {
+      scope,
+      targetId,
+      title: '',
+      lastMessage: messageAsList,
+      unreadCount: 0,
+      messageCount: 1,
+      messages: [messageAsList]
+    };
+    const target = await this.buildTargetContext(synthetic);
+    if (!target) { return; }
+    await this.messagesProvider.showMessages(target);
   }
 
   // ----- Persistence -----
@@ -521,4 +706,22 @@ function compareThreadRecency(a: ChatThread, b: ChatThread): number {
   const ta = a.lastMessage?.created_at ? Date.parse(a.lastMessage.created_at) : 0;
   const tb = b.lastMessage?.created_at ? Date.parse(b.lastMessage.created_at) : 0;
   return ta - tb;
+}
+
+function formatToastAuthor(message: Record<string, unknown>): string {
+  const author = (message.author ?? {}) as Record<string, unknown>;
+  const given = typeof author.given_name === 'string' ? author.given_name : '';
+  const family = typeof author.family_name === 'string' ? author.family_name : '';
+  const full = `${given} ${family}`.trim();
+  if (full) { return full; }
+  if (typeof author.username === 'string' && author.username) { return author.username; }
+  if (typeof author.email === 'string' && author.email) { return author.email; }
+  return '';
+}
+
+function formatToastPreview(message: Record<string, unknown>): string {
+  const content = typeof message.content === 'string' ? message.content : '';
+  const cleaned = content.replace(/\s+/g, ' ').trim();
+  if (cleaned.length === 0) { return '(no content)'; }
+  return cleaned.length > 120 ? `${cleaned.slice(0, 117)}…` : cleaned;
 }

@@ -249,16 +249,16 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       vscode.window.showWarningMessage('Unable to post message: target context missing.');
       return;
     }
+    if (target.readOnly) {
+      vscode.window.showWarningMessage(target.readOnlyReason || 'You do not have permission to post messages here.');
+      return;
+    }
 
     const level = this.resolveMessageLevel(data.parent_id);
-    const targetFields = ['user_id', 'course_member_id', 'submission_group_id', 'course_group_id', 'course_content_id', 'course_id'] as const;
-    const filteredPayload: Partial<MessageCreate> = {};
-    for (const field of targetFields) {
-      const value = target.createPayload[field];
-      if (typeof value === 'string') {
-        filteredPayload[field] = value;
-      }
-    }
+    // Backend enforces a single-target invariant — only the most-specific
+    // target is persisted, all other target columns are forced NULL. Send
+    // exactly one to keep the wire payload honest.
+    const filteredPayload = pickMostSpecificTarget(target.createPayload);
 
     const payload: MessageCreate = {
       title: data.title,
@@ -356,4 +356,29 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`;
   }
+}
+
+// Most-specific first; the first match is the only target sent on the wire.
+// user_id / course_member_id sit at the top: backend currently rejects writes
+// to those scopes (NotImplementedException), but we forward them so the user
+// sees the real error rather than a misleading global-post 403.
+const TARGET_FIELDS_BY_SPECIFICITY = [
+  'user_id',
+  'course_member_id',
+  'submission_group_id',
+  'course_content_id',
+  'course_group_id',
+  'course_id',
+  'course_family_id',
+  'organization_id'
+] as const;
+
+function pickMostSpecificTarget(createPayload: Record<string, unknown>): Partial<MessageCreate> {
+  for (const field of TARGET_FIELDS_BY_SPECIFICITY) {
+    const value = createPayload[field];
+    if (typeof value === 'string' && value.length > 0) {
+      return { [field]: value } as Partial<MessageCreate>;
+    }
+  }
+  return {};
 }

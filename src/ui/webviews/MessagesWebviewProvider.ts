@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
+import { canReplyInScope, deriveScopeFromCreatePayload } from '../../services/MessagePermissions';
 import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
-
-export type MessageTargetType = 'course' | 'courseGroup' | 'courseContent' | 'submissionGroup' | 'courseMember';
 
 export interface MessageFilters {
   unread?: boolean;
@@ -23,6 +22,12 @@ export interface MessageTargetContext {
   sourceRole?: 'student' | 'tutor' | 'lecturer';
   /** WebSocket channel for real-time updates (e.g., "submission_group:uuid") */
   wsChannel?: string;
+  /** When true, the input panel hides compose UI and shows a read-only notice. */
+  readOnly?: boolean;
+  /** Optional reason shown alongside the read-only notice. */
+  readOnlyReason?: string;
+  /** Whether replies are permitted in this scope (computed from createPayload). */
+  allowReplies?: boolean;
 }
 
 interface MessagesWebviewData {
@@ -58,11 +63,20 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     this.inputPanel = inputPanel;
   }
 
+  private withReplyPolicy(target: MessageTargetContext): MessageTargetContext {
+    if (target.allowReplies !== undefined) {
+      return target;
+    }
+    const scope = deriveScopeFromCreatePayload(target.createPayload);
+    return { ...target, allowReplies: canReplyInScope(scope) };
+  }
+
   public setWebSocketService(wsService: WebSocketService): void {
     this.wsService = wsService;
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
+    target = this.withReplyPolicy(target);
     const currentUserId = this.apiService.getCurrentUserId();
     const [identity, rawMessages] = await Promise.all([
       currentUserId ? this.apiService.getCurrentUser().catch(() => undefined) : Promise.resolve(undefined),
@@ -251,6 +265,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       .markMessageRead(messageId)
       .then(() => {
         console.log('[MessagesWebviewProvider] Successfully marked message as read via API:', messageId);
+        // Inbox unread badges depend on this; see notifyIndicatorsUpdated for context.
+        void vscode.commands.executeCommand('computor.chat.refresh');
       })
       .catch((error) => {
         console.error(`Failed to mark message ${messageId} as read:`, error);
@@ -308,6 +324,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     switch (message.command) {
       case 'replyTo':
         if (this.inputPanel && message.data) {
+          const target = this.getCurrentTarget();
+          if (target && target.allowReplies === false) {
+            // Webview button should already be hidden, but defend in case the
+            // command arrives via a stale render or another path.
+            return;
+          }
           this.inputPanel.setReplyTo(message.data);
           await this.inputPanel.reveal();
         }
@@ -457,6 +479,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       default:
         break;
     }
+
+    // Refresh the chat inbox so its unread badges drop after a read sweep.
+    // Backend WS read:update only fires for submission_group today, so any
+    // other scope (course_group, course_content, course, family, org, global)
+    // would otherwise show stale unread counts until manual refresh.
+    void vscode.commands.executeCommand('computor.chat.refresh');
   }
 
   private async handleConfirmDeleteMessage(data: { messageId: string; title?: string }): Promise<void> {
@@ -572,13 +600,19 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       .filter((part) => part.length > 0);
     const fullName = trimmedParts.join(' ');
     const hasFullName = fullName.length > 0;
+    // The backend strips `is_author` from WS broadcasts (it's per-recipient),
+    // so we recompute it client-side. Without this, edit/delete buttons never
+    // appear on freshly arrived own messages until the user hits Refresh.
+    const currentUserId = this.apiService.getCurrentUserId();
+    const isAuthor = currentUserId ? message.author_id === currentUserId : (message.is_author ?? false);
 
     return {
       ...message,
       author_display: hasFullName ? fullName : undefined,
       author_name: hasFullName ? fullName : undefined,
-      can_edit: message.is_author ?? false,
-      can_delete: message.is_author ?? false
+      can_edit: isAuthor,
+      can_delete: isAuthor,
+      is_author: isAuthor
     } satisfies EnrichedMessage;
   }
 

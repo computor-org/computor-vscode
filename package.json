@@ -1247,6 +1247,16 @@
         },
         {
           "command": "computor.lecturer.showMessages",
+          "when": "view == computor.lecturer.courses && viewItem == organization",
+          "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.lecturer.showMessages",
+          "when": "view == computor.lecturer.courses && viewItem == courseFamily",
+          "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.lecturer.showMessages",
           "when": "view == computor.lecturer.courses && viewItem == course",
           "group": "2_discussion@1"
         },

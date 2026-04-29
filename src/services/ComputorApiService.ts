@@ -51,6 +51,7 @@ import {
   UserPassword,
   UserGet,
   UserList,
+  UserScopes,
   UserUpdate,
   CourseMemberValidationRequest,
   TaskResponse,
@@ -1482,6 +1483,36 @@ export class ComputorApiService {
     }
   }
 
+  async getUserScopes(options?: { force?: boolean }): Promise<UserScopes | undefined> {
+    const cacheKey = 'userScopes';
+
+    if (options?.force) {
+      multiTierCache.delete(cacheKey);
+    } else {
+      const cached = multiTierCache.get<UserScopes>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    try {
+      const result = await errorRecoveryService.executeWithRecovery(async () => {
+        const client = await this.getHttpClient();
+        const response = await client.get<UserScopes>('/user/scopes');
+        return response.data;
+      }, {
+        maxRetries: 2,
+        exponentialBackoff: true
+      });
+
+      multiTierCache.set(cacheKey, result, 'warm');
+      return result;
+    } catch (error) {
+      console.error('Failed to get user scopes:', error);
+      return undefined;
+    }
+  }
+
   async updateUserAccount(updates: UserUpdate): Promise<UserGet> {
     try {
       const client = await this.getHttpClient();
@@ -2401,42 +2432,8 @@ export class ComputorApiService {
   async listMessages(params: MessageQuery = {}): Promise<MessageList[]> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
-
-      // If both course_content_id and submission_group_id are present,
-      // make two separate calls and merge results (backend does AND, we want OR)
-      if (params.course_content_id && params.submission_group_id) {
-        // Extract filter params (everything except the target IDs, scope, and course_member_id)
-        const { course_content_id, submission_group_id, scope, course_member_id, ...filterParams } = params;
-        void scope; // scope is intentionally excluded - we set it explicitly below
-        void course_member_id; // only used for cache invalidation, not API queries
-        const cleanFilters = Object.fromEntries(
-          Object.entries(filterParams).filter(([, value]) => value !== undefined && value !== null)
-        );
-
-        const [contentMessages, submissionMessages] = await Promise.all([
-          // For course_content_id, restrict to 'course_content' scope to avoid
-          // fetching all child submission_group messages
-          client.get<MessageList[]>('/messages', {
-            course_content_id,
-            scope: 'course_content',
-            ...cleanFilters
-          }).then(r => r.data),
-          client.get<MessageList[]>('/messages', {
-            submission_group_id,
-            ...cleanFilters
-          }).then(r => r.data)
-        ]);
-
-        // Merge and deduplicate by message id
-        const messageMap = new Map<string, MessageList>();
-        for (const msg of [...contentMessages, ...submissionMessages]) {
-          messageMap.set(msg.id, msg);
-        }
-        return Array.from(messageMap.values());
-      }
-
-      // Otherwise, make a single call with all params
-      // Exclude course_member_id as it's only used for cache invalidation, not API queries
+      // course_member_id is carried in the params for cache invalidation hooks
+      // upstream but isn't a backend query parameter — strip it before sending.
       const query = Object.fromEntries(
         Object.entries(params).filter(([key, value]) =>
           value !== undefined && value !== null && key !== 'course_member_id'

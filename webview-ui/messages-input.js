@@ -213,6 +213,23 @@
       container.appendChild(header);
     }
 
+    if (state.target.readOnly) {
+      const notice = createElement('div', { className: 'read-only-notice' });
+      const icon = createElement('span', {
+        className: 'read-only-icon',
+        textContent: '🔒'
+      });
+      const text = createElement('span', {
+        className: 'read-only-text',
+        textContent: state.target.readOnlyReason || 'You can read but not post messages here.'
+      });
+      notice.appendChild(icon);
+      notice.appendChild(text);
+      container.appendChild(notice);
+      mount.appendChild(container);
+      return;
+    }
+
     const form = createElement('div', { className: 'input-form' });
 
     // Title row: subject input + send button
