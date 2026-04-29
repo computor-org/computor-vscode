@@ -21,9 +21,9 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
 
   public setInputPanel(inputPanel: CourseMemberCommentsInputPanelProvider): void {
     this.inputPanel = inputPanel;
-    inputPanel.setOnCommentChanged(async () => {
-      await this.refreshComments();
-    });
+    // The actual onCommentChanged callback is (re)registered every time this
+    // provider opens its display via showComments(), so the shared input panel
+    // always pings the most recently opened comments view (lecturer vs tutor).
   }
 
   public isOpen(): boolean {
@@ -45,6 +45,12 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     await this.show(`Comments: ${title}`, payload, { preserveFocus: opts?.preserveFocus });
     if (this.inputPanel) {
       this.inputPanel.setTarget(courseMemberId, title);
+      // Make sure the input panel's "comment was created/updated" callback
+      // refreshes THIS provider's display webview rather than a sibling
+      // provider that happened to register the callback later.
+      this.inputPanel.setOnCommentChanged(async () => {
+        await this.refreshComments();
+      });
       void this.inputPanel.reveal({ preserveFocus: opts?.preserveFocus });
     }
   }

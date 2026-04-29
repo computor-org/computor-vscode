@@ -1546,6 +1546,11 @@
           "group": "2_discussion@1"
         },
         {
+          "command": "computor.tutor.showCourseMemberComments",
+          "when": "view == computor.tutor.courses && viewItem == tutorMember.selected",
+          "group": "2_discussion@1"
+        },
+        {
           "command": "computor.lecturer.checkoutExample",
           "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleCheckedOut)",
           "group": "1_actions@1"
