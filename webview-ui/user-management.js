@@ -6,6 +6,7 @@
     profile: null,
     studentProfiles: [],
     canResetPassword: false,
+    isAdmin: false,
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -106,8 +107,29 @@
       <section class="user-section" aria-labelledby="section-identity">
         <div>
           <h2 id="section-identity">Identity</h2>
-          <p class="section-description">Core account fields. Name and username edits are admin-only.</p>
+          <p class="section-description">Core account fields.${state.isAdmin ? '' : ' Name and username edits are admin-only.'}</p>
         </div>
+        ${state.isAdmin ? `
+        <form id="identity-form">
+          <div class="info-grid">
+            <div class="form-field">
+              <label for="user-given-name">Given Name</label>
+              <input id="user-given-name" name="given_name" type="text" value="${escapeHtml(toInputValue(user.given_name))}" autocomplete="given-name">
+            </div>
+            <div class="form-field">
+              <label for="user-family-name">Family Name</label>
+              <input id="user-family-name" name="family_name" type="text" value="${escapeHtml(toInputValue(user.family_name))}" autocomplete="family-name">
+            </div>
+            <div class="form-field">
+              <label for="user-username">Username</label>
+              <input id="user-username" name="username" type="text" value="${escapeHtml(toInputValue(user.username))}" autocomplete="username">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary">Save Identity</button>
+          </div>
+        </form>
+        ` : `
         <div class="info-grid">
           <div class="info-field">
             <label>Given Name</label>
@@ -122,6 +144,7 @@
             <div class="info-value">${escapeHtml(user.username || 'Not set')}</div>
           </div>
         </div>
+        `}
         <form id="email-form">
           <div class="form-field">
             <label for="user-email">Email Address</label>
@@ -233,10 +256,34 @@
       emailForm.addEventListener('submit', handleEmailUpdate);
     }
 
+    const identityForm = document.getElementById('identity-form');
+    if (identityForm) {
+      identityForm.addEventListener('submit', handleIdentityUpdate);
+    }
+
     const passwordResetForm = document.getElementById('password-reset-form');
     if (passwordResetForm) {
       passwordResetForm.addEventListener('submit', handlePasswordReset);
     }
+  }
+
+  function handleIdentityUpdate(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const givenName = formData.get('given_name');
+    const familyName = formData.get('family_name');
+    const username = formData.get('username');
+
+    if (typeof username === 'string' && !username.trim()) {
+      showNotice('warning', 'Username cannot be empty.');
+      return;
+    }
+
+    post('updateIdentity', {
+      given_name: typeof givenName === 'string' ? givenName : undefined,
+      family_name: typeof familyName === 'string' ? familyName : undefined,
+      username: typeof username === 'string' ? username : undefined
+    });
   }
 
   function handleEmailUpdate(event) {

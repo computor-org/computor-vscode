@@ -14,6 +14,7 @@ interface UserManagementViewState {
   profile?: ProfileGet | null;
   studentProfiles: StudentProfileGet[];
   canResetPassword: boolean;
+  isAdmin: boolean;
 }
 
 type NoticeType = 'info' | 'success' | 'warning' | 'error';
@@ -97,6 +98,9 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       case 'updateEmail':
         await this.handleUpdateEmail(message.data);
         break;
+      case 'updateIdentity':
+        await this.handleUpdateIdentity(message.data);
+        break;
       case 'resetPassword':
         await this.handleResetPassword(message.data);
         break;
@@ -106,7 +110,10 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
   }
 
   private async loadState(userId: string, options?: { force?: boolean }): Promise<UserManagementViewState> {
-    const user = await this.apiService.getUserById(userId, options);
+    const [user, scopes] = await Promise.all([
+      this.apiService.getUserById(userId, options),
+      this.apiService.getUserScopes(options).catch(() => undefined)
+    ]);
 
     if (!user) {
       throw new Error(`User not found: ${userId}`);
@@ -116,7 +123,8 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       user: user,
       profile: user.profile ?? null,
       studentProfiles: user.student_profiles ?? [],
-      canResetPassword: true
+      canResetPassword: true,
+      isAdmin: scopes?.is_admin === true
     };
   }
 
@@ -163,6 +171,53 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       await this.refreshState({ force: true, notice: { type: 'success', message: 'Email updated successfully.' } });
     } catch (error: any) {
       this.handleError('Failed to update email', error);
+    }
+  }
+
+  private async handleUpdateIdentity(raw: any): Promise<void> {
+    if (!raw || typeof raw !== 'object' || !this.currentUserId) {
+      return;
+    }
+
+    // Server enforces admin-only on these fields. We pre-gate the form so
+    // non-admins never see editable inputs, but defend here too.
+    const scopes = await this.apiService.getUserScopes().catch(() => undefined);
+    if (!scopes?.is_admin) {
+      this.postNotice({ type: 'error', message: 'Only administrators can edit name and username.' });
+      return;
+    }
+
+    const updates: UserUpdate = {};
+    let touched = false;
+    if (typeof raw.given_name === 'string') {
+      const value = raw.given_name.trim();
+      updates.given_name = value || null;
+      touched = true;
+    }
+    if (typeof raw.family_name === 'string') {
+      const value = raw.family_name.trim();
+      updates.family_name = value || null;
+      touched = true;
+    }
+    if (typeof raw.username === 'string') {
+      const value = raw.username.trim();
+      if (!value) {
+        this.postNotice({ type: 'warning', message: 'Username cannot be empty.' });
+        return;
+      }
+      updates.username = value;
+      touched = true;
+    }
+
+    if (!touched) {
+      return;
+    }
+
+    try {
+      await this.apiService.updateUser(this.currentUserId, updates);
+      await this.refreshState({ force: true, notice: { type: 'success', message: 'Identity updated.' } });
+    } catch (error: any) {
+      this.handleError('Failed to update identity', error);
     }
   }
 
