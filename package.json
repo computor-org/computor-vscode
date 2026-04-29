@@ -520,6 +520,12 @@
         "category": "Computor User Manager"
       },
       {
+        "command": "computor.userManager.createUser",
+        "title": "New User",
+        "icon": "$(add)",
+        "category": "Computor User Manager"
+      },
+      {
         "command": "computor.userManager.openUserDetails",
         "title": "Open User Details",
         "icon": "$(account)",
@@ -1119,6 +1125,11 @@
           "command": "computor.student.offline.refresh",
           "when": "view == computor.student.offline.view",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.userManager.createUser",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@0"
         },
         {
           "command": "computor.userManager.searchUsers",

@@ -4,13 +4,15 @@ import { UserManagerTreeProvider } from '../ui/tree/user-manager/UserManagerTree
 import { UserManagementWebviewProvider } from '../ui/webviews/UserManagementWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export class UserManagerCommands {
   private userManagementWebviewProvider: UserManagementWebviewProvider;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly treeProvider: UserManagerTreeProvider,
-    apiService: ComputorApiService
+    private readonly apiService: ComputorApiService
   ) {
     this.userManagementWebviewProvider = new UserManagementWebviewProvider(
       context,
@@ -53,6 +55,70 @@ export class UserManagerCommands {
     register('computor.userManager.toggleService', () => {
       this.treeProvider.toggleShowService();
     });
+
+    register('computor.userManager.createUser', async () => {
+      await this.handleCreateUser();
+    });
+  }
+
+  private async handleCreateUser(): Promise<void> {
+    const username = await vscode.window.showInputBox({
+      title: 'New user (1/4): Username',
+      prompt: 'Required. Must be unique.',
+      validateInput: (value) => {
+        const trimmed = (value ?? '').trim();
+        if (!trimmed) { return 'Username is required.'; }
+        if (/\s/.test(trimmed)) { return 'Username cannot contain whitespace.'; }
+        return undefined;
+      }
+    });
+    if (username === undefined) { return; }
+
+    const email = await vscode.window.showInputBox({
+      title: 'New user (2/4): Email',
+      prompt: 'Required. Must be a valid email.',
+      validateInput: (value) => {
+        const trimmed = (value ?? '').trim();
+        if (!trimmed) { return 'Email is required.'; }
+        if (!EMAIL_REGEX.test(trimmed)) { return 'Enter a valid email address.'; }
+        return undefined;
+      }
+    });
+    if (email === undefined) { return; }
+
+    const givenName = await vscode.window.showInputBox({
+      title: 'New user (3/4): Given name',
+      prompt: 'Optional.'
+    });
+    if (givenName === undefined) { return; }
+
+    const familyName = await vscode.window.showInputBox({
+      title: 'New user (4/4): Family name',
+      prompt: 'Optional.'
+    });
+    if (familyName === undefined) { return; }
+
+    try {
+      const created = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          cancellable: false,
+          title: `Creating user ${username.trim()}…`
+        },
+        () => this.apiService.createUser({
+          username: username.trim(),
+          email: email.trim(),
+          given_name: givenName.trim() || null,
+          family_name: familyName.trim() || null
+        })
+      );
+      vscode.window.showInformationMessage(`User ${created.username || created.email || created.id} created.`);
+      this.treeProvider.refresh();
+      await this.userManagementWebviewProvider.open(created.id);
+    } catch (error: any) {
+      const detail = error?.message || error?.response?.data?.detail || String(error);
+      vscode.window.showErrorMessage(`Failed to create user: ${detail}`);
+    }
   }
 
   private async handleRefresh(): Promise<void> {

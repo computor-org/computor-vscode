@@ -2165,6 +2165,18 @@ export class ComputorApiService {
     }
   }
 
+  async createUser(payload: import('../types/generated/users').UserCreate): Promise<UserGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<UserGet>('/users', payload);
+      multiTierCache.delete('allUsers');
+      return response.data;
+    } catch (error) {
+      console.error('[createUser] Failed to create user:', error);
+      throw error;
+    }
+  }
+
   async archiveUser(userId: string): Promise<void> {
     try {
       const client = await this.getHttpClient();
