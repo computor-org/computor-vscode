@@ -45,6 +45,14 @@ export class UserManagerCommands {
     register('computor.userManager.clearSearch', () => {
       this.treeProvider.clearSearch();
     });
+
+    register('computor.userManager.toggleArchived', () => {
+      this.treeProvider.toggleShowArchived();
+    });
+
+    register('computor.userManager.toggleService', () => {
+      this.treeProvider.toggleShowService();
+    });
   }
 
   private async handleRefresh(): Promise<void> {

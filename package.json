@@ -537,6 +537,18 @@
         "category": "Computor User Manager"
       },
       {
+        "command": "computor.userManager.toggleArchived",
+        "title": "Toggle Archived Users",
+        "icon": "$(archive)",
+        "category": "Computor User Manager"
+      },
+      {
+        "command": "computor.userManager.toggleService",
+        "title": "Toggle Service Accounts",
+        "icon": "$(robot)",
+        "category": "Computor User Manager"
+      },
+      {
         "command": "computor.logout",
         "title": "Logout",
         "icon": "$(sign-out)",
@@ -1114,9 +1126,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "computor.userManager.refresh",
+          "command": "computor.userManager.toggleArchived",
           "when": "view == computor.usermanager.users",
           "group": "navigation@2"
+        },
+        {
+          "command": "computor.userManager.toggleService",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.userManager.refresh",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@4"
         },
         {
           "command": "computor.manageGitLabTokens",
