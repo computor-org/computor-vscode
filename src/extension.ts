@@ -267,6 +267,13 @@ async function runCredentialLoginLoop(
   );
 
   while (creds) {
+    // The user can switch backend URLs from the login form (e.g. dev → prod).
+    // Persist the choice and rebuild the active connection against the new URL.
+    if (creds.backendUrl && creds.backendUrl !== baseUrl) {
+      baseUrl = creds.backendUrl;
+      await settings.setBaseUrl(baseUrl);
+    }
+
     backendConnectionService.setBaseUrl(baseUrl);
     const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
     if (!connectionStatus.isReachable) {
@@ -282,6 +289,10 @@ async function runCredentialLoginLoop(
       creds = await loginWebviewProvider.notifyLoginFailed(error.message);
       continue;
     }
+
+    // The URL just produced a successful auth — remember it so the next
+    // login prompt can offer it as a quick-pick option.
+    void settings.recordUsedBackendUrl(baseUrl);
 
     const result = await onAuthenticated(client, creds);
     if (result.done) return;

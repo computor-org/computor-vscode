@@ -8,6 +8,7 @@
     password: '',
     enableAutoLogin: false,
     showAutoLoginToggle: true,
+    previousBackendUrls: [],
     submitting: false,
     notice: null
   };
@@ -42,6 +43,13 @@
       return;
     }
 
+    var trimmedUrl = (state.backendUrl || '').trim();
+    if (!trimmedUrl) {
+      state.notice = { type: 'error', message: 'Backend URL is required.' };
+      render();
+      return;
+    }
+
     state.submitting = true;
     state.notice = null;
     render();
@@ -49,7 +57,8 @@
     post('login', {
       username: state.username.trim(),
       password: state.password,
-      enableAutoLogin: state.enableAutoLogin
+      enableAutoLogin: state.enableAutoLogin,
+      backendUrl: trimmedUrl
     });
   }
 
@@ -66,13 +75,26 @@
         escapeHtml(state.notice.message) + '</div>';
     }
 
-    var serverInfoHtml = '';
-    if (state.backendUrl) {
-      serverInfoHtml = '<div class="login-server-info">' +
-        '<span class="server-label">Server:</span>' +
-        '<span class="server-url">' + escapeHtml(state.backendUrl) + '</span>' +
-      '</div>';
+    var datalistOptions = '';
+    var seen = {};
+    var allUrls = (Array.isArray(state.previousBackendUrls) ? state.previousBackendUrls.slice() : []);
+    if (state.backendUrl && allUrls.indexOf(state.backendUrl) === -1) {
+      allUrls.unshift(state.backendUrl);
     }
+    for (var i = 0; i < allUrls.length; i++) {
+      var u = (allUrls[i] || '').trim();
+      if (!u) { continue; }
+      var key = u.toLowerCase();
+      if (seen[key]) { continue; }
+      seen[key] = true;
+      datalistOptions += '<option value="' + escapeHtml(u) + '"></option>';
+    }
+    var serverInfoHtml = '<div class="form-field">' +
+        '<label for="backend-url">Backend URL</label>' +
+        '<input type="url" id="backend-url" list="backend-url-options" value="' + escapeHtml(state.backendUrl) + '" placeholder="https://computor.example.com" autocomplete="url">' +
+        (datalistOptions ? '<datalist id="backend-url-options">' + datalistOptions + '</datalist>' : '') +
+        '<span class="field-error"></span>' +
+      '</div>';
 
     var autoLoginHtml = '';
     if (state.showAutoLoginToggle) {
@@ -119,6 +141,7 @@
   }
 
   function attachEventListeners() {
+    bindInput('backend-url', function (v) { state.backendUrl = v; });
     bindInput('username', function (v) { state.username = v; });
     bindInput('password', function (v) { state.password = v; });
     bindClick('login-btn', handleSubmit);

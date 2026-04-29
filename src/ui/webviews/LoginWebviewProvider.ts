@@ -6,6 +6,9 @@ export interface LoginCredentials {
   username: string;
   password: string;
   enableAutoLogin?: boolean;
+  /** The backend URL the user picked / typed in the login form. May differ
+   *  from the active baseUrl when the user switches dev / staging / prod. */
+  backendUrl?: string;
 }
 
 interface LoginInitialState {
@@ -14,6 +17,8 @@ interface LoginInitialState {
   password: string;
   enableAutoLogin: boolean;
   showAutoLoginToggle: boolean;
+  /** Most-recently-used first. The current backendUrl appears here too if previously used. */
+  previousBackendUrls: string[];
 }
 
 export class LoginWebviewProvider extends BaseWebviewProvider {
@@ -34,6 +39,11 @@ export class LoginWebviewProvider extends BaseWebviewProvider {
     currentAutoLogin?: boolean
   ): Promise<LoginCredentials | undefined> {
     const backendUrl = await this.settingsManager.getBaseUrl() || '';
+    const stored = await this.settingsManager.getPreviousBackendUrls();
+    // Ensure the current URL is offered as an option even if it was never recorded yet.
+    const previousBackendUrls = backendUrl
+      ? [backendUrl, ...stored.filter(u => u.trim().toLowerCase() !== backendUrl.trim().toLowerCase())]
+      : stored;
 
     const initialState: LoginInitialState = {
       backendUrl,
@@ -41,6 +51,7 @@ export class LoginWebviewProvider extends BaseWebviewProvider {
       password: previous?.password || '',
       enableAutoLogin: currentAutoLogin ?? false,
       showAutoLoginToggle: currentAutoLogin === undefined,
+      previousBackendUrls,
     };
 
     // Create a promise that resolves when the user submits or closes
@@ -118,6 +129,9 @@ export class LoginWebviewProvider extends BaseWebviewProvider {
             username: message.data.username,
             password: message.data.password,
             enableAutoLogin: message.data.enableAutoLogin,
+            backendUrl: typeof message.data.backendUrl === 'string' && message.data.backendUrl.trim().length > 0
+              ? message.data.backendUrl.trim()
+              : undefined,
           };
           this.credentialsResolver(creds);
           this.credentialsResolver = undefined;

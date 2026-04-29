@@ -58,6 +58,25 @@ export class ComputorSettingsManager {
     await this.settingsStorage.save(settings);
   }
 
+  async getPreviousBackendUrls(): Promise<string[]> {
+    const settings = await this.settingsStorage.load();
+    return settings.authentication.previousUrls ?? [];
+  }
+
+  /** Records a URL as recently used: dedupes (case-insensitive on the URL),
+   *  prepends to the front of the history, caps the list at PREVIOUS_URLS_CAP. */
+  async recordUsedBackendUrl(url: string): Promise<void> {
+    const trimmed = (url ?? '').trim();
+    if (!trimmed) { return; }
+    const settings = await this.settingsStorage.load();
+    const existing = settings.authentication.previousUrls ?? [];
+    const filtered = existing.filter(entry => entry.trim().toLowerCase() !== trimmed.toLowerCase());
+    settings.authentication.previousUrls = [trimmed, ...filtered].slice(0, ComputorSettingsManager.PREVIOUS_URLS_CAP);
+    await this.settingsStorage.save(settings);
+  }
+
+  private static readonly PREVIOUS_URLS_CAP = 5;
+
   async storeSecureToken(key: string, token: string): Promise<void> {
     await this.secureStorage.store(key, token);
   }

@@ -8,6 +8,8 @@ export interface ComputorSettings {
 export interface AuthenticationSettings {
   baseUrl: string;
   autoLogin?: boolean;
+  /** Most-recently-used first. Capped client-side. Optional for backward compat. */
+  previousUrls?: string[];
 }
 
 export interface WorkspaceSettings {
