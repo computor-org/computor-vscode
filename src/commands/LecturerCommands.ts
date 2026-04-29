@@ -2501,22 +2501,38 @@ export class LecturerCommands {
     );
   }
 
-  // Sets the `computor.lecturer.canManageScopeMembership` context key so the
-  // org/course-family "Manage Members" entries only appear for users who hold
-  // an `_owner` or `_manager` claim somewhere (or are admin). Per-scope
-  // precision is enforced inside the webview itself.
+  // Sets the per-scope-kind "Manage Members" context keys. The menu shows when:
+  //   - the user is admin, OR
+  //   - holds the global system role for that scope kind
+  //     (`_organization_manager` / `_course_family_manager`), OR
+  //   - holds an `_owner`/`_manager` claim on at least one scope of that kind.
+  // Per-scope precision is enforced inside the webview and on the backend.
   private async applyScopeMembershipContextKey(): Promise<void> {
     try {
-      const scopes = await this.apiService.getUserScopes();
-      const canManage = !!scopes && (
-        scopes.is_admin === true ||
-        hasManagerClaim(scopes.organization) ||
-        hasManagerClaim(scopes.course_family)
+      const [scopes, currentUser] = await Promise.all([
+        this.apiService.getUserScopes(),
+        this.apiService.getUserAccount().catch(() => undefined)
+      ]);
+      const isAdmin = scopes?.is_admin === true;
+      const globalRoles = new Set(
+        (currentUser?.user_roles ?? [])
+          .map(r => r?.role_id)
+          .filter((id): id is string => typeof id === 'string')
       );
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageScopeMembership', canManage);
+
+      const canManageOrg = isAdmin
+        || globalRoles.has('_organization_manager')
+        || hasManagerClaim(scopes?.organization);
+      const canManageFamily = isAdmin
+        || globalRoles.has('_course_family_manager')
+        || hasManagerClaim(scopes?.course_family);
+
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', canManageOrg);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', canManageFamily);
     } catch (err) {
-      console.warn('[LecturerCommands] Failed to compute scope-membership context key:', err);
-      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageScopeMembership', false);
+      console.warn('[LecturerCommands] Failed to compute scope-membership context keys:', err);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', false);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', false);
     }
   }
 }

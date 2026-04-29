@@ -1297,7 +1297,7 @@
         },
         {
           "command": "computor.lecturer.manageOrganizationMembers",
-          "when": "view == computor.lecturer.courses && viewItem == organization && computor.lecturer.canManageScopeMembership",
+          "when": "view == computor.lecturer.courses && viewItem == organization && computor.lecturer.canManageOrgMembers",
           "group": "2_discussion@2"
         },
         {
@@ -1307,7 +1307,7 @@
         },
         {
           "command": "computor.lecturer.manageCourseFamilyMembers",
-          "when": "view == computor.lecturer.courses && viewItem == courseFamily && computor.lecturer.canManageScopeMembership",
+          "when": "view == computor.lecturer.courses && viewItem == courseFamily && computor.lecturer.canManageFamilyMembers",
           "group": "2_discussion@2"
         },
         {
