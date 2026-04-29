@@ -7,6 +7,7 @@
     studentProfiles: [],
     canResetPassword: false,
     isAdmin: false,
+    availableRoles: [],
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -57,9 +58,21 @@
     const profile = state.profile || {};
     const studentProfiles = Array.isArray(state.studentProfiles) ? state.studentProfiles : [];
 
-    const userRolesHtml = Array.isArray(user.user_roles) && user.user_roles.length > 0
-      ? user.user_roles.map(ur => `<span class="role-badge">${escapeHtml(ur.role_id)}</span>`).join('')
+    const assignedRoleIds = new Set((Array.isArray(user.user_roles) ? user.user_roles : []).map(ur => ur.role_id));
+    const userRolesHtml = assignedRoleIds.size > 0
+      ? Array.from(assignedRoleIds).map(roleId => `
+          <span class="role-badge">
+            <span class="role-badge-label">${escapeHtml(roleId)}</span>
+            <button type="button" class="role-badge-remove" data-role-remove="${escapeHtml(roleId)}" title="Remove role">×</button>
+          </span>
+        `).join('')
       : '<span class="empty-value">No roles assigned</span>';
+
+    const availableRoles = Array.isArray(state.availableRoles) ? state.availableRoles : [];
+    const assignableRoles = availableRoles.filter(r => !assignedRoleIds.has(r.id));
+    const addRoleOptionsHtml = assignableRoles.length > 0
+      ? assignableRoles.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.title || r.id)}</option>`).join('')
+      : '';
 
     const studentProfilesHtml = studentProfiles.length > 0
       ? studentProfiles.map(sp => {
@@ -159,11 +172,25 @@
       <section class="user-section" aria-labelledby="section-roles">
         <div>
           <h2 id="section-roles">Roles</h2>
-          <p class="section-description">System roles assigned to this user.</p>
+          <p class="section-description">System roles assigned to this user. Granting <code>_admin</code> requires admin privileges and is enforced server-side.</p>
         </div>
         <div class="info-field full-width">
-          <div class="info-value">${userRolesHtml}</div>
+          <div class="info-value role-badges">${userRolesHtml}</div>
         </div>
+        ${assignableRoles.length > 0 ? `
+        <form id="add-role-form" class="role-add-form">
+          <div class="form-field">
+            <label for="role-add-select">Add a role</label>
+            <select id="role-add-select" name="role_id" required>
+              <option value="" disabled selected>Choose a role…</option>
+              ${addRoleOptionsHtml}
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary">Assign Role</button>
+          </div>
+        </form>
+        ` : '<p class="field-hint">All available roles are already assigned.</p>'}
       </section>
 
       <section class="user-section" aria-labelledby="section-profile">
@@ -284,6 +311,29 @@
       archiveBtn.addEventListener('click', () => {
         const isArchived = !!(state.user && state.user.archived_at);
         post(isArchived ? 'unarchiveUser' : 'archiveUser');
+      });
+    }
+
+    document.querySelectorAll('[data-role-remove]').forEach((el) => {
+      el.addEventListener('click', (event) => {
+        event.preventDefault();
+        const target = event.currentTarget;
+        const roleId = target instanceof HTMLElement ? target.getAttribute('data-role-remove') : null;
+        if (roleId) {
+          post('revokeRole', { role_id: roleId });
+        }
+      });
+    });
+
+    const addRoleForm = document.getElementById('add-role-form');
+    if (addRoleForm) {
+      addRoleForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const select = document.getElementById('role-add-select');
+        const value = select && 'value' in select ? select.value : '';
+        if (value) {
+          post('assignRole', { role_id: value });
+        }
       });
     }
   }

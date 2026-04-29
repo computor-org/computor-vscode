@@ -8,6 +8,7 @@ import {
   ProfileGet,
   StudentProfileGet
 } from '../../types/generated';
+import type { RoleList } from '../../types/generated/roles';
 
 interface UserManagementViewState {
   user?: UserGet;
@@ -15,6 +16,7 @@ interface UserManagementViewState {
   studentProfiles: StudentProfileGet[];
   canResetPassword: boolean;
   isAdmin: boolean;
+  availableRoles: RoleList[];
 }
 
 type NoticeType = 'info' | 'success' | 'warning' | 'error';
@@ -110,15 +112,22 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       case 'unarchiveUser':
         await this.handleArchiveToggle(false);
         break;
+      case 'assignRole':
+        await this.handleAssignRole(message.data);
+        break;
+      case 'revokeRole':
+        await this.handleRevokeRole(message.data);
+        break;
       default:
         break;
     }
   }
 
   private async loadState(userId: string, options?: { force?: boolean }): Promise<UserManagementViewState> {
-    const [user, scopes] = await Promise.all([
+    const [user, scopes, roles] = await Promise.all([
       this.apiService.getUserById(userId, options),
-      this.apiService.getUserScopes(options).catch(() => undefined)
+      this.apiService.getUserScopes(options).catch(() => undefined),
+      this.apiService.listRoles().catch(() => [])
     ]);
 
     if (!user) {
@@ -130,7 +139,8 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       profile: user.profile ?? null,
       studentProfiles: user.student_profiles ?? [],
       canResetPassword: true,
-      isAdmin: scopes?.is_admin === true
+      isAdmin: scopes?.is_admin === true,
+      availableRoles: roles ?? []
     };
   }
 
@@ -177,6 +187,46 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       await this.refreshState({ force: true, notice: { type: 'success', message: 'Email updated successfully.' } });
     } catch (error: any) {
       this.handleError('Failed to update email', error);
+    }
+  }
+
+  private async handleAssignRole(raw: any): Promise<void> {
+    if (!raw || typeof raw !== 'object' || !this.currentUserId) {
+      return;
+    }
+    const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
+    if (!roleId) {
+      return;
+    }
+    try {
+      await this.apiService.assignUserRole(this.currentUserId, roleId);
+      await this.refreshState({ force: true, notice: { type: 'success', message: `Role "${roleId}" assigned.` } });
+    } catch (error: any) {
+      this.handleError(`Failed to assign role "${roleId}"`, error);
+    }
+  }
+
+  private async handleRevokeRole(raw: any): Promise<void> {
+    if (!raw || typeof raw !== 'object' || !this.currentUserId) {
+      return;
+    }
+    const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
+    if (!roleId) {
+      return;
+    }
+    const confirmation = await vscode.window.showWarningMessage(
+      `Remove role "${roleId}" from this user?`,
+      { modal: true },
+      'Remove'
+    );
+    if (confirmation !== 'Remove') {
+      return;
+    }
+    try {
+      await this.apiService.revokeUserRole(this.currentUserId, roleId);
+      await this.refreshState({ force: true, notice: { type: 'success', message: `Role "${roleId}" removed.` } });
+    } catch (error: any) {
+      this.handleError(`Failed to remove role "${roleId}"`, error);
     }
   }
 
