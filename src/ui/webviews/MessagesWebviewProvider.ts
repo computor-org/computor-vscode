@@ -600,13 +600,19 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       .filter((part) => part.length > 0);
     const fullName = trimmedParts.join(' ');
     const hasFullName = fullName.length > 0;
+    // The backend strips `is_author` from WS broadcasts (it's per-recipient),
+    // so we recompute it client-side. Without this, edit/delete buttons never
+    // appear on freshly arrived own messages until the user hits Refresh.
+    const currentUserId = this.apiService.getCurrentUserId();
+    const isAuthor = currentUserId ? message.author_id === currentUserId : (message.is_author ?? false);
 
     return {
       ...message,
       author_display: hasFullName ? fullName : undefined,
       author_name: hasFullName ? fullName : undefined,
-      can_edit: message.is_author ?? false,
-      can_delete: message.is_author ?? false
+      can_edit: isAuthor,
+      can_delete: isAuthor,
+      is_author: isAuthor
     } satisfies EnrichedMessage;
   }
 
