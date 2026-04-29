@@ -75,7 +75,17 @@ export class ComputorSettingsManager {
     await this.settingsStorage.save(settings);
   }
 
-  private static readonly PREVIOUS_URLS_CAP = 5;
+  /** Removes a URL from the previously-used list (no-op if absent). */
+  async removePreviousBackendUrl(url: string): Promise<void> {
+    const trimmed = (url ?? '').trim();
+    if (!trimmed) { return; }
+    const settings = await this.settingsStorage.load();
+    const existing = settings.authentication.previousUrls ?? [];
+    settings.authentication.previousUrls = existing.filter(entry => entry.trim().toLowerCase() !== trimmed.toLowerCase());
+    await this.settingsStorage.save(settings);
+  }
+
+  private static readonly PREVIOUS_URLS_CAP = 10;
 
   async storeSecureToken(key: string, token: string): Promise<void> {
     await this.secureStorage.store(key, token);

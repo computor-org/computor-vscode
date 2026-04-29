@@ -87,21 +87,38 @@
       deduped.push(u);
     }
 
-    var chipsHtml = '';
-    if (deduped.length > 0) {
-      var items = '';
+    var typedUrl = (state.backendUrl || '').trim();
+    var typedKnown = typedUrl ? deduped.some(function (u) { return u.toLowerCase() === typedUrl.toLowerCase(); }) : true;
+
+    var optionsHtml = '';
+    if (deduped.length === 0) {
+      optionsHtml = '<li class="url-option url-option-empty">No saved URLs yet.</li>';
+    } else {
       for (var j = 0; j < deduped.length; j++) {
         var url = deduped[j];
-        var isActive = url.trim().toLowerCase() === (state.backendUrl || '').trim().toLowerCase();
-        items += '<button type="button" class="url-chip' + (isActive ? ' url-chip-active' : '') + '" data-url="' + escapeHtml(url) + '" title="' + escapeHtml(url) + '">' + escapeHtml(url) + '</button>';
+        var active = url.toLowerCase() === typedUrl.toLowerCase() ? ' url-option-active' : '';
+        optionsHtml +=
+          '<li class="url-option' + active + '" data-url="' + escapeHtml(url) + '">' +
+            '<span class="url-option-label">' + escapeHtml(url) + '</span>' +
+            '<button type="button" class="url-option-remove" data-remove="' + escapeHtml(url) + '" title="Remove from list" aria-label="Remove">✕</button>' +
+          '</li>';
       }
-      chipsHtml = '<div class="url-chip-row" id="backend-url-chips">' + items + '</div>';
     }
+
+    var addRowHtml = (typedUrl && !typedKnown)
+      ? '<div class="url-add-row"><button type="button" class="url-add-btn" id="url-add-btn">＋ Save “' + escapeHtml(typedUrl) + '”</button></div>'
+      : '';
 
     var serverInfoHtml = '<div class="form-field">' +
         '<label for="backend-url">Backend URL</label>' +
-        '<input type="url" id="backend-url" value="' + escapeHtml(state.backendUrl) + '" placeholder="https://computor.example.com" autocomplete="url">' +
-        chipsHtml +
+        '<div class="url-combo" id="backend-url-combo">' +
+          '<input type="url" id="backend-url" class="url-combo-input" value="' + escapeHtml(state.backendUrl) + '" placeholder="https://computor.example.com" autocomplete="url" aria-haspopup="listbox" aria-expanded="false">' +
+          '<button type="button" class="url-combo-toggle" id="url-combo-toggle" aria-label="Show saved backends" tabindex="-1">▾</button>' +
+          '<div class="url-combo-pop" id="url-combo-pop" role="listbox" hidden>' +
+            '<ul class="url-combo-list">' + optionsHtml + '</ul>' +
+            addRowHtml +
+          '</div>' +
+        '</div>' +
         '<span class="field-error"></span>' +
       '</div>';
 
@@ -154,7 +171,7 @@
     bindInput('username', function (v) { state.username = v; });
     bindInput('password', function (v) { state.password = v; });
     bindClick('login-btn', handleSubmit);
-    attachBackendUrlChips();
+    attachBackendUrlCombo();
 
     var checkbox = document.getElementById('auto-login-checkbox');
     if (checkbox) {
@@ -209,19 +226,85 @@
     }
   }
 
-  function attachBackendUrlChips() {
-    var row = document.getElementById('backend-url-chips');
+  function attachBackendUrlCombo() {
+    var wrap = document.getElementById('backend-url-combo');
     var input = document.getElementById('backend-url');
-    if (!row || !input) { return; }
-    row.addEventListener('click', function (e) {
+    var toggle = document.getElementById('url-combo-toggle');
+    var pop = document.getElementById('url-combo-pop');
+    if (!wrap || !input || !toggle || !pop) { return; }
+
+    var setOpen = function (open) {
+      pop.hidden = !open;
+      wrap.classList.toggle('open', open);
+      input.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    toggle.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(pop.hidden);
+    });
+
+    pop.addEventListener('click', function (e) {
       var target = e.target;
-      if (target && target.classList && target.classList.contains('url-chip')) {
-        var url = target.getAttribute('data-url') || '';
+      if (!target) { return; }
+
+      // Remove button: prune from list
+      var removeBtn = target.closest && target.closest('[data-remove]');
+      if (removeBtn) {
+        e.stopPropagation();
+        var removeUrl = removeBtn.getAttribute('data-remove') || '';
+        if (!removeUrl) { return; }
+        state.previousBackendUrls = (state.previousBackendUrls || []).filter(function (u) {
+          return (u || '').trim().toLowerCase() !== removeUrl.toLowerCase();
+        });
+        post('removeBackendUrl', { url: removeUrl });
+        render();
+        var newPop = document.getElementById('url-combo-pop');
+        if (newPop) { newPop.hidden = false; document.getElementById('backend-url-combo').classList.add('open'); }
+        return;
+      }
+
+      // Option click: pick this URL
+      var optionEl = target.closest && target.closest('[data-url]');
+      if (optionEl) {
+        var url = optionEl.getAttribute('data-url') || '';
         if (!url) { return; }
         input.value = url;
         state.backendUrl = url;
-        // Re-render so the active-chip highlight follows the selection.
+        setOpen(false);
+        input.focus();
         render();
+        return;
+      }
+    });
+
+    var addBtn = document.getElementById('url-add-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var newUrl = (state.backendUrl || '').trim();
+        if (!newUrl) { return; }
+        var existing = (state.previousBackendUrls || []).filter(function (u) {
+          return (u || '').trim().toLowerCase() !== newUrl.toLowerCase();
+        });
+        state.previousBackendUrls = [newUrl].concat(existing).slice(0, 10);
+        post('recordBackendUrl', { url: newUrl });
+        render();
+        var newPop = document.getElementById('url-combo-pop');
+        if (newPop) { newPop.hidden = false; document.getElementById('backend-url-combo').classList.add('open'); }
+      });
+    }
+
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) { setOpen(false); }
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !pop.hidden) {
+        setOpen(false);
+        e.stopPropagation();
       }
     });
   }

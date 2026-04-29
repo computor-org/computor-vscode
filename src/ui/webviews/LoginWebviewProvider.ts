@@ -137,6 +137,20 @@ export class LoginWebviewProvider extends BaseWebviewProvider {
           this.credentialsResolver = undefined;
         }
         break;
+      case 'recordBackendUrl': {
+        const url = typeof message.data?.url === 'string' ? message.data.url.trim() : '';
+        if (url) {
+          await this.settingsManager.recordUsedBackendUrl(url);
+        }
+        break;
+      }
+      case 'removeBackendUrl': {
+        const url = typeof message.data?.url === 'string' ? message.data.url.trim() : '';
+        if (url) {
+          await this.settingsManager.removePreviousBackendUrl(url);
+        }
+        break;
+      }
     }
   }
 
