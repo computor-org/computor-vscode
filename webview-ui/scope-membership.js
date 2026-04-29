@@ -3,7 +3,6 @@
 
   const state = window.__INITIAL_STATE__ || null;
   const localState = {
-    addUserId: '',
     addRoleId: '',
     pending: false,
     notice: null
@@ -51,12 +50,7 @@
       return;
     }
 
-    const { target, members, availableRoles, availableUsers, canManage } = state;
-    const memberUserIds = new Set(members.map(m => m.user_id));
-    const candidateUsers = availableUsers
-      .filter(u => !u.archived_at && !u.is_service && !memberUserIds.has(u.id))
-      .sort((a, b) => userDisplayName(a).localeCompare(userDisplayName(b)));
-
+    const { target, members, availableRoles, canManage } = state;
     const headerLabel = target.kind === 'organization' ? 'Organization' : 'Course Family';
 
     root.innerHTML = `
@@ -116,27 +110,24 @@
         <div class="scope-section-header">
           <h2>Add Member</h2>
         </div>
-        ${candidateUsers.length === 0
-          ? '<p class="scope-empty">No additional users available to add.</p>'
-          : `<form id="add-member-form" class="scope-add-form">
-              <div class="form-field">
-                <label for="add-user">User</label>
-                <select id="add-user" name="user_id" required>
-                  <option value="" disabled${localState.addUserId ? '' : ' selected'}>Choose a user…</option>
-                  ${candidateUsers.map(u => `<option value="${escapeHtml(u.id)}"${u.id === localState.addUserId ? ' selected' : ''}>${escapeHtml(userDisplayName(u))} — ${escapeHtml(u.email || u.username || u.id)}</option>`).join('')}
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="add-role">Role</label>
-                <select id="add-role" name="role_id" required>
-                  <option value="" disabled${localState.addRoleId ? '' : ' selected'}>Choose a role…</option>
-                  ${availableRoles.map(r => `<option value="${escapeHtml(r.id)}"${r.id === localState.addRoleId ? ' selected' : ''}>${escapeHtml(r.title || r.id)}</option>`).join('')}
-                </select>
-              </div>
-              <div class="form-actions">
-                <button type="submit" class="primary">Add Member</button>
-              </div>
-            </form>`}
+        <form id="add-member-form" class="scope-add-form">
+          <div class="form-field">
+            <label for="add-role">Role</label>
+            <select id="add-role" name="role_id" required>
+              <option value="" disabled${localState.addRoleId ? '' : ' selected'}>Choose a role…</option>
+              ${availableRoles.map(r => `<option value="${escapeHtml(r.id)}"${r.id === localState.addRoleId ? ' selected' : ''}>${escapeHtml(r.title || r.id)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="add-identifier">Email or username</label>
+            <input id="add-identifier" name="identifier" type="text" placeholder="user@example.com or alice42" autocomplete="off" />
+            <p class="field-hint">Looks up the user by exact email, then by exact username.</p>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="browse-users-btn" class="secondary">Browse users…</button>
+            <button type="submit" class="primary">Add Member</button>
+          </div>
+        </form>
       </section>
       ` : ''}
     `;
@@ -149,15 +140,32 @@
     if (addForm) {
       addForm.addEventListener('submit', (event) => {
         event.preventDefault();
-        const userSelect = document.getElementById('add-user');
         const roleSelect = document.getElementById('add-role');
-        const userId = userSelect && 'value' in userSelect ? userSelect.value : '';
+        const identifierInput = document.getElementById('add-identifier');
         const roleId = roleSelect && 'value' in roleSelect ? roleSelect.value : '';
-        if (!userId || !roleId) {
-          showNotice('warning', 'Pick a user and a role.');
+        const identifier = identifierInput && 'value' in identifierInput ? identifierInput.value.trim() : '';
+        if (!roleId) {
+          showNotice('warning', 'Pick a role.');
           return;
         }
-        post('addMember', { user_id: userId, role_id: roleId });
+        if (!identifier) {
+          showNotice('warning', 'Type an email/username or use Browse users…');
+          return;
+        }
+        post('addMember', { identifier, role_id: roleId });
+      });
+    }
+
+    const browseBtn = document.getElementById('browse-users-btn');
+    if (browseBtn) {
+      browseBtn.addEventListener('click', () => {
+        const roleSelect = document.getElementById('add-role');
+        const roleId = roleSelect && 'value' in roleSelect ? roleSelect.value : '';
+        if (!roleId) {
+          showNotice('warning', 'Pick a role first.');
+          return;
+        }
+        post('browseAndAdd', { role_id: roleId });
       });
     }
 

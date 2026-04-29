@@ -30,7 +30,6 @@ interface ScopeMembershipViewState {
   target: ScopeMembershipTarget;
   members: NormalizedMember[];
   availableRoles: NormalizedRole[];
-  availableUsers: UserList[];
   canManage: boolean;
 }
 
@@ -109,6 +108,9 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       case 'addMember':
         await this.handleAddMember(message.data);
         break;
+      case 'browseAndAdd':
+        await this.handleBrowseAndAdd(message.data);
+        break;
       case 'changeRole':
         await this.handleChangeRole(message.data);
         break;
@@ -123,10 +125,9 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
   // ----- State loading -----
 
   private async loadState(target: ScopeMembershipTarget): Promise<ScopeMembershipViewState> {
-    const [members, roles, users, scopes, currentUser] = await Promise.all([
+    const [members, roles, scopes, currentUser] = await Promise.all([
       this.fetchMembers(target),
       this.fetchRoles(target),
-      this.apiService.getUsers().catch(() => []),
       this.apiService.getUserScopes().catch(() => undefined),
       this.apiService.getUserAccount().catch(() => undefined)
     ]);
@@ -142,7 +143,6 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       target,
       members,
       availableRoles: roles,
-      availableUsers: users || [],
       canManage
     };
   }
@@ -190,12 +190,108 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
 
   private async handleAddMember(raw: any): Promise<void> {
     if (!this.currentTarget || !raw || typeof raw !== 'object') { return; }
-    const userId = typeof raw.user_id === 'string' ? raw.user_id.trim() : '';
     const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
-    if (!userId || !roleId) {
-      this.postNotice({ type: 'warning', message: 'Pick a user and a role.' });
+    if (!roleId) {
+      this.postNotice({ type: 'warning', message: 'Pick a role.' });
       return;
     }
+
+    let userId = typeof raw.user_id === 'string' ? raw.user_id.trim() : '';
+    const identifier = typeof raw.identifier === 'string' ? raw.identifier.trim() : '';
+
+    if (!userId && identifier) {
+      try {
+        userId = await this.resolveUserIdentifier(identifier) ?? '';
+      } catch (error: any) {
+        this.handleError('Failed to look up user', error);
+        return;
+      }
+      if (!userId) {
+        this.postNotice({ type: 'warning', message: `No user found for "${identifier}".` });
+        return;
+      }
+    }
+
+    if (!userId) {
+      this.postNotice({ type: 'warning', message: 'Provide an email/username or pick from the list.' });
+      return;
+    }
+
+    await this.createMember(userId, roleId);
+  }
+
+  private async handleBrowseAndAdd(raw: any): Promise<void> {
+    if (!this.currentTarget || !raw || typeof raw !== 'object') { return; }
+    const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
+    if (!roleId) {
+      this.postNotice({ type: 'warning', message: 'Pick a role first.' });
+      return;
+    }
+
+    let users: UserList[] = [];
+    try {
+      users = await this.apiService.getUsers();
+    } catch (error: any) {
+      this.handleError('Cannot browse users (you may lack permission). Try email or username.', error);
+      return;
+    }
+    if (!users || users.length === 0) {
+      this.postNotice({ type: 'info', message: 'No users available to browse.' });
+      return;
+    }
+
+    const memberUserIds = new Set((this.currentData as ScopeMembershipViewState | undefined)?.members.map(m => m.user_id) ?? []);
+    const candidates = users
+      .filter(u => !u.archived_at && !u.is_service && !memberUserIds.has(u.id))
+      .sort((a, b) => formatUserLabel(a).localeCompare(formatUserLabel(b)));
+    if (candidates.length === 0) {
+      this.postNotice({ type: 'info', message: 'No additional users available to add.' });
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      candidates.map(u => ({
+        label: formatUserLabel(u),
+        description: u.email || u.username || '',
+        detail: u.username && u.email ? `@${u.username}` : undefined,
+        userId: u.id
+      })),
+      {
+        placeHolder: 'Select a user to add',
+        matchOnDescription: true,
+        matchOnDetail: true
+      }
+    );
+    if (!picked) { return; }
+
+    await this.createMember(picked.userId, roleId);
+  }
+
+  private async resolveUserIdentifier(identifier: string): Promise<string | undefined> {
+    // Try exact email then exact username via the standard /users filter
+    // params. Both calls fail-soft — the Add Member flow surfaces a
+    // friendly "no user found" notice if both come back empty.
+    try {
+      const matches = await this.apiService.findUsers({ email: identifier });
+      if (matches.length > 0 && matches[0]?.id) {
+        return matches[0].id;
+      }
+    } catch (err) {
+      console.warn('[ScopeMembershipWebview] email lookup failed:', err);
+    }
+    try {
+      const matches = await this.apiService.findUsers({ username: identifier });
+      if (matches.length > 0 && matches[0]?.id) {
+        return matches[0].id;
+      }
+    } catch (err) {
+      console.warn('[ScopeMembershipWebview] username lookup failed:', err);
+    }
+    return undefined;
+  }
+
+  private async createMember(userId: string, roleId: string): Promise<void> {
+    if (!this.currentTarget) { return; }
     try {
       if (this.currentTarget.kind === 'organization') {
         await this.apiService.createOrganizationMember({
@@ -271,4 +367,11 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       this.panel.webview.postMessage({ command: 'notice', notice });
     }
   }
+}
+
+function formatUserLabel(user: UserList): string {
+  const family = user.family_name || '';
+  const given = user.given_name || '';
+  if (family && given) { return `${family}, ${given}`; }
+  return family || given || user.username || user.email || user.id;
 }

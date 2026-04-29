@@ -2110,6 +2110,21 @@ export class ComputorApiService {
     await client.post('/user/password', payload);
   }
 
+  // User Management: lookup by exact filter (email / username / etc).
+  // Bypasses the cached "all users" list so the call still works for users
+  // who lack list-all permission but have access via the filtered endpoint.
+  async findUsers(query: { email?: string; username?: string; given_name?: string; family_name?: string }): Promise<UserList[]> {
+    const client = await this.getHttpClient();
+    const params: Record<string, string> = {};
+    if (query.email) { params.email = query.email; }
+    if (query.username) { params.username = query.username; }
+    if (query.given_name) { params.given_name = query.given_name; }
+    if (query.family_name) { params.family_name = query.family_name; }
+    if (Object.keys(params).length === 0) { return []; }
+    const response = await client.get<UserList[]>('/users', { ...params, limit: 25 });
+    return response.data || [];
+  }
+
   // User Management: List all users
   async getUsers(options?: { force?: boolean }): Promise<UserList[]> {
     try {
