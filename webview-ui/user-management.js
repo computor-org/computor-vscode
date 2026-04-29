@@ -6,6 +6,8 @@
     profile: null,
     studentProfiles: [],
     canResetPassword: false,
+    isAdmin: false,
+    availableRoles: [],
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -56,9 +58,21 @@
     const profile = state.profile || {};
     const studentProfiles = Array.isArray(state.studentProfiles) ? state.studentProfiles : [];
 
-    const userRolesHtml = Array.isArray(user.user_roles) && user.user_roles.length > 0
-      ? user.user_roles.map(ur => `<span class="role-badge">${escapeHtml(ur.role_id)}</span>`).join('')
+    const assignedRoleIds = new Set((Array.isArray(user.user_roles) ? user.user_roles : []).map(ur => ur.role_id));
+    const userRolesHtml = assignedRoleIds.size > 0
+      ? Array.from(assignedRoleIds).map(roleId => `
+          <span class="role-badge">
+            <span class="role-badge-label">${escapeHtml(roleId)}</span>
+            <button type="button" class="role-badge-remove" data-role-remove="${escapeHtml(roleId)}" title="Remove role">×</button>
+          </span>
+        `).join('')
       : '<span class="empty-value">No roles assigned</span>';
+
+    const availableRoles = Array.isArray(state.availableRoles) ? state.availableRoles : [];
+    const assignableRoles = availableRoles.filter(r => !assignedRoleIds.has(r.id));
+    const addRoleOptionsHtml = assignableRoles.length > 0
+      ? assignableRoles.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.title || r.id)}</option>`).join('')
+      : '';
 
     const studentProfilesHtml = studentProfiles.length > 0
       ? studentProfiles.map(sp => {
@@ -103,16 +117,33 @@
       ${archivedBanner}
       ${serviceAccountBanner}
 
-      <section class="user-section">
+      <section class="user-section" aria-labelledby="section-identity">
         <div>
-          <h2>User Information</h2>
-          <p class="section-description">Core user account details (read-only except email).</p>
+          <h2 id="section-identity">Identity</h2>
+          <p class="section-description">Core account fields.${state.isAdmin ? '' : ' Name and username edits are admin-only.'}</p>
         </div>
-        <div class="info-grid">
-          <div class="info-field">
-            <label>User ID</label>
-            <div class="info-value">${escapeHtml(user.id)}</div>
+        ${state.isAdmin ? `
+        <form id="identity-form">
+          <div class="info-grid">
+            <div class="form-field">
+              <label for="user-given-name">Given Name</label>
+              <input id="user-given-name" name="given_name" type="text" value="${escapeHtml(toInputValue(user.given_name))}" autocomplete="given-name">
+            </div>
+            <div class="form-field">
+              <label for="user-family-name">Family Name</label>
+              <input id="user-family-name" name="family_name" type="text" value="${escapeHtml(toInputValue(user.family_name))}" autocomplete="family-name">
+            </div>
+            <div class="form-field">
+              <label for="user-username">Username</label>
+              <input id="user-username" name="username" type="text" value="${escapeHtml(toInputValue(user.username))}" autocomplete="username">
+            </div>
           </div>
+          <div class="form-actions">
+            <button type="submit" class="primary">Save Identity</button>
+          </div>
+        </form>
+        ` : `
+        <div class="info-grid">
           <div class="info-field">
             <label>Given Name</label>
             <div class="info-value">${escapeHtml(user.given_name || 'Not set')}</div>
@@ -125,26 +156,8 @@
             <label>Username</label>
             <div class="info-value">${escapeHtml(user.username || 'Not set')}</div>
           </div>
-          <div class="info-field">
-            <label>Created</label>
-            <div class="info-value">${formatDate(user.created_at)}</div>
-          </div>
-          <div class="info-field">
-            <label>Updated</label>
-            <div class="info-value">${formatDate(user.updated_at)}</div>
-          </div>
-          <div class="info-field full-width">
-            <label>Roles</label>
-            <div class="info-value">${userRolesHtml}</div>
-          </div>
         </div>
-      </section>
-
-      <section class="user-section">
-        <div>
-          <h2>Email Address</h2>
-          <p class="section-description">Update the user's email address.</p>
-        </div>
+        `}
         <form id="email-form">
           <div class="form-field">
             <label for="user-email">Email Address</label>
@@ -156,9 +169,33 @@
         </form>
       </section>
 
-      <section class="user-section">
+      <section class="user-section" aria-labelledby="section-roles">
         <div>
-          <h2>Profile</h2>
+          <h2 id="section-roles">Roles</h2>
+          <p class="section-description">System roles assigned to this user. Granting <code>_admin</code> requires admin privileges and is enforced server-side.</p>
+        </div>
+        <div class="info-field full-width">
+          <div class="info-value role-badges">${userRolesHtml}</div>
+        </div>
+        ${assignableRoles.length > 0 ? `
+        <form id="add-role-form" class="role-add-form">
+          <div class="form-field">
+            <label for="role-add-select">Add a role</label>
+            <select id="role-add-select" name="role_id" required>
+              <option value="" disabled selected>Choose a role…</option>
+              ${addRoleOptionsHtml}
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary">Assign Role</button>
+          </div>
+        </form>
+        ` : '<p class="field-hint">All available roles are already assigned.</p>'}
+      </section>
+
+      <section class="user-section" aria-labelledby="section-profile">
+        <div>
+          <h2 id="section-profile">Profile</h2>
           <p class="section-description">User profile information (read-only).</p>
         </div>
         <div class="info-grid">
@@ -183,26 +220,64 @@
             <div class="info-value">${escapeHtml(profile.bio || 'Not set')}</div>
           </div>
         </div>
+        ${studentProfiles.length > 0 ? `
+        <div>
+          <h3>Student Profiles</h3>
+          ${studentProfilesHtml}
+        </div>
+        ` : ''}
       </section>
 
-      <section class="user-section">
+      <section class="user-section" aria-labelledby="section-audit">
         <div>
-          <h2>Student Profiles</h2>
-          <p class="section-description">Student profiles associated with this user (read-only).</p>
+          <h2 id="section-audit">Audit</h2>
+          <p class="section-description">Identifiers and timestamps.</p>
         </div>
-        ${studentProfilesHtml}
+        <div class="info-grid">
+          <div class="info-field">
+            <label>User ID</label>
+            <div class="info-value">${escapeHtml(user.id)}</div>
+          </div>
+          <div class="info-field">
+            <label>Created</label>
+            <div class="info-value">${formatDate(user.created_at)}</div>
+          </div>
+          <div class="info-field">
+            <label>Updated</label>
+            <div class="info-value">${formatDate(user.updated_at)}</div>
+          </div>
+          ${user.archived_at ? `
+          <div class="info-field">
+            <label>Archived</label>
+            <div class="info-value">${formatDate(user.archived_at)}</div>
+          </div>
+          ` : ''}
+        </div>
       </section>
 
-      <section class="user-section danger-zone">
+      <section class="user-section danger-zone" aria-labelledby="section-danger">
         <div>
-          <h2>Password Reset</h2>
-          <p class="section-description">Reset this user's password. This will set their password to NULL and they will need to set a new password on their next login.</p>
+          <h2 id="section-danger">Danger Zone</h2>
+          <p class="section-description">Destructive actions on this account.</p>
         </div>
+
+        <div class="form-field">
+          <label>Archive Status</label>
+          <p class="field-hint">${user.archived_at
+            ? 'This user is archived. Unarchiving restores access.'
+            : 'Archiving hides the user from default lists and blocks authentication.'}</p>
+          <div class="form-actions">
+            <button type="button" id="archive-toggle-btn" class="${user.archived_at ? 'primary' : 'danger'}">
+              ${user.archived_at ? 'Unarchive User' : 'Archive User'}
+            </button>
+          </div>
+        </div>
+
         <form id="password-reset-form">
           <div class="form-field">
-            <label for="manager-password">Your Password (Required)</label>
+            <label for="manager-password">Reset Password — Your Password (Required)</label>
             <input id="manager-password" name="managerPassword" type="password" placeholder="Enter your password to confirm" autocomplete="current-password">
-            <p class="field-hint">Your password is required to perform this critical action.</p>
+            <p class="field-hint">Resets this user's password to NULL — they must set a new password on next login.</p>
           </div>
           <div class="form-actions">
             <button type="submit" class="danger">Reset User Password</button>
@@ -221,10 +296,65 @@
       emailForm.addEventListener('submit', handleEmailUpdate);
     }
 
+    const identityForm = document.getElementById('identity-form');
+    if (identityForm) {
+      identityForm.addEventListener('submit', handleIdentityUpdate);
+    }
+
     const passwordResetForm = document.getElementById('password-reset-form');
     if (passwordResetForm) {
       passwordResetForm.addEventListener('submit', handlePasswordReset);
     }
+
+    const archiveBtn = document.getElementById('archive-toggle-btn');
+    if (archiveBtn) {
+      archiveBtn.addEventListener('click', () => {
+        const isArchived = !!(state.user && state.user.archived_at);
+        post(isArchived ? 'unarchiveUser' : 'archiveUser');
+      });
+    }
+
+    document.querySelectorAll('[data-role-remove]').forEach((el) => {
+      el.addEventListener('click', (event) => {
+        event.preventDefault();
+        const target = event.currentTarget;
+        const roleId = target instanceof HTMLElement ? target.getAttribute('data-role-remove') : null;
+        if (roleId) {
+          post('revokeRole', { role_id: roleId });
+        }
+      });
+    });
+
+    const addRoleForm = document.getElementById('add-role-form');
+    if (addRoleForm) {
+      addRoleForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const select = document.getElementById('role-add-select');
+        const value = select && 'value' in select ? select.value : '';
+        if (value) {
+          post('assignRole', { role_id: value });
+        }
+      });
+    }
+  }
+
+  function handleIdentityUpdate(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const givenName = formData.get('given_name');
+    const familyName = formData.get('family_name');
+    const username = formData.get('username');
+
+    if (typeof username === 'string' && !username.trim()) {
+      showNotice('warning', 'Username cannot be empty.');
+      return;
+    }
+
+    post('updateIdentity', {
+      given_name: typeof givenName === 'string' ? givenName : undefined,
+      family_name: typeof familyName === 'string' ? familyName : undefined,
+      username: typeof username === 'string' ? username : undefined
+    });
   }
 
   function handleEmailUpdate(event) {

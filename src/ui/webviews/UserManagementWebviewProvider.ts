@@ -8,12 +8,15 @@ import {
   ProfileGet,
   StudentProfileGet
 } from '../../types/generated';
+import type { RoleList } from '../../types/generated/roles';
 
 interface UserManagementViewState {
   user?: UserGet;
   profile?: ProfileGet | null;
   studentProfiles: StudentProfileGet[];
   canResetPassword: boolean;
+  isAdmin: boolean;
+  availableRoles: RoleList[];
 }
 
 type NoticeType = 'info' | 'success' | 'warning' | 'error';
@@ -97,8 +100,23 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       case 'updateEmail':
         await this.handleUpdateEmail(message.data);
         break;
+      case 'updateIdentity':
+        await this.handleUpdateIdentity(message.data);
+        break;
       case 'resetPassword':
         await this.handleResetPassword(message.data);
+        break;
+      case 'archiveUser':
+        await this.handleArchiveToggle(true);
+        break;
+      case 'unarchiveUser':
+        await this.handleArchiveToggle(false);
+        break;
+      case 'assignRole':
+        await this.handleAssignRole(message.data);
+        break;
+      case 'revokeRole':
+        await this.handleRevokeRole(message.data);
         break;
       default:
         break;
@@ -106,7 +124,11 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
   }
 
   private async loadState(userId: string, options?: { force?: boolean }): Promise<UserManagementViewState> {
-    const user = await this.apiService.getUserById(userId, options);
+    const [user, scopes, roles] = await Promise.all([
+      this.apiService.getUserById(userId, options),
+      this.apiService.getUserScopes(options).catch(() => undefined),
+      this.apiService.listRoles().catch(() => [])
+    ]);
 
     if (!user) {
       throw new Error(`User not found: ${userId}`);
@@ -116,7 +138,9 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       user: user,
       profile: user.profile ?? null,
       studentProfiles: user.student_profiles ?? [],
-      canResetPassword: true
+      canResetPassword: true,
+      isAdmin: scopes?.is_admin === true,
+      availableRoles: roles ?? []
     };
   }
 
@@ -163,6 +187,126 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       await this.refreshState({ force: true, notice: { type: 'success', message: 'Email updated successfully.' } });
     } catch (error: any) {
       this.handleError('Failed to update email', error);
+    }
+  }
+
+  private async handleAssignRole(raw: any): Promise<void> {
+    if (!raw || typeof raw !== 'object' || !this.currentUserId) {
+      return;
+    }
+    const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
+    if (!roleId) {
+      return;
+    }
+    try {
+      await this.apiService.assignUserRole(this.currentUserId, roleId);
+      await this.refreshState({ force: true, notice: { type: 'success', message: `Role "${roleId}" assigned.` } });
+    } catch (error: any) {
+      this.handleError(`Failed to assign role "${roleId}"`, error);
+    }
+  }
+
+  private async handleRevokeRole(raw: any): Promise<void> {
+    if (!raw || typeof raw !== 'object' || !this.currentUserId) {
+      return;
+    }
+    const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
+    if (!roleId) {
+      return;
+    }
+    const confirmation = await vscode.window.showWarningMessage(
+      `Remove role "${roleId}" from this user?`,
+      { modal: true },
+      'Remove'
+    );
+    if (confirmation !== 'Remove') {
+      return;
+    }
+    try {
+      await this.apiService.revokeUserRole(this.currentUserId, roleId);
+      await this.refreshState({ force: true, notice: { type: 'success', message: `Role "${roleId}" removed.` } });
+    } catch (error: any) {
+      this.handleError(`Failed to remove role "${roleId}"`, error);
+    }
+  }
+
+  private async handleArchiveToggle(archive: boolean): Promise<void> {
+    if (!this.currentUserId) {
+      return;
+    }
+
+    const action = archive ? 'archive' : 'unarchive';
+    const confirmation = await vscode.window.showWarningMessage(
+      archive
+        ? 'Archive this user? They will be hidden from default lists and unable to authenticate.'
+        : 'Unarchive this user? They will reappear in lists and regain access.',
+      { modal: true },
+      archive ? 'Archive' : 'Unarchive'
+    );
+
+    if (!confirmation) {
+      return;
+    }
+
+    try {
+      if (archive) {
+        await this.apiService.archiveUser(this.currentUserId);
+      } else {
+        await this.apiService.unarchiveUser(this.currentUserId);
+      }
+      await this.refreshState({
+        force: true,
+        notice: { type: 'success', message: `User ${action}d.` }
+      });
+    } catch (error: any) {
+      this.handleError(`Failed to ${action} user`, error);
+    }
+  }
+
+  private async handleUpdateIdentity(raw: any): Promise<void> {
+    if (!raw || typeof raw !== 'object' || !this.currentUserId) {
+      return;
+    }
+
+    // Server enforces admin-only on these fields. We pre-gate the form so
+    // non-admins never see editable inputs, but defend here too.
+    const scopes = await this.apiService.getUserScopes().catch(() => undefined);
+    if (!scopes?.is_admin) {
+      this.postNotice({ type: 'error', message: 'Only administrators can edit name and username.' });
+      return;
+    }
+
+    const updates: UserUpdate = {};
+    let touched = false;
+    if (typeof raw.given_name === 'string') {
+      const value = raw.given_name.trim();
+      updates.given_name = value || null;
+      touched = true;
+    }
+    if (typeof raw.family_name === 'string') {
+      const value = raw.family_name.trim();
+      updates.family_name = value || null;
+      touched = true;
+    }
+    if (typeof raw.username === 'string') {
+      const value = raw.username.trim();
+      if (!value) {
+        this.postNotice({ type: 'warning', message: 'Username cannot be empty.' });
+        return;
+      }
+      updates.username = value;
+      touched = true;
+    }
+
+    if (!touched) {
+      return;
+    }
+
+    try {
+      await this.apiService.updateUser(this.currentUserId, updates);
+      await this.refreshState({ force: true, notice: { type: 'success', message: 'Identity updated.' } });
+    } catch (error: any) {
+      this.handleError('Failed to update identity', error);
     }
   }
 

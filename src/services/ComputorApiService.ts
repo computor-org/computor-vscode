@@ -2165,6 +2165,84 @@ export class ComputorApiService {
     }
   }
 
+  async listRoles(): Promise<import('../types/generated/roles').RoleList[]> {
+    try {
+      const result = await this.cachedRequest({
+        cacheKey: 'allRoles',
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<import('../types/generated/roles').RoleList[]>('/roles')).data;
+        },
+        retry: { maxRetries: 2 }
+      });
+      return result || [];
+    } catch (error) {
+      console.error('[listRoles] Failed to list roles:', error);
+      throw error;
+    }
+  }
+
+  async assignUserRole(userId: string, roleId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.post('/user-roles', { user_id: userId, role_id: roleId });
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[assignUserRole] Failed to assign role ${roleId} to user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async revokeUserRole(userId: string, roleId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.delete(`/user-roles/users/${userId}/roles/${roleId}`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[revokeUserRole] Failed to revoke role ${roleId} from user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async createUser(payload: import('../types/generated/users').UserCreate): Promise<UserGet> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<UserGet>('/users', payload);
+      multiTierCache.delete('allUsers');
+      return response.data;
+    } catch (error) {
+      console.error('[createUser] Failed to create user:', error);
+      throw error;
+    }
+  }
+
+  async archiveUser(userId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/archive`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[archiveUser] Failed to archive user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async unarchiveUser(userId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/unarchive`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[unarchiveUser] Failed to unarchive user ${userId}:`, error);
+      throw error;
+    }
+  }
+
   // User Management: Reset user password
   async resetUserPassword(userId: string, managerPassword: string): Promise<void> {
     try {

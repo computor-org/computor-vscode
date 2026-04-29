@@ -520,6 +520,12 @@
         "category": "Computor User Manager"
       },
       {
+        "command": "computor.userManager.createUser",
+        "title": "New User",
+        "icon": "$(add)",
+        "category": "Computor User Manager"
+      },
+      {
         "command": "computor.userManager.openUserDetails",
         "title": "Open User Details",
         "icon": "$(account)",
@@ -534,6 +540,18 @@
       {
         "command": "computor.userManager.clearSearch",
         "title": "Clear Search",
+        "category": "Computor User Manager"
+      },
+      {
+        "command": "computor.userManager.toggleArchived",
+        "title": "Toggle Archived Users",
+        "icon": "$(archive)",
+        "category": "Computor User Manager"
+      },
+      {
+        "command": "computor.userManager.toggleService",
+        "title": "Toggle Service Accounts",
+        "icon": "$(robot)",
         "category": "Computor User Manager"
       },
       {
@@ -890,7 +908,7 @@
         {
           "id": "computor-user-manager",
           "title": "Computor User Manager",
-          "icon": "$(organization)",
+          "icon": "$(account)",
           "when": "computor.user_manager.show"
         },
         {
@@ -1109,14 +1127,29 @@
           "group": "navigation@1"
         },
         {
+          "command": "computor.userManager.createUser",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.userManager.searchUsers",
           "when": "view == computor.usermanager.users",
           "group": "navigation@1"
         },
         {
-          "command": "computor.userManager.refresh",
+          "command": "computor.userManager.toggleArchived",
           "when": "view == computor.usermanager.users",
           "group": "navigation@2"
+        },
+        {
+          "command": "computor.userManager.toggleService",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.userManager.refresh",
+          "when": "view == computor.usermanager.users",
+          "group": "navigation@4"
         },
         {
           "command": "computor.manageGitLabTokens",
