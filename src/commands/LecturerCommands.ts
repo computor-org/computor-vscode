@@ -30,6 +30,7 @@ import type { GitLabCredentials } from '../types/generated/common';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
+import { runLockedWithProgress } from '../utils/progressLock';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -268,7 +269,7 @@ export class LecturerCommands {
     register('computor.lecturer.showCourseMemberProgress', async (itemOrId: CourseMemberTreeItem | string, memberName?: string) => {
       if (typeof itemOrId === 'string') {
         // Called with course member ID directly (from overview webview)
-        await this.courseMemberProgressWebviewProvider.showMemberProgress(itemOrId, memberName);
+        await this.showCourseMemberProgressById(itemOrId, memberName);
       } else {
         // Called with tree item
         await this.showCourseMemberProgress(itemOrId);
@@ -2411,39 +2412,71 @@ export class LecturerCommands {
   }
 
   private async showCourseProgressOverview(item: CourseTreeItem): Promise<void> {
-    try {
-      const course = await this.apiService.getCourse(item.course.id);
-      if (!course) {
-        vscode.window.showErrorMessage('Failed to load course details');
-        return;
+    const courseLabel = item.course.title || item.course.path;
+    await runLockedWithProgress(
+      {
+        key: `course-progress:${item.course.id}`,
+        title: `Loading course progress: ${courseLabel}`,
+        duplicateMessage: 'Course progress is already loading…'
+      },
+      async () => {
+        try {
+          const course = await this.apiService.getCourse(item.course.id);
+          if (!course) {
+            vscode.window.showErrorMessage('Failed to load course details');
+            return;
+          }
+          await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+        }
       }
-      await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
-    }
+    );
   }
 
   private async showCourseProgressOverviewById(courseId: string): Promise<void> {
-    try {
-      const course = await this.apiService.getCourse(courseId);
-      if (!course) {
-        vscode.window.showErrorMessage('Failed to load course details');
-        return;
+    await runLockedWithProgress(
+      {
+        key: `course-progress:${courseId}`,
+        title: 'Loading course progress…',
+        duplicateMessage: 'Course progress is already loading…'
+      },
+      async () => {
+        try {
+          const course = await this.apiService.getCourse(courseId);
+          if (!course) {
+            vscode.window.showErrorMessage('Failed to load course details');
+            return;
+          }
+          await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+        }
       }
-      await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
-    }
+    );
   }
 
   private async showCourseMemberProgress(item: CourseMemberTreeItem): Promise<void> {
-    try {
-      const memberName = item.member.user
-        ? [item.member.user.given_name, item.member.user.family_name].filter(Boolean).join(' ') || item.member.user.username || undefined
-        : undefined;
-      await this.courseMemberProgressWebviewProvider.showMemberProgress(item.member.id, memberName);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to show member progress: ${error}`);
-    }
+    const memberName = item.member.user
+      ? [item.member.user.given_name, item.member.user.family_name].filter(Boolean).join(' ') || item.member.user.username || undefined
+      : undefined;
+    await this.showCourseMemberProgressById(item.member.id, memberName);
+  }
+
+  private async showCourseMemberProgressById(memberId: string, memberName?: string): Promise<void> {
+    await runLockedWithProgress(
+      {
+        key: `member-progress:${memberId}`,
+        title: `Loading progress: ${memberName || 'student'}`,
+        duplicateMessage: 'Student progress is already loading…'
+      },
+      async () => {
+        try {
+          await this.courseMemberProgressWebviewProvider.showMemberProgress(memberId, memberName);
+        } catch (error) {
+          vscode.window.showErrorMessage(`Failed to show member progress: ${error}`);
+        }
+      }
+    );
   }
 }
