@@ -1,0 +1,206 @@
+.scope-membership-root {
+  padding: 16px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.scope-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scope-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.scope-subtitle {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.scope-notice {
+  padding: 10px 14px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+
+.scope-notice-info {
+  background: var(--vscode-infoMessageBackground, rgba(0, 122, 204, 0.15));
+  border-color: var(--vscode-inputValidation-infoBorder, rgba(0, 122, 204, 0.4));
+}
+
+.scope-notice-success {
+  background: rgba(56, 142, 60, 0.18);
+  border-color: rgba(56, 142, 60, 0.5);
+}
+
+.scope-notice-warning {
+  background: rgba(255, 193, 7, 0.18);
+  border-color: rgba(255, 193, 7, 0.5);
+}
+
+.scope-notice-error {
+  background: rgba(211, 47, 47, 0.18);
+  border-color: rgba(211, 47, 47, 0.5);
+}
+
+.scope-section {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 6px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scope-section-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.scope-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin: 0;
+}
+
+.scope-members {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.scope-members th,
+.scope-members td {
+  text-align: left;
+  padding: 8px 10px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--vscode-editorWidget-border);
+  font-size: 13px;
+}
+
+.scope-members th {
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scope-members tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.member-name {
+  font-weight: 500;
+}
+
+.member-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.member-actions {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.scope-members select {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.role-tag {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.scope-add-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 16px;
+  align-items: end;
+}
+
+.scope-add-form .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scope-add-form .form-field label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.scope-add-form .form-field select {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.scope-add-form .form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.scope-add-form .form-actions button {
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.scope-add-form .form-actions button.primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.scope-add-form .form-actions button:hover {
+  filter: brightness(1.1);
+}
+
+.member-actions button {
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.member-actions button.danger {
+  background: rgba(211, 47, 47, 0.8);
+  color: #ffffff;
+}
+
+.member-actions button:hover {
+  filter: brightness(1.1);
+}
