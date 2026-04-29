@@ -266,33 +266,45 @@ async function runCredentialLoginLoop(
     currentAutoLogin
   );
 
-  while (creds) {
-    // The user can switch backend URLs from the login form (e.g. dev → prod).
-    // Persist the choice and rebuild the active connection against the new URL.
-    if (creds.backendUrl && creds.backendUrl !== baseUrl) {
-      baseUrl = creds.backendUrl;
-      await settings.setBaseUrl(baseUrl);
-    }
+  // Track the active URL kept in settings — only flipped on successful auth.
+  const persistedBaseUrl = baseUrl;
 
-    backendConnectionService.setBaseUrl(baseUrl);
-    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
+  while (creds) {
+    // Switch the URL only locally for this attempt. We don't touch settings
+    // until auth actually succeeds — otherwise a failed login to a wrong URL
+    // would clobber the previously-working URL the user might want back.
+    const attemptUrl = (creds.backendUrl && creds.backendUrl.trim()) || baseUrl;
+
+    backendConnectionService.setBaseUrl(attemptUrl);
+    const connectionStatus = await backendConnectionService.checkBackendConnection(attemptUrl);
     if (!connectionStatus.isReachable) {
       await backendConnectionService.showConnectionError(connectionStatus);
       loginWebviewProvider.close();
       return;
     }
 
-    const client = new BearerTokenHttpClient(baseUrl, 5000);
+    const client = new BearerTokenHttpClient(attemptUrl, 5000);
     try {
       await client.authenticateWithCredentials(creds.username, creds.password);
     } catch (error: any) {
+      // Restore the active URL on the connection service so subsequent
+      // background calls don't keep hitting the failing endpoint.
+      backendConnectionService.setBaseUrl(persistedBaseUrl);
       creds = await loginWebviewProvider.notifyLoginFailed(error.message);
       continue;
     }
 
-    // The URL just produced a successful auth — remember it so the next
-    // login prompt can offer it as a quick-pick option.
-    void settings.recordUsedBackendUrl(baseUrl);
+    // Auth succeeded — commit the URL change and record it in history. If
+    // the URL switched, also preserve the previous one so the user can
+    // jump back without re-typing.
+    if (attemptUrl !== persistedBaseUrl) {
+      await settings.setBaseUrl(attemptUrl);
+      if (persistedBaseUrl) {
+        void settings.recordUsedBackendUrl(persistedBaseUrl);
+      }
+    }
+    void settings.recordUsedBackendUrl(attemptUrl);
+    baseUrl = attemptUrl;
 
     const result = await onAuthenticated(client, creds);
     if (result.done) return;
