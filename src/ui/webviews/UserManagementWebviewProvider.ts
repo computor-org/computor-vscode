@@ -104,6 +104,12 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       case 'resetPassword':
         await this.handleResetPassword(message.data);
         break;
+      case 'archiveUser':
+        await this.handleArchiveToggle(true);
+        break;
+      case 'unarchiveUser':
+        await this.handleArchiveToggle(false);
+        break;
       default:
         break;
     }
@@ -171,6 +177,39 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       await this.refreshState({ force: true, notice: { type: 'success', message: 'Email updated successfully.' } });
     } catch (error: any) {
       this.handleError('Failed to update email', error);
+    }
+  }
+
+  private async handleArchiveToggle(archive: boolean): Promise<void> {
+    if (!this.currentUserId) {
+      return;
+    }
+
+    const action = archive ? 'archive' : 'unarchive';
+    const confirmation = await vscode.window.showWarningMessage(
+      archive
+        ? 'Archive this user? They will be hidden from default lists and unable to authenticate.'
+        : 'Unarchive this user? They will reappear in lists and regain access.',
+      { modal: true },
+      archive ? 'Archive' : 'Unarchive'
+    );
+
+    if (!confirmation) {
+      return;
+    }
+
+    try {
+      if (archive) {
+        await this.apiService.archiveUser(this.currentUserId);
+      } else {
+        await this.apiService.unarchiveUser(this.currentUserId);
+      }
+      await this.refreshState({
+        force: true,
+        notice: { type: 'success', message: `User ${action}d.` }
+      });
+    } catch (error: any) {
+      this.handleError(`Failed to ${action} user`, error);
     }
   }
 

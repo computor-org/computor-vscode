@@ -2165,6 +2165,30 @@ export class ComputorApiService {
     }
   }
 
+  async archiveUser(userId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/archive`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[archiveUser] Failed to archive user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async unarchiveUser(userId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/unarchive`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[unarchiveUser] Failed to unarchive user ${userId}:`, error);
+      throw error;
+    }
+  }
+
   // User Management: Reset user password
   async resetUserPassword(userId: string, managerPassword: string): Promise<void> {
     try {

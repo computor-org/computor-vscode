@@ -231,13 +231,26 @@
       <section class="user-section danger-zone" aria-labelledby="section-danger">
         <div>
           <h2 id="section-danger">Danger Zone</h2>
-          <p class="section-description">Reset this user's password. This will set their password to NULL and they will need to set a new password on their next login.</p>
+          <p class="section-description">Destructive actions on this account.</p>
         </div>
+
+        <div class="form-field">
+          <label>Archive Status</label>
+          <p class="field-hint">${user.archived_at
+            ? 'This user is archived. Unarchiving restores access.'
+            : 'Archiving hides the user from default lists and blocks authentication.'}</p>
+          <div class="form-actions">
+            <button type="button" id="archive-toggle-btn" class="${user.archived_at ? 'primary' : 'danger'}">
+              ${user.archived_at ? 'Unarchive User' : 'Archive User'}
+            </button>
+          </div>
+        </div>
+
         <form id="password-reset-form">
           <div class="form-field">
-            <label for="manager-password">Your Password (Required)</label>
+            <label for="manager-password">Reset Password — Your Password (Required)</label>
             <input id="manager-password" name="managerPassword" type="password" placeholder="Enter your password to confirm" autocomplete="current-password">
-            <p class="field-hint">Your password is required to perform this critical action.</p>
+            <p class="field-hint">Resets this user's password to NULL — they must set a new password on next login.</p>
           </div>
           <div class="form-actions">
             <button type="submit" class="danger">Reset User Password</button>
@@ -264,6 +277,14 @@
     const passwordResetForm = document.getElementById('password-reset-form');
     if (passwordResetForm) {
       passwordResetForm.addEventListener('submit', handlePasswordReset);
+    }
+
+    const archiveBtn = document.getElementById('archive-toggle-btn');
+    if (archiveBtn) {
+      archiveBtn.addEventListener('click', () => {
+        const isArchived = !!(state.user && state.user.archived_at);
+        post(isArchived ? 'unarchiveUser' : 'archiveUser');
+      });
     }
   }
 
