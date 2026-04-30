@@ -15,6 +15,7 @@ import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersion
 import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
 import { ComputorTestingInstaller } from '../services/ComputorTestingInstaller';
 import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
+import { computeExampleDiff } from '../utils/exampleDiffHelper';
 import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
 
@@ -210,6 +211,12 @@ export class LecturerExampleCommands {
     // Compare version with working copy
     register('computor.lecturer.compareWithWorking', async (item: CheckedOutVersionTreeItem) => {
       await this.compareWithWorking(item);
+    });
+
+    // Open the multi-file diff editor for changes between a version snapshot
+    // and the working copy.
+    register('computor.lecturer.openDiffWithWorking', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem) => {
+      await this.openDiffWithWorking(item);
     });
 
     // Compare a single version file with its working counterpart
@@ -1748,42 +1755,140 @@ export class LecturerExampleCommands {
     }
 
     const versionDir = item.version.fullPath;
-    const files = this.collectFiles(versionDir, versionDir);
+    const versionFiles = this.collectFiles(versionDir, versionDir);
 
-    if (files.length === 0) {
+    if (versionFiles.length === 0 && !fs.existsSync(workingDir)) {
       vscode.window.showInformationMessage('No files found in version snapshot.');
       return;
     }
 
-    const picks = files.map(relativePath => {
-      const workingFile = path.join(workingDir, relativePath);
-      const exists = fs.existsSync(workingFile);
-      return {
-        label: relativePath,
-        description: exists ? '' : '(not in working copy)',
-        relativePath
-      };
-    });
+    const diff = computeExampleDiff(versionDir, workingDir);
+    const modifiedSet = new Set(diff.modified);
+    const addedSet = new Set(diff.added);
+    const removedSet = new Set(diff.removed);
+
+    interface Pick extends vscode.QuickPickItem { relativePath: string; existsInWorking: boolean; existsInVersion: boolean; }
+
+    const picks: Pick[] = [];
+    for (const rel of diff.modified) {
+      picks.push({ label: `$(diff-modified) ${rel}`, description: 'modified', relativePath: rel, existsInVersion: true, existsInWorking: true });
+    }
+    for (const rel of diff.added) {
+      picks.push({ label: `$(diff-added) ${rel}`, description: 'added in working', relativePath: rel, existsInVersion: false, existsInWorking: true });
+    }
+    for (const rel of diff.removed) {
+      picks.push({ label: `$(diff-removed) ${rel}`, description: 'removed from working', relativePath: rel, existsInVersion: true, existsInWorking: false });
+    }
+
+    const unchanged = versionFiles.filter(rel =>
+      !modifiedSet.has(rel) && !addedSet.has(rel) && !removedSet.has(rel)
+    );
+    if (unchanged.length > 0) {
+      if (picks.length > 0) {
+        picks.push({ label: '', kind: vscode.QuickPickItemKind.Separator, relativePath: '', existsInVersion: false, existsInWorking: false });
+      }
+      for (const rel of unchanged) {
+        picks.push({ label: rel, description: 'unchanged', relativePath: rel, existsInVersion: true, existsInWorking: true });
+      }
+    }
+
+    const changedCount = diff.modified.length + diff.added.length + diff.removed.length;
+    const placeHolder = changedCount === 0
+      ? 'No differences with working copy. Pick a file to inspect anyway.'
+      : `${changedCount} change(s) — pick a file to open the diff`;
 
     const selected = await vscode.window.showQuickPick(picks, {
-      placeHolder: 'Select a file to compare with working copy',
-      title: `Compare ${item.version.versionTag} with working`
+      placeHolder,
+      title: `Compare ${item.version.versionTag} with working`,
+      matchOnDescription: true
     });
 
-    if (!selected) { return; }
+    if (!selected || !selected.relativePath) { return; }
 
     const versionFile = vscode.Uri.file(path.join(versionDir, selected.relativePath));
     const workingFile = vscode.Uri.file(path.join(workingDir, selected.relativePath));
-
-    if (!fs.existsSync(workingFile.fsPath)) {
-      vscode.window.showWarningMessage(`File "${selected.relativePath}" does not exist in working copy.`);
-      return;
-    }
 
     await vscode.commands.executeCommand('vscode.diff',
       versionFile, workingFile,
       `${selected.relativePath} (${item.version.versionTag} ↔ working)`
     );
+  }
+
+  private async openDiffWithWorking(item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem): Promise<void> {
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+
+    let versionDir: string | undefined;
+    let groupDirectory: string | undefined;
+    let versionTag: string | undefined;
+
+    if (item instanceof CheckedOutVersionTreeItem) {
+      if (item.version.isWorking) {
+        vscode.window.showInformationMessage('Pick a non-working version snapshot to diff against the working copy.');
+        return;
+      }
+      versionDir = item.version.fullPath;
+      groupDirectory = item.groupDirectory;
+      versionTag = item.version.versionTag;
+    } else if (item instanceof CheckedOutGroupTreeItem) {
+      groupDirectory = item.group.directory;
+      // Pick the most recent non-working snapshot in the group.
+      const snapshots = item.group.versions.filter(v => !v.isWorking);
+      if (snapshots.length === 0) {
+        vscode.window.showWarningMessage('No version snapshots available to diff against.');
+        return;
+      }
+      // Versions are usually sorted newest-first; use that order.
+      const latest = snapshots[0]!;
+      versionDir = latest.fullPath;
+      versionTag = latest.versionTag;
+    }
+
+    if (!versionDir || !groupDirectory || !versionTag) {
+      return;
+    }
+
+    const workingDir = getWorkingPath(examplesPath, groupDirectory);
+    if (!fs.existsSync(workingDir)) {
+      vscode.window.showWarningMessage('No working copy found to compare against.');
+      return;
+    }
+
+    const diff = computeExampleDiff(versionDir, workingDir);
+    const total = diff.modified.length + diff.added.length + diff.removed.length;
+    if (total === 0) {
+      vscode.window.showInformationMessage(`No differences between ${versionTag} and the working copy.`);
+      return;
+    }
+
+    // Build resource triples for the multi-file diff editor:
+    //   [labelUri, leftUri, rightUri]
+    // where labelUri is purely for grouping/sorting in the editor list.
+    const emptyUri = vscode.Uri.file(path.join(versionDir, '__non_existent__'));
+    const resources: Array<[vscode.Uri, vscode.Uri, vscode.Uri]> = [];
+
+    for (const rel of diff.modified) {
+      const left = vscode.Uri.file(path.join(versionDir, rel));
+      const right = vscode.Uri.file(path.join(workingDir, rel));
+      resources.push([right, left, right]);
+    }
+    for (const rel of diff.added) {
+      const right = vscode.Uri.file(path.join(workingDir, rel));
+      resources.push([right, emptyUri, right]);
+    }
+    for (const rel of diff.removed) {
+      const left = vscode.Uri.file(path.join(versionDir, rel));
+      // Use the version path as the label so it shows up in the file list.
+      resources.push([left, left, emptyUri]);
+    }
+
+    const title = `${groupDirectory}: ${versionTag} ↔ working (${total} change${total === 1 ? '' : 's'})`;
+    try {
+      await vscode.commands.executeCommand('vscode.changes', title, resources);
+    } catch (err) {
+      console.error('Failed to open multi-file diff editor:', err);
+      vscode.window.showErrorMessage(`Failed to open diff: ${err}`);
+    }
   }
 
   private async compareFileWithWorking(item: FileSystemTreeItem): Promise<void> {
