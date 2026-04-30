@@ -64,6 +64,12 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private readonly wsHandlerId = `chat-inbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   private wsReloadTimer?: ReturnType<typeof setTimeout>;
   private static readonly WS_RELOAD_DEBOUNCE_MS = 250;
+  /** Cap on concurrent mark-read API calls to avoid flooding the backend. */
+  private static readonly MARK_READ_CONCURRENCY = 4;
+  /** When we mark messages read locally, suppress WS-driven reloads for this
+   *  window — every server-side broadcast otherwise re-paginates the inbox. */
+  private static readonly MARK_READ_WS_SUPPRESS_MS = 4000;
+  private suppressWsReloadUntil = 0;
 
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
@@ -168,7 +174,8 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         m.is_read = true;
       }
       this.rebuildScopeItemsFromCache();
-      void Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
+      // Fire-and-forget but throttled — see markMessagesReadOnBackend.
+      void this.markMessagesReadOnBackend(unread.map(m => m.id));
     }
 
     await this.messagesProvider.showMessages(ctx);
@@ -217,7 +224,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       m.is_read = true;
     }
     this.rebuildScopeItemsFromCache();
-    await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
+    await this.markMessagesReadOnBackend(unread.map(m => m.id));
   }
 
   async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
@@ -229,7 +236,49 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       m.is_read = true;
     }
     this.rebuildScopeItemsFromCache();
-    await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
+    await this.markMessagesReadOnBackend(unread.map(m => m.id));
+  }
+
+  /**
+   * Posts mark-read for many message ids without flooding the backend.
+   * - Caps in-flight requests at MARK_READ_CONCURRENCY (workers).
+   * - Suppresses WS-driven reloads while it runs, so each backend
+   *   read:update broadcast we triggered ourselves doesn't kick off a fresh
+   *   re-paginated GET /messages of the entire inbox.
+   * - Errors per-id are swallowed (best-effort; the optimistic local state
+   *   is already applied, and the next manual refresh will re-confirm).
+   */
+  private async markMessagesReadOnBackend(ids: string[]): Promise<void> {
+    if (ids.length === 0) { return; }
+    this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    if (this.wsReloadTimer) {
+      clearTimeout(this.wsReloadTimer);
+      this.wsReloadTimer = undefined;
+    }
+    try {
+      let cursor = 0;
+      const workers: Promise<void>[] = [];
+      for (let w = 0; w < ChatInboxTreeProvider.MARK_READ_CONCURRENCY; w += 1) {
+        workers.push((async () => {
+          while (true) {
+            const i = cursor;
+            cursor += 1;
+            if (i >= ids.length) { return; }
+            try {
+              await this.api.markMessageRead(ids[i]!);
+            } catch {
+              // best-effort
+            }
+          }
+        })());
+      }
+      await Promise.all(workers);
+    } finally {
+      // Extend the WS suppression window slightly past now so the burst of
+      // server-side read:update broadcasts that lag behind our last request
+      // doesn't immediately trigger a re-pagination.
+      this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    }
   }
 
   // ----- TreeDataProvider -----
@@ -669,12 +718,19 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     // Bursts of WS events (e.g., N read:update events when opening a thread
     // with N unread messages) would otherwise produce N back-to-back reloads
     // and visible flicker as state converges. Debounce so the burst becomes
-    // a single reload once events stop arriving.
+    // a single reload once events stop arriving. Additionally, drop reloads
+    // entirely while we're applying our own mark-read mutations: every read
+    // we post triggers a server-side broadcast that would loop us back into
+    // re-paginating the whole inbox.
+    if (Date.now() < this.suppressWsReloadUntil) {
+      return;
+    }
     if (this.wsReloadTimer) {
       clearTimeout(this.wsReloadTimer);
     }
     this.wsReloadTimer = setTimeout(() => {
       this.wsReloadTimer = undefined;
+      if (Date.now() < this.suppressWsReloadUntil) { return; }
       void this.requestReload();
     }, ChatInboxTreeProvider.WS_RELOAD_DEBOUNCE_MS);
   }
