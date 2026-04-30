@@ -8,8 +8,9 @@ import {
   ExampleList
 } from '../../../types/generated';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
-import { scanCheckedOutExamples } from '../../../utils/checkedOutExampleManager';
+import { scanCheckedOutExamples, getVersionPath } from '../../../utils/checkedOutExampleManager';
 import type { CheckedOutExampleGroup, CheckedOutVersion } from '../../../utils/checkedOutExampleManager';
+import { computeExampleDiff } from '../../../utils/exampleDiffHelper';
 
 export {
   ExampleRepositoryTreeItem,
@@ -21,6 +22,13 @@ export {
   RootSectionTreeItem
 };
 
+interface WorkingDiffStatus {
+  modified: number;
+  added: number;
+  removed: number;
+  total: number;
+}
+
 interface MergedExample {
   identifier: string;
   title: string;
@@ -30,6 +38,8 @@ interface MergedExample {
   local?: CheckedOutExampleGroup;
   category?: string | null;
   tags?: string[];
+  /** Diff between the working copy and the snapshot it was checked out from. */
+  workingDiff?: WorkingDiffStatus;
 }
 
 class RootSectionTreeItem extends vscode.TreeItem {
@@ -96,7 +106,11 @@ class ExampleTreeItem extends vscode.TreeItem {
     } else {
       this.contextValue = 'example';
     }
-    this.iconPath = new vscode.ThemeIcon(isLocal ? 'check' : 'file-code');
+    if (isLocal && merged.workingDiff) {
+      this.iconPath = new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'));
+    } else {
+      this.iconPath = new vscode.ThemeIcon(isLocal ? 'check' : 'file-code');
+    }
     this.tooltip = this.buildTooltip();
     this.description = this.buildDescription();
   }
@@ -140,6 +154,14 @@ class ExampleTreeItem extends vscode.TreeItem {
       if (this.merged.local.workingVersion) {
         parts.push('Working copy: editable');
       }
+      if (this.merged.workingDiff) {
+        const d = this.merged.workingDiff;
+        const segments: string[] = [];
+        if (d.modified) { segments.push(`${d.modified} modified`); }
+        if (d.added) { segments.push(`${d.added} added`); }
+        if (d.removed) { segments.push(`${d.removed} removed`); }
+        parts.push(`Working changes: ${segments.join(', ')}`);
+      }
     } else {
       parts.push('Status: remote only');
     }
@@ -158,6 +180,9 @@ class ExampleTreeItem extends vscode.TreeItem {
     }
     if (this.merged.local) {
       parts.push('[local]');
+    }
+    if (this.merged.workingDiff) {
+      parts.push(`● ${this.merged.workingDiff.total} changed`);
     }
     return parts.join(' ');
   }
@@ -185,7 +210,8 @@ class CheckedOutGroupTreeItem extends vscode.TreeItem {
 class CheckedOutVersionTreeItem extends vscode.TreeItem {
   constructor(
     public readonly version: CheckedOutVersion,
-    public readonly groupDirectory: string
+    public readonly groupDirectory: string,
+    public readonly workingDiff?: WorkingDiffStatus
   ) {
     super(
       version.isWorking ? 'working' : version.versionTag,
@@ -193,7 +219,11 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
     );
     this.id = `checked-out-version-${groupDirectory}-${version.isWorking ? 'working' : version.versionTag}`;
     this.contextValue = version.isWorking ? 'checkedOutWorking' : 'checkedOutVersion';
-    this.iconPath = new vscode.ThemeIcon(version.isWorking ? 'edit' : 'tag');
+    if (version.isWorking && workingDiff) {
+      this.iconPath = new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'));
+    } else {
+      this.iconPath = new vscode.ThemeIcon(version.isWorking ? 'edit' : 'tag');
+    }
     this.tooltip = this.buildTooltip();
     this.description = this.buildDescription();
   }
@@ -211,10 +241,22 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
       parts.push(`Local meta.yaml version: ${this.version.localVersion}`);
     }
     parts.push(`Checked out: ${new Date(m.checkedOutAt).toLocaleString()}`);
+    if (this.version.isWorking && this.workingDiff) {
+      const d = this.workingDiff;
+      const segments: string[] = [];
+      if (d.modified) { segments.push(`${d.modified} modified`); }
+      if (d.added) { segments.push(`${d.added} added`); }
+      if (d.removed) { segments.push(`${d.removed} removed`); }
+      parts.push(`Working changes vs ${m.versionTag}: ${segments.join(', ')}`);
+    }
     return parts.join('\n');
   }
 
   private buildDescription(): string {
+    if (this.version.isWorking && this.workingDiff) {
+      const v = this.version.localVersion ? `${this.version.localVersion} ` : '';
+      return `${v}● ${this.workingDiff.total} changed`;
+    }
     if (this.version.isWorking && this.version.localVersion) {
       return this.version.localVersion;
     }
@@ -395,7 +437,11 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
         if (!element.merged.local) { return []; }
         const shouldExpand = element.collapsibleState === vscode.TreeItemCollapsibleState.Expanded;
         return element.merged.local.versions.map(v => {
-          const item = new CheckedOutVersionTreeItem(v, element.merged.local!.directory);
+          const item = new CheckedOutVersionTreeItem(
+            v,
+            element.merged.local!.directory,
+            v.isWorking ? element.merged.workingDiff : undefined
+          );
           if (shouldExpand && v.isWorking) {
             item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
           }
@@ -603,7 +649,8 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
           remote: ex,
           local,
           category: ex.category,
-          tags: ex.tags
+          tags: ex.tags,
+          workingDiff: this.computeWorkingDiff(local)
         });
       }
     }
@@ -619,12 +666,49 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
         title: group.workingVersion?.localVersion || group.directory,
         repositoryId: repoId,
         repositoryName: repoName,
-        local: group
+        local: group,
+        workingDiff: this.computeWorkingDiff(group)
       });
     }
 
     this.mergedCache = merged;
     return merged;
+  }
+
+  /**
+   * For a checked-out group with a working version, compares the working
+   * directory against the snapshot it was checked out from (recorded in
+   * `.computor-example.json` → versionTag). Returns undefined if there is
+   * no working version, or if the source snapshot is missing on disk.
+   */
+  private computeWorkingDiff(group: CheckedOutExampleGroup | undefined): WorkingDiffStatus | undefined {
+    if (!group?.workingVersion) { return undefined; }
+
+    let versionsRoot: string;
+    try {
+      versionsRoot = WorkspaceStructureManager.getInstance().getExampleVersionsPath();
+    } catch {
+      return undefined;
+    }
+
+    const meta = group.workingVersion.metadata;
+    const snapshotDir = getVersionPath(versionsRoot, group.directory, meta.versionTag);
+    if (!fs.existsSync(snapshotDir)) { return undefined; }
+
+    try {
+      const diff = computeExampleDiff(snapshotDir, group.workingVersion.fullPath);
+      const total = diff.modified.length + diff.added.length + diff.removed.length;
+      if (total === 0) { return undefined; }
+      return {
+        modified: diff.modified.length,
+        added: diff.added.length,
+        removed: diff.removed.length,
+        total
+      };
+    } catch (err) {
+      console.warn('[LecturerExampleTree] Failed to compute working diff:', err);
+      return undefined;
+    }
   }
 
   private getFileSystemItems(dirPath: string, isWorking: boolean = false): vscode.TreeItem[] {
