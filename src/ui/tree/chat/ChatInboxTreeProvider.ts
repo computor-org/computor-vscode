@@ -271,7 +271,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.submissionCourseFilter = new Set(ids);
     void this.persistState();
     this.applySubmissionFiltersContextKey();
-    this.rebuildScopeItemsFromCache();
+    // Filter is enforced server-side, so re-fetch the submission-group slice
+    // with the new params; non-sub scopes don't change.
+    this.refresh();
   }
 
   getSubmissionTitleFilter(): string {
@@ -284,7 +286,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.submissionTitleFilter = trimmed;
     void this.persistState();
     this.applySubmissionFiltersContextKey();
-    this.rebuildScopeItemsFromCache();
+    this.refresh();
   }
 
   clearSubmissionFilters(): void {
@@ -293,22 +295,50 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.submissionTitleFilter = '';
     void this.persistState();
     this.applySubmissionFiltersContextKey();
-    this.rebuildScopeItemsFromCache();
+    this.refresh();
   }
 
-  private threadMatchesSubmissionFilters(msgs: MessageList[]): boolean {
-    if (this.submissionCourseFilter.size > 0) {
-      const ok = msgs.some(m =>
-        typeof m.course_id === 'string' && this.submissionCourseFilter.has(m.course_id)
-      );
-      if (!ok) { return false; }
+  private hasSubmissionFilter(): boolean {
+    return this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0;
+  }
+
+  /**
+   * When submission-group filters are active, fetches the matching messages
+   * via the backend (scope=submission_group + course_id_all_messages=true +
+   * tag_scope=...). Multi-course is fanned out per course because the backend
+   * takes one course_id at a time. Returns deduped results.
+   */
+  private async fetchFilteredSubmissionMessages(): Promise<MessageList[]> {
+    const tagScope = this.submissionTitleFilter || undefined;
+    const courseIds = Array.from(this.submissionCourseFilter);
+
+    if (courseIds.length === 0) {
+      // Title-only filter
+      return await this.api.listMessages({
+        scope: 'submission_group',
+        ...(tagScope ? { tag_scope: tagScope } : {})
+      });
     }
-    if (this.submissionTitleFilter) {
-      const needle = this.submissionTitleFilter.toLowerCase();
-      const ok = msgs.some(m => typeof m.title === 'string' && m.title.toLowerCase().includes(needle));
-      if (!ok) { return false; }
+
+    const fetches = courseIds.map(courseId =>
+      this.api.listMessages({
+        scope: 'submission_group',
+        course_id: courseId,
+        course_id_all_messages: true,
+        ...(tagScope ? { tag_scope: tagScope } : {})
+      })
+    );
+    const results = await Promise.all(fetches);
+    const seen = new Set<string>();
+    const merged: MessageList[] = [];
+    for (const list of results) {
+      for (const m of list) {
+        if (seen.has(m.id)) { continue; }
+        seen.add(m.id);
+        merged.push(m);
+      }
     }
-    return true;
+    return merged;
   }
 
   private applySubmissionFiltersContextKey(): void {
@@ -405,7 +435,24 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       this.userScopes = scopes;
       this.maybeSubscribeUserChannels();
 
-      this.cachedMessages = messages || [];
+      let assembled = messages || [];
+
+      // When submission-group filters are active, swap the unfiltered
+      // submission_group slice for the backend-filtered version. course_id is
+      // not always populated on submission_group messages, so client-side
+      // filtering by course_id is unreliable — we rely on the backend's
+      // course_id_all_messages + tag_scope filters instead.
+      if (this.hasSubmissionFilter()) {
+        try {
+          const filteredSub = await this.fetchFilteredSubmissionMessages();
+          const nonSub = assembled.filter(m => m.scope !== 'submission_group');
+          assembled = [...nonSub, ...filteredSub];
+        } catch (err) {
+          console.warn('[ChatInbox] Failed to fetch filtered submission messages, falling back to unfiltered:', err);
+        }
+      }
+
+      this.cachedMessages = assembled;
       const grouped = this.groupMessages(this.cachedMessages);
       await this.resolveLabels(grouped);
       this.scopeItems = this.buildScopeItems(grouped);
@@ -556,12 +603,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       const threads: ChatThread[] = [];
       for (const [targetId, msgs] of byTarget) {
-        // Submission-group-only filters: by parent course id, and by message
-        // title substring. Both are AND-combined; thread is kept only if at
-        // least one of its messages matches each active filter.
-        if (scope === 'submission_group' && !this.threadMatchesSubmissionFilters(msgs)) {
-          continue;
-        }
+        // Submission-group filters are now enforced server-side: when the
+        // filter is active, the cached payload's submission_group slice is
+        // already the result of a filtered fetch, so nothing else to do here.
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
         // Exclude the user's own messages — backend doesn't auto-stamp authors
