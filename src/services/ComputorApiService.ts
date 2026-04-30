@@ -2681,13 +2681,54 @@ export class ComputorApiService {
       const client = await this.getHttpClient();
       // course_member_id is carried in the params for cache invalidation hooks
       // upstream but isn't a backend query parameter — strip it before sending.
-      const query = Object.fromEntries(
+      const baseQuery = Object.fromEntries(
         Object.entries(params).filter(([key, value]) =>
           value !== undefined && value !== null && key !== 'course_member_id'
         )
       );
-      const response = await client.get<MessageList[]>('/messages', query);
-      return response.data;
+
+      // Caller-controlled pagination: if either skip or limit is set, do a
+      // single bounded request and respect the caller's window verbatim.
+      if (typeof baseQuery.skip === 'number' || typeof baseQuery.limit === 'number') {
+        const response = await client.get<MessageList[]>('/messages', baseQuery);
+        return response.data;
+      }
+
+      // Otherwise auto-page through every result (backend default page is
+      // small — 100 items; on busy accounts the inbox needs the full list to
+      // group/unread-count correctly). Capped at MAX_PAGES * PAGE_SIZE to
+      // avoid runaway loops if X-Total-Count is missing or wrong.
+      const PAGE_SIZE = 500;
+      const MAX_PAGES = 20; // 10k items hard cap
+      const collected: MessageList[] = [];
+      let skip = 0;
+      let expectedTotal: number | undefined;
+
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const response = await client.get<MessageList[]>('/messages', {
+          ...baseQuery,
+          skip,
+          limit: PAGE_SIZE
+        });
+        const batch = response.data || [];
+        collected.push(...batch);
+
+        if (expectedTotal === undefined) {
+          const totalHeader = response.headers?.['x-total-count'];
+          if (typeof totalHeader === 'string') {
+            const parsed = Number.parseInt(totalHeader, 10);
+            if (Number.isFinite(parsed) && parsed >= 0) { expectedTotal = parsed; }
+          }
+        }
+
+        // Stop early when the server returned a short page (no more rows) or
+        // when we've reached the announced total.
+        if (batch.length < PAGE_SIZE) { break; }
+        if (expectedTotal !== undefined && collected.length >= expectedTotal) { break; }
+        skip += PAGE_SIZE;
+      }
+
+      return collected;
     }, {
       maxRetries: 2,
       exponentialBackoff: true
