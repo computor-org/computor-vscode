@@ -13,6 +13,7 @@ import {
   ChatEmptyItem,
   ChatLoadingItem,
   ChatErrorItem,
+  ChatLoadMoreItem,
   MessageScope,
   scopeLabel
 } from './ChatInboxTreeItems';
@@ -38,7 +39,7 @@ interface PersistedState {
   submissionTitleFilter?: string;
 }
 
-type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem;
+type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem;
 
 export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
@@ -53,9 +54,22 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private loading = false;
   private loadError: string | undefined;
   private scopeItems: ChatScopeItem[] = [];
-  /** Last raw inbox payload, kept so we can rebuild scope items without
-   *  re-fetching when local read-state changes optimistically. */
+  /** Last assembled inbox payload (= unfilteredBase ± submission filter
+   *  results) used by groupMessages + buildScopeItems. */
   private cachedMessages: MessageList[] = [];
+  /** Pristine accumulating page-1+ result of the unfiltered /messages query.
+   *  Grows as the user clicks "Load more". Used as the source for assembled. */
+  private unfilteredBase: MessageList[] = [];
+  /** X-Total-Count from the unfiltered /messages query — drives Load more
+   *  visibility. */
+  private unfilteredTotal: number | undefined;
+  /** How many unfiltered messages we've fetched (effectively the next skip). */
+  private unfilteredFetched = 0;
+  /** Page size for the unfiltered inbox fetch + each Load more click. */
+  private static readonly INBOX_PAGE_SIZE = 200;
+  /** Set during loadMoreInboxMessages so the user can't double-click and fan
+   *  out duplicate skip values. */
+  private loadingMore = false;
   private currentUserId?: string;
   private userScopes?: import('../../../types/generated').UserScopes;
   private userScopesPromise?: Promise<void>;
@@ -177,12 +191,11 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       m => !m.is_read && m.author_id !== this.currentUserId
     );
     if (unread.length > 0) {
-      for (const m of unread) {
-        m.is_read = true;
-      }
+      const ids = unread.map(m => m.id);
+      this.markIdsReadLocally(ids);
       this.rebuildScopeItemsFromCache();
       // Fire-and-forget but throttled — see markMessagesReadOnBackend.
-      void this.markMessagesReadOnBackend(unread.map(m => m.id));
+      void this.markMessagesReadOnBackend(ids);
     }
 
     await this.messagesProvider.showMessages(ctx);
@@ -227,11 +240,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   async markThreadRead(threadItem: ChatThreadItem): Promise<void> {
     const unread = threadItem.thread.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId);
     if (unread.length === 0) { return; }
-    for (const m of unread) {
-      m.is_read = true;
-    }
+    const ids = unread.map(m => m.id);
+    this.markIdsReadLocally(ids);
     this.rebuildScopeItemsFromCache();
-    await this.markMessagesReadOnBackend(unread.map(m => m.id));
+    await this.markMessagesReadOnBackend(ids);
   }
 
   async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
@@ -239,11 +251,26 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId)
     );
     if (unread.length === 0) { return; }
-    for (const m of unread) {
-      m.is_read = true;
-    }
+    const ids = unread.map(m => m.id);
+    this.markIdsReadLocally(ids);
     this.rebuildScopeItemsFromCache();
-    await this.markMessagesReadOnBackend(unread.map(m => m.id));
+    await this.markMessagesReadOnBackend(ids);
+  }
+
+  /** Sets is_read=true on every cached copy of the given message ids — both
+   *  in cachedMessages and in unfilteredBase. They share refs for most
+   *  scopes, but diverge for submission_group when the filter is active, so
+   *  marking only cachedMessages would lose the read state next time we
+   *  re-assemble from base (e.g. when the filter is cleared). */
+  private markIdsReadLocally(ids: string[]): void {
+    if (ids.length === 0) { return; }
+    const set = new Set(ids);
+    for (const m of this.cachedMessages) {
+      if (set.has(m.id)) { m.is_read = true; }
+    }
+    for (const m of this.unfilteredBase) {
+      if (set.has(m.id)) { m.is_read = true; }
+    }
   }
 
   // ----- Submission-group filters -----
@@ -347,6 +374,64 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   }
 
   /**
+   * Builds the assembled cachedMessages from unfilteredBase (+ filtered
+   * submission_group slice when the submission filter is on), then refreshes
+   * the scope items + tree.
+   */
+  private async applyAssembledFromBase(): Promise<void> {
+    let assembled = this.unfilteredBase;
+    if (this.hasSubmissionFilter()) {
+      try {
+        const filteredSub = await this.fetchFilteredSubmissionMessages();
+        const nonSub = assembled.filter(m => m.scope !== 'submission_group');
+        assembled = [...nonSub, ...filteredSub];
+      } catch (err) {
+        console.warn('[ChatInbox] Failed to fetch filtered submission messages, falling back to unfiltered:', err);
+      }
+    }
+    this.cachedMessages = assembled;
+    const grouped = this.groupMessages(this.cachedMessages);
+    await this.resolveLabels(grouped);
+    this.scopeItems = this.buildScopeItems(grouped);
+  }
+
+  /** Fetches the next page of unfiltered messages and merges into the cache. */
+  async loadMoreInboxMessages(): Promise<void> {
+    if (this.loadingMore) { return; }
+    if (this.unfilteredTotal !== undefined && this.unfilteredFetched >= this.unfilteredTotal) {
+      return;
+    }
+    this.loadingMore = true;
+    try {
+      const page = await this.api.listMessagesPage({
+        skip: this.unfilteredFetched,
+        limit: ChatInboxTreeProvider.INBOX_PAGE_SIZE
+      });
+      // Dedupe in case a WS-triggered insert added a message we'd otherwise
+      // see again at this offset.
+      const seen = new Set(this.unfilteredBase.map(m => m.id));
+      for (const m of page.items) {
+        if (!seen.has(m.id)) {
+          this.unfilteredBase.push(m);
+          seen.add(m.id);
+        }
+      }
+      // Track skip on the request size, not the dedupe survivors, so we don't
+      // get stuck re-querying the same offset forever if the backend grew.
+      this.unfilteredFetched += page.items.length;
+      this.unfilteredTotal = page.total;
+
+      await this.applyAssembledFromBase();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
+    } finally {
+      this.loadingMore = false;
+      this._onDidChangeTreeData.fire(undefined);
+      this._onDidChangeUnread.fire(this.getTotalUnread());
+    }
+  }
+
+  /**
    * Posts mark-read for many message ids without flooding the backend.
    * - Caps in-flight requests at MARK_READ_CONCURRENCY (workers).
    * - Suppresses WS-driven reloads while it runs, so each backend
@@ -398,8 +483,16 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     if (!element) {
       if (this.loading) { return [new ChatLoadingItem()]; }
       if (this.loadError) { return [new ChatErrorItem(this.loadError)]; }
-      if (this.scopeItems.length === 0) { return [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')]; }
-      return this.scopeItems;
+      const items: AnyTreeItem[] = this.scopeItems.length === 0
+        ? [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')]
+        : [...this.scopeItems];
+      // Show "Load more" when the backend reported more unfiltered messages
+      // than we've fetched. Keep it visible regardless of unread/filter state
+      // so the user can always pull the rest down.
+      if (this.unfilteredTotal !== undefined && this.unfilteredFetched < this.unfilteredTotal) {
+        items.push(new ChatLoadMoreItem(this.unfilteredFetched, this.unfilteredTotal));
+      }
+      return items;
     }
 
     if (element instanceof ChatScopeItem) {
@@ -423,43 +516,28 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
 
     try {
-      const [identity, messages, scopes] = await Promise.all([
+      // Page 1 only — Load more (rendered as a tree leaf) walks the rest.
+      const [identity, page, scopes] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
-        // Always fetch the unfiltered inbox so the unread-only toggle can flip
-        // client-side without re-paginating the backend. buildScopeItems +
-        // rebuildScopeItemsFromCache handle the filtering on the cached array.
-        this.api.listMessages({}),
+        this.api.listMessagesPage({ skip: 0, limit: ChatInboxTreeProvider.INBOX_PAGE_SIZE }),
         this.api.getUserScopes().catch(() => undefined)
       ]);
       this.currentUserId = identity?.id;
       this.userScopes = scopes;
       this.maybeSubscribeUserChannels();
 
-      let assembled = messages || [];
+      this.unfilteredBase = page.items;
+      this.unfilteredTotal = page.total;
+      this.unfilteredFetched = page.items.length;
 
-      // When submission-group filters are active, swap the unfiltered
-      // submission_group slice for the backend-filtered version. course_id is
-      // not always populated on submission_group messages, so client-side
-      // filtering by course_id is unreliable — we rely on the backend's
-      // course_id_all_messages + tag_scope filters instead.
-      if (this.hasSubmissionFilter()) {
-        try {
-          const filteredSub = await this.fetchFilteredSubmissionMessages();
-          const nonSub = assembled.filter(m => m.scope !== 'submission_group');
-          assembled = [...nonSub, ...filteredSub];
-        } catch (err) {
-          console.warn('[ChatInbox] Failed to fetch filtered submission messages, falling back to unfiltered:', err);
-        }
-      }
-
-      this.cachedMessages = assembled;
-      const grouped = this.groupMessages(this.cachedMessages);
-      await this.resolveLabels(grouped);
-      this.scopeItems = this.buildScopeItems(grouped);
+      await this.applyAssembledFromBase();
     } catch (error: any) {
       this.loadError = `Failed to load messages: ${error?.message || error}`;
       this.scopeItems = [];
       this.cachedMessages = [];
+      this.unfilteredBase = [];
+      this.unfilteredTotal = undefined;
+      this.unfilteredFetched = 0;
     } finally {
       this.loading = false;
       this._onDidChangeTreeData.fire(undefined);

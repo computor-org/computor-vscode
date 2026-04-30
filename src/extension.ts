@@ -1281,6 +1281,9 @@ class UnifiedController {
       }),
       vscode.commands.registerCommand('computor.chat.clearSubmissionFilters', () => {
         tree.clearSubmissionFilters();
+      }),
+      vscode.commands.registerCommand('computor.chat.loadMore', () => {
+        void tree.loadMoreInboxMessages();
       })
     );
 

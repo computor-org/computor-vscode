@@ -2735,6 +2735,32 @@ export class ComputorApiService {
     });
   }
 
+  /**
+   * Fetches a single page of messages with the caller's exact skip/limit and
+   * returns both the items and the total count from the X-Total-Count header
+   * — used by callers that want to render a "Load more" affordance instead
+   * of auto-paging.
+   */
+  async listMessagesPage(params: MessageQuery = {}): Promise<{ items: MessageList[]; total: number }> {
+    return errorRecoveryService.executeWithRecovery(async () => {
+      const client = await this.getHttpClient();
+      const query = Object.fromEntries(
+        Object.entries(params).filter(([key, value]) =>
+          value !== undefined && value !== null && key !== 'course_member_id'
+        )
+      );
+      const response = await client.get<MessageList[]>('/messages', query);
+      const items = response.data || [];
+      const totalHeader = response.headers?.['x-total-count'];
+      const parsedTotal = typeof totalHeader === 'string' ? Number.parseInt(totalHeader, 10) : NaN;
+      const total = Number.isFinite(parsedTotal) && parsedTotal >= 0 ? parsedTotal : items.length;
+      return { items, total };
+    }, {
+      maxRetries: 2,
+      exponentialBackoff: true
+    });
+  }
+
   async getMessage(id: string): Promise<MessageGet | undefined> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();

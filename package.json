@@ -400,6 +400,12 @@
         "category": "Computor Chat"
       },
       {
+        "command": "computor.chat.loadMore",
+        "title": "Load More Messages",
+        "icon": "$(ellipsis)",
+        "category": "Computor Chat"
+      },
+      {
         "command": "computor.lecturer.checkoutMultipleExamples",
         "title": "Checkout Multiple Examples",
         "icon": "$(cloud-download)",
