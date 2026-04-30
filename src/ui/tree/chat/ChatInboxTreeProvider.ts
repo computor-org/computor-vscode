@@ -51,6 +51,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private loading = false;
   private loadError: string | undefined;
   private scopeItems: ChatScopeItem[] = [];
+  /** Last raw inbox payload, kept so we can rebuild scope items without
+   *  re-fetching when local read-state changes optimistically. */
+  private cachedMessages: MessageList[] = [];
   private currentUserId?: string;
   private userScopes?: import('../../../types/generated').UserScopes;
   private userScopesPromise?: Promise<void>;
@@ -146,7 +149,42 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       vscode.window.showWarningMessage('Cannot open this conversation: target context unavailable.');
       return;
     }
+
+    // Optimistically clear unread for this thread. The backend only broadcasts
+    // read:update on submission_group channels, so non-submission-group threads
+    // never receive a WS event when MessagesWebview marks their messages as
+    // read — the badge would otherwise stay until a manual refresh. Mutating
+    // the cached MessageList objects in place updates both the per-thread and
+    // per-scope counts on the next rebuild. The mark-read API call is fired
+    // here too; if MessagesWebview also fires it the call is idempotent.
+    const unread = threadItem.thread.messages.filter(
+      m => !m.is_read && m.author_id !== this.currentUserId
+    );
+    if (unread.length > 0) {
+      for (const m of unread) {
+        m.is_read = true;
+      }
+      this.rebuildScopeItemsFromCache();
+      void Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
+    }
+
     await this.messagesProvider.showMessages(ctx);
+  }
+
+  /**
+   * Re-groups + re-builds scope items from the cached message list without
+   * re-fetching from the backend. Used when local read state changes
+   * optimistically (e.g. opening a thread).
+   */
+  private rebuildScopeItemsFromCache(): void {
+    if (this.cachedMessages.length === 0) {
+      this.scopeItems = [];
+    } else {
+      const grouped = this.groupMessages(this.cachedMessages);
+      this.scopeItems = this.buildScopeItems(grouped);
+    }
+    this._onDidChangeTreeData.fire(undefined);
+    this._onDidChangeUnread.fire(this.getTotalUnread());
   }
 
   private async ensureUserScopes(): Promise<void> {
@@ -172,17 +210,23 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   async markThreadRead(threadItem: ChatThreadItem): Promise<void> {
     const unread = threadItem.thread.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId);
     if (unread.length === 0) { return; }
+    for (const m of unread) {
+      m.is_read = true;
+    }
+    this.rebuildScopeItemsFromCache();
     await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
-    this.refresh();
   }
 
   async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
-    const ids = scopeItem.threads.flatMap(t =>
-      t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId).map(m => m.id)
+    const unread = scopeItem.threads.flatMap(t =>
+      t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId)
     );
-    if (ids.length === 0) { return; }
-    await Promise.all(ids.map(id => this.api.markMessageRead(id).catch(() => undefined)));
-    this.refresh();
+    if (unread.length === 0) { return; }
+    for (const m of unread) {
+      m.is_read = true;
+    }
+    this.rebuildScopeItemsFromCache();
+    await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
   }
 
   // ----- TreeDataProvider -----
@@ -229,12 +273,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       this.userScopes = scopes;
       this.maybeSubscribeUserChannels();
 
-      const grouped = this.groupMessages(messages || []);
+      this.cachedMessages = messages || [];
+      const grouped = this.groupMessages(this.cachedMessages);
       await this.resolveLabels(grouped);
       this.scopeItems = this.buildScopeItems(grouped);
     } catch (error: any) {
       this.loadError = `Failed to load messages: ${error?.message || error}`;
       this.scopeItems = [];
+      this.cachedMessages = [];
     } finally {
       this.loading = false;
       this._onDidChangeTreeData.fire(undefined);
