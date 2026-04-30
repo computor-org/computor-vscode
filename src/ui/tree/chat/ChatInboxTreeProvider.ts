@@ -34,6 +34,8 @@ const STATE_KEY = 'computor.chat.inbox.state';
 interface PersistedState {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
+  submissionCourseFilter?: string[];
+  submissionTitleFilter?: string;
 }
 
 type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem;
@@ -74,6 +76,11 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
   private unreadOnly = false;
+  /** Course IDs to keep when rendering the submission_group scope. Empty = all. */
+  private submissionCourseFilter: Set<string> = new Set();
+  /** Substring (case-insensitive) match against any message's title in a
+   *  submission_group thread. Empty = all. */
+  private submissionTitleFilter = '';
 
   // Label caches keyed by id
   private readonly orgLabels = new Map<string, string>();
@@ -237,6 +244,76 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
     this.rebuildScopeItemsFromCache();
     await this.markMessagesReadOnBackend(unread.map(m => m.id));
+  }
+
+  // ----- Submission-group filters -----
+
+  /** Returns the courses that currently have at least one submission_group
+   *  message in the cached inbox payload, with resolved labels. */
+  getSubmissionFilterCourses(): Array<{ id: string; label: string; selected: boolean }> {
+    const ids = new Set<string>();
+    for (const m of this.cachedMessages) {
+      if (m.scope !== 'submission_group') { continue; }
+      if (typeof m.course_id === 'string' && m.course_id) {
+        ids.add(m.course_id);
+      }
+    }
+    const list = Array.from(ids).map(id => ({
+      id,
+      label: this.courseLabels.get(id) || shortId(id),
+      selected: this.submissionCourseFilter.has(id)
+    }));
+    list.sort((a, b) => a.label.localeCompare(b.label));
+    return list;
+  }
+
+  setSubmissionCourseFilter(ids: string[]): void {
+    this.submissionCourseFilter = new Set(ids);
+    void this.persistState();
+    this.applySubmissionFiltersContextKey();
+    this.rebuildScopeItemsFromCache();
+  }
+
+  getSubmissionTitleFilter(): string {
+    return this.submissionTitleFilter;
+  }
+
+  setSubmissionTitleFilter(value: string): void {
+    const trimmed = (value ?? '').trim();
+    if (this.submissionTitleFilter === trimmed) { return; }
+    this.submissionTitleFilter = trimmed;
+    void this.persistState();
+    this.applySubmissionFiltersContextKey();
+    this.rebuildScopeItemsFromCache();
+  }
+
+  clearSubmissionFilters(): void {
+    if (this.submissionCourseFilter.size === 0 && this.submissionTitleFilter === '') { return; }
+    this.submissionCourseFilter = new Set();
+    this.submissionTitleFilter = '';
+    void this.persistState();
+    this.applySubmissionFiltersContextKey();
+    this.rebuildScopeItemsFromCache();
+  }
+
+  private threadMatchesSubmissionFilters(msgs: MessageList[]): boolean {
+    if (this.submissionCourseFilter.size > 0) {
+      const ok = msgs.some(m =>
+        typeof m.course_id === 'string' && this.submissionCourseFilter.has(m.course_id)
+      );
+      if (!ok) { return false; }
+    }
+    if (this.submissionTitleFilter) {
+      const needle = this.submissionTitleFilter.toLowerCase();
+      const ok = msgs.some(m => typeof m.title === 'string' && m.title.toLowerCase().includes(needle));
+      if (!ok) { return false; }
+    }
+    return true;
+  }
+
+  private applySubmissionFiltersContextKey(): void {
+    const active = this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0;
+    void vscode.commands.executeCommand('setContext', 'computor.chat.submissionFiltersActive', active);
   }
 
   /**
@@ -479,6 +556,12 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       const threads: ChatThread[] = [];
       for (const [targetId, msgs] of byTarget) {
+        // Submission-group-only filters: by parent course id, and by message
+        // title substring. Both are AND-combined; thread is kept only if at
+        // least one of its messages matches each active filter.
+        if (scope === 'submission_group' && !this.threadMatchesSubmissionFilters(msgs)) {
+          continue;
+        }
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
         // Exclude the user's own messages — backend doesn't auto-stamp authors
@@ -500,7 +583,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         });
       }
 
-      if (threads.length === 0) { continue; }
+      const filterActive = scope === 'submission_group' && (
+        this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0
+      );
+
+      // Hide scopes with no matching threads — except keep submission_group
+      // visible when filters are active, otherwise the user can't right-click
+      // to clear filters that strip everything.
+      if (threads.length === 0 && !filterActive) { continue; }
 
       threads.sort((a, b) => {
         if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
@@ -511,7 +601,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded));
+      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, filterActive));
     }
 
     return result;
@@ -780,17 +870,26 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (typeof stored.unreadOnly === 'boolean') {
           this.unreadOnly = stored.unreadOnly;
         }
+        if (Array.isArray(stored.submissionCourseFilter)) {
+          this.submissionCourseFilter = new Set(stored.submissionCourseFilter);
+        }
+        if (typeof stored.submissionTitleFilter === 'string') {
+          this.submissionTitleFilter = stored.submissionTitleFilter;
+        }
       }
     } catch (err) {
       console.warn('[ChatInbox] Failed to load persisted state:', err);
     }
     void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', this.unreadOnly);
+    this.applySubmissionFiltersContextKey();
   }
 
   private async persistState(): Promise<void> {
     const state: PersistedState = {
       expandedScopes: Array.from(this.expandedScopes),
-      unreadOnly: this.unreadOnly
+      unreadOnly: this.unreadOnly,
+      submissionCourseFilter: Array.from(this.submissionCourseFilter),
+      submissionTitleFilter: this.submissionTitleFilter
     };
     try {
       await this.context.globalState.update(STATE_KEY, state);

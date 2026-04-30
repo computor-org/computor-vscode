@@ -1250,6 +1250,37 @@ class UnifiedController {
         if (item instanceof ChatThreadItem) {
           void tree.markThreadRead(item);
         }
+      }),
+      vscode.commands.registerCommand('computor.chat.filterSubmissionsByCourse', async () => {
+        const courses = tree.getSubmissionFilterCourses();
+        if (courses.length === 0) {
+          vscode.window.showInformationMessage('No submission-group messages to filter by course.');
+          return;
+        }
+        const picked = await vscode.window.showQuickPick(
+          courses.map(c => ({ label: c.label, description: c.id, picked: c.selected, courseId: c.id })),
+          {
+            canPickMany: true,
+            placeHolder: 'Select courses to keep in Submission Groups (none = all)',
+            title: 'Filter Submission Groups by Course'
+          }
+        );
+        if (!picked) { return; } // user cancelled — leave filter as is
+        tree.setSubmissionCourseFilter(picked.map(p => p.courseId));
+      }),
+      vscode.commands.registerCommand('computor.chat.filterSubmissionsByTitle', async () => {
+        const value = await vscode.window.showInputBox({
+          title: 'Filter Submission Groups by Title',
+          prompt: 'Match any message whose title contains this text (case-insensitive). Empty to clear.',
+          placeHolder: 'e.g. ai-help',
+          value: tree.getSubmissionTitleFilter(),
+          ignoreFocusOut: true
+        });
+        if (value === undefined) { return; } // cancelled
+        tree.setSubmissionTitleFilter(value);
+      }),
+      vscode.commands.registerCommand('computor.chat.clearSubmissionFilters', () => {
+        tree.clearSubmissionFilters();
       })
     );
 

@@ -63,7 +63,8 @@ export class ChatScopeItem extends vscode.TreeItem {
     public readonly scope: MessageScope,
     public readonly threads: ChatThread[],
     public readonly unreadCount: number,
-    expanded: boolean
+    expanded: boolean,
+    public readonly filterActive: boolean = false
   ) {
     super(
       SCOPE_LABELS[scope],
@@ -74,14 +75,23 @@ export class ChatScopeItem extends vscode.TreeItem {
           : vscode.TreeItemCollapsibleState.Collapsed
     );
     this.id = `chat-scope-${scope}`;
-    this.contextValue = unreadCount > 0 ? 'chatScope.unread' : 'chatScope';
+    // contextValue carries the scope name and an unread suffix, so menus
+    // can target either every scope (e.g. /\.unread$/), or a single scope
+    // (e.g. /^chatScope\.submission_group/) without ambiguity.
+    this.contextValue = unreadCount > 0
+      ? `chatScope.${scope}.unread`
+      : `chatScope.${scope}`;
     this.iconPath = new vscode.ThemeIcon(SCOPE_ICONS[scope]);
+    const filterSuffix = filterActive ? ' · filter on' : '';
     this.description = unreadCount > 0
-      ? `${unreadCount} unread · ${threads.length}`
-      : `${threads.length}`;
-    this.tooltip = unreadCount > 0
+      ? `${unreadCount} unread · ${threads.length}${filterSuffix}`
+      : `${threads.length}${filterSuffix}`;
+    const tooltipBase = unreadCount > 0
       ? `${SCOPE_LABELS[scope]}: ${unreadCount} unread of ${threads.length} thread(s)`
       : `${SCOPE_LABELS[scope]}: ${threads.length} thread(s)`;
+    this.tooltip = filterActive
+      ? `${tooltipBase}\nFilter active — right-click to manage`
+      : tooltipBase;
   }
 }
 

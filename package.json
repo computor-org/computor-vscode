@@ -382,6 +382,24 @@
         "category": "Computor Chat"
       },
       {
+        "command": "computor.chat.filterSubmissionsByCourse",
+        "title": "Filter by Course…",
+        "icon": "$(filter)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.filterSubmissionsByTitle",
+        "title": "Filter by Title…",
+        "icon": "$(search)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.clearSubmissionFilters",
+        "title": "Clear Submission Filters",
+        "icon": "$(close)",
+        "category": "Computor Chat"
+      },
+      {
         "command": "computor.lecturer.checkoutMultipleExamples",
         "title": "Checkout Multiple Examples",
         "icon": "$(cloud-download)",
@@ -1228,13 +1246,28 @@
       "view/item/context": [
         {
           "command": "computor.chat.markScopeRead",
-          "when": "view == computor.chat.inbox && viewItem == chatScope.unread",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\..+\\.unread$/",
           "group": "1_actions@1"
         },
         {
           "command": "computor.chat.markThreadRead",
           "when": "view == computor.chat.inbox && viewItem == chatThread.unread",
           "group": "1_actions@1"
+        },
+        {
+          "command": "computor.chat.filterSubmissionsByCourse",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.submission_group/",
+          "group": "2_filter@1"
+        },
+        {
+          "command": "computor.chat.filterSubmissionsByTitle",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.submission_group/",
+          "group": "2_filter@2"
+        },
+        {
+          "command": "computor.chat.clearSubmissionFilters",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.submission_group/ && computor.chat.submissionFiltersActive",
+          "group": "2_filter@3"
         },
         {
           "command": "computor.lecturer.createNewExample",
