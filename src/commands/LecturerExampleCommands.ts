@@ -215,7 +215,7 @@ export class LecturerExampleCommands {
 
     // Open the multi-file diff editor for changes between a version snapshot
     // and the working copy.
-    register('computor.lecturer.openDiffWithWorking', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem) => {
+    register('computor.lecturer.openDiffWithWorking', async (item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem | ExampleTreeItem) => {
       await this.openDiffWithWorking(item);
     });
 
@@ -1814,9 +1814,10 @@ export class LecturerExampleCommands {
     );
   }
 
-  private async openDiffWithWorking(item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem): Promise<void> {
+  private async openDiffWithWorking(item: CheckedOutVersionTreeItem | CheckedOutGroupTreeItem | ExampleTreeItem): Promise<void> {
     const examplesPath = this.getExamplesDir();
     if (!examplesPath) { return; }
+    const versionsPath = this.getVersionsDir();
 
     let versionDir: string | undefined;
     let groupDirectory: string | undefined;
@@ -1831,17 +1832,22 @@ export class LecturerExampleCommands {
       groupDirectory = item.groupDirectory;
       versionTag = item.version.versionTag;
     } else if (item instanceof CheckedOutGroupTreeItem) {
+      const picked = this.pickSnapshotForGroup(item.group, versionsPath);
+      if (!picked) { return; }
+      versionDir = picked.versionDir;
       groupDirectory = item.group.directory;
-      // Pick the most recent non-working snapshot in the group.
-      const snapshots = item.group.versions.filter(v => !v.isWorking);
-      if (snapshots.length === 0) {
-        vscode.window.showWarningMessage('No version snapshots available to diff against.');
+      versionTag = picked.versionTag;
+    } else if (item instanceof ExampleTreeItem) {
+      const group = item.merged.local;
+      if (!group) {
+        vscode.window.showWarningMessage('This example is not checked out locally.');
         return;
       }
-      // Versions are usually sorted newest-first; use that order.
-      const latest = snapshots[0]!;
-      versionDir = latest.fullPath;
-      versionTag = latest.versionTag;
+      const picked = this.pickSnapshotForGroup(group, versionsPath);
+      if (!picked) { return; }
+      versionDir = picked.versionDir;
+      groupDirectory = group.directory;
+      versionTag = picked.versionTag;
     }
 
     if (!versionDir || !groupDirectory || !versionTag) {
@@ -1889,6 +1895,32 @@ export class LecturerExampleCommands {
       console.error('Failed to open multi-file diff editor:', err);
       vscode.window.showErrorMessage(`Failed to open diff: ${err}`);
     }
+  }
+
+  /**
+   * For a checked-out group, picks the snapshot to diff the working copy
+   * against. Prefers the snapshot the working copy was originally checked
+   * out from (matches the dirty-badge logic), and falls back to the most
+   * recent non-working snapshot if that one is gone.
+   */
+  private pickSnapshotForGroup(
+    group: { directory: string; workingVersion?: { metadata: { versionTag: string } }; versions: { isWorking: boolean; versionTag: string; fullPath: string }[] },
+    versionsPath: string | undefined
+  ): { versionDir: string; versionTag: string } | undefined {
+    if (versionsPath && group.workingVersion) {
+      const sourceTag = group.workingVersion.metadata.versionTag;
+      const sourceDir = getVersionPath(versionsPath, group.directory, sourceTag);
+      if (fs.existsSync(sourceDir)) {
+        return { versionDir: sourceDir, versionTag: sourceTag };
+      }
+    }
+    const snapshots = group.versions.filter(v => !v.isWorking);
+    if (snapshots.length === 0) {
+      vscode.window.showWarningMessage('No version snapshots available to diff against.');
+      return undefined;
+    }
+    const latest = snapshots[0]!;
+    return { versionDir: latest.fullPath, versionTag: latest.versionTag };
   }
 
   private async compareFileWithWorking(item: FileSystemTreeItem): Promise<void> {
