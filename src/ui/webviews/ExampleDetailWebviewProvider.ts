@@ -49,6 +49,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
     const webview = this.panel.webview;
     const nonce = this.getNonce();
     const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'example-details.js');
+    const styleUri = this.getWebviewUri(webview, 'webview-ui', 'example-details.css');
 
     const initialState = JSON.stringify({
       example: data.example,
@@ -68,32 +69,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
       <title>Example: ${data.example.title}</title>
-      <style>
-        body { padding: 16px; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-        h2 { margin-top: 0; color: var(--vscode-titleBar-activeForeground); }
-        .section { margin-bottom: 20px; }
-        .section-title { font-weight: 600; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; color: var(--vscode-descriptionForeground); }
-        .field { margin-bottom: 8px; }
-        .field-label { font-weight: 500; color: var(--vscode-descriptionForeground); font-size: 12px; }
-        .field-value { margin-top: 2px; }
-        .tag { display: inline-block; padding: 2px 8px; margin: 2px; border-radius: 10px; font-size: 12px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
-        .version-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--vscode-widget-border); }
-        .version-row.latest { font-weight: 600; }
-        .version-tag { min-width: 80px; }
-        .version-number { color: var(--vscode-descriptionForeground); font-size: 12px; }
-        .version-date { color: var(--vscode-descriptionForeground); font-size: 12px; margin-left: auto; }
-        .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-        .btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 14px; cursor: pointer; border-radius: 4px; font-size: 13px; }
-        .btn:hover { background: var(--vscode-button-hoverBackground); }
-        .btn.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-        .btn.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
-        .btn:disabled { opacity: 0.5; cursor: default; }
-        .bump-group { display: flex; gap: 4px; }
-        .bump-group .btn { padding: 4px 10px; font-size: 12px; }
-        .info-box { background: var(--vscode-textBlockQuote-background); border-left: 3px solid var(--vscode-textBlockQuote-border); padding: 10px 14px; margin: 8px 0; font-size: 13px; }
-        .status-downloaded { color: var(--vscode-testing-iconPassed); }
-        .status-not-downloaded { color: var(--vscode-descriptionForeground); }
-      </style>
+      <link rel="stylesheet" href="${styleUri}">
     </head>
     <body>
       <div id="app"></div>

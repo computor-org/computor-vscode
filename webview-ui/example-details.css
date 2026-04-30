@@ -1,0 +1,343 @@
+/* ============================================================
+ * Example Details webview
+ * Visual hierarchy: header ➜ details ➜ actions ➜ versions
+ * Uses VS Code theme tokens; no hard-coded colors.
+ * ============================================================ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  line-height: 1.5;
+}
+
+#app {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 28px 32px;
+  box-sizing: border-box;
+}
+
+/* ---- Header ---- */
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+}
+
+.detail-header-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.detail-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin: 0 0 4px;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.detail-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family, monospace);
+  word-break: break-all;
+}
+
+/* ---- Status pill ---- */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--vscode-widget-border, transparent);
+  background: var(--vscode-editorWidget-background);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.status-pill.checked-out {
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed) 15%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-testing-iconPassed) 50%, transparent);
+  color: var(--vscode-testing-iconPassed);
+}
+
+.status-pill.not-checked-out {
+  color: var(--vscode-descriptionForeground);
+}
+
+.status-pill .pill-version {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.status-pill .pill-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ---- Cards / sections ---- */
+
+.section {
+  margin-bottom: 22px;
+}
+
+.section-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+
+.card {
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+/* ---- Field grid (definition list-ish) ---- */
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 10px 16px;
+  align-items: baseline;
+}
+
+.field-grid dt {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.field-grid dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.field-grid code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.92em;
+  background: var(--vscode-textBlockQuote-background);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+/* ---- Tags ---- */
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+/* ---- Buttons ---- */
+
+.btn {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: 1px solid transparent;
+  padding: 6px 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.btn.secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.btn.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn.compact {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+/* ---- Action rows ---- */
+
+.action-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-row + .action-row {
+  margin-top: 10px;
+}
+
+.action-label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-right: 4px;
+}
+
+.bump-group {
+  display: inline-flex;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--vscode-button-secondaryBackground);
+}
+
+.bump-group .btn {
+  border-radius: 0;
+  padding: 4px 12px;
+  font-size: 12px;
+  border: none;
+  border-right: 1px solid var(--vscode-editorWidget-border);
+}
+
+.bump-group .btn:last-child {
+  border-right: none;
+}
+
+/* ---- Versions table ---- */
+
+.version-table {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 0;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.version-row {
+  display: contents;
+}
+
+.version-row > * {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+  display: flex;
+  align-items: center;
+  background: var(--vscode-editorWidget-background);
+}
+
+.version-row:last-child > * {
+  border-bottom: none;
+}
+
+.version-row.is-latest > * {
+  background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground) 18%, var(--vscode-editorWidget-background));
+}
+
+.version-row.is-current > * {
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed) 12%, var(--vscode-editorWidget-background));
+}
+
+.version-tag {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.version-row.is-latest .version-tag::after {
+  content: 'latest';
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+  font-family: var(--vscode-font-family);
+}
+
+.version-row.is-current .version-tag::after {
+  content: 'current';
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed) 30%, transparent);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+}
+
+.version-row.is-latest.is-current .version-tag::after {
+  content: 'latest · current';
+}
+
+.version-number {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.version-date {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.version-actions {
+  justify-content: flex-end;
+}
+
+/* ---- Empty state ---- */
+
+.empty-state {
+  padding: 16px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  border: 1px dashed var(--vscode-widget-border, var(--vscode-editorWidget-border));
+  border-radius: 6px;
+}
