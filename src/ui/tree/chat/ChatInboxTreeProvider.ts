@@ -131,7 +131,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.unreadOnly = value;
     void this.persistState();
     void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', value);
-    this.refresh();
+    // Toggle is a pure client-side filter (buildScopeItems already excludes
+    // threads with no unread messages when unreadOnly is on). Rebuilding from
+    // the cached payload avoids re-paginating the entire inbox on every flip.
+    this.rebuildScopeItemsFromCache();
   }
 
   recordExpanded(scope: MessageScope, expanded: boolean): void {
@@ -266,7 +269,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     try {
       const [identity, messages, scopes] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
-        this.api.listMessages(this.unreadOnly ? { unread: true } : {}),
+        // Always fetch the unfiltered inbox so the unread-only toggle can flip
+        // client-side without re-paginating the backend. buildScopeItems +
+        // rebuildScopeItemsFromCache handle the filtering on the cached array.
+        this.api.listMessages({}),
         this.api.getUserScopes().catch(() => undefined)
       ]);
       this.currentUserId = identity?.id;
