@@ -16,88 +16,106 @@
     const { example, repository, versions, latestVersion, isDownloaded, localVersion, currentVersion } = state;
 
     if (!example) {
-      app.innerHTML = '<p>No example selected.</p>';
+      app.innerHTML = '<div class="empty-state">No example selected.</div>';
       return;
     }
 
     const sortedVersions = (versions || []).slice().sort((a, b) => b.version_number - a.version_number);
     const displayVersion = localVersion || currentVersion || (latestVersion ? latestVersion.version_tag : 'N/A');
+    const repoName = repository ? (repository.title || repository.name) : 'Unknown';
+    const title = example.title || example.directory;
 
     app.innerHTML = `
-      <h2>${escapeHtml(example.title || example.directory)}</h2>
+      <header class="detail-header">
+        <div class="detail-header-main">
+          <h1 class="detail-title">${escapeHtml(title)}</h1>
+          <p class="detail-subtitle">${escapeHtml(example.identifier || example.directory)}</p>
+        </div>
+        ${isDownloaded
+          ? `<span class="status-pill checked-out" title="Checked out locally">
+               <span class="pill-icon">✓</span>
+               Checked out · <span class="pill-version">${escapeHtml(displayVersion)}</span>
+             </span>`
+          : `<span class="status-pill not-checked-out" title="Not checked out">
+               <span class="pill-icon">○</span>
+               Remote only
+             </span>`
+        }
+      </header>
 
-      <div class="section">
-        <div class="section-title">Details</div>
-        <div class="field">
-          <div class="field-label">Identifier</div>
-          <div class="field-value"><code>${escapeHtml(example.identifier)}</code></div>
+      <section class="section">
+        <h2 class="section-title">Details</h2>
+        <div class="card">
+          <dl class="field-grid">
+            <dt>Identifier</dt>
+            <dd><code>${escapeHtml(example.identifier)}</code></dd>
+            <dt>Directory</dt>
+            <dd><code>${escapeHtml(example.directory)}</code></dd>
+            <dt>Repository</dt>
+            <dd>${escapeHtml(repoName)}</dd>
+            ${example.subject ? `
+              <dt>Subject</dt>
+              <dd>${escapeHtml(example.subject)}</dd>
+            ` : ''}
+            ${example.category ? `
+              <dt>Category</dt>
+              <dd>${escapeHtml(example.category)}</dd>
+            ` : ''}
+            ${example.tags && example.tags.length > 0 ? `
+              <dt>Tags</dt>
+              <dd><div class="tag-list">${example.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div></dd>
+            ` : ''}
+          </dl>
         </div>
-        <div class="field">
-          <div class="field-label">Directory</div>
-          <div class="field-value"><code>${escapeHtml(example.directory)}</code></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Repository</div>
-          <div class="field-value">${escapeHtml(repository ? repository.title : 'Unknown')}</div>
-        </div>
-        ${example.tags && example.tags.length > 0 ? `
-          <div class="field">
-            <div class="field-label">Tags</div>
-            <div class="field-value">${example.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Actions</h2>
+        <div class="card">
+          <div class="action-row">
+            <button class="btn" id="checkoutLatestBtn">Checkout Latest</button>
+            <button class="btn secondary" id="refreshBtn">Refresh</button>
           </div>
-        ` : ''}
-      </div>
-
-      <div class="section">
-        <div class="section-title">Local Status</div>
-        ${isDownloaded ? `
-          <div class="info-box">
-            <span class="status-downloaded">&#10003;</span> Checked out locally
-            <div style="margin-top: 4px;">
-              <span class="field-label">Local version:</span> <strong>${escapeHtml(displayVersion)}</strong>
+          ${isDownloaded ? `
+            <div class="action-row">
+              <span class="action-label">Bump version:</span>
+              <span class="bump-group">
+                <button class="btn secondary" data-bump="patch" title="Bump patch (x.y.Z)">Patch</button>
+                <button class="btn secondary" data-bump="minor" title="Bump minor (x.Y.0)">Minor</button>
+                <button class="btn secondary" data-bump="major" title="Bump major (X.0.0)">Major</button>
+              </span>
+              <button class="btn" id="uploadBtn">Upload working copy</button>
             </div>
-          </div>
-          <div class="actions">
-            <div class="bump-group">
-              <button class="btn secondary" data-bump="patch" title="Bump patch (x.y.Z)">Patch</button>
-              <button class="btn secondary" data-bump="minor" title="Bump minor (x.Y.0)">Minor</button>
-              <button class="btn secondary" data-bump="major" title="Bump major (X.0.0)">Major</button>
-            </div>
-            <button class="btn" id="uploadBtn">Upload</button>
-          </div>
-        ` : `
-          <div class="info-box">
-            <span class="status-not-downloaded">&#9675;</span> Not checked out
-          </div>
-        `}
-        <div class="actions" style="margin-top: 8px;">
-          <button class="btn" id="checkoutLatestBtn">Checkout Latest</button>
-          <button class="btn secondary" id="refreshBtn">Refresh</button>
+          ` : ''}
         </div>
-      </div>
+      </section>
 
-      <div class="section">
-        <div class="section-title">Versions (${sortedVersions.length})</div>
-        ${sortedVersions.length === 0 ? '<p>No versions available.</p>' : `
-          <div class="version-list">
-            ${sortedVersions.map(v => {
-              const isLatest = latestVersion && v.id === latestVersion.id;
-              const isCurrent = currentVersion && v.version_tag === currentVersion;
-              return `
-                <div class="version-row${isLatest ? ' latest' : ''}">
-                  <span class="version-tag">
-                    ${escapeHtml(v.version_tag)}${isLatest ? ' (latest)' : ''}${isCurrent ? ' (current)' : ''}
-                  </span>
-                  <span class="version-number">#${v.version_number}</span>
-                  ${v.created_at ? `<span class="version-date">${formatDate(v.created_at)}</span>` : ''}
-                  <button class="btn secondary" data-checkout-version="${escapeHtml(v.id)}" title="Checkout this version" style="padding: 2px 8px; font-size: 11px; margin-left: 8px;">
-                    Checkout
-                  </button>
-                </div>`;
-            }).join('')}
-          </div>
-        `}
-      </div>
+      <section class="section">
+        <h2 class="section-title">Versions (${sortedVersions.length})</h2>
+        ${sortedVersions.length === 0
+          ? '<div class="empty-state">No versions available yet.</div>'
+          : `<div class="version-table">
+              ${sortedVersions.map(v => {
+                const isLatest = latestVersion && v.id === latestVersion.id;
+                const isCurrent = currentVersion && v.version_tag === currentVersion;
+                const rowClasses = ['version-row'];
+                if (isLatest) { rowClasses.push('is-latest'); }
+                if (isCurrent) { rowClasses.push('is-current'); }
+                return `
+                  <div class="${rowClasses.join(' ')}">
+                    <span class="version-tag">${escapeHtml(v.version_tag)}</span>
+                    <span class="version-number">#${v.version_number}</span>
+                    <span class="version-date">${v.created_at ? formatDate(v.created_at) : ''}</span>
+                    <span class="version-actions">
+                      <button class="btn secondary compact" data-checkout-version="${escapeHtml(v.id)}" title="Checkout this version">
+                        Checkout
+                      </button>
+                    </span>
+                  </div>`;
+              }).join('')}
+            </div>`
+        }
+      </section>
     `;
   }
 

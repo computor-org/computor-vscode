@@ -36,3 +36,66 @@ export function hasExampleChanged(workingDir: string, snapshotDir: string): bool
   if (!fs.existsSync(snapshotDir)) { return true; }
   return hashDirectory(workingDir) !== hashDirectory(snapshotDir);
 }
+
+export interface ExampleDiff {
+  /** Files present in both, with different bytes. */
+  modified: string[];
+  /** Files present in `right` but not in `left`. */
+  added: string[];
+  /** Files present in `left` but not in `right`. */
+  removed: string[];
+}
+
+/**
+ * Compares the contents of two example directories, returning per-file
+ * status. Both sides are filtered through {@link shouldExcludeExampleEntry}
+ * (drops `.computor-example.json`, `node_modules`, etc.).
+ *
+ * "left" is treated as the *original* / reference side and "right" as the
+ * *modified* / current side. So "added" means the file appeared on the right
+ * (e.g. the working copy) and "removed" means it disappeared from the right.
+ */
+export function computeExampleDiff(leftDir: string, rightDir: string): ExampleDiff {
+  const leftFiles = new Set(fs.existsSync(leftDir) ? collectFiles(leftDir, leftDir) : []);
+  const rightFiles = new Set(fs.existsSync(rightDir) ? collectFiles(rightDir, rightDir) : []);
+
+  const modified: string[] = [];
+  const added: string[] = [];
+  const removed: string[] = [];
+
+  for (const rel of rightFiles) {
+    if (!leftFiles.has(rel)) {
+      added.push(rel);
+      continue;
+    }
+    const leftPath = path.join(leftDir, rel);
+    const rightPath = path.join(rightDir, rel);
+    if (!filesEqual(leftPath, rightPath)) {
+      modified.push(rel);
+    }
+  }
+
+  for (const rel of leftFiles) {
+    if (!rightFiles.has(rel)) {
+      removed.push(rel);
+    }
+  }
+
+  added.sort();
+  modified.sort();
+  removed.sort();
+  return { modified, added, removed };
+}
+
+function filesEqual(a: string, b: string): boolean {
+  try {
+    const sa = fs.statSync(a);
+    const sb = fs.statSync(b);
+    if (sa.size !== sb.size) { return false; }
+    const ba = fs.readFileSync(a);
+    const bb = fs.readFileSync(b);
+    return ba.equals(bb);
+  } catch {
+    return false;
+  }
+}

@@ -259,8 +259,14 @@
       },
       {
         "command": "computor.lecturer.compareWithWorking",
-        "title": "Compare with Working",
+        "title": "Compare with Working: Pick File…",
         "icon": "$(diff)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.openDiffWithWorking",
+        "title": "Open Diff with Working Copy",
+        "icon": "$(diff-multiple)",
         "category": "Computor Examples"
       },
       {
@@ -1586,9 +1592,19 @@
           "group": "2_restore@1"
         },
         {
-          "command": "computor.lecturer.compareWithWorking",
+          "command": "computor.lecturer.openDiffWithWorking",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutVersion",
           "group": "2_restore@2"
+        },
+        {
+          "command": "computor.lecturer.compareWithWorking",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutVersion",
+          "group": "2_restore@3"
+        },
+        {
+          "command": "computor.lecturer.openDiffWithWorking",
+          "when": "view == computor.lecturer.examples && (viewItem == exampleCheckedOut || viewItem == exampleLocalOnly)",
+          "group": "2_restore@1"
         },
         {
           "command": "computor.lecturer.compareFileWithWorking",
