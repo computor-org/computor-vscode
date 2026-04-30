@@ -361,20 +361,18 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     const examplesPath = this.getExamplesPath();
     if (!examplesPath) { return; }
 
-    const patterns = [
-      new vscode.RelativePattern(examplesPath, '**/meta.yaml'),
-      new vscode.RelativePattern(examplesPath, '**/test.yaml'),
-      new vscode.RelativePattern(examplesPath, '**/content/**'),
-    ];
-
-    for (const pattern of patterns) {
-      const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-      const debouncedRefresh = this.createDebouncedRefresh();
-      watcher.onDidChange(debouncedRefresh);
-      watcher.onDidCreate(debouncedRefresh);
-      watcher.onDidDelete(debouncedRefresh);
-      this.fileWatchers.push(watcher);
-    }
+    // Single broad watcher across the working-copy directory: any edit, create
+    // or delete in any file under examples/<example>/ should bump the merged
+    // tree so the per-row diff badge updates as the user edits. The downstream
+    // refresh is debounced to absorb bursts (multi-file save, our own checkout
+    // writes, etc.).
+    const pattern = new vscode.RelativePattern(examplesPath, '**/*');
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    const debouncedRefresh = this.createDebouncedRefresh();
+    watcher.onDidChange(debouncedRefresh);
+    watcher.onDidCreate(debouncedRefresh);
+    watcher.onDidDelete(debouncedRefresh);
+    this.fileWatchers.push(watcher);
 
     context.subscriptions.push(...this.fileWatchers);
   }
