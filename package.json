@@ -1738,6 +1738,11 @@
           "group": "inline@5"
         },
         {
+          "command": "computor.student.showMessages",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
+          "group": "inline@6"
+        },
+        {
           "command": "computor.student.viewSubmissionGroup",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
           "group": "2_details@1"

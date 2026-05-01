@@ -1171,8 +1171,11 @@ export class StudentCommands {
         let wsChannel: string | undefined;
 
         if (submissionGroup?.id) {
-          // Assignment with submission group - students only need submission_group messages
+          // Assignment with submission group - students only need submission_group messages.
+          // Pin scope so the panel doesn't pull in messages from broader scopes that
+          // happen to share the same submission_group_id.
           query = {
+            scope: 'submission_group',
             submission_group_id: submissionGroup.id
           };
           createPayload = {
@@ -1181,8 +1184,9 @@ export class StudentCommands {
           wsChannel = `submission_group:${submissionGroup.id}`;
         } else {
           // Unit content without submission group - show course_content messages
-          // Students can only read (lecturer+ for writing)
+          // Students can only read (lecturer+ for writing).
           query = {
+            scope: 'course_content',
             course_content_id: content.id
           };
           createPayload = {
