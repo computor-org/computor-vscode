@@ -13,9 +13,24 @@ import {
   ChatEmptyItem,
   ChatLoadingItem,
   ChatErrorItem,
+  ChatLoadMoreItem,
+  ChatCourseGroupItem,
   MessageScope,
   scopeLabel
 } from './ChatInboxTreeItems';
+
+/** Scopes that are rendered as Course → threads inside the inbox tree.
+ *  All other scopes keep the original flat-per-scope rendering. */
+const COURSE_GROUPED_SCOPES = new Set<MessageScope>([
+  'submission_group',
+  'course',
+  'course_content',
+  'course_group'
+]);
+
+function isCourseGroupedScope(scope: MessageScope): boolean {
+  return COURSE_GROUPED_SCOPES.has(scope);
+}
 
 const SCOPE_ORDER: MessageScope[] = [
   'user',
@@ -36,7 +51,18 @@ interface PersistedState {
   unreadOnly: boolean;
 }
 
-type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem;
+type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatCourseGroupItem;
+
+interface ScopeFetchState {
+  /** Accumulated messages for this scope; grows on each Load more. */
+  messages: MessageList[];
+  /** How many we've fetched (sum across pages, and across courses for the
+   *  filtered submission_group case). */
+  fetched: number;
+  /** Backend's reported total for this scope under the current filter (sum
+   *  of per-course X-Total-Count when fan-out applies). */
+  total: number;
+}
 
 export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
@@ -51,6 +77,27 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private loading = false;
   private loadError: string | undefined;
   private scopeItems: ChatScopeItem[] = [];
+  /** Flat union of every scope's accumulated messages, used by groupMessages
+   *  + buildScopeItems and shared by mark-read mutations. Rebuilt from
+   *  scopeFetchStates whenever they change. */
+  private cachedMessages: MessageList[] = [];
+  /** Per-scope pagination + accumulation for non-course-grouped scopes
+   *  (user / course_member / course_family / organization / global). */
+  private scopeFetchStates: Map<MessageScope, ScopeFetchState> = new Map();
+  /** Per-(scope, courseId) pagination + accumulation for the course-grouped
+   *  scopes (submission_group, course, course_content, course_group). */
+  private courseScopeStates: Map<MessageScope, Map<string, ScopeFetchState>> = new Map();
+  /** Course nodes the user has expanded at least once — used both to drive
+   *  initial-collapse-state and to know whether to lazy-fetch on render. */
+  private expandedCourseGroups: Set<string> = new Set();
+  /** Page size for every per-scope GET (initial + each Load more click). */
+  private static readonly SCOPE_PAGE_SIZE = 200;
+  /** Set of scopes whose Load more is in-flight, so a double-click doesn't
+   *  fan out duplicate skip values. */
+  private scopeLoadingMore: Set<MessageScope> = new Set();
+  /** Same idea but keyed `${scope}::${courseId}` for the per-course
+   *  pagination. */
+  private courseScopeLoadingMore: Set<string> = new Set();
   private currentUserId?: string;
   private userScopes?: import('../../../types/generated').UserScopes;
   private userScopesPromise?: Promise<void>;
@@ -61,6 +108,12 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private readonly wsHandlerId = `chat-inbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   private wsReloadTimer?: ReturnType<typeof setTimeout>;
   private static readonly WS_RELOAD_DEBOUNCE_MS = 250;
+  /** Cap on concurrent mark-read API calls to avoid flooding the backend. */
+  private static readonly MARK_READ_CONCURRENCY = 4;
+  /** When we mark messages read locally, suppress WS-driven reloads for this
+   *  window — every server-side broadcast otherwise re-paginates the inbox. */
+  private static readonly MARK_READ_WS_SUPPRESS_MS = 4000;
+  private suppressWsReloadUntil = 0;
 
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
@@ -128,7 +181,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.unreadOnly = value;
     void this.persistState();
     void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', value);
-    this.refresh();
+    // Toggle is a pure client-side filter (buildScopeItems already excludes
+    // threads with no unread messages when unreadOnly is on). Rebuilding from
+    // the cached payload avoids re-paginating the entire inbox on every flip.
+    this.rebuildScopeItemsFromCache();
   }
 
   recordExpanded(scope: MessageScope, expanded: boolean): void {
@@ -146,7 +202,42 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       vscode.window.showWarningMessage('Cannot open this conversation: target context unavailable.');
       return;
     }
+
+    // Optimistically clear unread for this thread. The backend only broadcasts
+    // read:update on submission_group channels, so non-submission-group threads
+    // never receive a WS event when MessagesWebview marks their messages as
+    // read — the badge would otherwise stay until a manual refresh. Mutating
+    // the cached MessageList objects in place updates both the per-thread and
+    // per-scope counts on the next rebuild. The mark-read API call is fired
+    // here too; if MessagesWebview also fires it the call is idempotent.
+    const unread = threadItem.thread.messages.filter(
+      m => !m.is_read && m.author_id !== this.currentUserId
+    );
+    if (unread.length > 0) {
+      const ids = unread.map(m => m.id);
+      this.markIdsReadLocally(ids);
+      this.rebuildScopeItemsFromCache();
+      // Fire-and-forget but throttled — see markMessagesReadOnBackend.
+      void this.markMessagesReadOnBackend(ids);
+    }
+
     await this.messagesProvider.showMessages(ctx);
+  }
+
+  /**
+   * Re-groups + re-builds scope items from the cached message list without
+   * re-fetching from the backend. Used when local read state changes
+   * optimistically (e.g. opening a thread).
+   */
+  private rebuildScopeItemsFromCache(): void {
+    if (this.cachedMessages.length === 0) {
+      this.scopeItems = [];
+    } else {
+      const grouped = this.groupMessages(this.cachedMessages);
+      this.scopeItems = this.buildScopeItems(grouped);
+    }
+    this._onDidChangeTreeData.fire(undefined);
+    this._onDidChangeUnread.fire(this.getTotalUnread());
   }
 
   private async ensureUserScopes(): Promise<void> {
@@ -172,17 +263,186 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   async markThreadRead(threadItem: ChatThreadItem): Promise<void> {
     const unread = threadItem.thread.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId);
     if (unread.length === 0) { return; }
-    await Promise.all(unread.map(m => this.api.markMessageRead(m.id).catch(() => undefined)));
-    this.refresh();
+    const ids = unread.map(m => m.id);
+    this.markIdsReadLocally(ids);
+    this.rebuildScopeItemsFromCache();
+    await this.markMessagesReadOnBackend(ids);
   }
 
   async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
-    const ids = scopeItem.threads.flatMap(t =>
-      t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId).map(m => m.id)
+    const unread = scopeItem.threads.flatMap(t =>
+      t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId)
     );
+    if (unread.length === 0) { return; }
+    const ids = unread.map(m => m.id);
+    this.markIdsReadLocally(ids);
+    this.rebuildScopeItemsFromCache();
+    await this.markMessagesReadOnBackend(ids);
+  }
+
+  /** Sets is_read=true on every cached copy of the given message ids, across
+   *  cachedMessages and every per-scope / per-course state's messages array. */
+  private markIdsReadLocally(ids: string[]): void {
     if (ids.length === 0) { return; }
-    await Promise.all(ids.map(id => this.api.markMessageRead(id).catch(() => undefined)));
-    this.refresh();
+    const set = new Set(ids);
+    for (const m of this.cachedMessages) {
+      if (set.has(m.id)) { m.is_read = true; }
+    }
+    for (const state of this.scopeFetchStates.values()) {
+      for (const m of state.messages) {
+        if (set.has(m.id)) { m.is_read = true; }
+      }
+    }
+    for (const inner of this.courseScopeStates.values()) {
+      for (const state of inner.values()) {
+        for (const m of state.messages) {
+          if (set.has(m.id)) { m.is_read = true; }
+        }
+      }
+    }
+  }
+
+  /** Fetches one page for a non-course-grouped scope. Course-grouped scopes
+   *  use per-course requests instead — see getCourseGroupChildren and
+   *  loadMoreForCourseScope. */
+  private async fetchScopePage(scope: MessageScope, skip: number, limit: number): Promise<{ items: MessageList[]; total: number }> {
+    return await this.api.listMessagesPage({ scope, skip, limit });
+  }
+
+  /** Rebuilds cachedMessages as the flat union of every scope's accumulated
+   *  messages (per-scope + per-course) and refreshes the tree. */
+  private async rebuildAssembled(): Promise<void> {
+    const flat: MessageList[] = [];
+    for (const state of this.scopeFetchStates.values()) {
+      flat.push(...state.messages);
+    }
+    for (const inner of this.courseScopeStates.values()) {
+      for (const state of inner.values()) {
+        flat.push(...state.messages);
+      }
+    }
+    this.cachedMessages = flat;
+    const grouped = this.groupMessages(this.cachedMessages);
+    await this.resolveLabels(grouped);
+    this.scopeItems = this.buildScopeItems(grouped);
+  }
+
+  /** Fetches the next page for one scope and appends to its state. */
+  async loadMoreForScope(scope: MessageScope): Promise<void> {
+    if (this.scopeLoadingMore.has(scope)) { return; }
+    const state = this.scopeFetchStates.get(scope);
+    if (!state || state.fetched >= state.total) { return; }
+    this.scopeLoadingMore.add(scope);
+    try {
+      const next = await this.fetchScopePage(scope, state.fetched, ChatInboxTreeProvider.SCOPE_PAGE_SIZE);
+      const seen = new Set(state.messages.map(m => m.id));
+      for (const m of next.items) {
+        if (!seen.has(m.id)) {
+          state.messages.push(m);
+          seen.add(m.id);
+        }
+      }
+      // Advance by request size (not survivors) so we don't loop forever if
+      // the backend grew between pages and the same offset reappears.
+      state.fetched += next.items.length;
+      state.total = Math.max(state.total, next.total);
+      await this.rebuildAssembled();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
+    } finally {
+      this.scopeLoadingMore.delete(scope);
+      this._onDidChangeTreeData.fire(undefined);
+      this._onDidChangeUnread.fire(this.getTotalUnread());
+    }
+  }
+
+  /** Fetches the next page for a (scope, course) bucket and appends to its
+   *  per-course state. Used by the per-course Load more rendered inside each
+   *  ChatCourseGroupItem. */
+  async loadMoreForCourseScope(scope: MessageScope, courseId: string): Promise<void> {
+    const key = `${scope}::${courseId}`;
+    if (this.courseScopeLoadingMore.has(key)) { return; }
+    const inner = this.courseScopeStates.get(scope);
+    const state = inner?.get(courseId);
+    if (!state || state.total < 0 || state.fetched >= state.total) { return; }
+    this.courseScopeLoadingMore.add(key);
+    try {
+      const next = await this.api.listMessagesPage({
+        scope,
+        course_id: courseId,
+        skip: state.fetched,
+        limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
+      });
+      const seen = new Set(state.messages.map(m => m.id));
+      for (const m of next.items) {
+        if (!seen.has(m.id)) {
+          state.messages.push(m);
+          seen.add(m.id);
+        }
+      }
+      state.fetched += next.items.length;
+      state.total = Math.max(state.total, next.total);
+      await this.rebuildAssembled();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
+    } finally {
+      this.courseScopeLoadingMore.delete(key);
+      this._onDidChangeTreeData.fire(undefined);
+      this._onDidChangeUnread.fire(this.getTotalUnread());
+    }
+  }
+
+  /** Track expand/collapse for a course node so a refresh can keep the user's
+   *  open courses open. */
+  recordCourseGroupExpanded(scope: MessageScope, courseId: string, expanded: boolean): void {
+    const key = `${scope}::${courseId}`;
+    if (expanded) {
+      this.expandedCourseGroups.add(key);
+    } else {
+      this.expandedCourseGroups.delete(key);
+    }
+  }
+
+  /**
+   * Posts mark-read for many message ids without flooding the backend.
+   * - Caps in-flight requests at MARK_READ_CONCURRENCY (workers).
+   * - Suppresses WS-driven reloads while it runs, so each backend
+   *   read:update broadcast we triggered ourselves doesn't kick off a fresh
+   *   re-paginated GET /messages of the entire inbox.
+   * - Errors per-id are swallowed (best-effort; the optimistic local state
+   *   is already applied, and the next manual refresh will re-confirm).
+   */
+  private async markMessagesReadOnBackend(ids: string[]): Promise<void> {
+    if (ids.length === 0) { return; }
+    this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    if (this.wsReloadTimer) {
+      clearTimeout(this.wsReloadTimer);
+      this.wsReloadTimer = undefined;
+    }
+    try {
+      let cursor = 0;
+      const workers: Promise<void>[] = [];
+      for (let w = 0; w < ChatInboxTreeProvider.MARK_READ_CONCURRENCY; w += 1) {
+        workers.push((async () => {
+          while (true) {
+            const i = cursor;
+            cursor += 1;
+            if (i >= ids.length) { return; }
+            try {
+              await this.api.markMessageRead(ids[i]!);
+            } catch {
+              // best-effort
+            }
+          }
+        })());
+      }
+      await Promise.all(workers);
+    } finally {
+      // Extend the WS suppression window slightly past now so the burst of
+      // server-side read:update broadcasts that lag behind our last request
+      // doesn't immediately trigger a re-pagination.
+      this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    }
   }
 
   // ----- TreeDataProvider -----
@@ -195,15 +455,150 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     if (!element) {
       if (this.loading) { return [new ChatLoadingItem()]; }
       if (this.loadError) { return [new ChatErrorItem(this.loadError)]; }
-      if (this.scopeItems.length === 0) { return [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')]; }
-      return this.scopeItems;
+      if (this.scopeItems.length === 0) {
+        return [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')];
+      }
+      return [...this.scopeItems];
     }
 
     if (element instanceof ChatScopeItem) {
-      return element.threads.map(t => new ChatThreadItem(t));
+      const items: AnyTreeItem[] = [];
+      if (isCourseGroupedScope(element.scope)) {
+        items.push(...this.buildCourseGroupItems(element.scope));
+        return items;
+      }
+      items.push(...element.threads.map(t => new ChatThreadItem(t)));
+      // Per-scope Load more: shown as the last child when the backend
+      // reports more messages for this scope than we've pulled. Hidden when
+      // the user collapses the scope row.
+      const state = this.scopeFetchStates.get(element.scope);
+      if (state && state.fetched < state.total) {
+        items.push(new ChatLoadMoreItem(element.scope, state.fetched, state.total));
+      }
+      return items;
+    }
+
+    if (element instanceof ChatCourseGroupItem) {
+      return await this.getCourseGroupChildren(element);
     }
 
     return [];
+  }
+
+  /** One ChatCourseGroupItem per course the user has access to. */
+  private buildCourseGroupItems(scope: MessageScope): ChatCourseGroupItem[] {
+    const inner = this.courseScopeStates.get(scope);
+    if (!inner) { return []; }
+    const courseIds = Array.from(inner.keys());
+    // Sort: courses with unread first, then alphabetical by label.
+    const decorated = courseIds.map(id => {
+      const state = inner.get(id)!;
+      const unread = state.messages.reduce(
+        (acc, m) => acc + ((!m.is_read && m.author_id !== this.currentUserId) ? 1 : 0),
+        0
+      );
+      const threadCount = new Set(
+        state.messages.map(m => this.targetIdFor(scope, m) ?? '__none__')
+      ).size;
+      return {
+        id,
+        label: this.courseLabels.get(id) || shortId(id),
+        unread,
+        threadCount,
+        // total === -1 means we haven't fetched yet — show the "click to load" hint
+        // by reporting hasMore=false until expand triggers a fetch.
+        hasMore: state.total >= 0 && state.fetched < state.total
+      };
+    });
+    decorated.sort((a, b) => {
+      if ((b.unread > 0 ? 1 : 0) !== (a.unread > 0 ? 1 : 0)) {
+        return (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0);
+      }
+      return a.label.localeCompare(b.label);
+    });
+    return decorated.map(d => {
+      const expanded = this.expandedCourseGroups.has(`${scope}::${d.id}`) || d.unread > 0;
+      return new ChatCourseGroupItem(
+        scope,
+        d.id,
+        d.label,
+        d.unread,
+        d.threadCount,
+        d.hasMore,
+        expanded
+      );
+    });
+  }
+
+  /** Lazy-fetch the first page on first expand, then return threads + a
+   *  per-course Load more. */
+  private async getCourseGroupChildren(element: ChatCourseGroupItem): Promise<AnyTreeItem[]> {
+    const { scope, courseId } = element;
+    const inner = this.courseScopeStates.get(scope);
+    const state = inner?.get(courseId);
+    if (!inner || !state) { return []; }
+    this.expandedCourseGroups.add(`${scope}::${courseId}`);
+
+    // First-time fetch: state.total === -1 means we haven't asked the backend
+    // for this (scope, course) yet. Pull the first page now.
+    if (state.total < 0) {
+      try {
+        const page = await this.api.listMessagesPage({
+          scope,
+          course_id: courseId,
+          skip: 0,
+          limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
+        });
+        state.messages = page.items;
+        state.fetched = page.items.length;
+        state.total = page.total;
+        await this.rebuildAssembled();
+        this._onDidChangeUnread.fire(this.getTotalUnread());
+      } catch (err: any) {
+        return [new ChatErrorItem(`Failed to load messages: ${err?.message || err}`)];
+      }
+    }
+
+    const items: AnyTreeItem[] = [];
+    // Group this course's messages into threads by target id.
+    const byTarget = new Map<string, MessageList[]>();
+    for (const m of state.messages) {
+      const targetId = this.targetIdFor(scope, m) ?? '__none__';
+      if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
+      byTarget.get(targetId)!.push(m);
+    }
+    const threads: ChatThread[] = [];
+    for (const [targetId, msgs] of byTarget) {
+      const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
+      const lastMessage = sortedMessages[sortedMessages.length - 1];
+      const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
+      if (this.unreadOnly && unreadCount === 0) { continue; }
+      const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
+      threads.push({
+        scope,
+        targetId: targetId === '__none__' ? null : targetId,
+        title,
+        subtitle,
+        lastMessage,
+        unreadCount,
+        messageCount: msgs.length,
+        messages: sortedMessages
+      });
+    }
+    threads.sort((a, b) => {
+      if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
+        return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+      }
+      return compareThreadRecency(b, a);
+    });
+    items.push(...threads.map(t => new ChatThreadItem(t)));
+    if (state.fetched < state.total) {
+      items.push(new ChatLoadMoreItem(scope, state.fetched, state.total, courseId));
+    }
+    if (items.length === 0) {
+      items.push(new ChatEmptyItem('No messages.'));
+    }
+    return items;
   }
 
   // ----- Internals -----
@@ -220,21 +615,74 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
 
     try {
-      const [identity, messages, scopes] = await Promise.all([
+      // Identity + scopes once; per-scope inbox pages in parallel. Each scope
+      // has its own pagination, so a Load more click at the end of e.g.
+      // Submission Groups only advances *that* scope's window.
+      const [identity, scopes] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
-        this.api.listMessages(this.unreadOnly ? { unread: true } : {}),
         this.api.getUserScopes().catch(() => undefined)
       ]);
       this.currentUserId = identity?.id;
       this.userScopes = scopes;
       this.maybeSubscribeUserChannels();
 
-      const grouped = this.groupMessages(messages || []);
-      await this.resolveLabels(grouped);
-      this.scopeItems = this.buildScopeItems(grouped);
+      // For non-course-grouped scopes, fetch the first page in parallel.
+      // Course-grouped scopes (submission_group / course / course_content /
+      // course_group) skip the per-scope fan-out — a chat with even a few
+      // courses produces hundreds of submission_group threads, so we lazy-load
+      // per-course on tree expand instead.
+      const flatScopes = SCOPE_ORDER.filter(s => !isCourseGroupedScope(s));
+      const newStates = new Map<MessageScope, ScopeFetchState>();
+      const pageResults = await Promise.all(
+        flatScopes.map(async scope => {
+          try {
+            const page = await this.fetchScopePage(scope, 0, ChatInboxTreeProvider.SCOPE_PAGE_SIZE);
+            return { scope, page };
+          } catch (err) {
+            console.warn(`[ChatInbox] Failed to fetch initial page for scope ${scope}:`, err);
+            return { scope, page: { items: [] as MessageList[], total: 0 } };
+          }
+        })
+      );
+      for (const { scope, page } of pageResults) {
+        newStates.set(scope, {
+          messages: page.items,
+          fetched: page.items.length,
+          total: page.total
+        });
+      }
+      this.scopeFetchStates = newStates;
+
+      // Seed the per-(scope, course) maps from the user's accessible courses.
+      // Each entry stays empty (`fetched: 0, total: -1`) until the user expands
+      // the course node, at which point getChildren triggers the first fetch.
+      const courseIds = scopes?.course ? Object.keys(scopes.course) : [];
+      const newCourseStates = new Map<MessageScope, Map<string, ScopeFetchState>>();
+      for (const scope of SCOPE_ORDER) {
+        if (!isCourseGroupedScope(scope)) { continue; }
+        const inner = new Map<string, ScopeFetchState>();
+        // Preserve any state we already had so an in-flight Load more isn't
+        // erased by a parallel reload.
+        const previous = this.courseScopeStates.get(scope);
+        for (const courseId of courseIds) {
+          const prev = previous?.get(courseId);
+          inner.set(courseId, prev ?? { messages: [], fetched: 0, total: -1 });
+        }
+        newCourseStates.set(scope, inner);
+      }
+      this.courseScopeStates = newCourseStates;
+
+      // Resolve labels for every accessible course up front, so the
+      // ChatCourseGroupItem rows can show real titles instead of short ids.
+      await Promise.all(courseIds.map(id => this.resolveCourseLabelLazy(id).catch(() => undefined)));
+
+      await this.rebuildAssembled();
     } catch (error: any) {
       this.loadError = `Failed to load messages: ${error?.message || error}`;
       this.scopeItems = [];
+      this.cachedMessages = [];
+      this.scopeFetchStates.clear();
+      this.courseScopeStates.clear();
     } finally {
       this.loading = false;
       this._onDidChangeTreeData.fire(undefined);
@@ -373,11 +821,33 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const result: ChatScopeItem[] = [];
 
     for (const scope of SCOPE_ORDER) {
+      // Course-grouped scopes always render — children are course nodes, not
+      // threads, so the row stays collapsible even when no messages have been
+      // pulled yet.
+      if (isCourseGroupedScope(scope)) {
+        const inner = this.courseScopeStates.get(scope);
+        if (!inner || inner.size === 0) { continue; }
+        let totalUnread = 0;
+        for (const state of inner.values()) {
+          for (const m of state.messages) {
+            if (!m.is_read && m.author_id !== this.currentUserId) { totalUnread += 1; }
+          }
+        }
+        if (this.unreadOnly && totalUnread === 0) { continue; }
+        const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
+        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, inner.size));
+        continue;
+      }
+
       const byTarget = grouped.get(scope);
-      if (!byTarget || byTarget.size === 0) { continue; }
+      // Global stays visible even with zero messages so users always have a
+      // way to read announcements (and admins always have a place to post
+      // from).
+      const alwaysShow = scope === 'global';
+      if ((!byTarget || byTarget.size === 0) && !alwaysShow) { continue; }
 
       const threads: ChatThread[] = [];
-      for (const [targetId, msgs] of byTarget) {
+      for (const [targetId, msgs] of (byTarget ?? new Map<string, MessageList[]>())) {
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
         // Exclude the user's own messages — backend doesn't auto-stamp authors
@@ -399,7 +869,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         });
       }
 
-      if (threads.length === 0) { continue; }
+      if (threads.length === 0 && !alwaysShow) { continue; }
 
       threads.sort((a, b) => {
         if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
@@ -487,12 +957,13 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
     await this.ensureUserScopes();
 
+    // Always pin scope on the panel query — without it the backend matches
+    // every message that shares the target id, which leaks cross-scope
+    // messages (e.g. submission_group messages also carry course_content_id).
+    baseQuery.scope = scope;
+
     switch (scope) {
       case 'global':
-        // Global threads carry no target IDs, so /messages without a scope
-        // filter returns the user's full inbox — not just globals. Pin the
-        // scope explicitly so the panel only shows global announcements.
-        baseQuery.scope = 'global';
         readOnly = !canPostGlobal(this.userScopes);
         readOnlyReason = readOnly ? 'Only administrators can post global announcements.' : undefined;
         // wsChannel intentionally undefined — no per-target channel for global.
@@ -523,11 +994,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (!targetId) { return undefined; }
         baseQuery.course_content_id = targetId;
         basePayload.course_content_id = targetId;
-        const contentInfo = this.contentLabels.get(targetId);
-        if (contentInfo) {
-          // Course content lookup may have set the course relation; surface it for create payloads.
-          // We don't have direct course_id here unless the message carried it, so leave as is.
-        }
         wsChannel = `course_content:${targetId}`;
         break;
       }
@@ -617,12 +1083,19 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     // Bursts of WS events (e.g., N read:update events when opening a thread
     // with N unread messages) would otherwise produce N back-to-back reloads
     // and visible flicker as state converges. Debounce so the burst becomes
-    // a single reload once events stop arriving.
+    // a single reload once events stop arriving. Additionally, drop reloads
+    // entirely while we're applying our own mark-read mutations: every read
+    // we post triggers a server-side broadcast that would loop us back into
+    // re-paginating the whole inbox.
+    if (Date.now() < this.suppressWsReloadUntil) {
+      return;
+    }
     if (this.wsReloadTimer) {
       clearTimeout(this.wsReloadTimer);
     }
     this.wsReloadTimer = setTimeout(() => {
       this.wsReloadTimer = undefined;
+      if (Date.now() < this.suppressWsReloadUntil) { return; }
       void this.requestReload();
     }, ChatInboxTreeProvider.WS_RELOAD_DEBOUNCE_MS);
   }

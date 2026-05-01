@@ -382,6 +382,12 @@
         "category": "Computor Chat"
       },
       {
+        "command": "computor.chat.loadMore",
+        "title": "Load More Messages",
+        "icon": "$(ellipsis)",
+        "category": "Computor Chat"
+      },
+      {
         "command": "computor.lecturer.checkoutMultipleExamples",
         "title": "Checkout Multiple Examples",
         "icon": "$(cloud-download)",
@@ -1228,7 +1234,7 @@
       "view/item/context": [
         {
           "command": "computor.chat.markScopeRead",
-          "when": "view == computor.chat.inbox && viewItem == chatScope.unread",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\..+\\.unread$/",
           "group": "1_actions@1"
         },
         {

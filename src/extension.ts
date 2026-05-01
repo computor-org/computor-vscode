@@ -1187,7 +1187,7 @@ class UnifiedController {
 
   private async initializeChatView(api: ComputorApiService): Promise<void> {
     const { ChatInboxTreeProvider } = await import('./ui/tree/chat/ChatInboxTreeProvider');
-    const { ChatScopeItem, ChatThreadItem } = await import('./ui/tree/chat/ChatInboxTreeItems');
+    const { ChatScopeItem, ChatThreadItem, ChatCourseGroupItem } = await import('./ui/tree/chat/ChatInboxTreeItems');
 
     // The chat view drives the existing MessagesWebviewProvider + bottom Compose
     // panel, so reuse the input panel + WebSocket service we already instantiated.
@@ -1210,11 +1210,15 @@ class UnifiedController {
       onExpand: (event) => {
         if (event.element instanceof ChatScopeItem) {
           tree.recordExpanded(event.element.scope, true);
+        } else if (event.element instanceof ChatCourseGroupItem) {
+          tree.recordCourseGroupExpanded(event.element.scope, event.element.courseId, true);
         }
       },
       onCollapse: (event) => {
         if (event.element instanceof ChatScopeItem) {
           tree.recordExpanded(event.element.scope, false);
+        } else if (event.element instanceof ChatCourseGroupItem) {
+          tree.recordCourseGroupExpanded(event.element.scope, event.element.courseId, false);
         }
       },
       onVisibility: (event) => {
@@ -1249,6 +1253,14 @@ class UnifiedController {
       vscode.commands.registerCommand('computor.chat.markThreadRead', (item: any) => {
         if (item instanceof ChatThreadItem) {
           void tree.markThreadRead(item);
+        }
+      }),
+      vscode.commands.registerCommand('computor.chat.loadMore', (scope: unknown, courseId?: unknown) => {
+        if (typeof scope !== 'string' || scope.length === 0) { return; }
+        if (typeof courseId === 'string' && courseId.length > 0) {
+          void tree.loadMoreForCourseScope(scope as any, courseId);
+        } else {
+          void tree.loadMoreForScope(scope as any);
         }
       })
     );

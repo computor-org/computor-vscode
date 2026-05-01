@@ -125,7 +125,6 @@ export interface MessageQuery {
   submission_group_id?: string | null;
   course_member_id?: string | null;
   user_id?: string | null;
-  course_id_all_messages?: boolean | null;
   scope?: "global" | "organization" | "course_family" | "course" | "course_content" | "course_group" | "submission_group" | "course_member" | "user" | null;
   /** Filter messages created at or after this datetime (inclusive) */
   created_after?: string | null;
