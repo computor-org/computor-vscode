@@ -169,15 +169,10 @@ class ExampleTreeItem extends vscode.TreeItem {
   }
 
   private buildDescription(): string {
+    // Title and repository name already appear in the label / tooltip — keep
+    // the description tight, only surfacing the bits that change row-to-row
+    // (local-checkout state and unsaved working changes).
     const parts: string[] = [];
-    if (this.merged.title && this.merged.title !== this.merged.identifier) {
-      parts.push(this.merged.title);
-    }
-    if (this.merged.repositoryName) {
-      parts.push(`· ${this.merged.repositoryName}`);
-    } else {
-      parts.push('· local only');
-    }
     if (this.merged.local) {
       parts.push('[local]');
     }
