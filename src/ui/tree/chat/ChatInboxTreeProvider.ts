@@ -1057,12 +1057,13 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
     await this.ensureUserScopes();
 
+    // Always pin scope on the panel query — without it the backend matches
+    // every message that shares the target id, which leaks cross-scope
+    // messages (e.g. submission_group messages also carry course_content_id).
+    baseQuery.scope = scope;
+
     switch (scope) {
       case 'global':
-        // Global threads carry no target IDs, so /messages without a scope
-        // filter returns the user's full inbox — not just globals. Pin the
-        // scope explicitly so the panel only shows global announcements.
-        baseQuery.scope = 'global';
         readOnly = !canPostGlobal(this.userScopes);
         readOnlyReason = readOnly ? 'Only administrators can post global announcements.' : undefined;
         // wsChannel intentionally undefined — no per-target channel for global.
@@ -1093,11 +1094,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (!targetId) { return undefined; }
         baseQuery.course_content_id = targetId;
         basePayload.course_content_id = targetId;
-        const contentInfo = this.contentLabels.get(targetId);
-        if (contentInfo) {
-          // Course content lookup may have set the course relation; surface it for create payloads.
-          // We don't have direct course_id here unless the message carried it, so leave as is.
-        }
         wsChannel = `course_content:${targetId}`;
         break;
       }
