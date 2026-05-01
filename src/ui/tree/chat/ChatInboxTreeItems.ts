@@ -177,10 +177,10 @@ export class ChatFilterChipItem extends vscode.TreeItem {
 }
 
 export class ChatLoadMoreItem extends vscode.TreeItem {
-  constructor(loaded: number, total: number) {
+  constructor(public readonly scope: MessageScope, loaded: number, total: number) {
     const remaining = Math.max(total - loaded, 0);
     super(`Load more (${loaded} of ${total})`, vscode.TreeItemCollapsibleState.None);
-    this.id = 'chat-load-more';
+    this.id = `chat-load-more-${scope}`;
     this.iconPath = new vscode.ThemeIcon('ellipsis');
     this.contextValue = 'chatLoadMore';
     this.description = remaining > 0 ? `${remaining} more` : '';
@@ -189,7 +189,8 @@ export class ChatLoadMoreItem extends vscode.TreeItem {
       : 'No more messages to load.';
     this.command = {
       command: 'computor.chat.loadMore',
-      title: 'Load More Messages'
+      title: 'Load More Messages',
+      arguments: [scope]
     };
   }
 }

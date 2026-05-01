@@ -3,7 +3,7 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../../../services/MessagePermissions';
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
-import type { MessageList, MessageQuery } from '../../../types/generated';
+import type { MessageList } from '../../../types/generated';
 
 const GLOBAL_CHANNEL = 'global';
 import {
@@ -41,6 +41,17 @@ interface PersistedState {
 
 type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatFilterChipItem;
 
+interface ScopeFetchState {
+  /** Accumulated messages for this scope; grows on each Load more. */
+  messages: MessageList[];
+  /** How many we've fetched (sum across pages, and across courses for the
+   *  filtered submission_group case). */
+  fetched: number;
+  /** Backend's reported total for this scope under the current filter (sum
+   *  of per-course X-Total-Count when fan-out applies). */
+  total: number;
+}
+
 export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -54,22 +65,18 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private loading = false;
   private loadError: string | undefined;
   private scopeItems: ChatScopeItem[] = [];
-  /** Last assembled inbox payload (= unfilteredBase ± submission filter
-   *  results) used by groupMessages + buildScopeItems. */
+  /** Flat union of every scope's accumulated messages, used by groupMessages
+   *  + buildScopeItems and shared by mark-read mutations. Rebuilt from
+   *  scopeFetchStates whenever they change. */
   private cachedMessages: MessageList[] = [];
-  /** Pristine accumulating page-1+ result of the unfiltered /messages query.
-   *  Grows as the user clicks "Load more". Used as the source for assembled. */
-  private unfilteredBase: MessageList[] = [];
-  /** X-Total-Count from the unfiltered /messages query — drives Load more
-   *  visibility. */
-  private unfilteredTotal: number | undefined;
-  /** How many unfiltered messages we've fetched (effectively the next skip). */
-  private unfilteredFetched = 0;
-  /** Page size for the unfiltered inbox fetch + each Load more click. */
-  private static readonly INBOX_PAGE_SIZE = 200;
-  /** Set during loadMoreInboxMessages so the user can't double-click and fan
-   *  out duplicate skip values. */
-  private loadingMore = false;
+  /** Per-scope pagination + accumulation. Each scope has its own GET window
+   *  on the backend, so Load more is rendered inside the scope it advances. */
+  private scopeFetchStates: Map<MessageScope, ScopeFetchState> = new Map();
+  /** Page size for every per-scope GET (initial + each Load more click). */
+  private static readonly SCOPE_PAGE_SIZE = 200;
+  /** Set of scopes whose Load more is in-flight, so a double-click doesn't
+   *  fan out duplicate skip values. */
+  private scopeLoadingMore: Set<MessageScope> = new Set();
   private currentUserId?: string;
   private userScopes?: import('../../../types/generated').UserScopes;
   private userScopesPromise?: Promise<void>;
@@ -254,19 +261,18 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     await this.markMessagesReadOnBackend(ids);
   }
 
-  /** Sets is_read=true on every cached copy of the given message ids — both
-   *  in cachedMessages and in unfilteredBase. They share refs for most
-   *  scopes, but diverge for submission_group when the filter is active, so
-   *  marking only cachedMessages would lose the read state next time we
-   *  re-assemble from base (e.g. when the filter is cleared). */
+  /** Sets is_read=true on every cached copy of the given message ids, across
+   *  cachedMessages and every per-scope state's messages array. */
   private markIdsReadLocally(ids: string[]): void {
     if (ids.length === 0) { return; }
     const set = new Set(ids);
     for (const m of this.cachedMessages) {
       if (set.has(m.id)) { m.is_read = true; }
     }
-    for (const m of this.unfilteredBase) {
-      if (set.has(m.id)) { m.is_read = true; }
+    for (const state of this.scopeFetchStates.values()) {
+      for (const m of state.messages) {
+        if (set.has(m.id)) { m.is_read = true; }
+      }
     }
   }
 
@@ -320,51 +326,8 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     return this.submissionCourseFilter.size > 0;
   }
 
-  /**
-   * Fetches submission-group messages matching the active backend-driven
-   * filters. Currently only the course filter goes to the backend; title is
-   * a client-side substring narrow applied during buildScopeItems, because
-   * MessageQuery doesn't support a title-substring filter (tag_scope only
-   * matches `#tag` prefixes inside the title, which is the wrong tool for
-   * arbitrary title text).
-   *
-   * Multi-course is fanned out per course because MessageQuery takes one
-   * course_id at a time. course_id_all_messages=true makes the backend walk
-   * the relations so submission_group messages with course_id=null still
-   * match the requested course.
-   */
-  private async fetchFilteredSubmissionMessages(): Promise<MessageList[]> {
-    const courseIds = Array.from(this.submissionCourseFilter);
-
-    if (courseIds.length === 0) {
-      // No course filter: pull all submission_group messages so the client-
-      // side title narrow has data to work on.
-      return await this.api.listMessages({ scope: 'submission_group' });
-    }
-
-    // course_id_all_messages tells the backend to walk the relations so
-    // submission_group messages with a null course_id column still match.
-    // The generated MessageQuery type doesn't list it (out-of-date typegen),
-    // so cast through unknown.
-    const fetches = courseIds.map(courseId =>
-      this.api.listMessages({
-        scope: 'submission_group',
-        course_id: courseId,
-        course_id_all_messages: true
-      } as unknown as MessageQuery)
-    );
-    const results = await Promise.all(fetches);
-    const seen = new Set<string>();
-    const merged: MessageList[] = [];
-    for (const list of results) {
-      for (const m of list) {
-        if (seen.has(m.id)) { continue; }
-        seen.add(m.id);
-        merged.push(m);
-      }
-    }
-    return merged;
-  }
+  // (legacy fetchFilteredSubmissionMessages removed — fetchScopePage now
+  //  handles the submission_group filter case with bounded pagination.)
 
   private applySubmissionFiltersContextKey(): void {
     void vscode.commands.executeCommand('setContext', 'computor.chat.submissionFiltersActive', this.hasSubmissionFilter());
@@ -388,58 +351,71 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   }
 
   /**
-   * Builds the assembled cachedMessages from unfilteredBase (+ filtered
-   * submission_group slice when the submission filter is on), then refreshes
-   * the scope items + tree.
+   * Fetches the first page for a single scope. For submission_group with the
+   * course filter active, fans out one request per selected course and sums
+   * the totals; otherwise a single GET /messages?scope=...&skip&limit.
    */
-  private async applyAssembledFromBase(): Promise<void> {
-    let assembled = this.unfilteredBase;
-    if (this.hasSubmissionFilter()) {
-      try {
-        const filteredSub = await this.fetchFilteredSubmissionMessages();
-        const nonSub = assembled.filter(m => m.scope !== 'submission_group');
-        assembled = [...nonSub, ...filteredSub];
-      } catch (err) {
-        console.warn('[ChatInbox] Failed to fetch filtered submission messages, falling back to unfiltered:', err);
+  private async fetchScopePage(scope: MessageScope, skip: number, limit: number): Promise<{ items: MessageList[]; total: number }> {
+    if (scope === 'submission_group' && this.hasSubmissionFilter()) {
+      const courseIds = Array.from(this.submissionCourseFilter);
+      const fetches = courseIds.map(courseId =>
+        this.api.listMessagesPage({ scope: 'submission_group', course_id: courseId, skip, limit })
+      );
+      const results = await Promise.all(fetches);
+      const seen = new Set<string>();
+      const items: MessageList[] = [];
+      let total = 0;
+      for (const r of results) {
+        total += r.total;
+        for (const m of r.items) {
+          if (!seen.has(m.id)) {
+            seen.add(m.id);
+            items.push(m);
+          }
+        }
       }
+      return { items, total };
     }
-    this.cachedMessages = assembled;
+    return await this.api.listMessagesPage({ scope, skip, limit });
+  }
+
+  /** Rebuilds cachedMessages as the flat union of every scope's accumulated
+   *  messages and refreshes the tree. */
+  private async rebuildAssembled(): Promise<void> {
+    const flat: MessageList[] = [];
+    for (const state of this.scopeFetchStates.values()) {
+      flat.push(...state.messages);
+    }
+    this.cachedMessages = flat;
     const grouped = this.groupMessages(this.cachedMessages);
     await this.resolveLabels(grouped);
     this.scopeItems = this.buildScopeItems(grouped);
   }
 
-  /** Fetches the next page of unfiltered messages and merges into the cache. */
-  async loadMoreInboxMessages(): Promise<void> {
-    if (this.loadingMore) { return; }
-    if (this.unfilteredTotal !== undefined && this.unfilteredFetched >= this.unfilteredTotal) {
-      return;
-    }
-    this.loadingMore = true;
+  /** Fetches the next page for one scope and appends to its state. */
+  async loadMoreForScope(scope: MessageScope): Promise<void> {
+    if (this.scopeLoadingMore.has(scope)) { return; }
+    const state = this.scopeFetchStates.get(scope);
+    if (!state || state.fetched >= state.total) { return; }
+    this.scopeLoadingMore.add(scope);
     try {
-      const page = await this.api.listMessagesPage({
-        skip: this.unfilteredFetched,
-        limit: ChatInboxTreeProvider.INBOX_PAGE_SIZE
-      });
-      // Dedupe in case a WS-triggered insert added a message we'd otherwise
-      // see again at this offset.
-      const seen = new Set(this.unfilteredBase.map(m => m.id));
-      for (const m of page.items) {
+      const next = await this.fetchScopePage(scope, state.fetched, ChatInboxTreeProvider.SCOPE_PAGE_SIZE);
+      const seen = new Set(state.messages.map(m => m.id));
+      for (const m of next.items) {
         if (!seen.has(m.id)) {
-          this.unfilteredBase.push(m);
+          state.messages.push(m);
           seen.add(m.id);
         }
       }
-      // Track skip on the request size, not the dedupe survivors, so we don't
-      // get stuck re-querying the same offset forever if the backend grew.
-      this.unfilteredFetched += page.items.length;
-      this.unfilteredTotal = page.total;
-
-      await this.applyAssembledFromBase();
+      // Advance by request size (not survivors) so we don't loop forever if
+      // the backend grew between pages and the same offset reappears.
+      state.fetched += next.items.length;
+      state.total = Math.max(state.total, next.total);
+      await this.rebuildAssembled();
     } catch (err: any) {
       vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
     } finally {
-      this.loadingMore = false;
+      this.scopeLoadingMore.delete(scope);
       this._onDidChangeTreeData.fire(undefined);
       this._onDidChangeUnread.fire(this.getTotalUnread());
     }
@@ -497,16 +473,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     if (!element) {
       if (this.loading) { return [new ChatLoadingItem()]; }
       if (this.loadError) { return [new ChatErrorItem(this.loadError)]; }
-      const items: AnyTreeItem[] = this.scopeItems.length === 0
-        ? [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')]
-        : [...this.scopeItems];
-      // Show "Load more" when the backend reported more unfiltered messages
-      // than we've fetched. Keep it visible regardless of unread/filter state
-      // so the user can always pull the rest down.
-      if (this.unfilteredTotal !== undefined && this.unfilteredFetched < this.unfilteredTotal) {
-        items.push(new ChatLoadMoreItem(this.unfilteredFetched, this.unfilteredTotal));
+      if (this.scopeItems.length === 0) {
+        return [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')];
       }
-      return items;
+      return [...this.scopeItems];
     }
 
     if (element instanceof ChatScopeItem) {
@@ -517,6 +487,13 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         items.push(...this.buildSubmissionFilterChips());
       }
       items.push(...element.threads.map(t => new ChatThreadItem(t)));
+      // Per-scope Load more: shown as the last child when the backend
+      // reports more messages for this scope than we've pulled. Hidden when
+      // the user collapses the scope row.
+      const state = this.scopeFetchStates.get(element.scope);
+      if (state && state.fetched < state.total) {
+        items.push(new ChatLoadMoreItem(element.scope, state.fetched, state.total));
+      }
       return items;
     }
 
@@ -537,28 +514,44 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
 
     try {
-      // Page 1 only — Load more (rendered as a tree leaf) walks the rest.
-      const [identity, page, scopes] = await Promise.all([
+      // Identity + scopes once; per-scope inbox pages in parallel. Each scope
+      // has its own pagination, so a Load more click at the end of e.g.
+      // Submission Groups only advances *that* scope's window.
+      const [identity, scopes] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
-        this.api.listMessagesPage({ skip: 0, limit: ChatInboxTreeProvider.INBOX_PAGE_SIZE }),
         this.api.getUserScopes().catch(() => undefined)
       ]);
       this.currentUserId = identity?.id;
       this.userScopes = scopes;
       this.maybeSubscribeUserChannels();
 
-      this.unfilteredBase = page.items;
-      this.unfilteredTotal = page.total;
-      this.unfilteredFetched = page.items.length;
+      const newStates = new Map<MessageScope, ScopeFetchState>();
+      const pageResults = await Promise.all(
+        SCOPE_ORDER.map(async scope => {
+          try {
+            const page = await this.fetchScopePage(scope, 0, ChatInboxTreeProvider.SCOPE_PAGE_SIZE);
+            return { scope, page };
+          } catch (err) {
+            console.warn(`[ChatInbox] Failed to fetch initial page for scope ${scope}:`, err);
+            return { scope, page: { items: [] as MessageList[], total: 0 } };
+          }
+        })
+      );
+      for (const { scope, page } of pageResults) {
+        newStates.set(scope, {
+          messages: page.items,
+          fetched: page.items.length,
+          total: page.total
+        });
+      }
+      this.scopeFetchStates = newStates;
 
-      await this.applyAssembledFromBase();
+      await this.rebuildAssembled();
     } catch (error: any) {
       this.loadError = `Failed to load messages: ${error?.message || error}`;
       this.scopeItems = [];
       this.cachedMessages = [];
-      this.unfilteredBase = [];
-      this.unfilteredTotal = undefined;
-      this.unfilteredFetched = 0;
+      this.scopeFetchStates.clear();
     } finally {
       this.loading = false;
       this._onDidChangeTreeData.fire(undefined);
