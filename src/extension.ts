@@ -1255,31 +1255,6 @@ class UnifiedController {
           void tree.markThreadRead(item);
         }
       }),
-      vscode.commands.registerCommand('computor.chat.filterSubmissionsByCourse', async () => {
-        const courses = tree.getSubmissionFilterCourses();
-        if (courses.length === 0) {
-          vscode.window.showInformationMessage('No submission-group messages to filter by course.');
-          return;
-        }
-        const picked = await vscode.window.showQuickPick(
-          courses.map(c => ({ label: c.label, description: c.id, picked: c.selected, courseId: c.id })),
-          {
-            canPickMany: true,
-            placeHolder: 'Select courses to keep in Submission Groups (none = all)',
-            title: 'Filter Submission Groups by Course'
-          }
-        );
-        if (!picked) { return; } // user cancelled — leave filter as is
-        tree.setSubmissionCourseFilter(picked.map(p => p.courseId));
-      }),
-      vscode.commands.registerCommand('computor.chat.removeSubmissionCourse', (courseId: unknown) => {
-        if (typeof courseId === 'string' && courseId.length > 0) {
-          tree.removeSubmissionCourse(courseId);
-        }
-      }),
-      vscode.commands.registerCommand('computor.chat.clearSubmissionFilters', () => {
-        tree.clearSubmissionFilters();
-      }),
       vscode.commands.registerCommand('computor.chat.loadMore', (scope: unknown, courseId?: unknown) => {
         if (typeof scope !== 'string' || scope.length === 0) { return; }
         if (typeof courseId === 'string' && courseId.length > 0) {

@@ -14,7 +14,6 @@ import {
   ChatLoadingItem,
   ChatErrorItem,
   ChatLoadMoreItem,
-  ChatFilterChipItem,
   ChatCourseGroupItem,
   MessageScope,
   scopeLabel
@@ -50,10 +49,9 @@ const STATE_KEY = 'computor.chat.inbox.state';
 interface PersistedState {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
-  submissionCourseFilter?: string[];
 }
 
-type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatFilterChipItem | ChatCourseGroupItem;
+type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatCourseGroupItem;
 
 interface ScopeFetchState {
   /** Accumulated messages for this scope; grows on each Load more. */
@@ -120,8 +118,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
   private unreadOnly = false;
-  /** Course IDs to keep when rendering the submission_group scope. Empty = all. */
-  private submissionCourseFilter: Set<string> = new Set();
 
   // Label caches keyed by id
   private readonly orgLabels = new Map<string, string>();
@@ -306,84 +302,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
   }
 
-  // ----- Submission-group filters -----
-
-  /** Returns every course the user has access to as a candidate for the
-   *  Submission Groups filter. The submission_group slice is now lazy-fetched
-   *  per course on expand, so picking from the cached payload would only
-   *  surface courses the user has already opened — which is exactly the
-   *  opposite of what the filter is for. */
-  getSubmissionFilterCourses(): Array<{ id: string; label: string; selected: boolean }> {
-    const ids = new Set<string>();
-    const inner = this.courseScopeStates.get('submission_group');
-    if (inner) {
-      for (const id of inner.keys()) { ids.add(id); }
-    }
-    // Make sure currently-selected filter ids are always shown, even if they
-    // aren't in the accessible course list anymore (e.g. role revoked).
-    for (const id of this.submissionCourseFilter) { ids.add(id); }
-    const list = Array.from(ids).map(id => ({
-      id,
-      label: this.courseLabels.get(id) || shortId(id),
-      selected: this.submissionCourseFilter.has(id)
-    }));
-    list.sort((a, b) => a.label.localeCompare(b.label));
-    return list;
-  }
-
-  setSubmissionCourseFilter(ids: string[]): void {
-    this.submissionCourseFilter = new Set(ids);
-    void this.persistState();
-    this.applySubmissionFiltersContextKey();
-    // Filter is enforced server-side, so re-fetch the submission-group slice
-    // with the new params; non-sub scopes don't change.
-    this.refresh();
-  }
-
-  removeSubmissionCourse(courseId: string): void {
-    if (!this.submissionCourseFilter.has(courseId)) { return; }
-    this.submissionCourseFilter.delete(courseId);
-    void this.persistState();
-    this.applySubmissionFiltersContextKey();
-    this.refresh();
-  }
-
-  clearSubmissionFilters(): void {
-    if (this.submissionCourseFilter.size === 0) { return; }
-    this.submissionCourseFilter = new Set();
-    void this.persistState();
-    this.applySubmissionFiltersContextKey();
-    this.refresh();
-  }
-
-  private hasSubmissionFilter(): boolean {
-    return this.submissionCourseFilter.size > 0;
-  }
-
-  // (legacy fetchFilteredSubmissionMessages removed — fetchScopePage now
-  //  handles the submission_group filter case with bounded pagination.)
-
-  private applySubmissionFiltersContextKey(): void {
-    void vscode.commands.executeCommand('setContext', 'computor.chat.submissionFiltersActive', this.hasSubmissionFilter());
-  }
-
-  /** One chip per active course filter; clicking a chip removes that course
-   *  from the filter set (and triggers a refresh of the submission_group
-   *  slice). Empty array when no filter is active. */
-  private buildSubmissionFilterChips(): ChatFilterChipItem[] {
-    const chips: ChatFilterChipItem[] = [];
-    for (const courseId of this.submissionCourseFilter) {
-      const label = this.courseLabels.get(courseId) || shortId(courseId);
-      chips.push(new ChatFilterChipItem(
-        `Course: ${label}`,
-        `Click to remove "${label}" from the Submission Groups filter.`,
-        'computor.chat.removeSubmissionCourse',
-        [courseId]
-      ));
-    }
-    return chips;
-  }
-
   /** Fetches one page for a non-course-grouped scope. Course-grouped scopes
    *  use per-course requests instead — see getCourseGroupChildren and
    *  loadMoreForCourseScope. */
@@ -545,11 +463,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
     if (element instanceof ChatScopeItem) {
       const items: AnyTreeItem[] = [];
-      // Submission Groups gets per-active-filter chips up top — click a chip
-      // to remove that one filter, mirroring the examples-tree pattern.
-      if (element.scope === 'submission_group') {
-        items.push(...this.buildSubmissionFilterChips());
-      }
       if (isCourseGroupedScope(element.scope)) {
         items.push(...this.buildCourseGroupItems(element.scope));
         return items;
@@ -572,15 +485,11 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     return [];
   }
 
-  /** One ChatCourseGroupItem per course in the user's scope set, filtered by
-   *  any active submission_group course filter. */
+  /** One ChatCourseGroupItem per course the user has access to. */
   private buildCourseGroupItems(scope: MessageScope): ChatCourseGroupItem[] {
     const inner = this.courseScopeStates.get(scope);
     if (!inner) { return []; }
-    const filterActive = scope === 'submission_group' && this.submissionCourseFilter.size > 0;
-    const courseIds = Array.from(inner.keys()).filter(id =>
-      !filterActive || this.submissionCourseFilter.has(id)
-    );
+    const courseIds = Array.from(inner.keys());
     // Sort: courses with unread first, then alphabetical by label.
     const decorated = courseIds.map(id => {
       const state = inner.get(id)!;
@@ -912,34 +821,21 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const result: ChatScopeItem[] = [];
 
     for (const scope of SCOPE_ORDER) {
-      const filterActive = scope === 'submission_group' && this.submissionCourseFilter.size > 0;
-
       // Course-grouped scopes always render — children are course nodes, not
       // threads, so the row stays collapsible even when no messages have been
       // pulled yet.
       if (isCourseGroupedScope(scope)) {
         const inner = this.courseScopeStates.get(scope);
         if (!inner || inner.size === 0) { continue; }
-        // Filter the visible course set when the user has narrowed the
-        // submission_group scope to specific courses.
-        const courseIds = Array.from(inner.keys()).filter(id => {
-          if (scope === 'submission_group' && filterActive) {
-            return this.submissionCourseFilter.has(id);
-          }
-          return true;
-        });
-        // Aggregate unread across the loaded slices of every course bucket.
         let totalUnread = 0;
-        for (const id of courseIds) {
-          const state = inner.get(id);
-          if (!state) { continue; }
+        for (const state of inner.values()) {
           for (const m of state.messages) {
             if (!m.is_read && m.author_id !== this.currentUserId) { totalUnread += 1; }
           }
         }
-        if (this.unreadOnly && totalUnread === 0 && !filterActive) { continue; }
+        if (this.unreadOnly && totalUnread === 0) { continue; }
         const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, filterActive, courseIds.length));
+        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, inner.size));
         continue;
       }
 
@@ -984,7 +880,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, false));
+      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded));
     }
 
     return result;
@@ -1249,22 +1145,17 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (typeof stored.unreadOnly === 'boolean') {
           this.unreadOnly = stored.unreadOnly;
         }
-        if (Array.isArray(stored.submissionCourseFilter)) {
-          this.submissionCourseFilter = new Set(stored.submissionCourseFilter);
-        }
       }
     } catch (err) {
       console.warn('[ChatInbox] Failed to load persisted state:', err);
     }
     void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', this.unreadOnly);
-    this.applySubmissionFiltersContextKey();
   }
 
   private async persistState(): Promise<void> {
     const state: PersistedState = {
       expandedScopes: Array.from(this.expandedScopes),
-      unreadOnly: this.unreadOnly,
-      submissionCourseFilter: Array.from(this.submissionCourseFilter)
+      unreadOnly: this.unreadOnly
     };
     try {
       await this.context.globalState.update(STATE_KEY, state);

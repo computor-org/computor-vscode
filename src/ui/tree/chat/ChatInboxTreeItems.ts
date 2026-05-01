@@ -64,7 +64,6 @@ export class ChatScopeItem extends vscode.TreeItem {
     public readonly threads: ChatThread[],
     public readonly unreadCount: number,
     expanded: boolean,
-    public readonly filterActive: boolean = false,
     /** When set, the scope renders course nodes as children instead of
      *  threads — used for the four course-grouped scopes (submission_group /
      *  course / course_content / course_group). The number is shown in the
@@ -90,16 +89,12 @@ export class ChatScopeItem extends vscode.TreeItem {
       ? `chatScope.${scope}.unread`
       : `chatScope.${scope}`;
     this.iconPath = new vscode.ThemeIcon(SCOPE_ICONS[scope]);
-    const filterSuffix = filterActive ? ' · filter on' : '';
     this.description = unreadCount > 0
-      ? `${unreadCount} unread · ${childCount}${filterSuffix}`
-      : `${childCount}${filterSuffix}`;
-    const tooltipBase = unreadCount > 0
+      ? `${unreadCount} unread · ${childCount}`
+      : `${childCount}`;
+    this.tooltip = unreadCount > 0
       ? `${SCOPE_LABELS[scope]}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
       : `${SCOPE_LABELS[scope]}: ${childCount} ${childKind}(s)`;
-    this.tooltip = filterActive
-      ? `${tooltipBase}\nFilter active — right-click to manage`
-      : tooltipBase;
   }
 }
 
@@ -196,27 +191,6 @@ export class ChatCourseGroupItem extends vscode.TreeItem {
     this.tooltip = unreadCount > 0
       ? `${courseLabel}: ${unreadCount} unread of ${threadCount} thread(s)`
       : `${courseLabel}: ${threadCount} thread(s)`;
-  }
-}
-
-export class ChatFilterChipItem extends vscode.TreeItem {
-  constructor(
-    label: string,
-    tooltip: string,
-    removeCommand: string,
-    removeArgs: unknown[] = []
-  ) {
-    super(label, vscode.TreeItemCollapsibleState.None);
-    // Stable per-label id so VS Code can diff the tree without flicker.
-    this.id = `chat-filter-chip-${label}`;
-    this.contextValue = 'chatFilterChip';
-    this.iconPath = new vscode.ThemeIcon('close');
-    this.tooltip = tooltip;
-    this.command = {
-      command: removeCommand,
-      title: 'Remove Filter',
-      arguments: removeArgs
-    };
   }
 }
 

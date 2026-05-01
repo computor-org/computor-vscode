@@ -382,24 +382,6 @@
         "category": "Computor Chat"
       },
       {
-        "command": "computor.chat.filterSubmissionsByCourse",
-        "title": "Filter by Course…",
-        "icon": "$(filter)",
-        "category": "Computor Chat"
-      },
-      {
-        "command": "computor.chat.removeSubmissionCourse",
-        "title": "Remove Course Filter",
-        "icon": "$(close)",
-        "category": "Computor Chat"
-      },
-      {
-        "command": "computor.chat.clearSubmissionFilters",
-        "title": "Clear Submission Filters",
-        "icon": "$(close)",
-        "category": "Computor Chat"
-      },
-      {
         "command": "computor.chat.loadMore",
         "title": "Load More Messages",
         "icon": "$(ellipsis)",
@@ -1259,16 +1241,6 @@
           "command": "computor.chat.markThreadRead",
           "when": "view == computor.chat.inbox && viewItem == chatThread.unread",
           "group": "1_actions@1"
-        },
-        {
-          "command": "computor.chat.filterSubmissionsByCourse",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.submission_group/",
-          "group": "2_filter@1"
-        },
-        {
-          "command": "computor.chat.clearSubmissionFilters",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.submission_group/ && computor.chat.submissionFiltersActive",
-          "group": "2_filter@2"
         },
         {
           "command": "computor.lecturer.createNewExample",
