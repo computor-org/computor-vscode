@@ -28,7 +28,11 @@ export class BearerTokenHttpClient extends HttpClient {
       maxSize?: number;
     }
   ) {
-    super(baseUrl, timeout, 3, 1000, cacheConfig);
+    // maxRetries=0: heavy endpoints (e.g. tutor aggregations) take longer than
+    // the timeout for cold members, and the underlying retry would just fire
+    // a second backend request while the first still completes. Retry policy
+    // belongs in errorRecoveryService at the call site, not in the transport.
+    super(baseUrl, timeout, 0, 1000, cacheConfig);
   }
 
   async authenticateWithCredentials(username: string, password: string): Promise<void> {

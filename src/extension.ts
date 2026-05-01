@@ -100,7 +100,7 @@ async function attemptSilentAutoLogin(
   onProgress?: (message: string) => void
 ): Promise<boolean> {
   try {
-    const client = new BearerTokenHttpClient(baseUrl, 5000);
+    const client = new BearerTokenHttpClient(baseUrl, 10000);
     await client.authenticateWithCredentials(username, password);
 
     const tokenData = client.getTokenData();
@@ -141,7 +141,6 @@ let loginWebviewProvider: LoginWebviewProvider | undefined;
 interface TreeViewRegistration<T> {
   provider: vscode.TreeDataProvider<T>;
   options?: Omit<vscode.TreeViewOptions<T>, 'treeDataProvider'>;
-  registerDataProvider?: boolean;
   onExpand?: (event: vscode.TreeViewExpansionEvent<T>) => void;
   onCollapse?: (event: vscode.TreeViewExpansionEvent<T>) => void;
   onSelection?: (event: vscode.TreeViewSelectionChangeEvent<T>) => void;
@@ -192,9 +191,9 @@ function registerTreeView<T>(
   registration: TreeViewRegistration<T>,
   disposables: vscode.Disposable[]
 ): vscode.TreeView<T> {
-  if (registration.registerDataProvider) {
-    disposables.push(vscode.window.registerTreeDataProvider(id, registration.provider));
-  }
+  // createTreeView already binds the data provider; calling
+  // registerTreeDataProvider in addition would attach a second listener to
+  // onDidChangeTreeData and cause every refresh to invoke getChildren twice.
   const treeView = vscode.window.createTreeView(id, {
     treeDataProvider: registration.provider,
     ...registration.options
@@ -208,7 +207,7 @@ function registerTreeView<T>(
 }
 
 function buildHttpClient(baseUrl: string, auth: StoredAuth): BearerTokenHttpClient {
-  const client = new BearerTokenHttpClient(baseUrl, 5000);
+  const client = new BearerTokenHttpClient(baseUrl, 10000);
   client.setTokenData({
     accessToken: auth.accessToken,
     refreshToken: auth.refreshToken,
@@ -275,7 +274,7 @@ async function runCredentialLoginLoop(
       return;
     }
 
-    const client = new BearerTokenHttpClient(baseUrl, 5000);
+    const client = new BearerTokenHttpClient(baseUrl, 10000);
     try {
       await client.authenticateWithCredentials(creds.username, creds.password);
     } catch (error: any) {
@@ -761,7 +760,6 @@ class UnifiedController {
     registerTreeView('computor.student.courses', {
       provider: tree,
       options: { showCollapseAll: true },
-      registerDataProvider: true,
       onExpand: (event) => {
         if (event.element) void tree.onTreeItemExpanded(event.element);
       },
@@ -1027,7 +1025,6 @@ class UnifiedController {
     registerTreeView('computor.tutor.courses', {
       provider: tree,
       options: { showCollapseAll: true },
-      registerDataProvider: true,
       onCollapse: (event) => tree.handleCollapse(event.element),
       onSelection: (event) => {
         const selected = event.selection[0];
@@ -1089,7 +1086,6 @@ class UnifiedController {
         canSelectMany: false,
         dragAndDropController: tree
       },
-      registerDataProvider: true,
       onExpand: (event) => {
         if (event.element?.id) void tree.setNodeExpanded(event.element.id, true);
       },
@@ -1175,7 +1171,6 @@ class UnifiedController {
     registerTreeView('computor.usermanager.users', {
       provider: tree,
       options: { showCollapseAll: false },
-      registerDataProvider: true,
       onVisibility: (event) => {
         if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
       }
@@ -1206,7 +1201,6 @@ class UnifiedController {
     const chatTreeView = registerTreeView('computor.chat.inbox', {
       provider: tree,
       options: { showCollapseAll: true },
-      registerDataProvider: true,
       onExpand: (event) => {
         if (event.element instanceof ChatScopeItem) {
           tree.recordExpanded(event.element.scope, true);
@@ -1389,8 +1383,7 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
     const offlineDisposables: vscode.Disposable[] = [];
     registerTreeView('computor.student.offline.view', {
       provider: offlineTree,
-      options: { showCollapseAll: true },
-      registerDataProvider: true
+      options: { showCollapseAll: true }
     }, offlineDisposables);
 
     // Register offline commands
