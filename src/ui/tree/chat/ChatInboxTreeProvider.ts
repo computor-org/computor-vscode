@@ -331,7 +331,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
   /**
    * When submission-group filters are active, fetches the matching messages
-   * via the backend (scope=submission_group + course_id_all_messages=true +
+   * via the backend (scope=submission_group +
    * tag_scope=...). Multi-course is fanned out per course because the backend
    * takes one course_id at a time. Returns deduped results.
    */
@@ -351,7 +351,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       this.api.listMessages({
         scope: 'submission_group',
         course_id: courseId,
-        course_id_all_messages: true,
         ...(tagScope ? { tag_scope: tagScope } : {})
       })
     );
@@ -677,10 +676,18 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
     for (const scope of SCOPE_ORDER) {
       const byTarget = grouped.get(scope);
-      if (!byTarget || byTarget.size === 0) { continue; }
+
+      // Submission Groups stays visible when its filter is active, even if
+      // the filtered fetch returned zero messages — otherwise the user has
+      // nowhere to right-click to clear the filter.
+      const filterActive = scope === 'submission_group' && (
+        this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0
+      );
+
+      if ((!byTarget || byTarget.size === 0) && !filterActive) { continue; }
 
       const threads: ChatThread[] = [];
-      for (const [targetId, msgs] of byTarget) {
+      for (const [targetId, msgs] of (byTarget ?? new Map<string, MessageList[]>())) {
         // Submission-group filters are now enforced server-side: when the
         // filter is active, the cached payload's submission_group slice is
         // already the result of a filtered fetch, so nothing else to do here.
@@ -705,13 +712,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         });
       }
 
-      const filterActive = scope === 'submission_group' && (
-        this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0
-      );
-
-      // Hide scopes with no matching threads — except keep submission_group
-      // visible when filters are active, otherwise the user can't right-click
-      // to clear filters that strip everything.
+      // Already handled the empty-and-no-filter case above; here we just
+      // need to skip non-submission-group empty scopes (which can't happen
+      // given the early continue, but keep belt-and-braces for clarity).
       if (threads.length === 0 && !filterActive) { continue; }
 
       threads.sort((a, b) => {
