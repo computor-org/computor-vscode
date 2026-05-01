@@ -196,13 +196,18 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
       return [errorItem];
     }
 
-    const filtered = this.applyFilters(this.users);
+    const { matched, scopeTotal } = this.applyFilters(this.users);
     const items: TreeItem[] = [];
 
-    items.push(new UserManagerStatItem(filtered.length, this.users.length));
+    // `scopeTotal` is the size of the toggle-filtered user list (i.e. how
+    // many users currently *qualify* for display given the show-archived /
+    // show-service toggles). Only the search filter narrows the visible
+    // count below `scopeTotal`. The "Showing …" chips themselves never
+    // factor into either count.
+    items.push(new UserManagerStatItem(matched.length, scopeTotal));
     items.push(...this.buildActiveFilterChips());
 
-    if (filtered.length === 0) {
+    if (matched.length === 0) {
       items.push(new UserManagerEmptyItem(
         this.users.length === 0
           ? 'No users.'
@@ -211,7 +216,7 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
       return items;
     }
 
-    for (const user of filtered) {
+    for (const user of matched) {
       items.push(new UserTreeItem(user, vscode.TreeItemCollapsibleState.None));
     }
 
@@ -251,7 +256,7 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
     }
   }
 
-  private applyFilters(users: UserList[]): UserList[] {
+  private applyFilters(users: UserList[]): { matched: UserList[]; scopeTotal: number } {
     let result = users;
     if (!this.filterState.showArchived) {
       result = result.filter(u => !u.archived_at);
@@ -259,6 +264,10 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
     if (!this.filterState.showService) {
       result = result.filter(u => !u.is_service);
     }
+    // `scopeTotal` snapshots how many users qualify under the toggles alone;
+    // search is layered on top so "m of n" reflects search hits within the
+    // current toggle scope, not against the unfiltered user list.
+    const scopeTotal = result.length;
     if (this.filterState.search) {
       const q = this.filterState.search.toLowerCase();
       result = result.filter(u =>
@@ -268,7 +277,7 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
         (u.username || '').toLowerCase().includes(q)
       );
     }
-    return result;
+    return { matched: result, scopeTotal };
   }
 
   private buildActiveFilterChips(): TreeItem[] {
@@ -297,7 +306,9 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
     if (this.filterState.showService) {
       chips.push(new UserManagerFilterChipItem(
         'Showing service accounts',
-        'robot',
+        // Filter icon, not 'robot' — using the same icon as service-account
+        // user rows made the chip look like another service account in the list.
+        'eye',
         'Hide service accounts',
         'computor.userManager.toggleService',
         'service'
