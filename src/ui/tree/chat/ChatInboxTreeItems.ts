@@ -64,11 +64,19 @@ export class ChatScopeItem extends vscode.TreeItem {
     public readonly threads: ChatThread[],
     public readonly unreadCount: number,
     expanded: boolean,
-    public readonly filterActive: boolean = false
+    public readonly filterActive: boolean = false,
+    /** When set, the scope renders course nodes as children instead of
+     *  threads — used for the four course-grouped scopes (submission_group /
+     *  course / course_content / course_group). The number is shown in the
+     *  description and the row stays collapsible even with zero threads. */
+    public readonly courseChildCount?: number
   ) {
+    const isCourseGrouped = courseChildCount !== undefined;
+    const childCount = isCourseGrouped ? courseChildCount! : threads.length;
+    const childKind = isCourseGrouped ? 'course' : 'thread';
     super(
       SCOPE_LABELS[scope],
-      threads.length === 0
+      childCount === 0
         ? vscode.TreeItemCollapsibleState.None
         : expanded
           ? vscode.TreeItemCollapsibleState.Expanded
@@ -84,11 +92,11 @@ export class ChatScopeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon(SCOPE_ICONS[scope]);
     const filterSuffix = filterActive ? ' · filter on' : '';
     this.description = unreadCount > 0
-      ? `${unreadCount} unread · ${threads.length}${filterSuffix}`
-      : `${threads.length}${filterSuffix}`;
+      ? `${unreadCount} unread · ${childCount}${filterSuffix}`
+      : `${childCount}${filterSuffix}`;
     const tooltipBase = unreadCount > 0
-      ? `${SCOPE_LABELS[scope]}: ${unreadCount} unread of ${threads.length} thread(s)`
-      : `${SCOPE_LABELS[scope]}: ${threads.length} thread(s)`;
+      ? `${SCOPE_LABELS[scope]}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
+      : `${SCOPE_LABELS[scope]}: ${childCount} ${childKind}(s)`;
     this.tooltip = filterActive
       ? `${tooltipBase}\nFilter active — right-click to manage`
       : tooltipBase;
@@ -155,6 +163,42 @@ export class ChatErrorItem extends vscode.TreeItem {
   }
 }
 
+export class ChatCourseGroupItem extends vscode.TreeItem {
+  constructor(
+    public readonly scope: MessageScope,
+    public readonly courseId: string,
+    public readonly courseLabel: string,
+    /** Aggregate unread for messages of `scope` belonging to `courseId` that
+     *  have already been pulled. Zero when the course node hasn't been
+     *  expanded yet. */
+    public readonly unreadCount: number,
+    /** Number of distinct threads for messages of `scope` × `courseId` that
+     *  have already been pulled. */
+    public readonly threadCount: number,
+    /** Whether the backend reports more messages for (scope, courseId) than
+     *  we've pulled so far — drives the trailing Load more visibility. */
+    public readonly hasMore: boolean,
+    expanded: boolean
+  ) {
+    super(courseLabel, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
+    this.id = `chat-course-group-${scope}-${courseId}`;
+    this.contextValue = unreadCount > 0
+      ? `chatCourseGroup.${scope}.unread`
+      : `chatCourseGroup.${scope}`;
+    this.iconPath = new vscode.ThemeIcon('mortar-board');
+    if (threadCount === 0) {
+      this.description = expanded ? 'no messages' : 'click to load';
+    } else {
+      this.description = unreadCount > 0
+        ? `${unreadCount} unread · ${threadCount}${hasMore ? ' · …' : ''}`
+        : `${threadCount}${hasMore ? ' · …' : ''}`;
+    }
+    this.tooltip = unreadCount > 0
+      ? `${courseLabel}: ${unreadCount} unread of ${threadCount} thread(s)`
+      : `${courseLabel}: ${threadCount} thread(s)`;
+  }
+}
+
 export class ChatFilterChipItem extends vscode.TreeItem {
   constructor(
     label: string,
@@ -177,10 +221,17 @@ export class ChatFilterChipItem extends vscode.TreeItem {
 }
 
 export class ChatLoadMoreItem extends vscode.TreeItem {
-  constructor(public readonly scope: MessageScope, loaded: number, total: number) {
+  constructor(
+    public readonly scope: MessageScope,
+    loaded: number,
+    total: number,
+    public readonly courseId?: string
+  ) {
     const remaining = Math.max(total - loaded, 0);
     super(`Load more (${loaded} of ${total})`, vscode.TreeItemCollapsibleState.None);
-    this.id = `chat-load-more-${scope}`;
+    this.id = courseId
+      ? `chat-load-more-${scope}-${courseId}`
+      : `chat-load-more-${scope}`;
     this.iconPath = new vscode.ThemeIcon('ellipsis');
     this.contextValue = 'chatLoadMore';
     this.description = remaining > 0 ? `${remaining} more` : '';
@@ -190,7 +241,7 @@ export class ChatLoadMoreItem extends vscode.TreeItem {
     this.command = {
       command: 'computor.chat.loadMore',
       title: 'Load More Messages',
-      arguments: [scope]
+      arguments: courseId ? [scope, courseId] : [scope]
     };
   }
 }

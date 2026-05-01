@@ -15,9 +15,23 @@ import {
   ChatErrorItem,
   ChatLoadMoreItem,
   ChatFilterChipItem,
+  ChatCourseGroupItem,
   MessageScope,
   scopeLabel
 } from './ChatInboxTreeItems';
+
+/** Scopes that are rendered as Course → threads inside the inbox tree.
+ *  All other scopes keep the original flat-per-scope rendering. */
+const COURSE_GROUPED_SCOPES = new Set<MessageScope>([
+  'submission_group',
+  'course',
+  'course_content',
+  'course_group'
+]);
+
+function isCourseGroupedScope(scope: MessageScope): boolean {
+  return COURSE_GROUPED_SCOPES.has(scope);
+}
 
 const SCOPE_ORDER: MessageScope[] = [
   'user',
@@ -39,7 +53,7 @@ interface PersistedState {
   submissionCourseFilter?: string[];
 }
 
-type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatFilterChipItem;
+type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatFilterChipItem | ChatCourseGroupItem;
 
 interface ScopeFetchState {
   /** Accumulated messages for this scope; grows on each Load more. */
@@ -69,14 +83,23 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
    *  + buildScopeItems and shared by mark-read mutations. Rebuilt from
    *  scopeFetchStates whenever they change. */
   private cachedMessages: MessageList[] = [];
-  /** Per-scope pagination + accumulation. Each scope has its own GET window
-   *  on the backend, so Load more is rendered inside the scope it advances. */
+  /** Per-scope pagination + accumulation for non-course-grouped scopes
+   *  (user / course_member / course_family / organization / global). */
   private scopeFetchStates: Map<MessageScope, ScopeFetchState> = new Map();
+  /** Per-(scope, courseId) pagination + accumulation for the course-grouped
+   *  scopes (submission_group, course, course_content, course_group). */
+  private courseScopeStates: Map<MessageScope, Map<string, ScopeFetchState>> = new Map();
+  /** Course nodes the user has expanded at least once — used both to drive
+   *  initial-collapse-state and to know whether to lazy-fetch on render. */
+  private expandedCourseGroups: Set<string> = new Set();
   /** Page size for every per-scope GET (initial + each Load more click). */
   private static readonly SCOPE_PAGE_SIZE = 200;
   /** Set of scopes whose Load more is in-flight, so a double-click doesn't
    *  fan out duplicate skip values. */
   private scopeLoadingMore: Set<MessageScope> = new Set();
+  /** Same idea but keyed `${scope}::${courseId}` for the per-course
+   *  pagination. */
+  private courseScopeLoadingMore: Set<string> = new Set();
   private currentUserId?: string;
   private userScopes?: import('../../../types/generated').UserScopes;
   private userScopesPromise?: Promise<void>;
@@ -262,7 +285,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   }
 
   /** Sets is_read=true on every cached copy of the given message ids, across
-   *  cachedMessages and every per-scope state's messages array. */
+   *  cachedMessages and every per-scope / per-course state's messages array. */
   private markIdsReadLocally(ids: string[]): void {
     if (ids.length === 0) { return; }
     const set = new Set(ids);
@@ -274,20 +297,31 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (set.has(m.id)) { m.is_read = true; }
       }
     }
+    for (const inner of this.courseScopeStates.values()) {
+      for (const state of inner.values()) {
+        for (const m of state.messages) {
+          if (set.has(m.id)) { m.is_read = true; }
+        }
+      }
+    }
   }
 
   // ----- Submission-group filters -----
 
-  /** Returns the courses that currently have at least one submission_group
-   *  message in the cached inbox payload, with resolved labels. */
+  /** Returns every course the user has access to as a candidate for the
+   *  Submission Groups filter. The submission_group slice is now lazy-fetched
+   *  per course on expand, so picking from the cached payload would only
+   *  surface courses the user has already opened — which is exactly the
+   *  opposite of what the filter is for. */
   getSubmissionFilterCourses(): Array<{ id: string; label: string; selected: boolean }> {
     const ids = new Set<string>();
-    for (const m of this.cachedMessages) {
-      if (m.scope !== 'submission_group') { continue; }
-      if (typeof m.course_id === 'string' && m.course_id) {
-        ids.add(m.course_id);
-      }
+    const inner = this.courseScopeStates.get('submission_group');
+    if (inner) {
+      for (const id of inner.keys()) { ids.add(id); }
     }
+    // Make sure currently-selected filter ids are always shown, even if they
+    // aren't in the accessible course list anymore (e.g. role revoked).
+    for (const id of this.submissionCourseFilter) { ids.add(id); }
     const list = Array.from(ids).map(id => ({
       id,
       label: this.courseLabels.get(id) || shortId(id),
@@ -350,41 +384,24 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     return chips;
   }
 
-  /**
-   * Fetches the first page for a single scope. For submission_group with the
-   * course filter active, fans out one request per selected course and sums
-   * the totals; otherwise a single GET /messages?scope=...&skip&limit.
-   */
+  /** Fetches one page for a non-course-grouped scope. Course-grouped scopes
+   *  use per-course requests instead — see getCourseGroupChildren and
+   *  loadMoreForCourseScope. */
   private async fetchScopePage(scope: MessageScope, skip: number, limit: number): Promise<{ items: MessageList[]; total: number }> {
-    if (scope === 'submission_group' && this.hasSubmissionFilter()) {
-      const courseIds = Array.from(this.submissionCourseFilter);
-      const fetches = courseIds.map(courseId =>
-        this.api.listMessagesPage({ scope: 'submission_group', course_id: courseId, skip, limit })
-      );
-      const results = await Promise.all(fetches);
-      const seen = new Set<string>();
-      const items: MessageList[] = [];
-      let total = 0;
-      for (const r of results) {
-        total += r.total;
-        for (const m of r.items) {
-          if (!seen.has(m.id)) {
-            seen.add(m.id);
-            items.push(m);
-          }
-        }
-      }
-      return { items, total };
-    }
     return await this.api.listMessagesPage({ scope, skip, limit });
   }
 
   /** Rebuilds cachedMessages as the flat union of every scope's accumulated
-   *  messages and refreshes the tree. */
+   *  messages (per-scope + per-course) and refreshes the tree. */
   private async rebuildAssembled(): Promise<void> {
     const flat: MessageList[] = [];
     for (const state of this.scopeFetchStates.values()) {
       flat.push(...state.messages);
+    }
+    for (const inner of this.courseScopeStates.values()) {
+      for (const state of inner.values()) {
+        flat.push(...state.messages);
+      }
     }
     this.cachedMessages = flat;
     const grouped = this.groupMessages(this.cachedMessages);
@@ -418,6 +435,53 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       this.scopeLoadingMore.delete(scope);
       this._onDidChangeTreeData.fire(undefined);
       this._onDidChangeUnread.fire(this.getTotalUnread());
+    }
+  }
+
+  /** Fetches the next page for a (scope, course) bucket and appends to its
+   *  per-course state. Used by the per-course Load more rendered inside each
+   *  ChatCourseGroupItem. */
+  async loadMoreForCourseScope(scope: MessageScope, courseId: string): Promise<void> {
+    const key = `${scope}::${courseId}`;
+    if (this.courseScopeLoadingMore.has(key)) { return; }
+    const inner = this.courseScopeStates.get(scope);
+    const state = inner?.get(courseId);
+    if (!state || state.total < 0 || state.fetched >= state.total) { return; }
+    this.courseScopeLoadingMore.add(key);
+    try {
+      const next = await this.api.listMessagesPage({
+        scope,
+        course_id: courseId,
+        skip: state.fetched,
+        limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
+      });
+      const seen = new Set(state.messages.map(m => m.id));
+      for (const m of next.items) {
+        if (!seen.has(m.id)) {
+          state.messages.push(m);
+          seen.add(m.id);
+        }
+      }
+      state.fetched += next.items.length;
+      state.total = Math.max(state.total, next.total);
+      await this.rebuildAssembled();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
+    } finally {
+      this.courseScopeLoadingMore.delete(key);
+      this._onDidChangeTreeData.fire(undefined);
+      this._onDidChangeUnread.fire(this.getTotalUnread());
+    }
+  }
+
+  /** Track expand/collapse for a course node so a refresh can keep the user's
+   *  open courses open. */
+  recordCourseGroupExpanded(scope: MessageScope, courseId: string, expanded: boolean): void {
+    const key = `${scope}::${courseId}`;
+    if (expanded) {
+      this.expandedCourseGroups.add(key);
+    } else {
+      this.expandedCourseGroups.delete(key);
     }
   }
 
@@ -486,6 +550,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       if (element.scope === 'submission_group') {
         items.push(...this.buildSubmissionFilterChips());
       }
+      if (isCourseGroupedScope(element.scope)) {
+        items.push(...this.buildCourseGroupItems(element.scope));
+        return items;
+      }
       items.push(...element.threads.map(t => new ChatThreadItem(t)));
       // Per-scope Load more: shown as the last child when the backend
       // reports more messages for this scope than we've pulled. Hidden when
@@ -497,7 +565,131 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       return items;
     }
 
+    if (element instanceof ChatCourseGroupItem) {
+      return await this.getCourseGroupChildren(element);
+    }
+
     return [];
+  }
+
+  /** One ChatCourseGroupItem per course in the user's scope set, filtered by
+   *  any active submission_group course filter. */
+  private buildCourseGroupItems(scope: MessageScope): ChatCourseGroupItem[] {
+    const inner = this.courseScopeStates.get(scope);
+    if (!inner) { return []; }
+    const filterActive = scope === 'submission_group' && this.submissionCourseFilter.size > 0;
+    const courseIds = Array.from(inner.keys()).filter(id =>
+      !filterActive || this.submissionCourseFilter.has(id)
+    );
+    // Sort: courses with unread first, then alphabetical by label.
+    const decorated = courseIds.map(id => {
+      const state = inner.get(id)!;
+      const unread = state.messages.reduce(
+        (acc, m) => acc + ((!m.is_read && m.author_id !== this.currentUserId) ? 1 : 0),
+        0
+      );
+      const threadCount = new Set(
+        state.messages.map(m => this.targetIdFor(scope, m) ?? '__none__')
+      ).size;
+      return {
+        id,
+        label: this.courseLabels.get(id) || shortId(id),
+        unread,
+        threadCount,
+        // total === -1 means we haven't fetched yet — show the "click to load" hint
+        // by reporting hasMore=false until expand triggers a fetch.
+        hasMore: state.total >= 0 && state.fetched < state.total
+      };
+    });
+    decorated.sort((a, b) => {
+      if ((b.unread > 0 ? 1 : 0) !== (a.unread > 0 ? 1 : 0)) {
+        return (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0);
+      }
+      return a.label.localeCompare(b.label);
+    });
+    return decorated.map(d => {
+      const expanded = this.expandedCourseGroups.has(`${scope}::${d.id}`) || d.unread > 0;
+      return new ChatCourseGroupItem(
+        scope,
+        d.id,
+        d.label,
+        d.unread,
+        d.threadCount,
+        d.hasMore,
+        expanded
+      );
+    });
+  }
+
+  /** Lazy-fetch the first page on first expand, then return threads + a
+   *  per-course Load more. */
+  private async getCourseGroupChildren(element: ChatCourseGroupItem): Promise<AnyTreeItem[]> {
+    const { scope, courseId } = element;
+    const inner = this.courseScopeStates.get(scope);
+    const state = inner?.get(courseId);
+    if (!inner || !state) { return []; }
+    this.expandedCourseGroups.add(`${scope}::${courseId}`);
+
+    // First-time fetch: state.total === -1 means we haven't asked the backend
+    // for this (scope, course) yet. Pull the first page now.
+    if (state.total < 0) {
+      try {
+        const page = await this.api.listMessagesPage({
+          scope,
+          course_id: courseId,
+          skip: 0,
+          limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
+        });
+        state.messages = page.items;
+        state.fetched = page.items.length;
+        state.total = page.total;
+        await this.rebuildAssembled();
+        this._onDidChangeUnread.fire(this.getTotalUnread());
+      } catch (err: any) {
+        return [new ChatErrorItem(`Failed to load messages: ${err?.message || err}`)];
+      }
+    }
+
+    const items: AnyTreeItem[] = [];
+    // Group this course's messages into threads by target id.
+    const byTarget = new Map<string, MessageList[]>();
+    for (const m of state.messages) {
+      const targetId = this.targetIdFor(scope, m) ?? '__none__';
+      if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
+      byTarget.get(targetId)!.push(m);
+    }
+    const threads: ChatThread[] = [];
+    for (const [targetId, msgs] of byTarget) {
+      const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
+      const lastMessage = sortedMessages[sortedMessages.length - 1];
+      const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
+      if (this.unreadOnly && unreadCount === 0) { continue; }
+      const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
+      threads.push({
+        scope,
+        targetId: targetId === '__none__' ? null : targetId,
+        title,
+        subtitle,
+        lastMessage,
+        unreadCount,
+        messageCount: msgs.length,
+        messages: sortedMessages
+      });
+    }
+    threads.sort((a, b) => {
+      if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
+        return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+      }
+      return compareThreadRecency(b, a);
+    });
+    items.push(...threads.map(t => new ChatThreadItem(t)));
+    if (state.fetched < state.total) {
+      items.push(new ChatLoadMoreItem(scope, state.fetched, state.total, courseId));
+    }
+    if (items.length === 0) {
+      items.push(new ChatEmptyItem('No messages.'));
+    }
+    return items;
   }
 
   // ----- Internals -----
@@ -525,9 +717,15 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       this.userScopes = scopes;
       this.maybeSubscribeUserChannels();
 
+      // For non-course-grouped scopes, fetch the first page in parallel.
+      // Course-grouped scopes (submission_group / course / course_content /
+      // course_group) skip the per-scope fan-out — a chat with even a few
+      // courses produces hundreds of submission_group threads, so we lazy-load
+      // per-course on tree expand instead.
+      const flatScopes = SCOPE_ORDER.filter(s => !isCourseGroupedScope(s));
       const newStates = new Map<MessageScope, ScopeFetchState>();
       const pageResults = await Promise.all(
-        SCOPE_ORDER.map(async scope => {
+        flatScopes.map(async scope => {
           try {
             const page = await this.fetchScopePage(scope, 0, ChatInboxTreeProvider.SCOPE_PAGE_SIZE);
             return { scope, page };
@@ -546,12 +744,36 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       }
       this.scopeFetchStates = newStates;
 
+      // Seed the per-(scope, course) maps from the user's accessible courses.
+      // Each entry stays empty (`fetched: 0, total: -1`) until the user expands
+      // the course node, at which point getChildren triggers the first fetch.
+      const courseIds = scopes?.course ? Object.keys(scopes.course) : [];
+      const newCourseStates = new Map<MessageScope, Map<string, ScopeFetchState>>();
+      for (const scope of SCOPE_ORDER) {
+        if (!isCourseGroupedScope(scope)) { continue; }
+        const inner = new Map<string, ScopeFetchState>();
+        // Preserve any state we already had so an in-flight Load more isn't
+        // erased by a parallel reload.
+        const previous = this.courseScopeStates.get(scope);
+        for (const courseId of courseIds) {
+          const prev = previous?.get(courseId);
+          inner.set(courseId, prev ?? { messages: [], fetched: 0, total: -1 });
+        }
+        newCourseStates.set(scope, inner);
+      }
+      this.courseScopeStates = newCourseStates;
+
+      // Resolve labels for every accessible course up front, so the
+      // ChatCourseGroupItem rows can show real titles instead of short ids.
+      await Promise.all(courseIds.map(id => this.resolveCourseLabelLazy(id).catch(() => undefined)));
+
       await this.rebuildAssembled();
     } catch (error: any) {
       this.loadError = `Failed to load messages: ${error?.message || error}`;
       this.scopeItems = [];
       this.cachedMessages = [];
       this.scopeFetchStates.clear();
+      this.courseScopeStates.clear();
     } finally {
       this.loading = false;
       this._onDidChangeTreeData.fire(undefined);
@@ -690,20 +912,42 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const result: ChatScopeItem[] = [];
 
     for (const scope of SCOPE_ORDER) {
-      const byTarget = grouped.get(scope);
-
-      // Submission Groups stays visible when its filter is active, even if
-      // the filtered fetch returned zero messages — otherwise the user has
-      // nowhere to right-click to clear the filter.
       const filterActive = scope === 'submission_group' && this.submissionCourseFilter.size > 0;
 
-      if ((!byTarget || byTarget.size === 0) && !filterActive) { continue; }
+      // Course-grouped scopes always render — children are course nodes, not
+      // threads, so the row stays collapsible even when no messages have been
+      // pulled yet.
+      if (isCourseGroupedScope(scope)) {
+        const inner = this.courseScopeStates.get(scope);
+        if (!inner || inner.size === 0) { continue; }
+        // Filter the visible course set when the user has narrowed the
+        // submission_group scope to specific courses.
+        const courseIds = Array.from(inner.keys()).filter(id => {
+          if (scope === 'submission_group' && filterActive) {
+            return this.submissionCourseFilter.has(id);
+          }
+          return true;
+        });
+        // Aggregate unread across the loaded slices of every course bucket.
+        let totalUnread = 0;
+        for (const id of courseIds) {
+          const state = inner.get(id);
+          if (!state) { continue; }
+          for (const m of state.messages) {
+            if (!m.is_read && m.author_id !== this.currentUserId) { totalUnread += 1; }
+          }
+        }
+        if (this.unreadOnly && totalUnread === 0 && !filterActive) { continue; }
+        const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
+        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, filterActive, courseIds.length));
+        continue;
+      }
+
+      const byTarget = grouped.get(scope);
+      if (!byTarget || byTarget.size === 0) { continue; }
 
       const threads: ChatThread[] = [];
-      for (const [targetId, msgs] of (byTarget ?? new Map<string, MessageList[]>())) {
-        // Submission-group filters are now enforced server-side: when the
-        // filter is active, the cached payload's submission_group slice is
-        // already the result of a filtered fetch, so nothing else to do here.
+      for (const [targetId, msgs] of byTarget) {
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
         // Exclude the user's own messages — backend doesn't auto-stamp authors
@@ -725,10 +969,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         });
       }
 
-      // Already handled the empty-and-no-filter case above; here we just
-      // need to skip non-submission-group empty scopes (which can't happen
-      // given the early continue, but keep belt-and-braces for clarity).
-      if (threads.length === 0 && !filterActive) { continue; }
+      if (threads.length === 0) { continue; }
 
       threads.sort((a, b) => {
         if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
@@ -739,7 +980,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, filterActive));
+      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, false));
     }
 
     return result;
