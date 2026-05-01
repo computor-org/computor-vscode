@@ -155,6 +155,27 @@ export class ChatErrorItem extends vscode.TreeItem {
   }
 }
 
+export class ChatFilterChipItem extends vscode.TreeItem {
+  constructor(
+    label: string,
+    tooltip: string,
+    removeCommand: string,
+    removeArgs: unknown[] = []
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    // Stable per-label id so VS Code can diff the tree without flicker.
+    this.id = `chat-filter-chip-${label}`;
+    this.contextValue = 'chatFilterChip';
+    this.iconPath = new vscode.ThemeIcon('close');
+    this.tooltip = tooltip;
+    this.command = {
+      command: removeCommand,
+      title: 'Remove Filter',
+      arguments: removeArgs
+    };
+  }
+}
+
 export class ChatLoadMoreItem extends vscode.TreeItem {
   constructor(loaded: number, total: number) {
     const remaining = Math.max(total - loaded, 0);

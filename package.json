@@ -388,9 +388,9 @@
         "category": "Computor Chat"
       },
       {
-        "command": "computor.chat.filterSubmissionsByTitle",
-        "title": "Filter by Title…",
-        "icon": "$(search)",
+        "command": "computor.chat.removeSubmissionCourse",
+        "title": "Remove Course Filter",
+        "icon": "$(close)",
         "category": "Computor Chat"
       },
       {
@@ -1266,14 +1266,9 @@
           "group": "2_filter@1"
         },
         {
-          "command": "computor.chat.filterSubmissionsByTitle",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.submission_group/",
-          "group": "2_filter@2"
-        },
-        {
           "command": "computor.chat.clearSubmissionFilters",
           "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.submission_group/ && computor.chat.submissionFiltersActive",
-          "group": "2_filter@3"
+          "group": "2_filter@2"
         },
         {
           "command": "computor.lecturer.createNewExample",

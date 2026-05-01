@@ -3,7 +3,7 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../../../services/MessagePermissions';
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
-import type { MessageList } from '../../../types/generated';
+import type { MessageList, MessageQuery } from '../../../types/generated';
 
 const GLOBAL_CHANNEL = 'global';
 import {
@@ -14,6 +14,7 @@ import {
   ChatLoadingItem,
   ChatErrorItem,
   ChatLoadMoreItem,
+  ChatFilterChipItem,
   MessageScope,
   scopeLabel
 } from './ChatInboxTreeItems';
@@ -36,10 +37,9 @@ interface PersistedState {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
   submissionCourseFilter?: string[];
-  submissionTitleFilter?: string;
 }
 
-type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem;
+type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatFilterChipItem;
 
 export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
@@ -92,9 +92,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private unreadOnly = false;
   /** Course IDs to keep when rendering the submission_group scope. Empty = all. */
   private submissionCourseFilter: Set<string> = new Set();
-  /** Substring (case-insensitive) match against any message's title in a
-   *  submission_group thread. Empty = all. */
-  private submissionTitleFilter = '';
 
   // Label caches keyed by id
   private readonly orgLabels = new Map<string, string>();
@@ -303,56 +300,58 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.refresh();
   }
 
-  getSubmissionTitleFilter(): string {
-    return this.submissionTitleFilter;
-  }
-
-  setSubmissionTitleFilter(value: string): void {
-    const trimmed = (value ?? '').trim();
-    if (this.submissionTitleFilter === trimmed) { return; }
-    this.submissionTitleFilter = trimmed;
+  removeSubmissionCourse(courseId: string): void {
+    if (!this.submissionCourseFilter.has(courseId)) { return; }
+    this.submissionCourseFilter.delete(courseId);
     void this.persistState();
     this.applySubmissionFiltersContextKey();
     this.refresh();
   }
 
   clearSubmissionFilters(): void {
-    if (this.submissionCourseFilter.size === 0 && this.submissionTitleFilter === '') { return; }
+    if (this.submissionCourseFilter.size === 0) { return; }
     this.submissionCourseFilter = new Set();
-    this.submissionTitleFilter = '';
     void this.persistState();
     this.applySubmissionFiltersContextKey();
     this.refresh();
   }
 
   private hasSubmissionFilter(): boolean {
-    return this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0;
+    return this.submissionCourseFilter.size > 0;
   }
 
   /**
-   * When submission-group filters are active, fetches the matching messages
-   * via the backend (scope=submission_group +
-   * tag_scope=...). Multi-course is fanned out per course because the backend
-   * takes one course_id at a time. Returns deduped results.
+   * Fetches submission-group messages matching the active backend-driven
+   * filters. Currently only the course filter goes to the backend; title is
+   * a client-side substring narrow applied during buildScopeItems, because
+   * MessageQuery doesn't support a title-substring filter (tag_scope only
+   * matches `#tag` prefixes inside the title, which is the wrong tool for
+   * arbitrary title text).
+   *
+   * Multi-course is fanned out per course because MessageQuery takes one
+   * course_id at a time. course_id_all_messages=true makes the backend walk
+   * the relations so submission_group messages with course_id=null still
+   * match the requested course.
    */
   private async fetchFilteredSubmissionMessages(): Promise<MessageList[]> {
-    const tagScope = this.submissionTitleFilter || undefined;
     const courseIds = Array.from(this.submissionCourseFilter);
 
     if (courseIds.length === 0) {
-      // Title-only filter
-      return await this.api.listMessages({
-        scope: 'submission_group',
-        ...(tagScope ? { tag_scope: tagScope } : {})
-      });
+      // No course filter: pull all submission_group messages so the client-
+      // side title narrow has data to work on.
+      return await this.api.listMessages({ scope: 'submission_group' });
     }
 
+    // course_id_all_messages tells the backend to walk the relations so
+    // submission_group messages with a null course_id column still match.
+    // The generated MessageQuery type doesn't list it (out-of-date typegen),
+    // so cast through unknown.
     const fetches = courseIds.map(courseId =>
       this.api.listMessages({
         scope: 'submission_group',
         course_id: courseId,
-        ...(tagScope ? { tag_scope: tagScope } : {})
-      })
+        course_id_all_messages: true
+      } as unknown as MessageQuery)
     );
     const results = await Promise.all(fetches);
     const seen = new Set<string>();
@@ -368,8 +367,24 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   }
 
   private applySubmissionFiltersContextKey(): void {
-    const active = this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0;
-    void vscode.commands.executeCommand('setContext', 'computor.chat.submissionFiltersActive', active);
+    void vscode.commands.executeCommand('setContext', 'computor.chat.submissionFiltersActive', this.hasSubmissionFilter());
+  }
+
+  /** One chip per active course filter; clicking a chip removes that course
+   *  from the filter set (and triggers a refresh of the submission_group
+   *  slice). Empty array when no filter is active. */
+  private buildSubmissionFilterChips(): ChatFilterChipItem[] {
+    const chips: ChatFilterChipItem[] = [];
+    for (const courseId of this.submissionCourseFilter) {
+      const label = this.courseLabels.get(courseId) || shortId(courseId);
+      chips.push(new ChatFilterChipItem(
+        `Course: ${label}`,
+        `Click to remove "${label}" from the Submission Groups filter.`,
+        'computor.chat.removeSubmissionCourse',
+        [courseId]
+      ));
+    }
+    return chips;
   }
 
   /**
@@ -495,7 +510,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
 
     if (element instanceof ChatScopeItem) {
-      return element.threads.map(t => new ChatThreadItem(t));
+      const items: AnyTreeItem[] = [];
+      // Submission Groups gets per-active-filter chips up top — click a chip
+      // to remove that one filter, mirroring the examples-tree pattern.
+      if (element.scope === 'submission_group') {
+        items.push(...this.buildSubmissionFilterChips());
+      }
+      items.push(...element.threads.map(t => new ChatThreadItem(t)));
+      return items;
     }
 
     return [];
@@ -680,9 +702,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       // Submission Groups stays visible when its filter is active, even if
       // the filtered fetch returned zero messages — otherwise the user has
       // nowhere to right-click to clear the filter.
-      const filterActive = scope === 'submission_group' && (
-        this.submissionCourseFilter.size > 0 || this.submissionTitleFilter.length > 0
-      );
+      const filterActive = scope === 'submission_group' && this.submissionCourseFilter.size > 0;
 
       if ((!byTarget || byTarget.size === 0) && !filterActive) { continue; }
 
@@ -998,9 +1018,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (Array.isArray(stored.submissionCourseFilter)) {
           this.submissionCourseFilter = new Set(stored.submissionCourseFilter);
         }
-        if (typeof stored.submissionTitleFilter === 'string') {
-          this.submissionTitleFilter = stored.submissionTitleFilter;
-        }
       }
     } catch (err) {
       console.warn('[ChatInbox] Failed to load persisted state:', err);
@@ -1013,8 +1030,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const state: PersistedState = {
       expandedScopes: Array.from(this.expandedScopes),
       unreadOnly: this.unreadOnly,
-      submissionCourseFilter: Array.from(this.submissionCourseFilter),
-      submissionTitleFilter: this.submissionTitleFilter
+      submissionCourseFilter: Array.from(this.submissionCourseFilter)
     };
     try {
       await this.context.globalState.update(STATE_KEY, state);

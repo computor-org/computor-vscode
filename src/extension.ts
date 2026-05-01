@@ -1268,16 +1268,10 @@ class UnifiedController {
         if (!picked) { return; } // user cancelled — leave filter as is
         tree.setSubmissionCourseFilter(picked.map(p => p.courseId));
       }),
-      vscode.commands.registerCommand('computor.chat.filterSubmissionsByTitle', async () => {
-        const value = await vscode.window.showInputBox({
-          title: 'Filter Submission Groups by Title',
-          prompt: 'Match any message whose title contains this text (case-insensitive). Empty to clear.',
-          placeHolder: 'e.g. ai-help',
-          value: tree.getSubmissionTitleFilter(),
-          ignoreFocusOut: true
-        });
-        if (value === undefined) { return; } // cancelled
-        tree.setSubmissionTitleFilter(value);
+      vscode.commands.registerCommand('computor.chat.removeSubmissionCourse', (courseId: unknown) => {
+        if (typeof courseId === 'string' && courseId.length > 0) {
+          tree.removeSubmissionCourse(courseId);
+        }
       }),
       vscode.commands.registerCommand('computor.chat.clearSubmissionFilters', () => {
         tree.clearSubmissionFilters();
