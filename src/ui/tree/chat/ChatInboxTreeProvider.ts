@@ -944,10 +944,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       }
 
       const byTarget = grouped.get(scope);
-      if (!byTarget || byTarget.size === 0) { continue; }
+      // Global stays visible even with zero messages so users always have a
+      // way to read announcements (and admins always have a place to post
+      // from).
+      const alwaysShow = scope === 'global';
+      if ((!byTarget || byTarget.size === 0) && !alwaysShow) { continue; }
 
       const threads: ChatThread[] = [];
-      for (const [targetId, msgs] of byTarget) {
+      for (const [targetId, msgs] of (byTarget ?? new Map<string, MessageList[]>())) {
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
         // Exclude the user's own messages — backend doesn't auto-stamp authors
@@ -969,7 +973,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         });
       }
 
-      if (threads.length === 0) { continue; }
+      if (threads.length === 0 && !alwaysShow) { continue; }
 
       threads.sort((a, b) => {
         if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
