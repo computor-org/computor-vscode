@@ -189,23 +189,28 @@ export class ExtensionUpdateService {
         throw new Error('Authentication required for extension download.');
       }
 
-      const redirectResponse = await fetch(downloadUrl.toString(), { redirect: 'manual', headers });
-      if (redirectResponse.status !== 302) {
-        throw new Error(`Failed to download VSIX: ${redirectResponse.status}`);
-      }
+      // Backend may stream the VSIX bytes directly (200) or redirect to a
+      // presigned storage URL (302). Handle both.
+      const initialResponse = await fetch(downloadUrl.toString(), { redirect: 'manual', headers });
 
-      const presignedUrl = redirectResponse.headers.get('location');
-      if (!presignedUrl) {
-        throw new Error('Download redirect missing location header');
+      let buffer: Buffer;
+      if (initialResponse.status === 200) {
+        const arrayBuffer = await initialResponse.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+      } else if (initialResponse.status === 302) {
+        const presignedUrl = initialResponse.headers.get('location');
+        if (!presignedUrl) {
+          throw new Error('Download redirect missing location header');
+        }
+        const storageResponse = await fetch(presignedUrl, { redirect: 'follow' });
+        if (!storageResponse.ok) {
+          throw new Error(`Failed to download VSIX from storage: ${storageResponse.status}`);
+        }
+        const arrayBuffer = await storageResponse.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+      } else {
+        throw new Error(`Failed to download VSIX: ${initialResponse.status}`);
       }
-
-      const response = await fetch(presignedUrl, { redirect: 'follow' });
-      if (!response.ok) {
-        throw new Error(`Failed to download VSIX from storage: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
 
       // Save into a durable location (Downloads, or the extension's
       // globalStorage as fallback) so that if VS Code refuses to auto-install
