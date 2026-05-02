@@ -173,6 +173,10 @@ export class ExtensionUpdateService {
     const downloadUrl = new URL(`${baseUrl}/extensions/${this.extensionId}/download`);
     downloadUrl.searchParams.set('version', versionLabel);
 
+    let savedVsixPath: string | undefined;
+    let installSucceeded = false;
+    let installError: unknown;
+
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: `Computor: Installing update ${versionLabel}`,
@@ -203,27 +207,75 @@ export class ExtensionUpdateService {
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'computor-update-'));
-      const vsixPath = path.join(tempDir, `${this.extensionId.replace(/\./g, '-')}-${versionLabel}.vsix`);
+      // Save into a durable location (Downloads, or the extension's
+      // globalStorage as fallback) so that if VS Code refuses to auto-install
+      // we can hand the user a working file path for manual drag-and-drop.
+      const targetDir = await this.resolveVsixOutputDir();
+      const vsixPath = path.join(
+        targetDir,
+        `${this.extensionId.replace(/\./g, '-')}-${versionLabel}.vsix`
+      );
+      await fs.promises.writeFile(vsixPath, buffer);
+      savedVsixPath = vsixPath;
 
+      progress.report({ message: 'Installing…' });
       try {
-        await fs.promises.writeFile(vsixPath, buffer);
-        progress.report({ message: 'Installing…' });
         await vscode.commands.executeCommand('workbench.extensions.installExtension', vscode.Uri.file(vsixPath));
-      } finally {
-        await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+        installSucceeded = true;
+      } catch (err) {
+        installError = err;
       }
     });
 
-    const choice = await vscode.window.showInformationMessage(
-      `Computor extension updated to ${versionLabel}. Reload VS Code to apply changes.`,
-      'Reload Now',
-      'Later'
-    );
-
-    if (choice === 'Reload Now') {
-      void vscode.commands.executeCommand('workbench.action.reloadWindow');
+    if (installSucceeded) {
+      // Drop the staged VSIX once VS Code has picked it up; nothing left to clean up if it was already deleted.
+      if (savedVsixPath) {
+        await fs.promises.rm(savedVsixPath, { force: true }).catch(() => undefined);
+      }
+      const choice = await vscode.window.showInformationMessage(
+        `Computor extension updated to ${versionLabel}. Reload VS Code to apply changes.`,
+        'Reload Now',
+        'Later'
+      );
+      if (choice === 'Reload Now') {
+        void vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
+      return;
     }
+
+    // Install was blocked (signature policy, managed extension, etc.) but the
+    // download succeeded. Surface the saved file so the user can install it
+    // manually by dragging into the Extensions view.
+    console.warn('Computor auto-install rejected by VS Code:', installError);
+    if (!savedVsixPath) {
+      void vscode.window.showWarningMessage('Computor auto-update failed. Check logs for details.');
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `Computor auto-install was blocked, but the update was downloaded to ${savedVsixPath}. Reveal the file and drop it into the Extensions view to install manually.`,
+      'Reveal VSIX',
+      'Open Extensions View'
+    );
+    if (choice === 'Reveal VSIX') {
+      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(savedVsixPath));
+    } else if (choice === 'Open Extensions View') {
+      await vscode.commands.executeCommand('workbench.view.extensions');
+    }
+  }
+
+  private async resolveVsixOutputDir(): Promise<string> {
+    const downloads = path.join(os.homedir(), 'Downloads');
+    try {
+      const stat = await fs.promises.stat(downloads);
+      if (stat.isDirectory()) {
+        return downloads;
+      }
+    } catch {
+      // fall through to the global-storage fallback
+    }
+    const fallback = this.context.globalStorageUri.fsPath;
+    await fs.promises.mkdir(fallback, { recursive: true });
+    return fallback;
   }
 
   private async buildAuthHeaders(extraHeaders: Record<string, string> = {}): Promise<Record<string, string> | undefined> {
