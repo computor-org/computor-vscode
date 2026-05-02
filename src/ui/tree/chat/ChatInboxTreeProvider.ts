@@ -101,6 +101,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   private currentUserId?: string;
   private userScopes?: import('../../../types/generated').UserScopes;
   private userScopesPromise?: Promise<void>;
+  /** Cached list of role-based views available to the current user (e.g.
+   *  `student`, `tutor`, `lecturer`, `user_manager`). Used to gate global
+   *  posting for `_user_manager` alongside `_admin`. */
+  private userViews: string[] = [];
   private reloadInFlight?: Promise<void>;
   private reloadQueued = false;
   private wsService?: WebSocketService;
@@ -618,12 +622,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       // Identity + scopes once; per-scope inbox pages in parallel. Each scope
       // has its own pagination, so a Load more click at the end of e.g.
       // Submission Groups only advances *that* scope's window.
-      const [identity, scopes] = await Promise.all([
+      const [identity, scopes, views] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
-        this.api.getUserScopes().catch(() => undefined)
+        this.api.getUserScopes().catch(() => undefined),
+        this.api.getUserViews().catch(() => [] as string[])
       ]);
       this.currentUserId = identity?.id;
       this.userScopes = scopes;
+      this.userViews = views ?? [];
       this.maybeSubscribeUserChannels();
 
       // For non-course-grouped scopes, fetch the first page in parallel.
@@ -964,8 +970,8 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
     switch (scope) {
       case 'global':
-        readOnly = !canPostGlobal(this.userScopes);
-        readOnlyReason = readOnly ? 'Only administrators can post global announcements.' : undefined;
+        readOnly = !canPostGlobal(this.userScopes, this.userViews.includes('user_manager'));
+        readOnlyReason = readOnly ? 'Only administrators or user managers can post global announcements.' : undefined;
         // wsChannel intentionally undefined — no per-target channel for global.
         break;
       case 'organization':

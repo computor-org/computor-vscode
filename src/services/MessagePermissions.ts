@@ -72,6 +72,11 @@ export function canPostToCourseFamily(scopes: UserScopes | undefined, courseFami
   return hasPostingRole(scopes.course_family?.[courseFamilyId]);
 }
 
-export function canPostGlobal(scopes: UserScopes | undefined): boolean {
-  return scopes?.is_admin === true;
+export function canPostGlobal(
+  scopes: UserScopes | undefined,
+  /** Set when the user holds the `_user_manager` system role. User managers
+   *  are allowed to post global announcements alongside admins. */
+  isUserManager = false
+): boolean {
+  return scopes?.is_admin === true || isUserManager;
 }
