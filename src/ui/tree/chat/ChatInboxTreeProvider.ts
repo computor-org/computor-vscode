@@ -877,6 +877,21 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       if (threads.length === 0 && !alwaysShow) { continue; }
 
+      // Global has no per-target id, so when there are no messages yet the
+      // user wouldn't see a clickable row to open the panel from. Inject a
+      // synthetic placeholder thread so admins / user managers always have an
+      // entry point to compose announcements.
+      if (scope === 'global' && threads.length === 0) {
+        threads.push({
+          scope: 'global',
+          targetId: null,
+          title: 'Global Announcements',
+          unreadCount: 0,
+          messageCount: 0,
+          messages: []
+        });
+      }
+
       threads.sort((a, b) => {
         if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
           return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
