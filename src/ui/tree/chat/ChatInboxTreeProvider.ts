@@ -728,9 +728,23 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const tasks: Promise<unknown>[] = [];
 
     for (const [scope, byTarget] of grouped) {
-      for (const [targetId] of byTarget) {
-        if (targetId === '__none__') { continue; }
-        tasks.push(this.ensureLabel(scope, targetId).catch(() => undefined));
+      for (const [targetId, msgs] of byTarget) {
+        if (targetId !== '__none__') {
+          tasks.push(this.ensureLabel(scope, targetId).catch(() => undefined));
+        }
+        // Submission-group threads label themselves from the linked
+        // course_content (see threadLabels). Pre-resolve those content
+        // labels so the title isn't a raw "Submission Group <shortId>".
+        if (scope === 'submission_group') {
+          const seen = new Set<string>();
+          for (const m of msgs) {
+            const contentId = m.course_content_id;
+            if (typeof contentId === 'string' && contentId && !seen.has(contentId)) {
+              seen.add(contentId);
+              tasks.push(this.ensureLabel('course_content', contentId).catch(() => undefined));
+            }
+          }
+        }
       }
     }
     await Promise.all(tasks);
@@ -964,6 +978,21 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
   private async buildTargetContext(thread: ChatThread): Promise<MessageTargetContext | undefined> {
     const { scope, targetId } = thread;
+
+    // Submission-group titles read from the linked course_content. Lazy-fetch
+    // it now if the label cache hasn't seen it yet (e.g. when opening from a
+    // brand-new WS toast where resolveLabels hasn't run for this content id).
+    if (scope === 'submission_group') {
+      const seen = new Set<string>();
+      for (const m of thread.messages) {
+        const contentId = m.course_content_id;
+        if (typeof contentId === 'string' && contentId && !seen.has(contentId) && !this.contentLabels.has(contentId)) {
+          seen.add(contentId);
+          await this.ensureLabel('course_content', contentId).catch(() => undefined);
+        }
+      }
+    }
+
     const labels = this.threadLabels(scope, targetId, thread.messages);
     const titleSegments: string[] = [];
     if (labels.subtitle) { titleSegments.push(labels.subtitle); }
