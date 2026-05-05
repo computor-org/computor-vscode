@@ -48,7 +48,7 @@ export class StudentCommands {
     this.testResultService = TestResultService.getInstance();
     // Make sure TestResultService has the API service
     this.testResultService.setApiService(this.apiService);
-    this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    this.messagesWebviewProvider = MessagesWebviewProvider.getShared(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
     }

@@ -79,7 +79,7 @@ export class LecturerCommands {
     this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberImportWebviewProvider = new CourseMemberImportWebviewProvider(context, this.apiService, this.treeDataProvider);
-    this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    this.messagesWebviewProvider = MessagesWebviewProvider.getShared(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
     }

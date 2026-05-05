@@ -51,7 +51,7 @@ export class TutorCommands {
     if (commentsInputPanel) {
       this.commentsWebviewProvider.setInputPanel(commentsInputPanel);
     }
-    this.messagesWebviewProvider = new MessagesWebviewProvider(context, this.apiService);
+    this.messagesWebviewProvider = MessagesWebviewProvider.getShared(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
     }

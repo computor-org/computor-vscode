@@ -53,6 +53,19 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   private readonly wsHandlerId: string;
   private pendingUnreadMessageIds: Set<string> = new Set();
 
+  /** Shared instance reused across the chat, student, tutor and lecturer
+   *  views — every caller routes through the same provider so that opening
+   *  the same thread from two different trees focuses one panel rather than
+   *  spawning a second copy. */
+  private static shared: MessagesWebviewProvider | undefined;
+
+  static getShared(context: vscode.ExtensionContext, apiService: ComputorApiService): MessagesWebviewProvider {
+    if (!this.shared) {
+      this.shared = new MessagesWebviewProvider(context, apiService);
+    }
+    return this.shared;
+  }
+
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.messagesView');
     this.apiService = apiService;

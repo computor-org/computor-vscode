@@ -1186,7 +1186,7 @@ class UnifiedController {
 
     // The chat view drives the existing MessagesWebviewProvider + bottom Compose
     // panel, so reuse the input panel + WebSocket service we already instantiated.
-    const messagesWebview = new (await import('./ui/webviews/MessagesWebviewProvider')).MessagesWebviewProvider(this.context, api);
+    const messagesWebview = (await import('./ui/webviews/MessagesWebviewProvider')).MessagesWebviewProvider.getShared(this.context, api);
     if (this.messagesInputPanel) {
       messagesWebview.setInputPanel(this.messagesInputPanel);
     }
