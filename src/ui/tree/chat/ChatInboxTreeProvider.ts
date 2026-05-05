@@ -1126,6 +1126,11 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       // Don't notify the user about their own posts.
       return;
     }
+    if (this.messagesProvider.isShowingMessage(inner)) {
+      // Panel is open on this exact thread — the panel itself will render the
+      // new message, so the toast would be redundant.
+      return;
+    }
     void this.showNewMessageToast(inner);
   }
 
