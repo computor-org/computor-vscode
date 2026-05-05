@@ -950,13 +950,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         return { title: info?.title || (targetId ? `Member ${shortId(targetId)}` : 'Course Member'), subtitle: info?.subtitle };
       }
       case 'submission_group': {
-        // Try to find a useful subtitle from any message that carries course_content_id (sibling field).
+        // Title comes from the linked course_content; the scope label
+        // ("Submission Groups") is already shown by the panel chrome, so we
+        // skip the subtitle to avoid the redundant "Submission group / X".
         const sample = msgs[0];
         const contentId = sample?.course_content_id;
         const contentLabel = contentId ? this.contentLabels.get(contentId)?.title : undefined;
         return {
-          title: contentLabel || (targetId ? `Submission Group ${shortId(targetId)}` : 'Submission Group'),
-          subtitle: contentLabel ? 'Submission group' : undefined
+          title: contentLabel || (targetId ? `Submission Group ${shortId(targetId)}` : 'Submission Group')
         };
       }
       case 'user': {
