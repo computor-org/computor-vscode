@@ -1213,10 +1213,13 @@ export class StudentCommands {
         const summary = result.missing.length > 0
           ? `Exported ${result.packaged} assignment(s); skipped ${result.missing.length} not on disk.`
           : `Exported ${result.packaged} assignment(s).`;
-        const choice = await vscode.window.showInformationMessage(summary, 'Reveal');
-        if (choice === 'Reveal') {
-          void vscode.commands.executeCommand('revealFileInOS', dest);
-        }
+        // Fire-and-forget: awaiting this would keep the "Exporting…" progress
+        // popup open until the user dismisses the success toast.
+        void vscode.window.showInformationMessage(summary, 'Reveal').then(choice => {
+          if (choice === 'Reveal') {
+            void vscode.commands.executeCommand('revealFileInOS', dest);
+          }
+        });
       }
     );
   }
