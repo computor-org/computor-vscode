@@ -81,8 +81,12 @@ export class ChatScopeItem extends vscode.TreeItem {
     const isCourseGrouped = courseChildCount !== undefined;
     const childCount = isCourseGrouped ? courseChildCount! : threads.length;
     const childKind = isCourseGrouped ? 'course' : 'thread';
+    // Prefix the label (not the description) with the muted bell so the
+    // glyph sits at the same column on every muted row, vertically aligned.
+    const baseLabel = SCOPE_LABELS[scope];
+    const label = muted ? `🔕 ${baseLabel}` : baseLabel;
     super(
-      SCOPE_LABELS[scope],
+      label,
       childCount === 0
         ? vscode.TreeItemCollapsibleState.None
         : expanded
@@ -98,11 +102,10 @@ export class ChatScopeItem extends vscode.TreeItem {
     if (muted) { suffixes.push('muted'); }
     this.contextValue = ['chatScope', scope, ...suffixes].join('.');
     this.iconPath = new vscode.ThemeIcon(SCOPE_ICONS[scope]);
-    const baseDescription = unreadCount > 0 ? `${unreadCount} unread · ${childCount}` : `${childCount}`;
-    this.description = muted ? `🔕 ${baseDescription}` : baseDescription;
+    this.description = unreadCount > 0 ? `${unreadCount} unread · ${childCount}` : `${childCount}`;
     const baseTooltip = unreadCount > 0
-      ? `${SCOPE_LABELS[scope]}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
-      : `${SCOPE_LABELS[scope]}: ${childCount} ${childKind}(s)`;
+      ? `${baseLabel}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
+      : `${baseLabel}: ${childCount} ${childKind}(s)`;
     this.tooltip = muted ? `${baseTooltip}\nNotifications muted for this scope.` : baseTooltip;
   }
 }
