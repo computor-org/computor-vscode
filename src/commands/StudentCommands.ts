@@ -16,6 +16,8 @@ import type { WebSocketService } from '../services/WebSocketService';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 import JSZip from 'jszip';
 import { commandRegistrar } from './commandHelpers';
+import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
+import { runLockedWithProgress } from '../utils/progressLock';
 
 // (Deprecated legacy types removed)
 
@@ -226,6 +228,10 @@ export class StudentCommands {
 
     register('computor.student.showMessages', async (item?: any) => {
       await this.showMessages(item);
+    });
+
+    register('computor.student.exportCourseExamples', async (item?: any) => {
+      await this.exportCourseExamples(item);
     });
 
     register('computor.showTestResults', async (item?: any) => {
@@ -1125,6 +1131,97 @@ export class StudentCommands {
       console.error('[showHelp] Failed to show help:', error);
       vscode.window.showErrorMessage('Failed to open help documentation');
     }
+  }
+
+  private async exportCourseExamples(item?: any): Promise<void> {
+    const courseId: string | undefined = typeof item?.courseId === 'string' ? item.courseId : undefined;
+    const courseTitle: string = typeof item?.title === 'string' && item.title.trim().length > 0
+      ? item.title
+      : 'Course';
+    if (!courseId) {
+      vscode.window.showWarningMessage('No course selected for export.');
+      return;
+    }
+
+    const formatPick = await vscode.window.showQuickPick(
+      [
+        { label: 'Tree (default)', description: 'Mirror the course content tree, named by content titles', value: 'tree' as CourseExportFormat },
+        { label: 'Flat', description: 'One folder per assignment, named by example identifier', value: 'flat' as CourseExportFormat }
+      ],
+      {
+        title: `Export ${courseTitle}: choose archive layout`,
+        placeHolder: 'Tree (recommended)',
+        ignoreFocusOut: true
+      }
+    );
+    if (!formatPick) { return; }
+
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      vscode.window.showWarningMessage('Open a workspace folder before exporting.');
+      return;
+    }
+
+    const defaultFile = `${sanitizeContentDirName(courseTitle)}.${formatPick.value}.zip`;
+    const dest = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(path.join(workspaceRoot, defaultFile)),
+      filters: { 'ZIP Archives': ['zip'] },
+      saveLabel: 'Export'
+    });
+    if (!dest) { return; }
+
+    await runLockedWithProgress(
+      {
+        key: `student-export:${courseId}`,
+        title: `Exporting ${courseTitle}…`,
+        duplicateMessage: 'Export already in progress for this course.',
+        timeoutMs: 300_000
+      },
+      async () => {
+        const contents = (await this.apiService.getStudentCourseContents(courseId)) ?? [];
+        if (contents.length === 0) {
+          vscode.window.showInformationMessage('No course contents found to export.');
+          return;
+        }
+
+        const result = await buildCourseExportZip({
+          contents,
+          workspaceRoot,
+          format: formatPick.value
+        });
+
+        if (result.packaged === 0) {
+          console.warn('[exportCourseExamples] Nothing packaged. Probed paths:', result.probedPaths);
+          const sample = result.probedPaths.slice(0, 3).join('\n');
+          const choice = await vscode.window.showWarningMessage(
+            `Nothing was exported. Probed ${result.probedPaths.length} path(s).${sample ? `\nFirst: ${sample}` : ''}`,
+            'Open Console'
+          );
+          if (choice === 'Open Console') {
+            void vscode.commands.executeCommand('workbench.action.toggleDevTools');
+          }
+          return;
+        }
+
+        const buffer = await result.zip.generateAsync({
+          type: 'nodebuffer',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 }
+        });
+        await fs.promises.writeFile(dest.fsPath, buffer);
+
+        const summary = result.missing.length > 0
+          ? `Exported ${result.packaged} assignment(s); skipped ${result.missing.length} not on disk.`
+          : `Exported ${result.packaged} assignment(s).`;
+        // Fire-and-forget: awaiting this would keep the "Exporting…" progress
+        // popup open until the user dismisses the success toast.
+        void vscode.window.showInformationMessage(summary, 'Reveal').then(choice => {
+          if (choice === 'Reveal') {
+            void vscode.commands.executeCommand('revealFileInOS', dest);
+          }
+        });
+      }
+    );
   }
 
   private async showMessages(item?: any): Promise<void> {
