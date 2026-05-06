@@ -49,6 +49,7 @@ const STATE_KEY = 'computor.chat.inbox.state';
 interface PersistedState {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
+  mutedScopes?: MessageScope[];
 }
 
 type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatCourseGroupItem;
@@ -122,6 +123,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
   private unreadOnly = false;
+  /** Scopes whose new-message toasts are suppressed. Per-scope only — there
+   *  is no separate global flag; the global title-bar toggle simply flips
+   *  this set between empty (all on) and full (all muted). */
+  private mutedScopes: Set<MessageScope> = new Set();
 
   // Label caches keyed by id
   private readonly orgLabels = new Map<string, string>();
@@ -188,6 +193,41 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     // Toggle is a pure client-side filter (buildScopeItems already excludes
     // threads with no unread messages when unreadOnly is on). Rebuilding from
     // the cached payload avoids re-paginating the entire inbox on every flip.
+    this.rebuildScopeItemsFromCache();
+  }
+
+  /** True when at least one scope is currently un-muted. The title-bar action
+   *  uses this to pick between "mute all" (bell) and "unmute all" (bell-slash). */
+  isAnyScopeUnmuted(): boolean {
+    return SCOPE_ORDER.some(scope => !this.mutedScopes.has(scope));
+  }
+
+  isScopeMuted(scope: MessageScope): boolean {
+    return this.mutedScopes.has(scope);
+  }
+
+  /** Flip every scope at once. If any scope is currently un-muted, mute all;
+   *  otherwise unmute all. */
+  toggleAllNotifications(): void {
+    const allMuted = !this.isAnyScopeUnmuted();
+    if (allMuted) {
+      this.mutedScopes.clear();
+    } else {
+      this.mutedScopes = new Set(SCOPE_ORDER);
+    }
+    void this.persistState();
+    void this.applyNotificationContextKeys();
+    this.rebuildScopeItemsFromCache();
+  }
+
+  toggleScopeMuted(scope: MessageScope): void {
+    if (this.mutedScopes.has(scope)) {
+      this.mutedScopes.delete(scope);
+    } else {
+      this.mutedScopes.add(scope);
+    }
+    void this.persistState();
+    void this.applyNotificationContextKeys();
     this.rebuildScopeItemsFromCache();
   }
 
@@ -728,9 +768,23 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const tasks: Promise<unknown>[] = [];
 
     for (const [scope, byTarget] of grouped) {
-      for (const [targetId] of byTarget) {
-        if (targetId === '__none__') { continue; }
-        tasks.push(this.ensureLabel(scope, targetId).catch(() => undefined));
+      for (const [targetId, msgs] of byTarget) {
+        if (targetId !== '__none__') {
+          tasks.push(this.ensureLabel(scope, targetId).catch(() => undefined));
+        }
+        // Submission-group threads label themselves from the linked
+        // course_content (see threadLabels). Pre-resolve those content
+        // labels so the title isn't a raw "Submission Group <shortId>".
+        if (scope === 'submission_group') {
+          const seen = new Set<string>();
+          for (const m of msgs) {
+            const contentId = m.course_content_id;
+            if (typeof contentId === 'string' && contentId && !seen.has(contentId)) {
+              seen.add(contentId);
+              tasks.push(this.ensureLabel('course_content', contentId).catch(() => undefined));
+            }
+          }
+        }
       }
     }
     await Promise.all(tasks);
@@ -841,7 +895,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         }
         if (this.unreadOnly && totalUnread === 0) { continue; }
         const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, inner.size));
+        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, {
+          courseChildCount: inner.size,
+          muted: this.mutedScopes.has(scope)
+        }));
         continue;
       }
 
@@ -901,7 +958,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded));
+      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, {
+        muted: this.mutedScopes.has(scope)
+      }));
     }
 
     return result;
@@ -936,13 +995,14 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         return { title: info?.title || (targetId ? `Member ${shortId(targetId)}` : 'Course Member'), subtitle: info?.subtitle };
       }
       case 'submission_group': {
-        // Try to find a useful subtitle from any message that carries course_content_id (sibling field).
+        // Title comes from the linked course_content; the scope label
+        // ("Submission Groups") is already shown by the panel chrome, so we
+        // skip the subtitle to avoid the redundant "Submission group / X".
         const sample = msgs[0];
         const contentId = sample?.course_content_id;
         const contentLabel = contentId ? this.contentLabels.get(contentId)?.title : undefined;
         return {
-          title: contentLabel || (targetId ? `Submission Group ${shortId(targetId)}` : 'Submission Group'),
-          subtitle: contentLabel ? 'Submission group' : undefined
+          title: contentLabel || (targetId ? `Submission Group ${shortId(targetId)}` : 'Submission Group')
         };
       }
       case 'user': {
@@ -964,6 +1024,21 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
   private async buildTargetContext(thread: ChatThread): Promise<MessageTargetContext | undefined> {
     const { scope, targetId } = thread;
+
+    // Submission-group titles read from the linked course_content. Lazy-fetch
+    // it now if the label cache hasn't seen it yet (e.g. when opening from a
+    // brand-new WS toast where resolveLabels hasn't run for this content id).
+    if (scope === 'submission_group') {
+      const seen = new Set<string>();
+      for (const m of thread.messages) {
+        const contentId = m.course_content_id;
+        if (typeof contentId === 'string' && contentId && !seen.has(contentId) && !this.contentLabels.has(contentId)) {
+          seen.add(contentId);
+          await this.ensureLabel('course_content', contentId).catch(() => undefined);
+        }
+      }
+    }
+
     const labels = this.threadLabels(scope, targetId, thread.messages);
     const titleSegments: string[] = [];
     if (labels.subtitle) { titleSegments.push(labels.subtitle); }
@@ -1097,6 +1172,15 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       // Don't notify the user about their own posts.
       return;
     }
+    if (this.messagesProvider.isShowingMessage(inner)) {
+      // Panel is open on this exact thread — the panel itself will render the
+      // new message, so the toast would be redundant.
+      return;
+    }
+    const scope = (typeof inner.scope === 'string' ? inner.scope : 'global') as MessageScope;
+    if (this.mutedScopes.has(scope)) {
+      return;
+    }
     void this.showNewMessageToast(inner);
   }
 
@@ -1166,23 +1250,42 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (typeof stored.unreadOnly === 'boolean') {
           this.unreadOnly = stored.unreadOnly;
         }
+        if (Array.isArray(stored.mutedScopes)) {
+          this.mutedScopes = new Set(stored.mutedScopes);
+        }
       }
     } catch (err) {
       console.warn('[ChatInbox] Failed to load persisted state:', err);
     }
     void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', this.unreadOnly);
+    void this.applyNotificationContextKeys();
   }
 
   private async persistState(): Promise<void> {
     const state: PersistedState = {
       expandedScopes: Array.from(this.expandedScopes),
-      unreadOnly: this.unreadOnly
+      unreadOnly: this.unreadOnly,
+      mutedScopes: Array.from(this.mutedScopes)
     };
     try {
       await this.context.globalState.update(STATE_KEY, state);
     } catch (err) {
       console.warn('[ChatInbox] Failed to persist state:', err);
     }
+  }
+
+  /** Mirrors the mute set into VS Code context keys so menu `when` clauses
+   *  can pick the right icon variant.
+   *    - `computor.chat.anyScopeUnmuted` — true if at least one scope's
+   *      notifications are still on. The title-bar action shows the bell
+   *      (mute-all) variant when this is true and the bell-slash
+   *      (unmute-all) variant when it is false.
+   *    - `computor.chat.mutedScopes` — space-separated list of muted scope
+   *      ids. Per-scope inline icons swap on the contextValue suffix
+   *      (`.muted`) instead, but this stays available for future use. */
+  private async applyNotificationContextKeys(): Promise<void> {
+    await vscode.commands.executeCommand('setContext', 'computor.chat.anyScopeUnmuted', this.isAnyScopeUnmuted());
+    await vscode.commands.executeCommand('setContext', 'computor.chat.mutedScopes', Array.from(this.mutedScopes).join(' '));
   }
 }
 

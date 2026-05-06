@@ -53,6 +53,19 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   private readonly wsHandlerId: string;
   private pendingUnreadMessageIds: Set<string> = new Set();
 
+  /** Shared instance reused across the chat, student, tutor and lecturer
+   *  views — every caller routes through the same provider so that opening
+   *  the same thread from two different trees focuses one panel rather than
+   *  spawning a second copy. */
+  private static shared: MessagesWebviewProvider | undefined;
+
+  static getShared(context: vscode.ExtensionContext, apiService: ComputorApiService): MessagesWebviewProvider {
+    if (!this.shared) {
+      this.shared = new MessagesWebviewProvider(context, apiService);
+    }
+    return this.shared;
+  }
+
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.messagesView');
     this.apiService = apiService;
@@ -100,6 +113,50 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       }
       await this.inputPanel.reveal();
     }
+  }
+
+  /**
+   * Returns true when the messages panel is currently visible AND its target
+   * matches the channel of the given message. Lets callers (e.g. the chat
+   * inbox toast) suppress notifications the user is already looking at.
+   */
+  public isShowingMessage(message: Record<string, unknown>): boolean {
+    if (!this.isPanelVisible || !this.panel) { return false; }
+    const target = this.getCurrentTarget();
+    if (!target) { return false; }
+
+    // If the panel pinned a scope, the message must share it.
+    const pinnedScope = (target.query as Record<string, unknown>).scope;
+    if (typeof pinnedScope === 'string' && pinnedScope !== message.scope) {
+      return false;
+    }
+
+    // Match every id-shaped query key that's set on the panel against the
+    // same key on the incoming message. If none are set the panel is the
+    // global list, so accept any global message.
+    const idKeys = [
+      'submission_group_id',
+      'course_content_id',
+      'course_group_id',
+      'course_id',
+      'course_family_id',
+      'organization_id',
+      'course_member_id',
+      'user_id'
+    ];
+    let anyIdMatched = false;
+    for (const key of idKeys) {
+      const targetVal = (target.query as Record<string, unknown>)[key];
+      if (targetVal === undefined) { continue; }
+      anyIdMatched = true;
+      if ((message as Record<string, unknown>)[key] !== targetVal) {
+        return false;
+      }
+    }
+    if (!anyIdMatched) {
+      return pinnedScope === 'global' && message.scope === 'global';
+    }
+    return true;
   }
 
   private subscribeToChannel(target: MessageTargetContext): void {

@@ -1186,7 +1186,7 @@ class UnifiedController {
 
     // The chat view drives the existing MessagesWebviewProvider + bottom Compose
     // panel, so reuse the input panel + WebSocket service we already instantiated.
-    const messagesWebview = new (await import('./ui/webviews/MessagesWebviewProvider')).MessagesWebviewProvider(this.context, api);
+    const messagesWebview = (await import('./ui/webviews/MessagesWebviewProvider')).MessagesWebviewProvider.getShared(this.context, api);
     if (this.messagesInputPanel) {
       messagesWebview.setInputPanel(this.messagesInputPanel);
     }
@@ -1255,6 +1255,22 @@ class UnifiedController {
           void tree.loadMoreForCourseScope(scope as any, courseId);
         } else {
           void tree.loadMoreForScope(scope as any);
+        }
+      }),
+      vscode.commands.registerCommand('computor.chat.notifications.mute', () => {
+        tree.toggleAllNotifications();
+      }),
+      vscode.commands.registerCommand('computor.chat.notifications.unmute', () => {
+        tree.toggleAllNotifications();
+      }),
+      vscode.commands.registerCommand('computor.chat.scope.mute', (item: any) => {
+        if (item instanceof ChatScopeItem) {
+          tree.toggleScopeMuted(item.scope);
+        }
+      }),
+      vscode.commands.registerCommand('computor.chat.scope.unmute', (item: any) => {
+        if (item instanceof ChatScopeItem) {
+          tree.toggleScopeMuted(item.scope);
         }
       })
     );
