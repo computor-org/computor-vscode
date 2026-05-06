@@ -3,10 +3,7 @@ import * as path from 'path';
 import JSZip from 'jszip';
 import { shouldExcludeExampleEntry } from './exampleExcludePatterns';
 import { buildStudentRepoRoot } from './repositoryNaming';
-import type {
-  CourseContentStudentList,
-  SubmissionGroupStudentList
-} from '../types/generated';
+import type { CourseContentStudentList } from '../types/generated';
 
 export type CourseExportFormat = 'flat' | 'tree';
 
@@ -18,15 +15,15 @@ export interface CourseExportInput {
 
 export interface CourseExportResult {
   zip: JSZip;
-  /** Number of assignment directories actually packaged. */
   packaged: number;
-  /** Assignments whose local directory is missing on disk. */
+  /** Title list for assignments whose source folder didn't exist on disk. */
   missing: string[];
+  /** Probed paths — surfaced when packaged == 0 to help debug. */
+  probedPaths: string[];
 }
 
-/** Replaces whitespace with `_`, strips filesystem-unsafe and control
- *  characters, collapses repeats. Returns `'untitled'` for inputs that boil
- *  down to nothing usable. Used for tree-format folder names. */
+/** Replaces whitespace with `_`, strips filesystem-unsafe and control chars,
+ *  collapses repeats. Returns `'untitled'` for blank inputs. */
 export function sanitizeContentDirName(raw: string | null | undefined): string {
   const source = (raw ?? '').toString().normalize('NFKD');
   const cleaned = source
@@ -40,38 +37,34 @@ export function sanitizeContentDirName(raw: string | null | undefined): string {
   return cleaned || 'untitled';
 }
 
-/** Mirrors the convention from the tutor / student trees: the assignment
- *  files live in the repository at `directory` (or fall back to the example
- *  identifier / last path segment). */
-function deriveAssignmentSubdirectory(content: CourseContentStudentList): string | undefined {
-  const raw = (content as any)?.directory as string | undefined
-    ?? content.submission_group?.example_identifier
-    ?? content.path?.split('.').pop();
-  if (!raw) { return undefined; }
-  const normalized = path.normalize(raw).replace(/^([\\/]+)/, '');
-  if (!normalized || normalized === '.' || normalized === '..') {
-    return undefined;
-  }
-  const segments = normalized.split(/[\\/]+/).filter(seg => seg && seg !== '..');
-  return segments.length > 0 ? segments.join(path.sep) : undefined;
-}
-
-function getRepoRoot(workspaceRoot: string, submissionGroup: SubmissionGroupStudentList | undefined | null): string | undefined {
-  const fullPath = submissionGroup?.repository?.full_path;
+/** Mirrors StudentCourseContentTreeProvider.getStudentRepoRoot — turns
+ *  `submission_group.repository.full_path` into the local repo directory. */
+function repoRootFor(
+  content: CourseContentStudentList,
+  workspaceRoot: string
+): string | undefined {
+  const fullPath = content.submission_group?.repository?.full_path;
   if (!fullPath) { return undefined; }
   const dirName = fullPath.replace(/\//g, '.');
   return buildStudentRepoRoot(workspaceRoot, dirName);
 }
 
-/** A content node is exportable if it has a submission_group (which is the
- *  practical signal that it's an assignment with cloneable files) regardless
- *  of how the kind / slug are spelled. Pure units don't get a submission_group. */
-function isExportable(content: CourseContentStudentList): boolean {
-  return content.submission_group != null && !!content.submission_group.repository?.full_path;
+/** Mirrors StudentCourseContentTreeProvider's `resolvePath` helper used to
+ *  locate the assignment folder: absolute `directory` is taken verbatim;
+ *  relative `directory` is joined onto repoRoot. When `directory` is missing
+ *  we fall back to repoRoot itself. */
+function localAssignmentPath(
+  content: CourseContentStudentList,
+  workspaceRoot: string
+): string | undefined {
+  const repoRoot = repoRootFor(content, workspaceRoot);
+  if (!repoRoot) { return undefined; }
+  const directory = (content as any)?.directory as string | undefined;
+  if (!directory) { return repoRoot; }
+  if (path.isAbsolute(directory)) { return directory; }
+  return path.join(repoRoot, directory);
 }
 
-/** Builds the zip-internal path for a content node in tree format by walking
- *  its dotted `path` ancestors and joining sanitized titles. */
 function buildTreePath(
   content: CourseContentStudentList,
   byPath: Map<string, CourseContentStudentList>
@@ -82,16 +75,18 @@ function buildTreePath(
     const ancestorPath = parts.slice(0, i).join('.');
     const ancestor = byPath.get(ancestorPath);
     const fallback = parts[i - 1] ?? '';
-    const candidate = ancestor?.title ?? fallback;
-    segments.push(sanitizeContentDirName(candidate));
+    segments.push(sanitizeContentDirName(ancestor?.title ?? fallback));
   }
   return segments.join('/');
 }
 
-/** Recursively packages a directory into the zip under `zipBasePath`,
- *  skipping git / IDE / OS metadata files via `shouldExcludeExampleEntry` and
- *  also any entry whose name starts with `.` (catches things the shared
- *  exclude list misses, e.g. `.envrc`). */
+function flatNameFor(content: CourseContentStudentList): string {
+  const exampleId = content.submission_group?.example_identifier;
+  const directory = (content as any)?.directory as string | undefined;
+  const fallback = content.path?.split('.').pop();
+  return sanitizeContentDirName(exampleId || (directory ? path.basename(directory) : '') || fallback || content.id);
+}
+
 function addDirectoryToZip(zip: JSZip, sourceDir: string, zipBasePath: string): void {
   const walk = (current: string, baseInZip: string): void => {
     let entries: fs.Dirent[];
@@ -131,15 +126,16 @@ export async function buildCourseExportZip(input: CourseExportInput): Promise<Co
 
   let packaged = 0;
   const missing: string[] = [];
+  const probedPaths: string[] = [];
 
   for (const content of input.contents) {
-    if (!isExportable(content)) { continue; }
-    const submissionGroup = content.submission_group;
-    const repoRoot = getRepoRoot(input.workspaceRoot, submissionGroup);
-    if (!repoRoot) { continue; }
+    // The student tree only renders files for nodes with a submission_group;
+    // mirror that — pure unit folders aren't exportable.
+    if (!content.submission_group) { continue; }
 
-    const subdir = deriveAssignmentSubdirectory(content);
-    const sourcePath = subdir ? path.join(repoRoot, subdir) : repoRoot;
+    const sourcePath = localAssignmentPath(content, input.workspaceRoot);
+    if (!sourcePath) { continue; }
+    probedPaths.push(sourcePath);
 
     let exists = false;
     try {
@@ -153,14 +149,13 @@ export async function buildCourseExportZip(input: CourseExportInput): Promise<Co
     }
 
     const zipBasePath = input.format === 'flat'
-      ? sanitizeContentDirName(submissionGroup?.example_identifier || subdir || content.title || content.path)
+      ? flatNameFor(content)
       : buildTreePath(content, byPath);
 
     if (!zipBasePath) { continue; }
-
     addDirectoryToZip(zip, sourcePath, zipBasePath);
     packaged += 1;
   }
 
-  return { zip, packaged, missing };
+  return { zip, packaged, missing, probedPaths };
 }

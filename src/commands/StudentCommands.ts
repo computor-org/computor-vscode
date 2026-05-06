@@ -1191,9 +1191,15 @@ export class StudentCommands {
         });
 
         if (result.packaged === 0) {
-          vscode.window.showWarningMessage(
-            'Nothing was exported — clone or check out the assignments first.'
+          console.warn('[exportCourseExamples] Nothing packaged. Probed paths:', result.probedPaths);
+          const sample = result.probedPaths.slice(0, 3).join('\n');
+          const choice = await vscode.window.showWarningMessage(
+            `Nothing was exported. Probed ${result.probedPaths.length} path(s).${sample ? `\nFirst: ${sample}` : ''}`,
+            'Open Console'
           );
+          if (choice === 'Open Console') {
+            void vscode.commands.executeCommand('workbench.action.toggleDevTools');
+          }
           return;
         }
 
