@@ -1256,6 +1256,22 @@ class UnifiedController {
         } else {
           void tree.loadMoreForScope(scope as any);
         }
+      }),
+      vscode.commands.registerCommand('computor.chat.notifications.mute', () => {
+        tree.toggleNotificationsEnabled();
+      }),
+      vscode.commands.registerCommand('computor.chat.notifications.unmute', () => {
+        tree.toggleNotificationsEnabled();
+      }),
+      vscode.commands.registerCommand('computor.chat.scope.mute', (item: any) => {
+        if (item instanceof ChatScopeItem) {
+          tree.toggleScopeMuted(item.scope);
+        }
+      }),
+      vscode.commands.registerCommand('computor.chat.scope.unmute', (item: any) => {
+        if (item instanceof ChatScopeItem) {
+          tree.toggleScopeMuted(item.scope);
+        }
       })
     );
 

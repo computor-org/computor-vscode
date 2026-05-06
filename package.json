@@ -371,6 +371,30 @@
         "category": "Computor Chat"
       },
       {
+        "command": "computor.chat.notifications.mute",
+        "title": "Mute Chat Notifications",
+        "icon": "$(bell)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.notifications.unmute",
+        "title": "Unmute Chat Notifications",
+        "icon": "$(bell-slash)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.scope.mute",
+        "title": "Mute This Scope",
+        "icon": "$(bell)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.scope.unmute",
+        "title": "Unmute This Scope",
+        "icon": "$(bell-slash)",
+        "category": "Computor Chat"
+      },
+      {
         "command": "computor.chat.markThreadRead",
         "title": "Mark Thread as Read",
         "icon": "$(check)",
@@ -1086,6 +1110,16 @@
           "group": "navigation@2"
         },
         {
+          "command": "computor.chat.notifications.mute",
+          "when": "view == computor.chat.inbox && computor.chat.notificationsEnabled",
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.chat.notifications.unmute",
+          "when": "view == computor.chat.inbox && !computor.chat.notificationsEnabled",
+          "group": "navigation@3"
+        },
+        {
           "command": "computor.user.profile",
           "when": "view == computor.lecturer.courses",
           "group": "navigation@0"
@@ -1234,8 +1268,28 @@
       "view/item/context": [
         {
           "command": "computor.chat.markScopeRead",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\..+\\.unread$/",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\..+\\.unread/",
           "group": "1_actions@1"
+        },
+        {
+          "command": "computor.chat.scope.mute",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.[^.]+(\\.unread)?$/",
+          "group": "inline@5"
+        },
+        {
+          "command": "computor.chat.scope.unmute",
+          "when": "view == computor.chat.inbox && viewItem =~ /\\.muted$/",
+          "group": "inline@5"
+        },
+        {
+          "command": "computor.chat.scope.mute",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.[^.]+(\\.unread)?$/",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "computor.chat.scope.unmute",
+          "when": "view == computor.chat.inbox && viewItem =~ /\\.muted$/",
+          "group": "1_actions@2"
         },
         {
           "command": "computor.chat.markThreadRead",

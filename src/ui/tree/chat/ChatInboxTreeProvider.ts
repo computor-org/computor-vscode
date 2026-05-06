@@ -49,6 +49,8 @@ const STATE_KEY = 'computor.chat.inbox.state';
 interface PersistedState {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
+  notificationsEnabled?: boolean;
+  mutedScopes?: MessageScope[];
 }
 
 type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatCourseGroupItem;
@@ -122,6 +124,8 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
   private unreadOnly = false;
+  private notificationsEnabled = true;
+  private mutedScopes: Set<MessageScope> = new Set();
 
   // Label caches keyed by id
   private readonly orgLabels = new Map<string, string>();
@@ -189,6 +193,34 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     // threads with no unread messages when unreadOnly is on). Rebuilding from
     // the cached payload avoids re-paginating the entire inbox on every flip.
     this.rebuildScopeItemsFromCache();
+  }
+
+  isNotificationsEnabled(): boolean {
+    return this.notificationsEnabled;
+  }
+
+  toggleNotificationsEnabled(): void {
+    this.notificationsEnabled = !this.notificationsEnabled;
+    void this.persistState();
+    void this.applyNotificationContextKeys();
+    // Refresh just the visible scope items so their bell icons reflect the
+    // new global state immediately.
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  isScopeMuted(scope: MessageScope): boolean {
+    return this.mutedScopes.has(scope);
+  }
+
+  toggleScopeMuted(scope: MessageScope): void {
+    if (this.mutedScopes.has(scope)) {
+      this.mutedScopes.delete(scope);
+    } else {
+      this.mutedScopes.add(scope);
+    }
+    void this.persistState();
+    void this.applyNotificationContextKeys();
+    this._onDidChangeTreeData.fire(undefined);
   }
 
   recordExpanded(scope: MessageScope, expanded: boolean): void {
@@ -855,7 +887,10 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         }
         if (this.unreadOnly && totalUnread === 0) { continue; }
         const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, inner.size));
+        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, {
+          courseChildCount: inner.size,
+          muted: this.mutedScopes.has(scope)
+        }));
         continue;
       }
 
@@ -915,7 +950,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
 
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded));
+      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, {
+        muted: this.mutedScopes.has(scope)
+      }));
     }
 
     return result;
@@ -1132,6 +1169,13 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       // new message, so the toast would be redundant.
       return;
     }
+    if (!this.notificationsEnabled) {
+      return;
+    }
+    const scope = (typeof inner.scope === 'string' ? inner.scope : 'global') as MessageScope;
+    if (this.mutedScopes.has(scope)) {
+      return;
+    }
     void this.showNewMessageToast(inner);
   }
 
@@ -1201,23 +1245,43 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (typeof stored.unreadOnly === 'boolean') {
           this.unreadOnly = stored.unreadOnly;
         }
+        if (typeof stored.notificationsEnabled === 'boolean') {
+          this.notificationsEnabled = stored.notificationsEnabled;
+        }
+        if (Array.isArray(stored.mutedScopes)) {
+          this.mutedScopes = new Set(stored.mutedScopes);
+        }
       }
     } catch (err) {
       console.warn('[ChatInbox] Failed to load persisted state:', err);
     }
     void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', this.unreadOnly);
+    void this.applyNotificationContextKeys();
   }
 
   private async persistState(): Promise<void> {
     const state: PersistedState = {
       expandedScopes: Array.from(this.expandedScopes),
-      unreadOnly: this.unreadOnly
+      unreadOnly: this.unreadOnly,
+      notificationsEnabled: this.notificationsEnabled,
+      mutedScopes: Array.from(this.mutedScopes)
     };
     try {
       await this.context.globalState.update(STATE_KEY, state);
     } catch (err) {
       console.warn('[ChatInbox] Failed to persist state:', err);
     }
+  }
+
+  /** Mirrors the notification settings into VS Code context keys so the menu
+   *  `when` clauses can swap between mute/unmute commands. We expose:
+   *    - `computor.chat.notificationsEnabled` — global on/off
+   *    - `computor.chat.mutedScopes` — space-separated list of scope ids the
+   *      user has muted; menu `when` clauses can use `=~ /\bsubmission_group\b/`
+   *      to test membership. */
+  private async applyNotificationContextKeys(): Promise<void> {
+    await vscode.commands.executeCommand('setContext', 'computor.chat.notificationsEnabled', this.notificationsEnabled);
+    await vscode.commands.executeCommand('setContext', 'computor.chat.mutedScopes', Array.from(this.mutedScopes).join(' '));
   }
 }
 

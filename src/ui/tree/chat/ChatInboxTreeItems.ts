@@ -64,12 +64,20 @@ export class ChatScopeItem extends vscode.TreeItem {
     public readonly threads: ChatThread[],
     public readonly unreadCount: number,
     expanded: boolean,
-    /** When set, the scope renders course nodes as children instead of
-     *  threads — used for the four course-grouped scopes (submission_group /
-     *  course / course_content / course_group). The number is shown in the
-     *  description and the row stays collapsible even with zero threads. */
-    public readonly courseChildCount?: number
+    options?: {
+      /** When set, the scope renders course nodes as children instead of
+       *  threads — used for the four course-grouped scopes (submission_group /
+       *  course / course_content / course_group). The number is shown in the
+       *  description and the row stays collapsible even with zero threads. */
+      courseChildCount?: number;
+      /** When true, this scope's notifications are muted. Reflected in the
+       *  description, tooltip, and contextValue (so menus can swap between
+       *  mute/unmute commands). */
+      muted?: boolean;
+    }
   ) {
+    const courseChildCount = options?.courseChildCount;
+    const muted = options?.muted === true;
     const isCourseGrouped = courseChildCount !== undefined;
     const childCount = isCourseGrouped ? courseChildCount! : threads.length;
     const childKind = isCourseGrouped ? 'course' : 'thread';
@@ -82,19 +90,20 @@ export class ChatScopeItem extends vscode.TreeItem {
           : vscode.TreeItemCollapsibleState.Collapsed
     );
     this.id = `chat-scope-${scope}`;
-    // contextValue carries the scope name and an unread suffix, so menus
-    // can target either every scope (e.g. /\.unread$/), or a single scope
-    // (e.g. /^chatScope\.submission_group/) without ambiguity.
-    this.contextValue = unreadCount > 0
-      ? `chatScope.${scope}.unread`
-      : `chatScope.${scope}`;
+    // contextValue carries the scope name plus optional ".unread" / ".muted"
+    // suffixes so menus can target either every scope (e.g. /\.unread$/) or a
+    // single scope (e.g. /^chatScope\.submission_group/) without ambiguity.
+    const suffixes: string[] = [];
+    if (unreadCount > 0) { suffixes.push('unread'); }
+    if (muted) { suffixes.push('muted'); }
+    this.contextValue = ['chatScope', scope, ...suffixes].join('.');
     this.iconPath = new vscode.ThemeIcon(SCOPE_ICONS[scope]);
-    this.description = unreadCount > 0
-      ? `${unreadCount} unread · ${childCount}`
-      : `${childCount}`;
-    this.tooltip = unreadCount > 0
+    const baseDescription = unreadCount > 0 ? `${unreadCount} unread · ${childCount}` : `${childCount}`;
+    this.description = muted ? `🔕 ${baseDescription}` : baseDescription;
+    const baseTooltip = unreadCount > 0
       ? `${SCOPE_LABELS[scope]}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
       : `${SCOPE_LABELS[scope]}: ${childCount} ${childKind}(s)`;
+    this.tooltip = muted ? `${baseTooltip}\nNotifications muted for this scope.` : baseTooltip;
   }
 }
 
