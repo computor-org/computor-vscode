@@ -49,7 +49,6 @@ const STATE_KEY = 'computor.chat.inbox.state';
 interface PersistedState {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
-  notificationsEnabled?: boolean;
   mutedScopes?: MessageScope[];
 }
 
@@ -124,7 +123,9 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
   // Persisted UI state
   private expandedScopes: Set<MessageScope> = new Set();
   private unreadOnly = false;
-  private notificationsEnabled = true;
+  /** Scopes whose new-message toasts are suppressed. Per-scope only — there
+   *  is no separate global flag; the global title-bar toggle simply flips
+   *  this set between empty (all on) and full (all muted). */
   private mutedScopes: Set<MessageScope> = new Set();
 
   // Label caches keyed by id
@@ -195,21 +196,28 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.rebuildScopeItemsFromCache();
   }
 
-  isNotificationsEnabled(): boolean {
-    return this.notificationsEnabled;
-  }
-
-  toggleNotificationsEnabled(): void {
-    this.notificationsEnabled = !this.notificationsEnabled;
-    void this.persistState();
-    void this.applyNotificationContextKeys();
-    // Refresh just the visible scope items so their bell icons reflect the
-    // new global state immediately.
-    this._onDidChangeTreeData.fire(undefined);
+  /** True when at least one scope is currently un-muted. The title-bar action
+   *  uses this to pick between "mute all" (bell) and "unmute all" (bell-slash). */
+  isAnyScopeUnmuted(): boolean {
+    return SCOPE_ORDER.some(scope => !this.mutedScopes.has(scope));
   }
 
   isScopeMuted(scope: MessageScope): boolean {
     return this.mutedScopes.has(scope);
+  }
+
+  /** Flip every scope at once. If any scope is currently un-muted, mute all;
+   *  otherwise unmute all. */
+  toggleAllNotifications(): void {
+    const allMuted = !this.isAnyScopeUnmuted();
+    if (allMuted) {
+      this.mutedScopes.clear();
+    } else {
+      this.mutedScopes = new Set(SCOPE_ORDER);
+    }
+    void this.persistState();
+    void this.applyNotificationContextKeys();
+    this.rebuildScopeItemsFromCache();
   }
 
   toggleScopeMuted(scope: MessageScope): void {
@@ -220,7 +228,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
     void this.persistState();
     void this.applyNotificationContextKeys();
-    this._onDidChangeTreeData.fire(undefined);
+    this.rebuildScopeItemsFromCache();
   }
 
   recordExpanded(scope: MessageScope, expanded: boolean): void {
@@ -1169,9 +1177,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       // new message, so the toast would be redundant.
       return;
     }
-    if (!this.notificationsEnabled) {
-      return;
-    }
     const scope = (typeof inner.scope === 'string' ? inner.scope : 'global') as MessageScope;
     if (this.mutedScopes.has(scope)) {
       return;
@@ -1245,9 +1250,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
         if (typeof stored.unreadOnly === 'boolean') {
           this.unreadOnly = stored.unreadOnly;
         }
-        if (typeof stored.notificationsEnabled === 'boolean') {
-          this.notificationsEnabled = stored.notificationsEnabled;
-        }
         if (Array.isArray(stored.mutedScopes)) {
           this.mutedScopes = new Set(stored.mutedScopes);
         }
@@ -1263,7 +1265,6 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     const state: PersistedState = {
       expandedScopes: Array.from(this.expandedScopes),
       unreadOnly: this.unreadOnly,
-      notificationsEnabled: this.notificationsEnabled,
       mutedScopes: Array.from(this.mutedScopes)
     };
     try {
@@ -1273,14 +1274,17 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     }
   }
 
-  /** Mirrors the notification settings into VS Code context keys so the menu
-   *  `when` clauses can swap between mute/unmute commands. We expose:
-   *    - `computor.chat.notificationsEnabled` — global on/off
-   *    - `computor.chat.mutedScopes` — space-separated list of scope ids the
-   *      user has muted; menu `when` clauses can use `=~ /\bsubmission_group\b/`
-   *      to test membership. */
+  /** Mirrors the mute set into VS Code context keys so menu `when` clauses
+   *  can pick the right icon variant.
+   *    - `computor.chat.anyScopeUnmuted` — true if at least one scope's
+   *      notifications are still on. The title-bar action shows the bell
+   *      (mute-all) variant when this is true and the bell-slash
+   *      (unmute-all) variant when it is false.
+   *    - `computor.chat.mutedScopes` — space-separated list of muted scope
+   *      ids. Per-scope inline icons swap on the contextValue suffix
+   *      (`.muted`) instead, but this stays available for future use. */
   private async applyNotificationContextKeys(): Promise<void> {
-    await vscode.commands.executeCommand('setContext', 'computor.chat.notificationsEnabled', this.notificationsEnabled);
+    await vscode.commands.executeCommand('setContext', 'computor.chat.anyScopeUnmuted', this.isAnyScopeUnmuted());
     await vscode.commands.executeCommand('setContext', 'computor.chat.mutedScopes', Array.from(this.mutedScopes).join(' '));
   }
 }

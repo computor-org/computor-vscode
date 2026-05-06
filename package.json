@@ -1111,12 +1111,12 @@
         },
         {
           "command": "computor.chat.notifications.mute",
-          "when": "view == computor.chat.inbox && computor.chat.notificationsEnabled",
+          "when": "view == computor.chat.inbox && computor.chat.anyScopeUnmuted",
           "group": "navigation@3"
         },
         {
           "command": "computor.chat.notifications.unmute",
-          "when": "view == computor.chat.inbox && !computor.chat.notificationsEnabled",
+          "when": "view == computor.chat.inbox && !computor.chat.anyScopeUnmuted",
           "group": "navigation@3"
         },
         {

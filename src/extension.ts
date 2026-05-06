@@ -1258,10 +1258,10 @@ class UnifiedController {
         }
       }),
       vscode.commands.registerCommand('computor.chat.notifications.mute', () => {
-        tree.toggleNotificationsEnabled();
+        tree.toggleAllNotifications();
       }),
       vscode.commands.registerCommand('computor.chat.notifications.unmute', () => {
-        tree.toggleNotificationsEnabled();
+        tree.toggleAllNotifications();
       }),
       vscode.commands.registerCommand('computor.chat.scope.mute', (item: any) => {
         if (item instanceof ChatScopeItem) {
