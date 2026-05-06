@@ -63,10 +63,11 @@ function getRepoRoot(workspaceRoot: string, submissionGroup: SubmissionGroupStud
   return buildStudentRepoRoot(workspaceRoot, dirName);
 }
 
-function isAssignment(content: CourseContentStudentList): boolean {
-  const ct = (content as any)?.course_content_type ?? (content as any)?.course_content_types;
-  const kindId = (Array.isArray(ct) ? ct[0] : ct)?.course_content_kind_id;
-  return typeof kindId === 'string' && kindId === 'assignment';
+/** A content node is exportable if it has a submission_group (which is the
+ *  practical signal that it's an assignment with cloneable files) regardless
+ *  of how the kind / slug are spelled. Pure units don't get a submission_group. */
+function isExportable(content: CourseContentStudentList): boolean {
+  return content.submission_group != null && !!content.submission_group.repository?.full_path;
 }
 
 /** Builds the zip-internal path for a content node in tree format by walking
@@ -132,7 +133,7 @@ export async function buildCourseExportZip(input: CourseExportInput): Promise<Co
   const missing: string[] = [];
 
   for (const content of input.contents) {
-    if (!isAssignment(content)) { continue; }
+    if (!isExportable(content)) { continue; }
     const submissionGroup = content.submission_group;
     const repoRoot = getRepoRoot(input.workspaceRoot, submissionGroup);
     if (!repoRoot) { continue; }
