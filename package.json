@@ -222,6 +222,85 @@
         "category": "Computor Student (Offline Mode)"
       },
       {
+        "command": "computor.lecturer.documents.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.openFile",
+        "title": "Open Document",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.uploadFile",
+        "title": "Upload",
+        "icon": "$(cloud-upload)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.downloadFile",
+        "title": "Download",
+        "icon": "$(cloud-download)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.revealInOS",
+        "title": "Reveal in File Explorer",
+        "icon": "$(folder)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.copyPath",
+        "title": "Copy Path",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.newFile",
+        "title": "New File…",
+        "icon": "$(new-file)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.newFolder",
+        "title": "New Folder…",
+        "icon": "$(new-folder)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.rename",
+        "title": "Rename",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.delete",
+        "title": "Delete",
+        "icon": "$(trash)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.discardLocal",
+        "title": "Discard Local Changes",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.uploadAllPending",
+        "title": "Upload All Pending",
+        "icon": "$(cloud-upload)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.revealMirrorRoot",
+        "title": "Reveal Documents Mirror in File Explorer",
+        "icon": "$(folder-opened)",
+        "category": "Computor Documents"
+      },
+      {
         "command": "computor.lecturer.checkoutExample",
         "title": "Checkout Latest",
         "icon": "$(cloud-download)",
@@ -1039,6 +1118,13 @@
           "icon": "$(repo)",
           "contextualTitle": "Example Repository",
           "when": "computor.lecturer.show"
+        },
+        {
+          "id": "computor.lecturer.documents",
+          "name": "Documents",
+          "icon": "$(file-directory)",
+          "contextualTitle": "Course Documents",
+          "when": "computor.lecturer.show"
         }
       ],
       "computor-user-manager": [
@@ -1099,6 +1185,31 @@
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
+        },
+        {
+          "command": "computor.lecturer.documents.newFile",
+          "when": "view == computor.lecturer.documents",
+          "group": "navigation@1"
+        },
+        {
+          "command": "computor.lecturer.documents.newFolder",
+          "when": "view == computor.lecturer.documents",
+          "group": "navigation@2"
+        },
+        {
+          "command": "computor.lecturer.documents.uploadAllPending",
+          "when": "view == computor.lecturer.documents",
+          "group": "navigation@3"
+        },
+        {
+          "command": "computor.lecturer.documents.revealMirrorRoot",
+          "when": "view == computor.lecturer.documents",
+          "group": "navigation@4"
+        },
+        {
+          "command": "computor.lecturer.documents.refresh",
+          "when": "view == computor.lecturer.documents",
+          "group": "navigation@5"
         },
         {
           "command": "computor.chat.refresh",
@@ -1272,6 +1383,71 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "computor.lecturer.documents.uploadFile",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.(modified|localOnly)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.lecturer.documents.downloadFile",
+          "when": "view == computor.lecturer.documents && viewItem == documents.file.remoteOnly",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.lecturer.documents.openFile",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\./",
+          "group": "1_navigation@1"
+        },
+        {
+          "command": "computor.lecturer.documents.revealInOS",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "group": "1_navigation@2"
+        },
+        {
+          "command": "computor.lecturer.documents.copyPath",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "group": "9_clipboard@1"
+        },
+        {
+          "command": "computor.lecturer.documents.copyRelativePath",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "group": "9_clipboard@2"
+        },
+        {
+          "command": "computor.lecturer.documents.newFile",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "group": "2_create@1"
+        },
+        {
+          "command": "computor.lecturer.documents.newFolder",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "group": "2_create@2"
+        },
+        {
+          "command": "computor.lecturer.documents.uploadAllPending",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "group": "2_create@3"
+        },
+        {
+          "command": "computor.lecturer.documents.rename",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "group": "3_modify@1"
+        },
+        {
+          "command": "computor.lecturer.documents.discardLocal",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.(modified|remoteChanged)$/",
+          "group": "3_modify@2"
+        },
+        {
+          "command": "computor.lecturer.documents.delete",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "group": "8_destructive@1"
+        },
+        {
+          "command": "computor.lecturer.documents.revealInOS",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.scope\\./",
+          "group": "1_navigation@1"
+        },
         {
           "command": "computor.chat.markScopeRead",
           "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\..+\\.unread/",
