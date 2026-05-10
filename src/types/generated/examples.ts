@@ -13,64 +13,6 @@ import type { ForceLevel } from './common';
 
 
 /**
- * Preview of a single example that would be deleted.
- */
-export interface ExampleDeletePreview {
-  example_id: string;
-  identifier: string;
-  title: string;
-  directory: string;
-  repository_id: string;
-  repository_name: string;
-  /** Number of versions to delete */
-  version_count: number;
-  /** MinIO storage paths for versions */
-  storage_paths?: string[];
-  /** Count of CourseContentDeployments referencing this example */
-  deployment_references?: number;
-}
-
-/**
- * Request to delete examples by identifier prefix pattern.
- */
-export interface ExampleBulkDeleteRequest {
-  /** Ltree pattern to match (e.g., 'itpcp.progphys.py.*'). Uses * for single-level wildcard. */
-  identifier_pattern: string;
-  /** Optional: scope deletion to specific repository */
-  repository_id?: string | null;
-  /** If true, only returns preview without deleting */
-  dry_run?: boolean;
-  /** Force level: 'none' blocks if active deployments, 'old' allows archived/failed, 'all' deletes active (requires confirmation) */
-  force_level?: ForceLevel;
-}
-
-/**
- * Result of bulk example deletion operation.
- */
-export interface ExampleBulkDeleteResult {
-  /** Whether this was a preview only */
-  dry_run: boolean;
-  /** Pattern that was used for matching */
-  pattern_matched: string;
-  /** Repository scope if specified */
-  repository_id?: string | null;
-  /** Number of examples deleted */
-  examples_affected?: number;
-  /** Total versions deleted */
-  versions_deleted?: number;
-  /** Example dependencies deleted */
-  dependencies_deleted?: number;
-  /** MinIO objects deleted */
-  storage_objects_deleted?: number;
-  /** Deployments with example_version_id set to NULL */
-  deployment_references_orphaned?: number;
-  /** Details of examples affected */
-  examples?: ExampleDeletePreview[];
-  /** Errors encountered during deletion */
-  errors?: string[];
-}
-
-/**
  * Create a new example repository.
  */
 export interface ExampleRepositoryCreate {
@@ -205,20 +147,27 @@ export interface ExampleUpdate {
 
 /**
  * Create a new example version.
+ * 
+ * Clients pass an already-parsed meta.yaml as ``meta`` — the server
+ * extracts the promoted scalar / array / FK columns from it and
+ * discards the rest. The full meta.yaml document lives in MinIO
+ * alongside the other example files; the download endpoint serves
+ * it from there.
  */
 export interface ExampleVersionCreate {
   example_id: string;
   version_tag: string;
   version_number: number;
   storage_path: string;
-  /** Content of meta.yaml */
-  meta_yaml: string;
-  /** Content of test.yaml */
-  test_yaml?: string | null;
+  /** Parsed meta.yaml — used to populate promoted columns */
+  meta: Record<string, any>;
 }
 
 /**
- * Get example version details.
+ * Get example version details — promoted columns only.
+ * 
+ * The full parsed meta.yaml / test.yaml documents are not returned
+ * here; call ``GET /examples/download/{version_id}`` for those.
  */
 export interface ExampleVersionGet {
   created_at: string;
@@ -231,8 +180,18 @@ export interface ExampleVersionGet {
   version_tag: string;
   version_number: number;
   storage_path: string;
-  meta_yaml: string;
-  test_yaml?: string | null;
+  title?: string | null;
+  description?: string | null;
+  language?: string | null;
+  license?: string | null;
+  /** Full meta.yaml properties.executionBackend (slug + version + settings) */
+  execution_backend?: Record<string, any> | null;
+  student_submission_files?: string[];
+  additional_files?: string[];
+  student_templates?: string[];
+  test_files?: string[];
+  /** Resolved Service.id derived from properties.executionBackend.slug */
+  testing_service_id?: string | null;
 }
 
 /**
@@ -242,6 +201,9 @@ export interface ExampleVersionList {
   id: string;
   version_tag: string;
   version_number: number;
+  title?: string | null;
+  description?: string | null;
+  testing_service_id?: string | null;
   created_at: string;
 }
 
@@ -344,10 +306,12 @@ export interface ExampleFileSet {
   directory: string;
   identifier: string;
   title: string;
-  /** Map of filename to content */
+  /** Map of filename to content (meta.yaml and test.yaml ride inside this dict) */
   files: Record<string, string>;
-  meta_yaml: string;
-  test_yaml?: string | null;
+  /** Parsed meta.yaml (fetched from MinIO with Redis cache) */
+  meta: Record<string, any>;
+  /** Parsed test.yaml (fetched from MinIO with Redis cache); None if absent */
+  test?: Record<string, any> | null;
 }
 
 /**
@@ -361,12 +325,72 @@ export interface ExampleDownloadResponse {
   identifier: string;
   /** Directory name of the example */
   directory: string;
-  /** Map of filename to content */
+  /** Map of filename to content (includes meta.yaml and test.yaml) */
   files: Record<string, string>;
-  meta_yaml: string;
-  test_yaml?: string | null;
+  /** Parsed meta.yaml (fetched from MinIO with Redis cache) */
+  meta: Record<string, any>;
+  /** Parsed test.yaml (fetched from MinIO with Redis cache); None if absent */
+  test?: Record<string, any> | null;
   /** Dependency examples when with_dependencies=True */
   dependencies?: ExampleFileSet[] | null;
+}
+
+/**
+ * Preview of a single example that would be deleted.
+ */
+export interface ExampleDeletePreview {
+  example_id: string;
+  identifier: string;
+  title: string;
+  directory: string;
+  repository_id: string;
+  repository_name: string;
+  /** Number of versions to delete */
+  version_count: number;
+  /** MinIO storage paths for versions */
+  storage_paths?: string[];
+  /** Count of CourseContentDeployments referencing this example */
+  deployment_references?: number;
+}
+
+/**
+ * Request to delete examples by identifier prefix pattern.
+ */
+export interface ExampleBulkDeleteRequest {
+  /** Ltree pattern to match (e.g., 'itpcp.progphys.py.*'). Uses * for single-level wildcard. */
+  identifier_pattern: string;
+  /** Optional: scope deletion to specific repository */
+  repository_id?: string | null;
+  /** If true, only returns preview without deleting */
+  dry_run?: boolean;
+  /** Force level: 'none' blocks if active deployments, 'old' allows archived/failed, 'all' deletes active (requires confirmation) */
+  force_level?: ForceLevel;
+}
+
+/**
+ * Result of bulk example deletion operation.
+ */
+export interface ExampleBulkDeleteResult {
+  /** Whether this was a preview only */
+  dry_run: boolean;
+  /** Pattern that was used for matching */
+  pattern_matched: string;
+  /** Repository scope if specified */
+  repository_id?: string | null;
+  /** Number of examples deleted */
+  examples_affected?: number;
+  /** Total versions deleted */
+  versions_deleted?: number;
+  /** Example dependencies deleted */
+  dependencies_deleted?: number;
+  /** MinIO objects deleted */
+  storage_objects_deleted?: number;
+  /** Deployments with example_version_id set to NULL */
+  deployment_references_orphaned?: number;
+  /** Details of examples affected */
+  examples?: ExampleDeletePreview[];
+  /** Errors encountered during deletion */
+  errors?: string[];
 }
 
 /**
