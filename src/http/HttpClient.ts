@@ -75,6 +75,13 @@ export abstract class HttpClient {
     return this.request<T>('DELETE', endpoint, undefined, params);
   }
 
+  /** DELETE with a request body. Required by endpoints whose body shape is
+   *  defined separately from the URL (e.g. `/documents/files` takes a
+   *  `DocumentDelete` payload describing scope + path). */
+  async deleteWithBody<T>(endpoint: string, data?: any, params?: Record<string, any>): Promise<HttpResponse<T>> {
+    return this.request<T>('DELETE', endpoint, data, params);
+  }
+
   async patch<T>(endpoint: string, data?: any, params?: Record<string, any>): Promise<HttpResponse<T>> {
     return this.request<T>('PATCH', endpoint, data, params);
   }

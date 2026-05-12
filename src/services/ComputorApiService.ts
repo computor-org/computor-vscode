@@ -95,7 +95,10 @@ import {
   TutorTestGet,
   TutorTestArtifactList,
   CourseMemberGradingsList,
-  CourseMemberGradingsGet
+  CourseMemberGradingsGet,
+  DocumentList,
+  DocumentGet,
+  DocumentDirectoryGet
 } from '../types/generated';
 
 // Query interface for examples (not generated yet)
@@ -3159,6 +3162,82 @@ export class ComputorApiService {
       console.error('Failed to get course member grading details:', error);
       return undefined;
     }
+  }
+
+  // ─── Documents ─────────────────────────────────────────────────
+  //
+  // These thin wrappers call /documents/{list,files,directories}. Caching is
+  // intentionally NOT performed here — the documents tree maintains its own
+  // local mirror under <workspace>/.computor/documents and decides cache
+  // freshness from the per-entry etag returned in DocumentList.
+
+  /** GET /documents/list — directory listing (files + subdirs). */
+  async listDocuments(scope: string, scopeId: string | null | undefined, path: string): Promise<DocumentList[]> {
+    const client = await this.getHttpClient();
+    // Backend rejects an empty `path=`; omit the param entirely to mean "root".
+    const params: Record<string, string> = { scope };
+    if (scopeId) { params.scope_id = scopeId; }
+    if (path) { params.path = path; }
+    const response = await client.get<DocumentList[]>('/documents/list', params);
+    return response.data || [];
+  }
+
+  /** GET /documents/files — fetch raw bytes for a single file. */
+  async downloadDocument(scope: string, scopeId: string | null | undefined, path: string): Promise<Buffer> {
+    const client = await this.getHttpClient();
+    const params: Record<string, string> = { scope, path };
+    if (scopeId) { params.scope_id = scopeId; }
+    return client.getBuffer('/documents/files', params);
+  }
+
+  /** POST /documents/files — multipart upload (form fields + file body). */
+  async uploadDocument(
+    scope: string,
+    scopeId: string | null | undefined,
+    path: string,
+    contents: Buffer,
+    contentType?: string
+  ): Promise<DocumentGet> {
+    const client = await this.getHttpClient();
+    const form = new FormData();
+    form.append('scope', scope);
+    if (scopeId) { form.append('scope_id', scopeId); }
+    form.append('path', path);
+    const filename = path.split('/').filter(Boolean).pop() || 'file';
+    form.append('file', contents, contentType ? { filename, contentType } : { filename });
+    const response = await client.post<DocumentGet>('/documents/files', form);
+    return response.data;
+  }
+
+  /** DELETE /documents/files — body carries scope/scope_id/path. */
+  async deleteDocument(scope: string, scopeId: string | null | undefined, path: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.deleteWithBody<void>('/documents/files', { scope, scope_id: scopeId ?? null, path });
+  }
+
+  /** PATCH /documents/files — same-scope rename (no cross-scope move). */
+  async renameDocument(scope: string, scopeId: string | null | undefined, path: string, newPath: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch<void>('/documents/files', { scope, scope_id: scopeId ?? null, path, new_path: newPath });
+  }
+
+  /** POST /documents/directories — mkdir. Returns `created: false` if the directory already existed. */
+  async createDocumentDirectory(scope: string, scopeId: string | null | undefined, path: string): Promise<DocumentDirectoryGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<DocumentDirectoryGet>('/documents/directories', { scope, scope_id: scopeId ?? null, path });
+    return response.data;
+  }
+
+  /** DELETE /documents/directories — recursive delete. */
+  async deleteDocumentDirectory(scope: string, scopeId: string | null | undefined, path: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.deleteWithBody<void>('/documents/directories', { scope, scope_id: scopeId ?? null, path });
+  }
+
+  /** PATCH /documents/directories — rename (intra-scope). */
+  async renameDocumentDirectory(scope: string, scopeId: string | null | undefined, path: string, newPath: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch<void>('/documents/directories', { scope, scope_id: scopeId ?? null, path, new_path: newPath });
   }
 
   // ─── Maintenance ───────────────────────────────────────────────

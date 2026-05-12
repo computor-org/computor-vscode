@@ -1150,6 +1150,20 @@ class UnifiedController {
     new UserPasswordCommands(this.context, api).register();
     new LogoutCommands(this.context).registerCommands();
 
+    // Documents tree — file-system mirror over /documents/* with per-entry sync state.
+    const { DocumentsTreeProvider } = await import('./ui/tree/lecturer-documents/DocumentsTreeProvider');
+    const { DocumentsCommands } = await import('./commands/DocumentsCommands');
+    const documentsTree = new DocumentsTreeProvider(api);
+    registerTreeView('computor.lecturer.documents', {
+      provider: documentsTree,
+      options: {
+        showCollapseAll: true,
+        canSelectMany: false,
+        dragAndDropController: documentsTree
+      }
+    }, this.disposables);
+    new DocumentsCommands(this.context, api, documentsTree).register();
+
     // Initialize lecturer assignments repository manager and trigger a background sync
     try {
       const { LecturerRepositoryManager } = await import('./services/LecturerRepositoryManager');
