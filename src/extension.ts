@@ -140,7 +140,16 @@ async function activateSession(
 ): Promise<void> {
   await ensureWorkspaceMarker(baseUrl);
   const controller = new UnifiedController(context);
-  await controller.activate(client as any, onProgress);
+  try {
+    await controller.activate(client as any, onProgress);
+  } catch (error) {
+    // Tear down the partially-initialized controller so callers can try another
+    // auth path (e.g. stored API token → stored SSO token) without leaking
+    // registered commands/views or a running health check.
+    await controller.dispose();
+    backendConnectionService.stopHealthCheck();
+    throw error;
+  }
   backendConnectionService.startHealthCheck(baseUrl);
   activeSession = createActiveSession(context, controller);
 
