@@ -30,51 +30,63 @@ export class LogoutCommands {
   }
 
   /**
-   * Logout - clears JWT tokens but keeps username/password for easy re-login
+   * Sign out - clears the stored SSO session token (and any stored API token).
+   * The user signs back in through the browser SSO flow.
    */
   private async handleLogout(): Promise<void> {
     try {
       const confirmation = await vscode.window.showWarningMessage(
-        'Are you sure you want to logout? This will clear your session tokens.\n\n' +
-        'Your username and password will be kept for easy re-login.',
+        'Sign out of Computor? This clears your stored session on this machine. ' +
+        'You will sign in again through your browser (SSO).',
         { modal: true },
-        'Logout',
+        'Sign Out',
         'Cancel'
       );
 
-      if (confirmation !== 'Logout') {
+      if (confirmation !== 'Sign Out') {
         return;
       }
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Logging out...',
+        title: 'Signing out...',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Clearing session tokens...' });
-
-        // Clear only JWT tokens, keep username/password for auto-login
+        progress.report({ message: 'Clearing stored session...' });
         await this.clearSessionTokens();
 
         progress.report({ message: 'Clearing session state...' });
-
-        // Clear relevant global state
         await this.clearAuthenticationState();
 
-        progress.report({ message: 'Logout complete.' });
+        progress.report({ message: 'Sign-out complete.' });
       });
 
-      vscode.window.showInformationMessage(
-        'Logged out successfully. Restart VS Code to login again with your saved credentials.',
-        'Reload Window'
-      ).then(choice => {
-        if (choice === 'Reload Window') {
-          vscode.commands.executeCommand('workbench.action.reloadWindow');
-        }
-      });
+      const choice = await vscode.window.showInformationMessage(
+        'Signed out. Reload the window to finish, or also end your browser SSO session.',
+        'Reload Window',
+        'End Browser Session'
+      );
+      if (choice === 'Reload Window') {
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+      } else if (choice === 'End Browser Session') {
+        await this.endKeycloakSession();
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
     } catch (error: any) {
       console.error('Logout failed:', error);
-      vscode.window.showErrorMessage(`Failed to logout: ${error.message || error}`);
+      vscode.window.showErrorMessage(`Failed to sign out: ${error.message || error}`);
+    }
+  }
+
+  /** Open the Keycloak end-session URL in the browser to end the SSO session. */
+  private async endKeycloakSession(): Promise<void> {
+    try {
+      const baseUrl = await this.settingsManager.getBaseUrl();
+      if (!baseUrl) { return; }
+      const url = `${baseUrl.replace(/\/$/, '')}/auth/keycloak/logout`;
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+    } catch (error) {
+      console.warn('[Logout] Failed to open Keycloak logout URL:', error);
     }
   }
 
@@ -142,27 +154,26 @@ export class LogoutCommands {
   }
 
   /**
-   * Clear session tokens only (JWT tokens), keep username/password
+   * Clear the stored SSO session token and any stored API token.
    */
   private async clearSessionTokens(): Promise<void> {
-    const tokenKey = 'computor.auth';
-
-    try {
-      await this.context.secrets.delete(tokenKey);
-      console.log(`[Logout] Deleted session tokens: ${tokenKey}`);
-    } catch (error) {
-      console.warn(`[Logout] Failed to delete session tokens:`, error);
+    for (const key of ['computor.auth', 'computor.apiToken']) {
+      try {
+        await this.context.secrets.delete(key);
+        console.log(`[Logout] Deleted secret: ${key}`);
+      } catch (error) {
+        console.warn(`[Logout] Failed to delete secret ${key}:`, error);
+      }
     }
   }
 
   /**
-   * Clear all authentication-related secrets including username/password
+   * Clear all authentication-related secrets (session token + API token).
    */
   private async clearAuthenticationSecrets(): Promise<void> {
     const secretKeys = [
       'computor.auth',
-      'computor.username',
-      'computor.password'
+      'computor.apiToken'
     ];
 
     for (const key of secretKeys) {
