@@ -14,7 +14,6 @@ interface UserManagementViewState {
   user?: UserGet;
   profile?: ProfileGet | null;
   studentProfiles: StudentProfileGet[];
-  canResetPassword: boolean;
   isAdmin: boolean;
   availableRoles: RoleList[];
 }
@@ -103,9 +102,6 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       case 'updateIdentity':
         await this.handleUpdateIdentity(message.data);
         break;
-      case 'resetPassword':
-        await this.handleResetPassword(message.data);
-        break;
       case 'archiveUser':
         await this.handleArchiveToggle(true);
         break;
@@ -138,7 +134,6 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       user: user,
       profile: user.profile ?? null,
       studentProfiles: user.student_profiles ?? [],
-      canResetPassword: true,
       isAdmin: scopes?.is_admin === true,
       availableRoles: roles ?? []
     };
@@ -307,38 +302,6 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       await this.refreshState({ force: true, notice: { type: 'success', message: 'Identity updated.' } });
     } catch (error: any) {
       this.handleError('Failed to update identity', error);
-    }
-  }
-
-  private async handleResetPassword(raw: any): Promise<void> {
-    if (!raw || typeof raw !== 'object' || !this.currentUserId) {
-      return;
-    }
-
-    const managerPassword = raw.managerPassword?.trim();
-
-    if (!managerPassword) {
-      this.postNotice({ type: 'warning', message: 'Your password is required to perform this action.' });
-      return;
-    }
-
-    const confirmation = await vscode.window.showWarningMessage(
-      'Are you sure you want to reset this user\'s password? This will set their password to NULL and they will need to set a new password.',
-      { modal: true },
-      'Yes, Reset Password',
-      'Cancel'
-    );
-
-    if (confirmation !== 'Yes, Reset Password') {
-      return;
-    }
-
-    try {
-      await this.apiService.resetUserPassword(this.currentUserId, managerPassword);
-      await this.refreshState({ force: true, notice: { type: 'success', message: 'Password reset successfully. User needs to set a new password.' } });
-      vscode.window.showInformationMessage('Password reset successfully.');
-    } catch (error: any) {
-      this.handleError('Failed to reset password', error);
     }
   }
 

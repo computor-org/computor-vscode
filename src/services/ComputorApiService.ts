@@ -48,7 +48,6 @@ import {
   CourseMemberUpdate,
   CourseMemberReadinessStatus,
   CourseMemberImportResponse,
-  UserPassword,
   UserGet,
   UserList,
   UserScopes,
@@ -2108,11 +2107,6 @@ export class ComputorApiService {
     }
   }
 
-  async updateUserPassword(payload: UserPassword): Promise<void> {
-    const client = await this.getHttpClient();
-    await client.post('/user/password', payload);
-  }
-
   // User Management: lookup by exact filter (email / username / etc).
   // Bypasses the cached "all users" list so the call still works for users
   // who lack list-all permission but have access via the filtered endpoint.
@@ -2411,22 +2405,6 @@ export class ComputorApiService {
       multiTierCache.delete('allUsers');
     } catch (error) {
       console.error(`[unarchiveUser] Failed to unarchive user ${userId}:`, error);
-      throw error;
-    }
-  }
-
-  // User Management: Reset user password
-  async resetUserPassword(userId: string, managerPassword: string): Promise<void> {
-    try {
-      const client = await this.getHttpClient();
-      await client.post('/password/reset', {
-        user_id: userId,
-        manager_password: managerPassword
-      });
-
-      multiTierCache.delete(`user-${userId}`);
-    } catch (error) {
-      console.error(`[resetUserPassword] Failed to reset password for user ${userId}:`, error);
       throw error;
     }
   }

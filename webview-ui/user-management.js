@@ -5,7 +5,6 @@
     user: undefined,
     profile: null,
     studentProfiles: [],
-    canResetPassword: false,
     isAdmin: false,
     availableRoles: [],
     ...(window.__INITIAL_STATE__ || {})
@@ -272,17 +271,6 @@
             </button>
           </div>
         </div>
-
-        <form id="password-reset-form">
-          <div class="form-field">
-            <label for="manager-password">Reset Password — Your Password (Required)</label>
-            <input id="manager-password" name="managerPassword" type="password" placeholder="Enter your password to confirm" autocomplete="current-password">
-            <p class="field-hint">Resets this user's password to NULL — they must set a new password on next login.</p>
-          </div>
-          <div class="form-actions">
-            <button type="submit" class="danger">Reset User Password</button>
-          </div>
-        </form>
       </section>
     `;
 
@@ -299,11 +287,6 @@
     const identityForm = document.getElementById('identity-form');
     if (identityForm) {
       identityForm.addEventListener('submit', handleIdentityUpdate);
-    }
-
-    const passwordResetForm = document.getElementById('password-reset-form');
-    if (passwordResetForm) {
-      passwordResetForm.addEventListener('submit', handlePasswordReset);
     }
 
     const archiveBtn = document.getElementById('archive-toggle-btn');
@@ -374,21 +357,6 @@
     }
 
     post('updateEmail', { email: email.trim() });
-  }
-
-  function handlePasswordReset(event) {
-    event.preventDefault();
-    const formData = new FormData(event.target);
-    const managerPassword = formData.get('managerPassword');
-
-    if (!managerPassword || !managerPassword.trim()) {
-      showNotice('warning', 'Your password is required to perform this action.');
-      return;
-    }
-
-    post('resetPassword', { managerPassword: managerPassword.trim() });
-
-    document.getElementById('manager-password').value = '';
   }
 
   function showNotice(type, message) {
