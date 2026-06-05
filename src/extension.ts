@@ -293,25 +293,27 @@ async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void
     return;
   }
 
-  const root = getWorkspaceRoot();
-  if (!root) { await promptOpenWorkspaceFolder(); return; }
-
-  const settings = new ComputorSettingsManager(context);
-  const baseUrl = await ensureBaseUrl(settings);
-  if (!baseUrl) { return; }
-
-  const token = await vscode.window.showInputBox({
-    title: 'Sign in with API Token',
-    prompt: 'Enter a Computor API token (starts with "ctp_")',
-    password: true,
-    ignoreFocusOut: true,
-    placeHolder: 'ctp_…',
-    validateInput: (v) => (v && v.startsWith('ctp_')) ? undefined : 'API tokens start with "ctp_"'
-  });
-  if (!token) { return; }
-
+  // Claim the in-flight guard synchronously, before any await, so a concurrent
+  // login can't race us into a duplicate controller.activate().
   isAuthenticating = true;
   try {
+    const root = getWorkspaceRoot();
+    if (!root) { await promptOpenWorkspaceFolder(); return; }
+
+    const settings = new ComputorSettingsManager(context);
+    const baseUrl = await ensureBaseUrl(settings);
+    if (!baseUrl) { return; }
+
+    const token = await vscode.window.showInputBox({
+      title: 'Sign in with API Token',
+      prompt: 'Enter a Computor API token (starts with "ctp_")',
+      password: true,
+      ignoreFocusOut: true,
+      placeHolder: 'ctp_…',
+      validateInput: (v) => (v && v.startsWith('ctp_')) ? undefined : 'API tokens start with "ctp_"'
+    });
+    if (!token) { return; }
+
     const ok = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: 'Computor',
@@ -421,16 +423,20 @@ async function handleComputorWorkspaceDetected(
     return;
   }
 
-  const settings = new ComputorSettingsManager(context);
-  const marker = await readMarker(computorMarkerPath);
-  const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
-  if (!baseUrl) { return; }
-
-  const envToken = process.env.COMPUTOR_AUTH_TOKEN;
-  const autoLoginEnabled = await settings.isAutoLoginEnabled();
-
+  // Claim the in-flight guard synchronously — before any await — so a manual
+  // login triggered while we're still reading the marker/settings can't race
+  // this auto-login into a second controller.activate() (duplicate command
+  // registration).
   isAuthenticating = true;
   try {
+    const settings = new ComputorSettingsManager(context);
+    const marker = await readMarker(computorMarkerPath);
+    const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
+    if (!baseUrl) { return; }
+
+    const envToken = process.env.COMPUTOR_AUTH_TOKEN;
+    const autoLoginEnabled = await settings.isAutoLoginEnabled();
+
     // Priority 1: injected API token (Coder workspace injection / CI)
     if (envToken) {
       const ok = await vscode.window.withProgress({
@@ -1431,57 +1437,56 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
 
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
   if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
-
-  // Require an open workspace before proceeding
-  const root = getWorkspaceRoot();
-  if (!root) {
-    await promptOpenWorkspaceFolder();
-    return;
-  }
-
-  const settings = new ComputorSettingsManager(context);
-  const baseUrl = await ensureBaseUrl(settings);
-  if (!baseUrl) { return; }
-
-  // Already signed in → offer in-place SSO re-authentication. We update the
-  // existing client's tokens rather than tearing down the session, so role
-  // commands held on context.subscriptions aren't re-registered.
-  if (activeSession) {
-    const answer = await vscode.window.showWarningMessage(
-      `Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`,
-      'Re-authenticate', 'Cancel'
-    );
-    if (answer !== 'Re-authenticate') { return; }
-
-    const existing = activeSession.getHttpClient?.();
-    if (!(existing instanceof BearerTokenHttpClient)) {
-      vscode.window.showInformationMessage('Already signed in with an API token; nothing to refresh.');
+  // Claim the in-flight guard synchronously, before any await, so a second
+  // trigger (e.g. the auto-login prompt) can't race us into a duplicate
+  // controller.activate().
+  isAuthenticating = true;
+  try {
+    // Require an open workspace before proceeding
+    const root = getWorkspaceRoot();
+    if (!root) {
+      await promptOpenWorkspaceFolder();
       return;
     }
 
-    isAuthenticating = true;
-    try {
-      const sso = await runSsoWithProgress(baseUrl);
-      const now = new Date();
-      existing.setTokenData({
-        accessToken: sso.token,
-        refreshToken: sso.refreshToken,
-        expiresAt: new Date(now.getTime() + 3600_000),
-        issuedAt: now,
-        userId: sso.userId
-      });
-      await persistSession(context, sessionAuthFromClient(existing));
-      vscode.window.showInformationMessage(`Re-authenticated: ${baseUrl}`);
-    } catch (error: any) {
-      vscode.window.showErrorMessage(`Re-authentication failed: ${error?.message || error}`);
-    } finally {
-      isAuthenticating = false;
-    }
-    return;
-  }
+    const settings = new ComputorSettingsManager(context);
+    const baseUrl = await ensureBaseUrl(settings);
+    if (!baseUrl) { return; }
 
-  isAuthenticating = true;
-  try {
+    // Already signed in → offer in-place SSO re-authentication. We update the
+    // existing client's tokens rather than tearing down the session, so role
+    // commands held on context.subscriptions aren't re-registered.
+    if (activeSession) {
+      const answer = await vscode.window.showWarningMessage(
+        `Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`,
+        'Re-authenticate', 'Cancel'
+      );
+      if (answer !== 'Re-authenticate') { return; }
+
+      const existing = activeSession.getHttpClient?.();
+      if (!(existing instanceof BearerTokenHttpClient)) {
+        vscode.window.showInformationMessage('Already signed in with an API token; nothing to refresh.');
+        return;
+      }
+
+      try {
+        const sso = await runSsoWithProgress(baseUrl);
+        const now = new Date();
+        existing.setTokenData({
+          accessToken: sso.token,
+          refreshToken: sso.refreshToken,
+          expiresAt: new Date(now.getTime() + 3600_000),
+          issuedAt: now,
+          userId: sso.userId
+        });
+        await persistSession(context, sessionAuthFromClient(existing));
+        vscode.window.showInformationMessage(`Re-authenticated: ${baseUrl}`);
+      } catch (error: any) {
+        vscode.window.showErrorMessage(`Re-authentication failed: ${error?.message || error}`);
+      }
+      return;
+    }
+
     backendConnectionService.setBaseUrl(baseUrl);
     const status = await backendConnectionService.checkBackendConnection(baseUrl);
     if (!status.isReachable) {
