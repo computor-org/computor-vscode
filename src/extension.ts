@@ -357,6 +357,10 @@ async function restoreSession(
   baseUrl: string,
   onProgress?: (message: string) => void
 ): Promise<boolean> {
+  // The backend was already confirmed reachable before we got here, so a failure
+  // below means the stored credential is invalid/expired (SSO sessions can't be
+  // refreshed once dead). Drop it so we don't keep retrying a doomed token on
+  // every activation — fall through to an interactive sign-in instead.
   const storedApiToken = await context.secrets.get(API_TOKEN_KEY);
   if (storedApiToken) {
     const client = new ApiKeyHttpClient(baseUrl, storedApiToken, 'X-API-Token', '', 10000);
@@ -364,7 +368,8 @@ async function restoreSession(
       await activateSession(context, baseUrl, client, onProgress);
       return true;
     } catch (error) {
-      console.warn('Stored API token login failed:', error);
+      console.warn('Stored API token login failed; clearing it:', error);
+      await context.secrets.delete(API_TOKEN_KEY);
     }
   }
 
@@ -379,8 +384,11 @@ async function restoreSession(
         await persistSession(context, sessionAuthFromClient(client));
         return true;
       } catch (error) {
-        console.warn('Stored session token expired or invalid:', error);
+        console.warn('Stored session token expired or invalid; clearing it:', error);
+        await context.secrets.delete(SESSION_AUTH_KEY);
       }
+    } else {
+      await context.secrets.delete(SESSION_AUTH_KEY);
     }
   }
 
