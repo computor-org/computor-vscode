@@ -19,6 +19,15 @@ export class BearerTokenHttpClient extends HttpClient {
   private _maintenanceMode = false;
   private _maintenanceMessage: string | null = null;
 
+  // Auth circuit breaker: once the session is known-dead (a 401 that refresh
+  // can't fix), stop hitting the backend entirely until re-authentication.
+  // Without this, every tree refresh / message poll keeps firing doomed requests
+  // (each also triggering a refresh POST), hammering the backend for nothing.
+  // 401 is safe to trip on: the backend uses 403 for permission denials, so a
+  // 401 always means the token/session itself is invalid.
+  private sessionInvalid = false;
+  private onUnauthorizedCb?: () => void;
+
   private readonly REFRESH_THRESHOLD_PERCENTAGE = 0.1; // Refresh when <10% lifetime remains
 
   constructor(
@@ -92,6 +101,12 @@ export class BearerTokenHttpClient extends HttpClient {
   }
 
   public async refreshAuth(): Promise<void> {
+    // Once the breaker has tripped, refreshing is pointless (we already proved
+    // the session can't be renewed) and would just spam POST /auth/refresh.
+    if (this.sessionInvalid) {
+      throw new AuthenticationError('Session invalid; refresh suppressed until re-authentication');
+    }
+
     // Prevent duplicate concurrent refresh calls
     if (this.refreshPromise) {
       console.log('[BearerTokenHttpClient] Refresh already in progress, waiting...');
@@ -175,6 +190,12 @@ export class BearerTokenHttpClient extends HttpClient {
       throw new MaintenanceError(this._maintenanceMessage || undefined);
     }
 
+    // Auth circuit breaker: while the session is known-dead, fail fast locally
+    // instead of firing a doomed request at the backend.
+    if (this.sessionInvalid) {
+      throw new AuthenticationError('Session expired. Please sign in again.');
+    }
+
     // Proactive refresh: best-effort top-up before the request. A failure must
     // not break the request or discard the still-valid token — proceed with the
     // current token and let the server's sliding TTL keep the session alive.
@@ -192,26 +213,52 @@ export class BearerTokenHttpClient extends HttpClient {
       const response = await super.request<T>(method, endpoint, data, params);
       return response;
     } catch (error: any) {
-      // Reactive refresh: handle 401 Unauthorized by refreshing and retrying
-      if (error?.status === 401 && this.refreshToken) {
+      if (error?.status !== 401) {
+        throw error; // Non-auth error: rethrow untouched.
+      }
+
+      // 401: try to recover via a single refresh + retry.
+      if (this.refreshToken && !this.sessionInvalid) {
         console.log('[BearerTokenHttpClient] Received 401, attempting token refresh and retry');
-
         try {
-          // Refresh the token
           await this.refreshAuth();
-
-          // Retry the original request with new token
           console.log('[BearerTokenHttpClient] Token refreshed, retrying request');
           return await super.request<T>(method, endpoint, data, params);
         } catch (refreshError: any) {
+          // Refresh failed (or the retry still 401'd) → the session can't be
+          // renewed. Trip the breaker so we stop hammering the backend.
           console.error('[BearerTokenHttpClient] Token refresh failed:', refreshError);
+          this.tripBreaker();
           throw error; // Throw original 401 error
         }
       }
 
-      // For all other errors, just rethrow
+      // No refresh token (or breaker already tripped) → session is dead.
+      this.tripBreaker();
       throw error;
     }
+  }
+
+  /**
+   * Mark the session dead and notify once. Subsequent requests fail fast (no
+   * network) until new tokens are set (re-login), which resets the breaker.
+   */
+  private tripBreaker(): void {
+    if (this.sessionInvalid) {
+      return;
+    }
+    this.sessionInvalid = true;
+    console.warn('[BearerTokenHttpClient] Session marked invalid; suppressing requests until re-authentication');
+    try {
+      this.onUnauthorizedCb?.();
+    } catch (err) {
+      console.warn('[BearerTokenHttpClient] onUnauthorized handler threw:', err);
+    }
+  }
+
+  /** Register a one-shot handler invoked when the session becomes unrecoverable. */
+  public setOnUnauthorized(handler: () => void): void {
+    this.onUnauthorizedCb = handler;
   }
 
   private setTokensFromResponse(loginResponse: LocalLoginResponse): void {
@@ -240,6 +287,8 @@ export class BearerTokenHttpClient extends HttpClient {
     if (refreshResponse.expires_in) {
       this.tokenExpiry = new Date(now + refreshResponse.expires_in * 1000);
     }
+
+    this.sessionInvalid = false; // A successful refresh means the session is alive again.
   }
 
   private clearTokens(): void {
@@ -299,6 +348,7 @@ export class BearerTokenHttpClient extends HttpClient {
     this.refreshToken = refreshToken || null;
     this.tokenExpiry = expiresAt || null;
     this.userId = userId || null;
+    this.sessionInvalid = false; // New tokens → reset the auth circuit breaker.
 
     // When restoring tokens, we don't know the exact issue time
     // Estimate it based on expiry time (assume it was just issued if we don't know better)
@@ -357,6 +407,7 @@ export class BearerTokenHttpClient extends HttpClient {
     this.tokenExpiry = data.expiresAt || null;
     this.tokenIssuedAt = data.issuedAt || null;
     this.userId = data.userId || null;
+    this.sessionInvalid = false; // New tokens → reset the auth circuit breaker.
   }
 
   public setMaintenanceMode(active: boolean, message?: string): void {

@@ -153,10 +153,31 @@ async function activateSession(
   backendConnectionService.startHealthCheck(baseUrl);
   activeSession = createActiveSession(context, controller);
 
+  // When the session can't be renewed, the client trips its breaker and calls
+  // this once — offer an immediate re-login instead of silently failing fast.
+  if (client instanceof BearerTokenHttpClient) {
+    client.setOnUnauthorized(() => { void handleSessionExpired(context); });
+  }
+
   if (extensionUpdateService) {
     extensionUpdateService.checkForUpdates().catch(err => {
       console.warn('Extension update check failed:', err);
     });
+  }
+}
+
+/**
+ * Invoked once (by the session client's circuit breaker) when the SSO session
+ * has died and can't be refreshed. Offers a re-login; declining leaves the
+ * client failing fast locally, so the backend isn't hammered with doomed calls.
+ */
+async function handleSessionExpired(context: vscode.ExtensionContext): Promise<void> {
+  const choice = await vscode.window.showWarningMessage(
+    'Your Computor session expired. Sign in again to continue.',
+    'Sign in'
+  );
+  if (choice === 'Sign in') {
+    await unifiedLoginFlow(context);
   }
 }
 
