@@ -112,15 +112,20 @@ export class BearerTokenHttpClient extends HttpClient {
   }
 
   private async performRefresh(): Promise<void> {
-    try {
-      // SSO refresh requires a still-valid session token in the Authorization
-      // header (the backend resolves the principal before rotating the token).
-      // Once the session has expired server-side this endpoint 401s too — in
-      // that case we clear tokens below and the caller falls back to re-login.
-      if (!this.accessToken) {
-        throw new Error('No session token available to refresh');
-      }
+    // SSO refresh requires a still-valid session token in the Authorization
+    // header (the backend resolves the principal before rotating the token).
+    // Once the session has expired server-side this endpoint 401s too — in
+    // that case we clear tokens below and the caller falls back to re-login.
+    if (!this.accessToken) {
+      this.clearTokens();
+      throw new AuthenticationError('No session token available to refresh');
+    }
 
+    // Bound the request so a stalled refresh can't hang the whole login/activate
+    // flow forever (the rest of the client is gated on this completing).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    try {
       const request: TokenRefreshRequest = {
         refresh_token: this.refreshToken!,
         provider: SSO_PROVIDER
@@ -133,6 +138,7 @@ export class BearerTokenHttpClient extends HttpClient {
           'Authorization': `Bearer ${this.accessToken}`,
         },
         body: JSON.stringify(request),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -149,6 +155,8 @@ export class BearerTokenHttpClient extends HttpClient {
         throw new AuthenticationError(`Token refresh failed: ${error.message}`);
       }
       throw new AuthenticationError('Token refresh failed with unknown error');
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
