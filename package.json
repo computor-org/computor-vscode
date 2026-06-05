@@ -629,12 +629,6 @@
         "category": "Computor Files"
       },
       {
-        "command": "computor.user.changePassword",
-        "title": "Change Password",
-        "icon": "$(key)",
-        "category": "Computor"
-      },
-      {
         "command": "computor.userManager.refresh",
         "title": "Refresh Users",
         "icon": "$(refresh)",

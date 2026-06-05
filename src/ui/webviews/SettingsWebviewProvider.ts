@@ -5,9 +5,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { GitLabTokenManager } from '../../services/GitLabTokenManager';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { GitEnvironmentService } from '../../services/GitEnvironmentService';
-import { ComputorApiService } from '../../services/ComputorApiService';
 import { BackendConnectionService } from '../../services/BackendConnectionService';
-import { UserPassword } from '../../types/generated';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,23 +19,16 @@ interface SettingsInitialState {
   gitName: string;
   gitEmail: string;
   storedGitLabTokens: StoredGitLabToken[];
-  canChangePassword: boolean;
 }
 
 export class SettingsWebviewProvider extends BaseWebviewProvider {
   private gitLabTokenManager: GitLabTokenManager;
   private settingsManager: ComputorSettingsManager;
-  private apiService: ComputorApiService | undefined;
 
-  constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
+  constructor(context: vscode.ExtensionContext) {
     super(context, 'computor.settingsView');
     this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
-    this.apiService = apiService;
-  }
-
-  setApiService(apiService: ComputorApiService): void {
-    this.apiService = apiService;
   }
 
   async open(): Promise<void> {
@@ -110,9 +101,6 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       case 'removeGitLabToken':
         await this.handleRemoveGitLabToken(message.data);
         break;
-      case 'changePassword':
-        await this.handleChangePassword(message.data);
-        break;
       default:
         break;
     }
@@ -124,17 +112,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
     const gitEmail = await this.getGitConfig('user.email') || '';
     const storedGitLabTokens = await this.loadStoredGitLabTokens();
 
-    let canChangePassword = false;
-    try {
-      const username = await this.context.secrets.get('computor.username');
-      if (username) {
-        canChangePassword = true;
-      }
-    } catch {
-      // Not logged in or no password-based auth
-    }
-
-    return { backendUrl, gitName, gitEmail, storedGitLabTokens, canChangePassword };
+    return { backendUrl, gitName, gitEmail, storedGitLabTokens };
   }
 
   private async loadStoredGitLabTokens(): Promise<StoredGitLabToken[]> {
@@ -265,68 +243,6 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       this.postNotice('success', `GitLab token removed for ${data.url}.`);
     } catch (error: any) {
       this.postNotice('error', `Failed to remove GitLab token: ${error?.message || error}`);
-    }
-  }
-
-  private async handleChangePassword(raw: any): Promise<void> {
-    if (!this.panel) {
-      return;
-    }
-
-    const currentPassword = typeof raw?.currentPassword === 'string' ? raw.currentPassword : undefined;
-    const newPassword = typeof raw?.newPassword === 'string' ? raw.newPassword : undefined;
-    const confirmPassword = typeof raw?.confirmPassword === 'string' ? raw.confirmPassword : undefined;
-
-    if (!currentPassword) {
-      this.postNotice('error', 'Current password is required.');
-      return;
-    }
-    if (!newPassword) {
-      this.postNotice('error', 'New password cannot be empty.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      this.postNotice('error', 'New password and confirmation do not match.');
-      return;
-    }
-
-    if (!this.apiService) {
-      this.postNotice('error', 'Password changes require an active login session.');
-      return;
-    }
-
-    let username: string | undefined;
-    try {
-      username = await this.context.secrets.get('computor.username');
-    } catch {
-      username = undefined;
-    }
-
-    if (!username) {
-      this.postNotice('error', 'Password changes are only available for password-based authentication.');
-      return;
-    }
-
-    try {
-      const payload: UserPassword = {
-        password_old: currentPassword,
-        password: newPassword
-      };
-      await this.apiService.updateUserPassword(payload);
-      await this.updateStoredCredentials(username, newPassword);
-      this.postNotice('success', 'Password updated successfully.');
-    } catch (error: any) {
-      const detail = error?.message || error?.response?.data?.detail || String(error);
-      this.postNotice('error', `Failed to update password: ${detail}`);
-    }
-  }
-
-  private async updateStoredCredentials(username: string, newPassword: string): Promise<void> {
-    try {
-      await this.context.secrets.store('computor.username', username);
-      await this.context.secrets.store('computor.password', newPassword);
-    } catch (error) {
-      console.warn('[SettingsWebview] Failed to persist updated credentials:', error);
     }
   }
 

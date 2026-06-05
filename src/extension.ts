@@ -36,7 +36,6 @@ import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleT
 import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
 import { LecturerFsCommands } from './commands/LecturerFsCommands';
-import { UserPasswordCommands } from './commands/UserPasswordCommands';
 import { SettingsCommands } from './commands/SettingsCommands';
 import { LogoutCommands } from './commands/LogoutCommands';
 import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProvider';
@@ -1129,7 +1128,6 @@ class UnifiedController {
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
     new LecturerFsCommands(this.context, api).register();
-    new UserPasswordCommands(this.context, api).register();
     new LogoutCommands(this.context).registerCommands();
 
     // Documents tree — file-system mirror over /documents/* with per-entry sync state.

@@ -8,10 +8,6 @@
     gitEmail: '',
     storedGitLabTokens: [],
     gitlabEntries: [],
-    canChangePassword: false,
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
     backendUrlValidationStatus: 'pending',
     backendUrlValidationMessage: '',
     notice: null
@@ -85,22 +81,6 @@
     post('saveGitConfig', { gitName: state.gitName.trim(), gitEmail: state.gitEmail.trim() });
   }
 
-  function changePassword() {
-    var hasErrors = false;
-    liveValidators.forEach(function (lv) {
-      if (lv._fieldId === 'current-password' || lv._fieldId === 'new-password' || lv._fieldId === 'confirm-new-password') {
-        if (lv.validate()) { hasErrors = true; }
-      }
-    });
-    if (hasErrors) { return; }
-
-    post('changePassword', {
-      currentPassword: state.currentPassword,
-      newPassword: state.newPassword,
-      confirmPassword: state.confirmPassword
-    });
-  }
-
   function validateBackendUrl() {
     var urlError = V.url(state.backendUrl, { label: 'Server URL' });
     if (urlError) {
@@ -125,13 +105,6 @@
   function cancelGitConfig() {
     state.gitName = initialValues.gitName;
     state.gitEmail = initialValues.gitEmail;
-    render();
-  }
-
-  function cancelPassword() {
-    state.currentPassword = '';
-    state.newPassword = '';
-    state.confirmPassword = '';
     render();
   }
 
@@ -319,41 +292,6 @@
     '</div>';
   }
 
-  function renderPasswordSection() {
-    if (!state.canChangePassword) {
-      return '<div class="settings-section">' +
-        '<div class="section-header"><h2>Change Password</h2></div>' +
-        '<p class="section-description">Password changes are only available after logging in with password-based authentication.</p>' +
-      '</div>';
-    }
-
-    return '<div class="settings-section">' +
-      '<div class="section-header"><h2>Change Password</h2></div>' +
-      '<p class="section-description">Update your password (minimum 12 characters).</p>' +
-      '<div class="form-field">' +
-        '<label for="current-password">Current Password</label>' +
-        '<input type="password" id="current-password" value="' + escapeHtml(state.currentPassword) + '" placeholder="Enter current password">' +
-        '<span class="field-error"></span>' +
-      '</div>' +
-      '<div class="form-row">' +
-        '<div class="form-field">' +
-          '<label for="new-password">New Password</label>' +
-          '<input type="password" id="new-password" value="' + escapeHtml(state.newPassword) + '" placeholder="Min 12 characters">' +
-          '<span class="field-error"></span>' +
-        '</div>' +
-        '<div class="form-field">' +
-          '<label for="confirm-new-password">Confirm New Password</label>' +
-          '<input type="password" id="confirm-new-password" value="' + escapeHtml(state.confirmPassword) + '" placeholder="Confirm new password">' +
-          '<span class="field-error"></span>' +
-        '</div>' +
-      '</div>' +
-      '<div class="section-actions">' +
-        '<button type="button" class="btn btn-secondary btn-sm" id="cancel-password-btn">Cancel</button>' +
-        '<button type="button" class="btn btn-secondary btn-sm" id="change-password-btn">Change Password</button>' +
-      '</div>' +
-    '</div>';
-  }
-
   function render() {
     liveValidators.forEach(function (lv) { lv.destroy(); });
     liveValidators = [];
@@ -429,9 +367,7 @@
         '<p class="section-description">Manage your GitLab personal access tokens. Tokens need api, read_repository, and write_repository scopes.</p>' +
         renderStoredTokens() +
         '<div id="gitlab-entries">' + gitlabEntriesHtml + '</div>' +
-      '</div>' +
-
-      renderPasswordSection();
+      '</div>';
 
     attachEventListeners();
     attachValidation();
@@ -447,9 +383,6 @@
     });
     bindInput('git-name', function (v) { state.gitName = v; });
     bindInput('git-email', function (v) { state.gitEmail = v; });
-    bindInput('current-password', function (v) { state.currentPassword = v; });
-    bindInput('new-password', function (v) { state.newPassword = v; });
-    bindInput('confirm-new-password', function (v) { state.confirmPassword = v; });
 
     bindClick('validate-backend-url-btn', validateBackendUrl);
     bindClick('save-backend-url-btn', saveBackendUrl);
@@ -457,8 +390,6 @@
     bindClick('save-git-config-btn', saveGitConfig);
     bindClick('cancel-git-config-btn', cancelGitConfig);
     bindClick('add-gitlab-btn', addGitLabEntry);
-    bindClick('change-password-btn', changePassword);
-    bindClick('cancel-password-btn', cancelPassword);
 
     document.querySelectorAll('.gitlab-url-input').forEach(function (input) {
       input.addEventListener('input', function (e) {
@@ -556,21 +487,6 @@
       return V.email(v);
     });
 
-    if (state.canChangePassword) {
-      attachLive('current-password', function (v) {
-        return V.required(v, { label: 'Current password' });
-      });
-
-      attachLive('new-password', function (v) {
-        return V.minLength(v, 12, { label: 'New password' });
-      });
-
-      attachLive('confirm-new-password', function (v) {
-        if (!v) { return 'Confirmation is required'; }
-        return V.matches(v, state.newPassword, { message: 'Passwords do not match' });
-      });
-    }
-
     document.querySelectorAll('.gitlab-url-input').forEach(function (input) {
       liveValidators.push(V.attachLiveValidation(input, function (v) {
         return V.url(v, { label: 'GitLab URL' });
@@ -662,8 +578,6 @@
     } else if (msg.indexOf('Git configuration saved') !== -1) {
       btnId = 'save-git-config-btn';
       if (data.type === 'success') { initialValues.gitName = state.gitName; initialValues.gitEmail = state.gitEmail; }
-    } else if (msg.indexOf('Password updated') !== -1) {
-      btnId = 'change-password-btn';
     } else if (msg.indexOf('GitLab token saved') !== -1) {
       btnId = null;
     }
@@ -672,12 +586,6 @@
       var btn = document.getElementById(btnId);
       if (btn) {
         V.showSaveIndicator(btn, { message: data.type === 'success' ? 'Saved' : msg, type: data.type });
-        if (data.type === 'success' && btnId === 'change-password-btn') {
-          state.currentPassword = '';
-          state.newPassword = '';
-          state.confirmPassword = '';
-          render();
-        }
         return;
       }
     }

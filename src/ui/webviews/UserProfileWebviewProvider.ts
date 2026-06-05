@@ -9,7 +9,6 @@ import {
   StudentProfileGet,
   StudentProfileUpdate,
   UserGet,
-  UserPassword,
   UserUpdate
 } from '../../types/generated';
 
@@ -19,8 +18,6 @@ interface UserProfileViewState {
   studentProfiles: StudentProfileGet[];
   languages: LanguageList[];
   organizations: any[];
-  canChangePassword: boolean;
-  username?: string;
 }
 
 type NoticeType = 'info' | 'success' | 'warning' | 'error';
@@ -104,9 +101,6 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       case 'saveStudentProfile':
         await this.handleSaveStudentProfile(message.data);
         break;
-      case 'changePassword':
-        await this.handleChangePassword(message.data);
-        break;
       default:
         break;
     }
@@ -123,26 +117,12 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       ? await this.apiService.getStudentProfiles({ user_id: user.id }, options)
       : [];
 
-    let canChangePassword = false;
-    let username: string | undefined;
-    try {
-      // Check if we have stored username (indicates password-based login)
-      username = await this.context.secrets.get('computor.username');
-      if (username) {
-        canChangePassword = true;
-      }
-    } catch (error) {
-      console.warn('[UserProfileWebview] Failed to inspect auth secrets:', error);
-    }
-
     return {
       user: user ?? undefined,
       profile: user?.profile ?? null,
       studentProfiles: studentProfiles ?? [],
       languages: languages ?? [],
-      organizations: organizations ?? [],
-      canChangePassword,
-      username
+      organizations: organizations ?? []
     };
   }
 
@@ -253,67 +233,6 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       await this.refreshState({ force: true, notice: { type: 'success', message: 'Student profile saved.' } });
     } catch (error: any) {
       this.handleError('Failed to save student profile', error);
-    }
-  }
-
-  private async handleChangePassword(raw: any): Promise<void> {
-    if (!raw || typeof raw !== 'object') {
-      return;
-    }
-
-    const currentPassword = typeof raw.currentPassword === 'string' ? raw.currentPassword : undefined;
-    const newPassword = typeof raw.newPassword === 'string' ? raw.newPassword : undefined;
-    const confirmPassword = typeof raw.confirmPassword === 'string' ? raw.confirmPassword : undefined;
-
-    if (!currentPassword) {
-      this.postNotice({ type: 'warning', message: 'Current password is required.' });
-      return;
-    }
-    if (!newPassword) {
-      this.postNotice({ type: 'warning', message: 'New password cannot be empty.' });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      this.postNotice({ type: 'warning', message: 'New password and confirmation do not match.' });
-      return;
-    }
-
-    let username: string | undefined;
-    try {
-      username = await this.context.secrets.get('computor.username');
-    } catch {
-      username = undefined;
-    }
-
-    if (!username) {
-      this.postNotice({ type: 'error', message: 'Password changes are only available for password-based authentication.' });
-      return;
-    }
-
-    try {
-      const payload: UserPassword = {
-        password_old: currentPassword,
-        password: newPassword
-      };
-      await this.apiService.updateUserPassword(payload);
-      await this.updateStoredCredentials(username, newPassword);
-      await this.refreshState({ notice: { type: 'success', message: 'Password updated successfully.' } });
-    } catch (error: any) {
-      this.handleError('Failed to update password', error);
-    }
-  }
-
-  private async updateStoredCredentials(username: string, newPassword: string): Promise<void> {
-    try {
-      // Update stored username and password
-      await this.context.secrets.store('computor.username', username);
-      await this.context.secrets.store('computor.password', newPassword);
-
-      // Note: We don't need to update the bearer token auth here
-      // The user will need to re-login to get new tokens with the new password
-      // The stored password is used for the login suggestion only
-    } catch (error) {
-      console.warn('Failed to persist updated credentials:', error);
     }
   }
 

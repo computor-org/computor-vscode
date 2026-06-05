@@ -7,8 +7,6 @@
     studentProfiles: [],
     languages: [],
     organizations: [],
-    canChangePassword: false,
-    username: undefined,
     ...(window.__INITIAL_STATE__ || {})
   };
 
@@ -190,34 +188,6 @@
           </form>
         </div>
       </section>
-
-      ${state.canChangePassword ? `
-        <section class="profile-section">
-          <div>
-            <h2>Change Password</h2>
-            <p class="section-description">Update the password used for basic authentication. You must provide the current password to confirm this change.</p>
-          </div>
-          <form id="password-form">
-            <div class="password-grid">
-              <div class="form-field">
-                <label for="password-current">Current Password</label>
-                <input id="password-current" name="currentPassword" type="password" autocomplete="current-password" required>
-              </div>
-              <div class="form-field">
-                <label for="password-new">New Password</label>
-                <input id="password-new" name="newPassword" type="password" autocomplete="new-password" required>
-              </div>
-              <div class="form-field">
-                <label for="password-confirm">Confirm Password</label>
-                <input id="password-confirm" name="confirmPassword" type="password" autocomplete="new-password" required>
-              </div>
-            </div>
-            <div class="profile-actions">
-              <button type="submit" class="primary">Update Password</button>
-            </div>
-          </form>
-        </section>
-      ` : ''}
     `;
 
     bindEvents(root);
@@ -295,21 +265,6 @@
         newStudentForm.reset();
       });
     }
-
-    const passwordForm = root.querySelector('#password-form');
-    if (passwordForm) {
-      passwordForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const formData = new FormData(passwordForm);
-        const payload = {
-          currentPassword: formData.get('currentPassword')?.toString() || '',
-          newPassword: formData.get('newPassword')?.toString() || '',
-          confirmPassword: formData.get('confirmPassword')?.toString() || ''
-        };
-        post('changePassword', payload);
-        passwordForm.reset();
-      });
-    }
   }
 
   function updateNotice(notice) {
@@ -342,8 +297,6 @@
         state.studentProfiles = message.data.studentProfiles ?? state.studentProfiles;
         state.languages = message.data.languages ?? state.languages;
         state.organizations = message.data.organizations ?? state.organizations;
-        state.canChangePassword = message.data.canChangePassword ?? state.canChangePassword;
-        state.username = message.data.username ?? state.username;
       }
       render();
       if (message.notice) {

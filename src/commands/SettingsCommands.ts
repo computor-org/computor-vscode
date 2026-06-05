@@ -1,23 +1,18 @@
 import * as vscode from 'vscode';
 import { SettingsWebviewProvider } from '../ui/webviews/SettingsWebviewProvider';
-import { ComputorApiService } from '../services/ComputorApiService';
 import { commandRegistrar } from './commandHelpers';
 
 export class SettingsCommands {
   private settingsWebviewProvider: SettingsWebviewProvider;
 
-  constructor(private context: vscode.ExtensionContext, apiService?: ComputorApiService) {
-    this.settingsWebviewProvider = new SettingsWebviewProvider(context, apiService);
+  constructor(private context: vscode.ExtensionContext) {
+    this.settingsWebviewProvider = new SettingsWebviewProvider(context);
   }
 
   register(): void {
 
     const register = commandRegistrar(this.context);
     register('computor.settingsView', () => this.openSettings());
-  }
-
-  setApiService(apiService: ComputorApiService): void {
-    this.settingsWebviewProvider.setApiService(apiService);
   }
 
   private async openSettings(): Promise<void> {
