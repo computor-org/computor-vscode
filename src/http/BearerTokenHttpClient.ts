@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import { HttpClient } from './HttpClient';
 import { AuthenticationError, MaintenanceError } from './errors';
-import { LocalLoginRequest, LocalLoginResponse, TokenRefreshRequest, TokenRefreshResponse } from '../types/generated/auth';
+import { TokenRefreshRequest, TokenRefreshResponse } from '../types/generated/auth';
 
 /** Endpoints that bypass the maintenance mode block. */
 const MAINTENANCE_EXEMPT_PREFIXES = ['/auth/', '/system/maintenance'];
@@ -45,39 +45,6 @@ export class BearerTokenHttpClient extends HttpClient {
     // a second backend request while the first still completes. Retry policy
     // belongs in errorRecoveryService at the call site, not in the transport.
     super(baseUrl, timeout, 0, 1000, cacheConfig);
-  }
-
-  async authenticateWithCredentials(username: string, password: string): Promise<void> {
-    try {
-      const request: LocalLoginRequest = {
-        username,
-        password
-      };
-
-      const response = await fetch(`${this.baseUrl}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new AuthenticationError(`Login failed: ${response.status} ${errorText}`);
-      }
-
-      const loginResponse = await response.json() as LocalLoginResponse;
-      this.setTokensFromResponse(loginResponse);
-    } catch (error) {
-      if (error instanceof AuthenticationError) {
-        throw error;
-      }
-      if (error instanceof Error) {
-        throw new AuthenticationError(`Authentication failed: ${error.message}`);
-      }
-      throw new AuthenticationError('Authentication failed with unknown error');
-    }
   }
 
   async authenticate(): Promise<void> {
@@ -259,19 +226,6 @@ export class BearerTokenHttpClient extends HttpClient {
   /** Register a one-shot handler invoked when the session becomes unrecoverable. */
   public setOnUnauthorized(handler: () => void): void {
     this.onUnauthorizedCb = handler;
-  }
-
-  private setTokensFromResponse(loginResponse: LocalLoginResponse): void {
-    this.accessToken = loginResponse.access_token;
-    this.refreshToken = loginResponse.refresh_token;
-    this.userId = loginResponse.user_id;
-
-    const now = Date.now();
-    this.tokenIssuedAt = new Date(now);
-
-    if (loginResponse.expires_in) {
-      this.tokenExpiry = new Date(now + loginResponse.expires_in * 1000);
-    }
   }
 
   private updateTokensFromRefresh(refreshResponse: TokenRefreshResponse): void {
