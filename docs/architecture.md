@@ -153,19 +153,24 @@ Key class: `UnifiedController` - manages the extension lifecycle and view initia
 
 ### Authentication System
 
-**Directory**: [http/](../src/http/)
+**Directories**: [authentication/](../src/authentication/), [http/](../src/http/)
 
-Uses bearer token authentication:
-- **Bearer Token Auth**: Username/password login with JWT access and refresh tokens
-- Automatic token refresh before expiration
-- Secure token storage using VS Code's secret storage API
+Two ways to authenticate, both ending in a token sent on every request:
 
-Authentication flow:
-1. User provides username/password
-2. Extension calls `/auth/login` endpoint with credentials
-3. Backend returns access token, refresh token, and expiration
-4. Access token used in `Authorization: Bearer` header
-5. Token auto-refreshes via `/auth/refresh/local` endpoint
+- **Keycloak SSO (default)** — a browser-based OIDC login. The extension starts a
+  temporary loopback HTTP server, opens `{backend}/auth/keycloak/login` in the
+  system browser, and captures the opaque **session token** the backend redirects
+  back ([SsoLoginService.ts](../src/authentication/SsoLoginService.ts)). The token
+  is used as `Authorization: Bearer <token>` via `BearerTokenHttpClient`.
+- **API token (escape hatch)** — for automation / CI / headless workspaces. A
+  Computor API token (`ctp_…`) is sent as `X-API-Token` via `ApiKeyHttpClient`,
+  supplied interactively (`Computor: Sign in with API Token`) or through the
+  `COMPUTOR_AUTH_TOKEN` environment variable.
+
+The session token (opaque, sliding ~1h server TTL) is refreshed proactively via
+`POST /auth/refresh` while VS Code is active; an expired session is recovered by
+re-running the browser SSO flow. Tokens are stored in VS Code's secret storage.
+The extension only ever talks to the backend, never directly to Keycloak.
 
 ### HTTP Layer
 
@@ -173,7 +178,8 @@ Authentication flow:
 
 **Architecture**:
 - Abstract `HttpClient` interface
-- Implementation: `BearerTokenHttpClient` with automatic token refresh
+- Implementations: `BearerTokenHttpClient` (SSO session token, with automatic
+  refresh) and `ApiKeyHttpClient` (API token)
 - Built-in caching with `InMemoryCache` and `NoOpCache` strategies
 - Centralized error handling through `HttpError`
 
@@ -339,18 +345,23 @@ Settings are stored in:
 
 ```
 1. Extension activates
-2. Check for stored access/refresh tokens
-3. If no tokens:
-   a. Prompt for backend URL
-   b. Prompt for username and password
-   c. Call /auth/login to get tokens
-   d. Store tokens in secure storage
-4. Build BearerTokenHttpClient with stored tokens
+2. On a detected .computor workspace, try to authenticate silently, in order:
+   a. COMPUTOR_AUTH_TOKEN env var → ApiKeyHttpClient (X-API-Token)
+   b. stored API token → ApiKeyHttpClient
+   c. stored SSO session token → BearerTokenHttpClient (validated against /user)
+3. If nothing valid is stored, prompt the user to sign in:
+   - "Computor: Login" runs the Keycloak SSO browser flow:
+     a. Start a loopback server on 127.0.0.1:<random-port>
+     b. Open {backend}/auth/keycloak/login?redirect_uri=<loopback> in the browser
+     c. User authenticates; backend 302s the session token back to the loopback
+     d. Build BearerTokenHttpClient with the captured token
+   - "Computor: Sign in with API Token" uses an entered ctp_ token instead
+4. Store the token in secret storage
 5. Initialize ComputorApiService
 6. Fetch user views/roles
 7. Initialize appropriate UI views
-8. Create .computor marker file in workspace
-9. Token auto-refreshes before expiration during API calls
+8. Create/refresh the .computor marker file in workspace
+9. Session token auto-refreshes via POST /auth/refresh; on hard 401, re-run SSO
 ```
 
 ## Performance Optimizations

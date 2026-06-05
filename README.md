@@ -15,7 +15,7 @@ Computor is a VS Code extension designed for educational institutions to manage 
 - 🎓 **Role-based Interface**: Dedicated views for students, tutors, and lecturers
 - 📚 **Course Management**: Create, organize, and deploy course content
 - 💻 **Git Integration**: Automatic repository management for assignments
-- 🔐 **Secure Authentication**: Token-based authentication with automatic refresh
+- 🔐 **Single Sign-On**: Browser-based Keycloak SSO login, with an API-token option for automation
 - ✅ **Test Integration**: Built-in test runner with result visualization
 - 💬 **Messaging System**: Communication between students, tutors, and lecturers
 - 📊 **Progress Tracking**: Real-time submission and grading status
@@ -77,34 +77,35 @@ Create a Personal Access Token:
 
 3. Enter your institution's Computor backend URL (provided by your administrator)
 
-#### Step 4: Sign Up and Set Password
+#### Step 4: Sign In
 
-**IMPORTANT:** Once you set your password, it cannot be changed using this command again. If you forget your password or need to reset it, you must contact your course administrator for a manual password reset. Only after an administrator resets your password can you use the `Computor: Sign Up (Set Initial Password)` command to set a new one.
+Computor uses your institution's single sign-on (SSO). There is no separate
+password to set in the extension.
 
 1. Open the Command Palette (`F1`)
 
 2. Search for and execute:
    ```
-   Computor: Sign Up (Set Initial Password)
+   Computor: Login
    ```
 
-3. If your institution uses GitLab, you'll be prompted for:
-   - **GitLab URL**: Enter your GitLab instance URL
-   - **Personal Access Token**: Enter your GitLab personal access token (from Step 2)
+3. Your web browser opens to your institution's sign-in page. Authenticate there
+   (if you are already signed in, this may complete instantly).
 
-4. The extension will validate your credentials
+4. When the browser shows **"Signed in to Computor"**, return to VS Code — you're ready to go.
 
-5. Set your password:
-   - Enter your desired password
-   - Confirm by entering it again
+Your Computor account is matched automatically by your email address.
 
-#### Step 5: Login
+##### Advanced: signing in with an API token
 
-After setting up your password, you'll be prompted to log in.
+For automation, CI, or headless/Coder workspaces you can sign in with a Computor
+**API token** instead of the browser flow:
 
-Provide the following credentials:
-- **Email**: Your institutional email address
-- **Password**: The password you just created
+- Run **`Computor: Sign in with API Token`** and paste a token (it starts with `ctp_`), **or**
+- Set the `COMPUTOR_AUTH_TOKEN` environment variable before launching VS Code — the
+  extension picks it up automatically when a Computor workspace is detected.
+
+You can mint an API token from the Computor web interface.
 
 You're now ready to use Computor!
 
@@ -166,9 +167,9 @@ You're now ready to use Computor!
 - Ensure repository access rights
 
 **Authentication errors:**
-- Try logging out and logging back in
-- Verify your password is correct
-- Contact administrator if password reset is needed
+- Try signing out and signing back in (`Computor: Logout`, then `Computor: Login`)
+- Your session may have expired after a period of inactivity — sign in again to refresh it
+- If the browser sign-in doesn't complete, confirm your backend URL is correct and reachable
 
 ## Support
 
