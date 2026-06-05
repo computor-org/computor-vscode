@@ -1,10 +1,13 @@
 import fetch from 'node-fetch';
 import { HttpClient } from './HttpClient';
 import { AuthenticationError, MaintenanceError } from './errors';
-import { LocalLoginRequest, LocalLoginResponse, LocalTokenRefreshRequest, LocalTokenRefreshResponse } from '../types/generated/auth';
+import { LocalLoginRequest, LocalLoginResponse, TokenRefreshRequest, TokenRefreshResponse } from '../types/generated/auth';
 
 /** Endpoints that bypass the maintenance mode block. */
 const MAINTENANCE_EXEMPT_PREFIXES = ['/auth/', '/system/maintenance'];
+
+/** The only SSO provider the extension talks to (institute IdPs are brokered behind it). */
+const SSO_PROVIDER = 'keycloak';
 
 export class BearerTokenHttpClient extends HttpClient {
   private accessToken: string | null = null;
@@ -110,14 +113,24 @@ export class BearerTokenHttpClient extends HttpClient {
 
   private async performRefresh(): Promise<void> {
     try {
-      const request: LocalTokenRefreshRequest = {
-        refresh_token: this.refreshToken!
+      // SSO refresh requires a still-valid session token in the Authorization
+      // header (the backend resolves the principal before rotating the token).
+      // Once the session has expired server-side this endpoint 401s too — in
+      // that case we clear tokens below and the caller falls back to re-login.
+      if (!this.accessToken) {
+        throw new Error('No session token available to refresh');
+      }
+
+      const request: TokenRefreshRequest = {
+        refresh_token: this.refreshToken!,
+        provider: SSO_PROVIDER
       };
 
-      const response = await fetch(`${this.baseUrl}/auth/refresh/local`, {
+      const response = await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.accessToken}`,
         },
         body: JSON.stringify(request),
       });
@@ -127,7 +140,7 @@ export class BearerTokenHttpClient extends HttpClient {
         throw new Error(`Token refresh failed: ${response.status} ${errorText}`);
       }
 
-      const refreshResponse = await response.json() as LocalTokenRefreshResponse;
+      const refreshResponse = await response.json() as TokenRefreshResponse;
       this.updateTokensFromRefresh(refreshResponse);
       console.log('[BearerTokenHttpClient] Token refreshed successfully');
     } catch (error) {
@@ -196,7 +209,7 @@ export class BearerTokenHttpClient extends HttpClient {
     }
   }
 
-  private updateTokensFromRefresh(refreshResponse: LocalTokenRefreshResponse): void {
+  private updateTokensFromRefresh(refreshResponse: TokenRefreshResponse): void {
     this.accessToken = refreshResponse.access_token;
 
     if (refreshResponse.refresh_token) {
