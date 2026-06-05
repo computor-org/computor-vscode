@@ -56,7 +56,7 @@ import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMember
 import { manageGitLabTokens } from './commands/manageGitLabTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
-import { LoginWebviewProvider, LoginCredentials } from './ui/webviews/LoginWebviewProvider';
+import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
 
 interface StoredAuth {
   accessToken: string;
@@ -92,51 +92,78 @@ async function ensureBaseUrl(settings: ComputorSettingsManager): Promise<string 
   return url;
 }
 
-async function attemptSilentAutoLogin(
+const SESSION_AUTH_KEY = 'computor.auth';
+const API_TOKEN_KEY = 'computor.apiToken';
+
+/**
+ * Build a session client from the tokens handed back by the SSO browser flow.
+ * The session token has a sliding ~1h server TTL; the browser redirect doesn't
+ * carry an exact expiry, so we assume 1h to drive proactive refresh while
+ * VS Code is active.
+ */
+function buildSessionClient(baseUrl: string, sso: SsoLoginResult): BearerTokenHttpClient {
+  const client = new BearerTokenHttpClient(baseUrl, 10000);
+  const now = new Date();
+  client.setTokenData({
+    accessToken: sso.token,
+    refreshToken: sso.refreshToken,
+    expiresAt: new Date(now.getTime() + 3600_000),
+    issuedAt: now,
+    userId: sso.userId
+  });
+  return client;
+}
+
+function sessionAuthFromClient(client: BearerTokenHttpClient): StoredAuth {
+  const t = client.getTokenData();
+  return {
+    accessToken: t.accessToken!,
+    refreshToken: t.refreshToken || undefined,
+    expiresAt: t.expiresAt?.toISOString(),
+    issuedAt: t.issuedAt?.toISOString(),
+    userId: t.userId || undefined
+  };
+}
+
+async function persistSession(context: vscode.ExtensionContext, auth: StoredAuth): Promise<void> {
+  await context.secrets.store(SESSION_AUTH_KEY, JSON.stringify(auth));
+}
+
+/**
+ * Wire an authenticated HTTP client into a live UnifiedController session.
+ * Shared by every entry point (SSO, API token, restored session). Throws if the
+ * controller fails to activate (e.g. invalid/expired token); callers handle it.
+ */
+async function activateSession(
   context: vscode.ExtensionContext,
   baseUrl: string,
-  username: string,
-  password: string,
+  client: BearerTokenHttpClient | ApiKeyHttpClient,
   onProgress?: (message: string) => void
-): Promise<boolean> {
-  try {
-    const client = new BearerTokenHttpClient(baseUrl, 10000);
-    await client.authenticateWithCredentials(username, password);
+): Promise<void> {
+  await ensureWorkspaceMarker(baseUrl);
+  const controller = new UnifiedController(context);
+  await controller.activate(client as any, onProgress);
+  backendConnectionService.startHealthCheck(baseUrl);
+  activeSession = createActiveSession(context, controller);
 
-    const tokenData = client.getTokenData();
-    const auth: StoredAuth = {
-      accessToken: tokenData.accessToken!,
-      refreshToken: tokenData.refreshToken || undefined,
-      expiresAt: tokenData.expiresAt?.toISOString(),
-      issuedAt: tokenData.issuedAt?.toISOString(),
-      userId: tokenData.userId || undefined
-    };
-
-    await ensureWorkspaceMarker(baseUrl);
-    const controller = new UnifiedController(context);
-
-    await controller.activate(client as any, onProgress);
-    backendConnectionService.startHealthCheck(baseUrl);
-
-    activeSession = createActiveSession(context, controller);
-
-    await context.secrets.store('computor.auth', JSON.stringify(auth));
-
-    if (extensionUpdateService) {
-      extensionUpdateService.checkForUpdates().catch(err => {
-        console.warn('Extension update check failed:', err);
-      });
-    }
-
-    return true;
-  } catch (error: any) {
-    console.error('Auto-login failed:', error);
-    return false;
+  if (extensionUpdateService) {
+    extensionUpdateService.checkForUpdates().catch(err => {
+      console.warn('Extension update check failed:', err);
+    });
   }
 }
 
-// Login webview provider instance (lazily initialized per context)
-let loginWebviewProvider: LoginWebviewProvider | undefined;
+/** Run the SSO browser handshake inside a cancellable progress notification. */
+async function runSsoWithProgress(baseUrl: string): Promise<SsoLoginResult> {
+  return vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: 'Computor',
+    cancellable: true
+  }, async (progress, token) => {
+    progress.report({ message: 'Waiting for browser sign-in…' });
+    return ssoBrowserLogin(baseUrl, { cancellationToken: token });
+  });
+}
 
 interface TreeViewRegistration<T> {
   provider: vscode.TreeDataProvider<T>;
@@ -247,59 +274,108 @@ async function writeMarker(file: string, data: { backendUrl: string }): Promise<
   await fs.promises.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
 }
 
-type OnAuthenticatedResult = { done: true } | { done: false; retryMessage: string };
+/**
+ * Interactive sign-in with a Computor API token — the non-SSO escape hatch for
+ * power users / automation. The token is sent as `X-API-Token` and persisted in
+ * secret storage so it survives restarts; Logout clears it.
+ */
+async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void> {
+  if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
+  if (activeSession) {
+    vscode.window.showInformationMessage('Already signed in. Log out first to switch accounts.');
+    return;
+  }
 
-async function runCredentialLoginLoop(
-  context: vscode.ExtensionContext,
-  baseUrl: string,
-  settings: ComputorSettingsManager,
-  onAuthenticated: (client: BearerTokenHttpClient, creds: LoginCredentials) => Promise<OnAuthenticatedResult>
-): Promise<void> {
-  const storedUsername = await context.secrets.get('computor.username');
-  const storedPassword = await context.secrets.get('computor.password');
-  const currentAutoLogin = await settings.isAutoLoginEnabled();
+  const root = getWorkspaceRoot();
+  if (!root) { await promptOpenWorkspaceFolder(); return; }
 
-  if (!loginWebviewProvider) { loginWebviewProvider = new LoginWebviewProvider(context); }
-  let creds = await loginWebviewProvider.promptCredentials(
-    storedUsername || storedPassword ? { username: storedUsername, password: storedPassword } : undefined,
-    currentAutoLogin
-  );
+  const settings = new ComputorSettingsManager(context);
+  const baseUrl = await ensureBaseUrl(settings);
+  if (!baseUrl) { return; }
 
-  while (creds) {
-    backendConnectionService.setBaseUrl(baseUrl);
-    const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-    if (!connectionStatus.isReachable) {
-      await backendConnectionService.showConnectionError(connectionStatus);
-      loginWebviewProvider.close();
-      return;
-    }
+  const token = await vscode.window.showInputBox({
+    title: 'Sign in with API Token',
+    prompt: 'Enter a Computor API token (starts with "ctp_")',
+    password: true,
+    ignoreFocusOut: true,
+    placeHolder: 'ctp_…',
+    validateInput: (v) => (v && v.startsWith('ctp_')) ? undefined : 'API tokens start with "ctp_"'
+  });
+  if (!token) { return; }
 
-    const client = new BearerTokenHttpClient(baseUrl, 10000);
-    try {
-      await client.authenticateWithCredentials(creds.username, creds.password);
-    } catch (error: any) {
-      creds = await loginWebviewProvider.notifyLoginFailed(error.message);
-      continue;
-    }
+  isAuthenticating = true;
+  try {
+    const ok = await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Computor',
+      cancellable: false
+    }, async (progress) => {
+      progress.report({ message: 'Connecting to backend…' });
+      backendConnectionService.setBaseUrl(baseUrl);
+      const status = await backendConnectionService.checkBackendConnection(baseUrl);
+      if (!status.isReachable) {
+        await backendConnectionService.showConnectionError(status);
+        return false;
+      }
+      progress.report({ message: 'Validating API token…' });
+      const client = new ApiKeyHttpClient(baseUrl, token, 'X-API-Token', '', 10000);
+      try {
+        await activateSession(context, baseUrl, client, (m) => progress.report({ message: m }));
+      } catch (error: any) {
+        console.error('API token login failed:', error);
+        vscode.window.showErrorMessage(`API token sign-in failed: ${error?.message || error}`);
+        return false;
+      }
+      await context.secrets.store(API_TOKEN_KEY, token);
+      return true;
+    });
 
-    const result = await onAuthenticated(client, creds);
-    if (result.done) return;
-    creds = await loginWebviewProvider.notifyLoginFailed(result.retryMessage);
+    if (ok) { vscode.window.showInformationMessage(`Signed in with API token: ${baseUrl}`); }
+  } finally {
+    isAuthenticating = false;
   }
 }
 
-async function persistLoginCredentials(
+/**
+ * Silently restore a previously authenticated session without any UI prompts:
+ * first a stored API token, then a stored SSO session token (validated by
+ * activating the controller). Returns true on success. Used by the
+ * .computor-workspace auto-login path. The injected `COMPUTOR_AUTH_TOKEN` env
+ * token is handled separately (higher priority) by the caller.
+ */
+async function restoreSession(
   context: vscode.ExtensionContext,
-  settings: ComputorSettingsManager,
-  auth: StoredAuth,
-  creds: LoginCredentials
-): Promise<void> {
-  await context.secrets.store('computor.auth', JSON.stringify(auth));
-  await context.secrets.store('computor.username', creds.username);
-  await context.secrets.store('computor.password', creds.password);
-  if (creds.enableAutoLogin !== undefined) {
-    await settings.setAutoLoginEnabled(creds.enableAutoLogin);
+  baseUrl: string,
+  onProgress?: (message: string) => void
+): Promise<boolean> {
+  const storedApiToken = await context.secrets.get(API_TOKEN_KEY);
+  if (storedApiToken) {
+    const client = new ApiKeyHttpClient(baseUrl, storedApiToken, 'X-API-Token', '', 10000);
+    try {
+      await activateSession(context, baseUrl, client, onProgress);
+      return true;
+    } catch (error) {
+      console.warn('Stored API token login failed:', error);
+    }
   }
+
+  const raw = await context.secrets.get(SESSION_AUTH_KEY);
+  if (raw) {
+    let auth: StoredAuth | undefined;
+    try { auth = JSON.parse(raw) as StoredAuth; } catch { auth = undefined; }
+    if (auth?.accessToken) {
+      const client = buildHttpClient(baseUrl, auth);
+      try {
+        await activateSession(context, baseUrl, client, onProgress);
+        await persistSession(context, sessionAuthFromClient(client));
+        return true;
+      } catch (error) {
+        console.warn('Stored session token expired or invalid:', error);
+      }
+    }
+  }
+
+  return false;
 }
 
 async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExistingFolders: boolean }> {
@@ -325,51 +401,11 @@ async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExisti
 }
 
 /**
- * Result of auto-login attempt
+ * Auto-login when a `.computor` workspace marker is detected. Tries, in order:
+ *   1. an injected `COMPUTOR_AUTH_TOKEN` API token (Coder / CI workspaces),
+ *   2. a silently restored session (stored API token, then stored SSO token),
+ * and otherwise prompts the user to sign in via SSO or an API token.
  */
-interface AutoLoginResult {
-  success: boolean;
-  shouldPromptManualLogin: boolean;
-}
-
-/**
- * Handles automatic login when .computor file is detected in workspace.
- * Consolidates duplicated auto-login logic from activation and workspace change handlers.
- */
-/**
- * Attempt login using a pre-minted API token from the COMPUTOR_AUTH_TOKEN env var.
- * Returns true if successful, false otherwise.
- */
-async function attemptApiTokenLogin(
-  context: vscode.ExtensionContext,
-  baseUrl: string,
-  apiToken: string,
-  onProgress?: (message: string) => void
-): Promise<boolean> {
-  try {
-    const client = new ApiKeyHttpClient(baseUrl, apiToken, 'X-API-Token', '', 5000);
-
-    await ensureWorkspaceMarker(baseUrl);
-    const controller = new UnifiedController(context);
-
-    await controller.activate(client as any, onProgress);
-    backendConnectionService.startHealthCheck(baseUrl);
-
-    activeSession = createActiveSession(context, controller);
-
-    if (extensionUpdateService) {
-      extensionUpdateService.checkForUpdates().catch(err => {
-        console.warn('Extension update check failed:', err);
-      });
-    }
-
-    return true;
-  } catch (error: any) {
-    console.error('API token login failed:', error);
-    return false;
-  }
-}
-
 async function handleComputorWorkspaceDetected(
   context: vscode.ExtensionContext,
   computorMarkerPath: string
@@ -379,133 +415,80 @@ async function handleComputorWorkspaceDetected(
   }
 
   const settings = new ComputorSettingsManager(context);
+  const marker = await readMarker(computorMarkerPath);
+  const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
+  if (!baseUrl) { return; }
 
-  // Priority 1: Try API token from environment variable (Coder workspace injection)
-  const apiToken = process.env.COMPUTOR_AUTH_TOKEN;
-  if (apiToken) {
-    const marker = await readMarker(computorMarkerPath);
-    const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
+  const envToken = process.env.COMPUTOR_AUTH_TOKEN;
+  const autoLoginEnabled = await settings.isAutoLoginEnabled();
 
-    if (baseUrl) {
-      const success = await vscode.window.withProgress({
+  isAuthenticating = true;
+  try {
+    // Priority 1: injected API token (Coder workspace injection / CI)
+    if (envToken) {
+      const ok = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Connecting (workspace token)...' });
+        progress.report({ message: 'Connecting (workspace token)…' });
         backendConnectionService.setBaseUrl(baseUrl);
         const status = await backendConnectionService.checkBackendConnection(baseUrl);
-        if (!status.isReachable) {
+        if (!status.isReachable) { return false; }
+        progress.report({ message: 'Authenticating…' });
+        const client = new ApiKeyHttpClient(baseUrl, envToken, 'X-API-Token', '', 5000);
+        try {
+          await activateSession(context, baseUrl, client, (msg) => progress.report({ message: msg }));
+          return true;
+        } catch (error) {
+          console.error('Workspace API token login failed:', error);
           return false;
         }
-        progress.report({ message: 'Authenticating...' });
-        return await attemptApiTokenLogin(
-          context, baseUrl, apiToken,
-          (msg) => progress.report({ message: msg })
-        );
       });
 
-      if (success) {
+      if (ok) {
         vscode.window.showInformationMessage(`Logged in (workspace token): ${baseUrl}`);
         return;
       }
-      console.warn('API token login failed, falling back to credential-based login');
+      console.warn('Workspace API token login failed, falling back to stored session');
     }
-  }
 
-  // Priority 2: Stored credentials auto-login (existing flow)
-  const autoLoginEnabled = await settings.isAutoLoginEnabled();
-  const storedUsername = await context.secrets.get('computor.username');
-  const storedPassword = await context.secrets.get('computor.password');
+    // Priority 2: silently restore a stored session (if auto-login is enabled)
+    if (autoLoginEnabled) {
+      const restored = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Computor',
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ message: 'Connecting to backend…' });
+        backendConnectionService.setBaseUrl(baseUrl);
+        const status = await backendConnectionService.checkBackendConnection(baseUrl);
+        if (!status.isReachable) { return false; }
+        progress.report({ message: 'Restoring session…' });
+        return restoreSession(context, baseUrl, (msg) => progress.report({ message: msg }));
+      });
 
-  if (autoLoginEnabled && storedUsername && storedPassword) {
-    const result = await performAutoLogin(context, computorMarkerPath, storedUsername, storedPassword);
-
-    if (!result.success && result.shouldPromptManualLogin) {
-      const action = await vscode.window.showWarningMessage(
-        'Auto-login failed. Would you like to login manually?',
-        'Login',
-        'Not Now'
-      );
-      if (action === 'Login') {
-        await unifiedLoginFlow(context);
-      }
-    }
-  } else if (autoLoginEnabled === false) {
-    // Auto-login is explicitly disabled - show prompt
-    const action = await vscode.window.showInformationMessage(
-      'Computor workspace detected. Would you like to login?',
-      'Login',
-      'Not Now'
-    );
-    if (action === 'Login') {
-      await unifiedLoginFlow(context);
-    }
-  }
-  // If autoLogin is true but no credentials are stored, do nothing (silent)
-}
-
-/**
- * Performs the actual auto-login attempt with a single unified progress notification.
- */
-async function performAutoLogin(
-  context: vscode.ExtensionContext,
-  computorMarkerPath: string,
-  username: string,
-  password: string
-): Promise<AutoLoginResult> {
-  let loginFailed = false;
-
-  await vscode.window.withProgress({
-    location: vscode.ProgressLocation.Notification,
-    title: 'Computor',
-    cancellable: false
-  }, async (progress) => {
-    try {
-      progress.report({ message: 'Connecting to backend...' });
-
-      const settings = new ComputorSettingsManager(context);
-      const marker = await readMarker(computorMarkerPath);
-      const baseUrl = marker?.backendUrl || await settings.getBaseUrl();
-
-      if (!baseUrl) {
-        loginFailed = true;
-        return;
-      }
-
-      backendConnectionService.setBaseUrl(baseUrl);
-      const connectionStatus = await backendConnectionService.checkBackendConnection(baseUrl);
-      if (!connectionStatus.isReachable) {
-        await backendConnectionService.showConnectionError(connectionStatus);
-        loginFailed = true;
-        return;
-      }
-
-      progress.report({ message: 'Authenticating...' });
-
-      const success = await attemptSilentAutoLogin(
-        context,
-        baseUrl,
-        username,
-        password,
-        (msg) => progress.report({ message: msg })
-      );
-
-      if (success) {
+      if (restored) {
         vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
-      } else {
-        loginFailed = true;
+        return;
       }
-    } catch (error: any) {
-      console.warn('Auto-login failed:', error);
-      loginFailed = true;
     }
-  });
+  } finally {
+    isAuthenticating = false;
+  }
 
-  return {
-    success: !loginFailed,
-    shouldPromptManualLogin: loginFailed
-  };
+  // Priority 3: nothing stored (or session expired) — offer to sign in.
+  const action = await vscode.window.showInformationMessage(
+    'Computor workspace detected. Sign in to continue.',
+    'Sign in',
+    'Use API Token',
+    'Not Now'
+  );
+  if (action === 'Sign in') {
+    await unifiedLoginFlow(context);
+  } else if (action === 'Use API Token') {
+    await apiTokenLoginFlow(context);
+  }
 }
 
 async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
@@ -1440,108 +1423,96 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
   }
 }
 
-async function performTokenRefresh(
-  context: vscode.ExtensionContext,
-  baseUrl: string,
-  session: UnifiedSession
-): Promise<void> {
-  const settings = new ComputorSettingsManager(context);
-
-  await runCredentialLoginLoop(context, baseUrl, settings, async (client, creds) => {
-    const tokenData = client.getTokenData();
-    const auth: StoredAuth = {
-      accessToken: tokenData.accessToken!,
-      refreshToken: tokenData.refreshToken || undefined,
-      expiresAt: tokenData.expiresAt?.toISOString(),
-      userId: tokenData.userId || undefined
-    };
-
-    const existingClient = session.getHttpClient?.();
-    if (existingClient && existingClient instanceof BearerTokenHttpClient) {
-      existingClient.setTokens(
-        auth.accessToken,
-        auth.refreshToken,
-        auth.expiresAt ? new Date(auth.expiresAt) : undefined,
-        auth.userId
-      );
-    }
-
-    await ensureWorkspaceMarker(baseUrl);
-    await persistLoginCredentials(context, settings, auth, creds);
-
-    loginWebviewProvider?.close();
-    vscode.window.showInformationMessage(`Re-authenticated successfully: ${baseUrl}`);
-    return { done: true };
-  });
-}
-
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
   if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
+
+  // Require an open workspace before proceeding
+  const root = getWorkspaceRoot();
+  if (!root) {
+    await promptOpenWorkspaceFolder();
+    return;
+  }
+
+  const settings = new ComputorSettingsManager(context);
+  const baseUrl = await ensureBaseUrl(settings);
+  if (!baseUrl) { return; }
+
+  // Already signed in → offer in-place SSO re-authentication. We update the
+  // existing client's tokens rather than tearing down the session, so role
+  // commands held on context.subscriptions aren't re-registered.
+  if (activeSession) {
+    const answer = await vscode.window.showWarningMessage(
+      `Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`,
+      'Re-authenticate', 'Cancel'
+    );
+    if (answer !== 'Re-authenticate') { return; }
+
+    const existing = activeSession.getHttpClient?.();
+    if (!(existing instanceof BearerTokenHttpClient)) {
+      vscode.window.showInformationMessage('Already signed in with an API token; nothing to refresh.');
+      return;
+    }
+
+    isAuthenticating = true;
+    try {
+      const sso = await runSsoWithProgress(baseUrl);
+      const now = new Date();
+      existing.setTokenData({
+        accessToken: sso.token,
+        refreshToken: sso.refreshToken,
+        expiresAt: new Date(now.getTime() + 3600_000),
+        issuedAt: now,
+        userId: sso.userId
+      });
+      await persistSession(context, sessionAuthFromClient(existing));
+      vscode.window.showInformationMessage(`Re-authenticated: ${baseUrl}`);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Re-authentication failed: ${error?.message || error}`);
+    } finally {
+      isAuthenticating = false;
+    }
+    return;
+  }
+
   isAuthenticating = true;
-
   try {
-    // Require an open workspace before proceeding
-    const root = getWorkspaceRoot();
-    if (!root) {
-      await promptOpenWorkspaceFolder();
+    backendConnectionService.setBaseUrl(baseUrl);
+    const status = await backendConnectionService.checkBackendConnection(baseUrl);
+    if (!status.isReachable) {
+      await backendConnectionService.showConnectionError(status);
       return;
     }
 
-    const settings = new ComputorSettingsManager(context);
-    const baseUrl = await ensureBaseUrl(settings);
-    if (!baseUrl) { return; }
-
-    // If already logged in, refresh tokens without re-registering commands
-    if (activeSession) {
-      const currentViews = activeSession.getActiveViews();
-      const answer = await vscode.window.showWarningMessage(
-        `Already logged in with views: ${currentViews.join(', ')}. Re-login with different credentials?`,
-        'Re-login', 'Cancel'
-      );
-      if (answer !== 'Re-login') { return; }
-
-      // Perform token refresh without deactivating the session
-      await performTokenRefresh(context, baseUrl, activeSession);
+    let sso: SsoLoginResult;
+    try {
+      sso = await runSsoWithProgress(baseUrl);
+    } catch (error: any) {
+      // Cancelled, timed out, or the browser handshake failed.
+      vscode.window.showWarningMessage(`Sign-in not completed: ${error?.message || error}`);
       return;
     }
 
-    await runCredentialLoginLoop(context, baseUrl, settings, async (client, creds) => {
-      const tokenData = client.getTokenData();
-      const auth: StoredAuth = {
-        accessToken: tokenData.accessToken!,
-        refreshToken: tokenData.refreshToken || undefined,
-        expiresAt: tokenData.expiresAt?.toISOString(),
-        issuedAt: tokenData.issuedAt?.toISOString(),
-        userId: tokenData.userId || undefined
-      };
+    const client = buildSessionClient(baseUrl, sso);
+    try {
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Computor',
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ message: 'Loading your courses…' });
+        await activateSession(context, baseUrl, client, (m) => progress.report({ message: m }));
+      });
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      backendConnectionService.stopHealthCheck();
+      vscode.window.showErrorMessage(`Login failed: ${error?.message || error}`);
+      return;
+    }
 
-      await ensureWorkspaceMarker(baseUrl);
-      const controller = new UnifiedController(context);
-
-      try {
-        await controller.activate(client as any);
-      } catch (error: any) {
-        console.error('Login failed:', error);
-        await controller.dispose();
-        backendConnectionService.stopHealthCheck();
-        return { done: false, retryMessage: error?.message || String(error) };
-      }
-
-      backendConnectionService.startHealthCheck(baseUrl);
-      activeSession = createActiveSession(context, controller);
-
-      await persistLoginCredentials(context, settings, auth, creds);
-
-      if (extensionUpdateService) {
-        extensionUpdateService.checkForUpdates().catch(err => {
-          console.warn('Extension update check failed:', err);
-        });
-      }
-
-      loginWebviewProvider?.close();
-      vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
-      return { done: true };
-    });
+    await persistSession(context, sessionAuthFromClient(client));
+    vscode.window.showInformationMessage(
+      sso.isNewUser ? 'Welcome to Computor! Your account has been set up.' : `Logged in: ${baseUrl}`
+    );
   } finally {
     isAuthenticating = false;
   }
@@ -1563,8 +1534,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Initialize all view contexts to false to hide views until login
   await setViewContextKeys([], ['student', 'tutor', 'lecturer', 'student.offline']);
 
-  // Unified login command
+  // Unified login command (Keycloak SSO browser flow)
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
+
+  // Advanced: sign in with a Computor API token (non-SSO escape hatch)
+  context.subscriptions.push(vscode.commands.registerCommand('computor.loginWithApiToken', async () => apiTokenLoginFlow(context)));
 
   // Sign-up command (for users without passwords)
   new SignUpCommands(context).register();

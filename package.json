@@ -123,6 +123,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.loginWithApiToken",
+        "title": "Sign in with API Token",
+        "category": "Computor"
+      },
+      {
         "command": "computor.signUp",
         "title": "Sign Up (Set Initial Password)",
         "category": "Computor"
