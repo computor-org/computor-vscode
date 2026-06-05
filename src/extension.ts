@@ -346,29 +346,48 @@ async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void
 }
 
 /**
+ * Cheap token-validity probe: a single `GET /user` straight through the HTTP
+ * client. This deliberately bypasses ComputorApiService's error-recovery
+ * pipeline, whose 401 strategy pops a BLOCKING "session expired — reload window"
+ * dialog. During a silent restore that dialog would hang activation forever
+ * (the user can't reach the sign-in prompt). Returns false on any error.
+ */
+async function probeToken(client: BearerTokenHttpClient | ApiKeyHttpClient): Promise<boolean> {
+  try {
+    await client.get('/user');
+    return true;
+  } catch (error) {
+    console.warn('Token validation probe failed:', error);
+    return false;
+  }
+}
+
+/**
  * Silently restore a previously authenticated session without any UI prompts:
- * first a stored API token, then a stored SSO session token (validated by
- * activating the controller). Returns true on success. Used by the
- * .computor-workspace auto-login path. The injected `COMPUTOR_AUTH_TOKEN` env
- * token is handled separately (higher priority) by the caller.
+ * first a stored API token, then a stored SSO session token. Each candidate is
+ * validated with a lightweight `GET /user` probe BEFORE activation — a stored
+ * token that fails the probe is cleared and we fall through (ultimately to an
+ * interactive sign-in) rather than letting a doomed token hang activation.
+ * Returns true on success. The injected `COMPUTOR_AUTH_TOKEN` env token is
+ * handled separately (higher priority) by the caller.
  */
 async function restoreSession(
   context: vscode.ExtensionContext,
   baseUrl: string,
   onProgress?: (message: string) => void
 ): Promise<boolean> {
-  // The backend was already confirmed reachable before we got here, so a failure
-  // below means the stored credential is invalid/expired (SSO sessions can't be
-  // refreshed once dead). Drop it so we don't keep retrying a doomed token on
-  // every activation — fall through to an interactive sign-in instead.
   const storedApiToken = await context.secrets.get(API_TOKEN_KEY);
   if (storedApiToken) {
     const client = new ApiKeyHttpClient(baseUrl, storedApiToken, 'X-API-Token', '', 10000);
-    try {
-      await activateSession(context, baseUrl, client, onProgress);
-      return true;
-    } catch (error) {
-      console.warn('Stored API token login failed; clearing it:', error);
+    if (await probeToken(client)) {
+      try {
+        await activateSession(context, baseUrl, client, onProgress);
+        return true;
+      } catch (error) {
+        console.warn('API token session activation failed:', error);
+      }
+    } else {
+      console.warn('Stored API token is invalid; clearing it.');
       await context.secrets.delete(API_TOKEN_KEY);
     }
   }
@@ -379,12 +398,16 @@ async function restoreSession(
     try { auth = JSON.parse(raw) as StoredAuth; } catch { auth = undefined; }
     if (auth?.accessToken) {
       const client = buildHttpClient(baseUrl, auth);
-      try {
-        await activateSession(context, baseUrl, client, onProgress);
-        await persistSession(context, sessionAuthFromClient(client));
-        return true;
-      } catch (error) {
-        console.warn('Stored session token expired or invalid; clearing it:', error);
+      if (await probeToken(client)) {
+        try {
+          await activateSession(context, baseUrl, client, onProgress);
+          await persistSession(context, sessionAuthFromClient(client));
+          return true;
+        } catch (error) {
+          console.warn('Session activation failed:', error);
+        }
+      } else {
+        console.warn('Stored session token expired or invalid; clearing it.');
         await context.secrets.delete(SESSION_AUTH_KEY);
       }
     } else {
@@ -458,6 +481,10 @@ async function handleComputorWorkspaceDetected(
         if (!status.isReachable) { return false; }
         progress.report({ message: 'Authenticating…' });
         const client = new ApiKeyHttpClient(baseUrl, envToken, 'X-API-Token', '', 5000);
+        if (!(await probeToken(client))) {
+          console.error('Workspace API token is invalid');
+          return false;
+        }
         try {
           await activateSession(context, baseUrl, client, (msg) => progress.report({ message: msg }));
           return true;
