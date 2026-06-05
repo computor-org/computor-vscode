@@ -150,7 +150,11 @@ export class BearerTokenHttpClient extends HttpClient {
       this.updateTokensFromRefresh(refreshResponse);
       console.log('[BearerTokenHttpClient] Token refreshed successfully');
     } catch (error) {
-      this.clearTokens();
+      // Deliberately do NOT clear tokens here. A failed refresh does not mean the
+      // current session token is dead — the server keeps a sliding TTL alive while
+      // we're active. Wiping it would make every later request go out with no
+      // Authorization header ("No authorization provided"). Refresh is best-effort;
+      // a truly-dead session surfaces as a 401 on a real request, which re-login fixes.
       if (error instanceof Error) {
         throw new AuthenticationError(`Token refresh failed: ${error.message}`);
       }
@@ -171,10 +175,16 @@ export class BearerTokenHttpClient extends HttpClient {
       throw new MaintenanceError(this._maintenanceMessage || undefined);
     }
 
-    // Proactive refresh: check if token needs refresh before making request
+    // Proactive refresh: best-effort top-up before the request. A failure must
+    // not break the request or discard the still-valid token — proceed with the
+    // current token and let the server's sliding TTL keep the session alive.
     if (this.shouldRefreshToken() && this.refreshToken) {
       console.log('[BearerTokenHttpClient] Token close to expiry, proactively refreshing');
-      await this.refreshAuth();
+      try {
+        await this.refreshAuth();
+      } catch (err) {
+        console.warn('[BearerTokenHttpClient] Proactive refresh failed, using current token:', err);
+      }
     }
 
     try {
