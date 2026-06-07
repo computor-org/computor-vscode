@@ -10,6 +10,12 @@ import type { CourseDeploymentGet, VersionUpgradeGet } from '../types/generated'
 import type { OrganizationTaskRequest } from '../types/generated/organizations';
 import type { CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
 import type { TaskInfo } from '../types/generated/tasks';
+import type {
+  CourseGitDescriptor,
+  CourseMemberRepositoryGet,
+  StudentRepositoryProvisioned,
+  CourseMemberRepositoryRegister
+} from '../types/courseGit';
 import {
   OrganizationList,
   OrganizationGet,
@@ -1354,6 +1360,70 @@ export class ComputorApiService {
       }
       throw error;
     }
+  }
+
+  // ---- Course-level student repository provisioning (course_git contract) ----
+  // Student-facing endpoints on the /user router. See VSCODE_STUDENT_REPO_PROVISIONING.md.
+
+  /**
+   * What a course offers for student repos: delivery mode, allowed backends
+   * (forgejo / gitlab_byo / download) and the student-template location.
+   * Returns an `unconfigured` descriptor when the course has no git binding.
+   */
+  async getCourseGitDescriptor(courseId: string): Promise<CourseGitDescriptor> {
+    const client = await this.getHttpClient();
+    const response = await client.get<CourseGitDescriptor>(`/user/courses/${courseId}/git`);
+    return response.data;
+  }
+
+  /**
+   * Babysitting check: the current student's repository for a course, or `null`
+   * if none has been provisioned/registered yet. Creates nothing. Not cached —
+   * the answer changes the moment we provision/register, and this is cheap.
+   */
+  async getCourseRepository(courseId: string): Promise<CourseMemberRepositoryGet | null> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseMemberRepositoryGet | null>(`/user/courses/${courseId}/repository`);
+      return response.data ?? null;
+    } catch (error) {
+      // 404 means the caller isn't a member of the course → treat as "no repo".
+      if ((error as any)?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Forgejo babysat provisioning: fork the course's student-template into the
+   * student's own repo. Idempotent + self-healing. Returns the repo plus a
+   * one-time `clone_token`/`clone_username` (null until the student's first
+   * Forgejo login — re-call after they sign into Forgejo).
+   */
+  async provisionStudentRepository(courseId: string): Promise<StudentRepositoryProvisioned> {
+    const client = await this.getHttpClient();
+    const response = await client.post<StudentRepositoryProvisioned>(
+      `/user/courses/${courseId}/provision-repository`,
+      {}
+    );
+    return response.data;
+  }
+
+  /**
+   * Record where a BYO (e.g. GitLab) repo the extension created lives. Tracking
+   * only — the backend never reads the repo (grading is an API upload). Upserts.
+   */
+  async registerStudentRepository(
+    courseId: string,
+    body: CourseMemberRepositoryRegister
+  ): Promise<CourseMemberRepositoryGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<CourseMemberRepositoryGet>(
+      `/user/courses/${courseId}/register-repository`,
+      body
+    );
+    return response.data;
   }
 
   /**
