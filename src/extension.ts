@@ -1199,7 +1199,6 @@ class UnifiedController {
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
     new LecturerFsCommands(this.context, api).register();
-    new LogoutCommands(this.context).registerCommands();
 
     // Documents tree — file-system mirror over /documents/* with per-entry sync state.
     const { DocumentsTreeProvider } = await import('./ui/tree/lecturer-documents/DocumentsTreeProvider');
@@ -1606,6 +1605,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Advanced: sign in with a Computor API token (non-SSO escape hatch)
   context.subscriptions.push(vscode.commands.registerCommand('computor.loginWithApiToken', async () => apiTokenLoginFlow(context)));
+
+  // Logout / clear-data commands — registered for ALL roles (not just lecturers),
+  // and available even when signed out. SSO sessions expire, so every role needs
+  // to be able to sign out and back in.
+  new LogoutCommands(context).registerCommands();
 
   // Settings view command (backend URL, git config, GitLab tokens)
   new SettingsCommands(context).register();
