@@ -9,6 +9,7 @@ import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
 import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel, CourseContentStudentGet } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
+import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/StudentRepositoryProvisioningService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
@@ -28,6 +29,7 @@ export class StudentCommands {
   private courseContentTreeProvider?: any; // Will be set after registration
   private apiService: ComputorApiService; // Used for future API calls
   private repositoryManager?: StudentRepositoryManager;
+  private provisioningService: StudentRepositoryProvisioningService;
   private gitService: GitService;
   private testResultService: TestResultService;
   private messagesWebviewProvider: MessagesWebviewProvider;
@@ -46,6 +48,7 @@ export class StudentCommands {
     // Use provided apiService || create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.repositoryManager = repositoryManager;
+    this.provisioningService = new StudentRepositoryProvisioningService(context, this.apiService);
     this.gitService = GitService.getInstance();
     this.testResultService = TestResultService.getInstance();
     // Make sure TestResultService has the API service
@@ -186,10 +189,98 @@ export class StudentCommands {
   }
 
 
+  /**
+   * Babysitting entry point: ensure the signed-in student has a working
+   * repository for a course. Resolves the course from the passed argument
+   * (course id string or a tree item with `courseId`) or prompts the student to
+   * pick one, then runs the provisioning flow (Mode A / Forgejo for now).
+   */
+  private async setupCourseRepository(arg?: any): Promise<void> {
+    let courseId: string | undefined =
+      (typeof arg === 'string' ? arg : undefined) ||
+      arg?.courseId || arg?.course?.id || arg?.course_id;
+
+    if (!courseId) {
+      const courses = await this.apiService.getStudentCourses();
+      if (!courses.length) {
+        vscode.window.showInformationMessage('No student courses found.');
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        courses.map((c: any) => ({
+          label: c.title || c.path || c.id,
+          description: (c.title && c.path) ? c.path : undefined,
+          courseId: c.id as string
+        })),
+        { title: 'Set up repository — pick a course', ignoreFocusOut: true }
+      );
+      if (!picked) { return; }
+      courseId = picked.courseId;
+    }
+
+    const cid = courseId;
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Computor',
+      cancellable: true
+    }, async (progress, token) => {
+      try {
+        const outcome = await this.provisioningService.setUpRepository(cid, {
+          cancellationToken: token,
+          onProgress: (m) => progress.report({ message: m })
+        });
+        await this.reportSetupOutcome(outcome);
+        if (outcome.status === 'cloned' || outcome.status === 'already-cloned') {
+          this.treeDataProvider.refresh();
+        }
+      } catch (error: any) {
+        console.error('[StudentCommands] Repository setup failed:', error);
+        vscode.window.showErrorMessage(`Repository setup failed: ${error?.message || error}`);
+      }
+    });
+  }
+
+  private async reportSetupOutcome(outcome: SetUpOutcome): Promise<void> {
+    switch (outcome.status) {
+      case 'cloned':
+        vscode.window.showInformationMessage(`Repository ready at ${outcome.path}`);
+        break;
+      case 'already-cloned':
+        vscode.window.showInformationMessage(`Repository already set up at ${outcome.path}`);
+        break;
+      case 'forgejo-login-required': {
+        const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
+        const choice = await vscode.window.showWarningMessage(
+          'Sign in to Forgejo once in your browser to finish setting up your repository, then run "Set up repository" again.',
+          ...(target ? ['Open Forgejo'] : [])
+        );
+        if (choice === 'Open Forgejo' && target) {
+          void vscode.env.openExternal(vscode.Uri.parse(target));
+        }
+        break;
+      }
+      case 'unsupported-mode':
+        vscode.window.showInformationMessage(
+          `This course offers: ${outcome.modes.join(', ') || 'no git modes'}. GitLab BYO setup from the extension is coming soon.`
+        );
+        break;
+      case 'not-configured':
+        vscode.window.showInformationMessage('This course has no git repository configured yet.');
+        break;
+    }
+  }
+
   registerCommands(): void {
 
 
     const register = commandRegistrar(this.context);
+
+    // Set up the student's repository for a course (course-level provisioning).
+    // Optional arg: a course id string, or a tree item carrying `courseId`.
+    register('computor.student.setupCourseRepository', async (arg?: any) => {
+      await this.setupCourseRepository(arg);
+    });
+
     // Refresh student view
     register('computor.student.refresh', async () => {
       // Show progress notification while refreshing

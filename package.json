@@ -144,6 +144,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.setupCourseRepository",
+        "title": "Set up Repository",
+        "icon": "$(repo)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.commitAssignment",
         "title": "Commit Assignment",
         "icon": "$(git-commit)",
