@@ -219,6 +219,44 @@ export class StudentCommands {
     }
 
     const cid = courseId;
+
+    // Pre-flight: if there's no repo yet and the course offers a choice of modes,
+    // let the student pick first (a QuickPick mid-progress is awkward). If this
+    // check fails transiently we fall through and let setUpRepository surface it.
+    let preferredMode: string | undefined;
+    try {
+      const existing = await this.provisioningService.getRepository(cid);
+      if (!existing) {
+        const descriptor = await this.provisioningService.getDescriptor(cid);
+        if (!descriptor.configured) {
+          vscode.window.showInformationMessage('This course has no git repository configured yet.');
+          return;
+        }
+        const supported = descriptor.student_repo_modes.filter(m => m === 'forgejo' || m === 'gitlab_byo');
+        if (supported.length === 0) {
+          vscode.window.showInformationMessage(
+            `This course offers: ${descriptor.student_repo_modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`
+          );
+          return;
+        }
+        if (supported.length > 1) {
+          const pick = await vscode.window.showQuickPick(
+            [
+              { label: '$(server) Institution Forgejo', description: 'Recommended — no extra credentials', mode: 'forgejo' },
+              { label: '$(repo-forked) Your own GitLab', description: 'Fork into a GitLab group you own (needs a token)', mode: 'gitlab_byo' }
+            ].filter(o => supported.includes(o.mode)),
+            { title: 'Where should your repository live?', ignoreFocusOut: true }
+          );
+          if (!pick) { return; }
+          preferredMode = pick.mode;
+        } else {
+          preferredMode = supported[0];
+        }
+      }
+    } catch (error: any) {
+      console.warn('[StudentCommands] Repo pre-flight check failed:', error);
+    }
+
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: 'Computor',
@@ -226,6 +264,7 @@ export class StudentCommands {
     }, async (progress, token) => {
       try {
         const outcome = await this.provisioningService.setUpRepository(cid, {
+          preferredMode,
           cancellationToken: token,
           onProgress: (m) => progress.report({ message: m })
         });

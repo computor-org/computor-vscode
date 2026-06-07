@@ -12,6 +12,11 @@ import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/co
 export interface SetUpOptions {
   cancellationToken?: vscode.CancellationToken;
   onProgress?: (message: string) => void;
+  /**
+   * Mode to use when the course offers a choice and no repo exists yet. Ignored
+   * if a repo already exists (its recorded mode wins) or if not offered.
+   */
+  preferredMode?: string;
 }
 
 /** Outcome of trying to set up the student's repository for one course. */
@@ -66,12 +71,16 @@ export class StudentRepositoryProvisioningService {
       return { status: 'not-configured' };
     }
 
-    // Prefer the mode of an already-existing repo; otherwise the course's offer.
+    // Prefer the mode of an already-existing repo; otherwise the caller's choice
+    // (when offered); otherwise default to Forgejo, then the first offered mode.
     report('Checking for an existing repository…');
     const existing = await this.getRepository(courseId);
-    const mode = existing?.mode || (descriptor.student_repo_modes.includes('forgejo')
-      ? 'forgejo'
-      : descriptor.student_repo_modes[0]);
+    const preferred = (opts?.preferredMode && descriptor.student_repo_modes.includes(opts.preferredMode))
+      ? opts.preferredMode
+      : undefined;
+    const mode = existing?.mode
+      || preferred
+      || (descriptor.student_repo_modes.includes('forgejo') ? 'forgejo' : descriptor.student_repo_modes[0]);
 
     if (mode === 'forgejo') {
       return this.provisionAndCloneForgejo(courseId, opts);

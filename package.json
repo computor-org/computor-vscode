@@ -1934,6 +1934,16 @@
           "group": "2_config@3"
         },
         {
+          "command": "computor.student.setupCourseRepository",
+          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "group": "inline@0"
+        },
+        {
+          "command": "computor.student.setupCourseRepository",
+          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "group": "1_setup@1"
+        },
+        {
           "command": "computor.student.showMessages",
           "when": "view == computor.student.courses && viewItem == studentCourseRoot",
           "group": "2_discussion@1"
