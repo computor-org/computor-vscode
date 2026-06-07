@@ -5,7 +5,8 @@ import { ComputorApiService } from './ComputorApiService';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { execGitClone } from '../git/gitCloneHelpers';
 import { execAsyncWithTimeout } from '../utils/exec';
-import { addBasicCredentialsToGitUrl } from '../utils/gitUrlHelpers';
+import { addBasicCredentialsToGitUrl, addTokenToGitUrl } from '../utils/gitUrlHelpers';
+import { GitLabByoProvisioner } from './GitLabByoProvisioner';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
 export interface SetUpOptions {
@@ -19,6 +20,7 @@ export type SetUpOutcome =
   | { status: 'already-cloned'; path: string; repo: CourseMemberRepositoryGet }
   | { status: 'forgejo-login-required'; repo: CourseMemberRepositoryGet }
   | { status: 'unsupported-mode'; modes: string[] }
+  | { status: 'cancelled' }
   | { status: 'not-configured' };
 
 /**
@@ -31,10 +33,14 @@ export type SetUpOutcome =
  * re-clones / refreshes the rotated clone token.
  */
 export class StudentRepositoryProvisioningService {
+  private readonly byo: GitLabByoProvisioner;
+
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly api: ComputorApiService
-  ) {}
+  ) {
+    this.byo = new GitLabByoProvisioner(context);
+  }
 
   /** Does the student already have a repo recorded for this course? */
   async getRepository(courseId: string): Promise<CourseMemberRepositoryGet | null> {
@@ -70,8 +76,11 @@ export class StudentRepositoryProvisioningService {
     if (mode === 'forgejo') {
       return this.provisionAndCloneForgejo(courseId, opts);
     }
+    if (mode === 'gitlab_byo') {
+      return this.provisionAndCloneGitLabByo(courseId, descriptor, opts);
+    }
 
-    // gitlab_byo / download — not wired in this increment.
+    // download (and cross-instance BYO) — not wired in this increment.
     return { status: 'unsupported-mode', modes: descriptor.student_repo_modes };
   }
 
@@ -115,6 +124,67 @@ export class StudentRepositoryProvisioningService {
     await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
     await execGitClone(authUrl, targetPath, { cancellationToken: opts?.cancellationToken });
     return { status: 'cloned', path: targetPath, repo };
+  }
+
+  // --- Mode B — GitLab BYO (client-side fork) -------------------------------
+
+  private async provisionAndCloneGitLabByo(
+    courseId: string,
+    descriptor: CourseGitDescriptor,
+    opts?: SetUpOptions
+  ): Promise<SetUpOutcome> {
+    const report = opts?.onProgress ?? (() => {});
+    const template = descriptor.template;
+
+    // v1 handles the primary case: native fork on the GitLab instance the
+    // template lives on. Cross-instance (template elsewhere) clone-and-push is
+    // a later increment.
+    if (!template || template.server_type !== 'gitlab' || !template.repo) {
+      return { status: 'unsupported-mode', modes: descriptor.student_repo_modes };
+    }
+
+    report('Preparing your GitLab repository…');
+    const slug = await this.courseSlug(courseId);
+    const fork = await this.byo.forkTemplate(template, slug);
+    if (!fork) {
+      return { status: 'cancelled' };
+    }
+
+    // Register the location with Computor (tracking only — never used for grading).
+    report('Registering your repository…');
+    const repo = await this.api.registerStudentRepository(courseId, {
+      mode: 'gitlab_byo',
+      server_url: fork.serverUrl,
+      repo_ref: fork.repoRef,
+      http_url: fork.httpUrl,
+      ssh_url: fork.sshUrl ?? null,
+      web_url: fork.webUrl ?? null
+    });
+
+    const targetPath = this.localPathFor(repo);
+    const authUrl = addTokenToGitUrl(fork.httpUrl, fork.token);
+
+    if (this.isCloned(targetPath)) {
+      report('Refreshing repository credentials…');
+      await this.updateRemoteUrl(targetPath, authUrl);
+      return { status: 'already-cloned', path: targetPath, repo };
+    }
+
+    report('Cloning your repository…');
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    await execGitClone(authUrl, targetPath, { cancellationToken: opts?.cancellationToken });
+    return { status: 'cloned', path: targetPath, repo };
+  }
+
+  /** A short, readable course slug for repo names (last path/title segment). */
+  private async courseSlug(courseId: string): Promise<string> {
+    try {
+      const course = await this.api.getStudentCourse(courseId);
+      const raw = String(course?.path || course?.title || courseId);
+      return raw.split(/[./]/).filter(Boolean).pop() || courseId.slice(0, 8);
+    } catch {
+      return courseId.slice(0, 8);
+    }
   }
 
   // --- helpers ---------------------------------------------------------------

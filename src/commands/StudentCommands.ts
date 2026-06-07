@@ -261,8 +261,11 @@ export class StudentCommands {
       }
       case 'unsupported-mode':
         vscode.window.showInformationMessage(
-          `This course offers: ${outcome.modes.join(', ') || 'no git modes'}. GitLab BYO setup from the extension is coming soon.`
+          `This course offers: ${outcome.modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`
         );
+        break;
+      case 'cancelled':
+        // Student backed out of a prompt — nothing to report.
         break;
       case 'not-configured':
         vscode.window.showInformationMessage('This course has no git repository configured yet.');
