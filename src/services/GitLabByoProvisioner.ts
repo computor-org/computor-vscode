@@ -89,8 +89,18 @@ export class GitLabByoProvisioner {
       // /groups/{id} accepts a numeric id or a URL-encoded full path.
       const res = await gl.get<{ id: number; full_path: string }>(`/api/v4/groups/${encodeURIComponent(input)}`);
       return { id: res.data.id, full_path: res.data.full_path };
-    } catch {
-      throw new Error(`GitLab group "${input}" not found or not accessible with your token (you need Maintainer/Owner there).`);
+    } catch (error: any) {
+      // Distinguish "wrong group" from transient/auth failures so the student
+      // isn't sent chasing a typo when the real cause is the network or token.
+      const status = error?.status;
+      if (status === 404) {
+        throw new Error(`GitLab group "${input}" not found — check the path or numeric id.`);
+      }
+      if (status === 401 || status === 403) {
+        throw new Error(`Your GitLab token can't access group "${input}" (it needs the "api" scope, and Maintainer/Owner on the group to create a repo there).`);
+      }
+      const detail = error?.response?.message || error?.message || 'unknown error';
+      throw new Error(`Could not resolve GitLab group "${input}": ${detail}`);
     }
   }
 
@@ -112,9 +122,15 @@ export class GitLabByoProvisioner {
       const status = error?.status;
       const blob = JSON.stringify(error?.response ?? error?.message ?? '');
       if (status === 409 || /already (been )?taken|already exists/i.test(blob)) {
-        // Partial-run recovery: the fork already exists → reuse it (idempotent).
-        const existing = await gl.get<any>(`/api/v4/projects/${encodeURIComponent(repoRef)}`);
-        return existing.data;
+        // Partial-run recovery: a project at our slug already exists → reuse it
+        // (idempotent). If we can't fetch it back (e.g. it lives at a different
+        // path than our slug), give a clear, actionable message instead of a raw 404.
+        try {
+          const existing = await gl.get<any>(`/api/v4/projects/${encodeURIComponent(repoRef)}`);
+          return existing.data;
+        } catch {
+          throw new Error(`A project named "${repoSlug}" already exists in that group but couldn't be reused automatically — remove it (or choose a different group) and try again.`);
+        }
       }
       if (status === 403) {
         throw new Error('Your GitLab token cannot create a project in that group (needs Maintainer/Owner and the "api" scope).');
