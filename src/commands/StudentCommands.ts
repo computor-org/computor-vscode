@@ -17,6 +17,7 @@ import type { WebSocketService } from '../services/WebSocketService';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 import JSZip from 'jszip';
 import { commandRegistrar } from './commandHelpers';
+import { redactGitCredentials } from '../utils/gitUrlHelpers';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
 
@@ -273,8 +274,11 @@ export class StudentCommands {
           this.treeDataProvider.refresh();
         }
       } catch (error: any) {
-        console.error('[StudentCommands] Repository setup failed:', error);
-        vscode.window.showErrorMessage(`Repository setup failed: ${error?.message || error}`);
+        // Redact: a failed git clone surfaces an error whose message contains the
+        // credential-embedded clone URL — keep the token out of logs and the toast.
+        const message = redactGitCredentials(error?.message || String(error));
+        console.error('[StudentCommands] Repository setup failed:', message);
+        vscode.window.showErrorMessage(`Repository setup failed: ${message}`);
       }
     });
   }

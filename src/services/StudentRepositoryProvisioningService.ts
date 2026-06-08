@@ -5,7 +5,7 @@ import { ComputorApiService } from './ComputorApiService';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { execGitClone } from '../git/gitCloneHelpers';
 import { execAsyncWithTimeout } from '../utils/exec';
-import { addBasicCredentialsToGitUrl, addTokenToGitUrl } from '../utils/gitUrlHelpers';
+import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } from '../utils/gitUrlHelpers';
 import { GitLabByoProvisioner } from './GitLabByoProvisioner';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
@@ -219,8 +219,9 @@ export class StudentRepositoryProvisioningService {
   private async updateRemoteUrl(repoPath: string, authUrl: string): Promise<void> {
     try {
       await execAsyncWithTimeout(`git remote set-url origin "${authUrl}"`, { cwd: repoPath, timeout: 15_000 });
-    } catch (err) {
-      console.warn('[StudentRepoProvisioning] Failed to refresh origin URL:', err);
+    } catch (err: any) {
+      // Redact: the exec error's message/cmd carries the credential-embedded URL.
+      console.warn('[StudentRepoProvisioning] Failed to refresh origin URL:', redactGitCredentials(err?.message || String(err)));
     }
   }
 }

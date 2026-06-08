@@ -26,6 +26,17 @@ export function addBasicCredentialsToGitUrl(url: string, username: string, passw
   return url;
 }
 
+/**
+ * Redact embedded credentials from any text that may carry an authenticated git
+ * URL — e.g. an exec/clone error whose `.message`/`.cmd` includes the command
+ * (`git clone "https://user:token@host/…"`). Turns the userinfo into `***`. Run
+ * this over any error text BEFORE logging it or showing it to the user so clone
+ * tokens / PATs don't leak to the console or a notification.
+ */
+export function redactGitCredentials(text: string): string {
+  return text.replace(/(https?:\/\/)[^/@\s]+@/gi, '$1***@');
+}
+
 export function stripCredentialsFromGitUrl(remoteUrl: string): string | undefined {
   const trimmed = remoteUrl.trim();
   if (!trimmed) {
