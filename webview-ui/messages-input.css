@@ -142,6 +142,11 @@ body {
   flex-shrink: 0;
 }
 
+/* Pushes the Send button right when the subject field is hidden (chat scopes) */
+.title-row-spacer {
+  flex: 1 1 auto;
+}
+
 .title-row .chat-title-input,
 .title-row input.vscode-input.chat-title-input {
   flex: 1 1 auto;

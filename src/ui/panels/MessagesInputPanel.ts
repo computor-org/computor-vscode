@@ -267,6 +267,29 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  // Subject (title) only belongs on announcement scopes. Conversational scopes
+  // (user / course_member / submission_group) and any reply are chats — no
+  // subject. Mirrors CONVERSATIONAL_TARGET_FIELDS in the backend.
+  private shouldShowSubject(): boolean {
+    if (this.state.replyTo) {
+      return false;
+    }
+    const source = (this.state.editingMessage
+      ? this.state.editingMessage
+      : this.state.target?.createPayload) as Record<string, unknown> | undefined;
+    if (!source) {
+      return true; // global / no target = announcement
+    }
+    const conversational = ['user_id', 'course_member_id', 'submission_group_id'];
+    for (const field of TARGET_FIELDS_BY_SPECIFICITY) {
+      const value = source[field];
+      if (typeof value === 'string' && value.length > 0) {
+        return !conversational.includes(field);
+      }
+    }
+    return true; // no target set = global = announcement
+  }
+
   private postState(): void {
     if (!this.view) {
       return;
@@ -278,7 +301,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
         replyTo: this.state.replyTo,
         editingMessage: this.state.editingMessage,
         loading: this.state.loading,
-        typingUsers: this.state.typingUsers
+        typingUsers: this.state.typingUsers,
+        showSubject: this.shouldShowSubject()
       }
     });
   }

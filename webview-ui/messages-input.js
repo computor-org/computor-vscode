@@ -9,7 +9,8 @@
     loading: false,
     activeTab: 'write', // 'write' or 'preview'
     messageContent: '',
-    typingUsers: [] // { userId, userName }
+    typingUsers: [], // { userId, userName }
+    showSubject: true // false for conversational scopes (chat) and replies
   };
 
   const root = () => document.getElementById('app');
@@ -468,7 +469,11 @@
     const titleRow = createElement('div', { className: 'title-row' });
 
     let titleInput = null;
-    if (createInput) {
+    if (state.showSubject === false) {
+      // Conversational scope (chat / reply) — no subject. A spacer keeps the
+      // Send button right-aligned in the flex row.
+      titleRow.appendChild(createElement('div', { className: 'title-row-spacer' }));
+    } else if (createInput) {
       titleInput = createInput({
         placeholder: 'Subject (optional)',
         value: state.editingMessage ? state.editingMessage.title || '' : '',
