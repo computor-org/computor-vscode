@@ -130,14 +130,75 @@
     if (mention.dropdown) { mention.dropdown.style.display = 'none'; }
   }
 
-  function detectMentionQuery(textarea) {
-    const caret = textarea.selectionStart;
-    const before = textarea.value.slice(0, caret);
-    // '@' at start or after whitespace, followed by name-ish chars (no spaces
-    // so the query end is unambiguous — we match against name parts).
+  // --- contenteditable editor (#message-body) ---
+  // The body is a contenteditable div (not a textarea) so mentions render as
+  // atomic chips with the uuid hidden in data-id, while the serialized wire
+  // format stays @[Given Family](uuid).
+
+  function createMentionChip(u) {
+    const chip = document.createElement('span');
+    chip.className = 'mention-chip';
+    chip.setAttribute('contenteditable', 'false');
+    chip.dataset.id = u.id;
+    chip.textContent = '@' + formatMentionName(u);
+    return chip;
+  }
+
+  function serializeNode(node) {
+    if (node.nodeType === 3) { return node.nodeValue || ''; }
+    if (node.nodeType !== 1) { return ''; }
+    if (node.classList && node.classList.contains('mention-chip') && node.dataset && node.dataset.id) {
+      return '@[' + (node.textContent || '').replace(/^@/, '') + '](' + node.dataset.id + ')';
+    }
+    if (node.tagName === 'BR') { return '\n'; }
+    let inner = '';
+    node.childNodes.forEach((c) => { inner += serializeNode(c); });
+    // Block wrappers the browser may inject on Enter become newlines.
+    return (node.tagName === 'DIV' || node.tagName === 'P') ? '\n' + inner : inner;
+  }
+
+  function serializeEditor(el) {
+    let out = '';
+    el.childNodes.forEach((node) => { out += serializeNode(node); });
+    return out.replace(/^\n/, '');
+  }
+
+  function getEditorContent() {
+    const el = document.getElementById('message-body');
+    return el ? serializeEditor(el) : (state.messageContent || '');
+  }
+
+  function syncEditorContent() {
+    const el = document.getElementById('message-body');
+    if (el) { state.messageContent = serializeEditor(el); }
+  }
+
+  // Build editor DOM from @[name](uuid) content (edit mode / tab switches).
+  function setEditorContent(el, content) {
+    el.innerHTML = '';
+    const text = String(content || '');
+    const re = /@\[([^\]]*)\]\(([0-9a-fA-F-]{36})\)/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) { el.appendChild(document.createTextNode(text.slice(last, m.index))); }
+      el.appendChild(createMentionChip({ id: m[2], given_name: m[1] }));
+      last = re.lastIndex;
+    }
+    if (last < text.length) { el.appendChild(document.createTextNode(text.slice(last))); }
+  }
+
+  // The @query immediately before a collapsed caret, within one text node.
+  function getMentionContext() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) { return null; }
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (!node || node.nodeType !== 3) { return null; }
+    const before = (node.nodeValue || '').slice(0, range.startOffset);
     const m = /(^|\s)@([\w.\-]*)$/.exec(before);
     if (!m) { return null; }
-    return { query: m[2], start: caret - m[2].length - 1 };
+    return { node: node, query: m[2], start: range.startOffset - m[2].length - 1, end: range.startOffset };
   }
 
   function renderMentionDropdown() {
@@ -169,52 +230,78 @@
     renderMentionDropdown();
   }
 
-  function onMentionInput(textarea) {
-    const detected = detectMentionQuery(textarea);
-    if (!detected) { closeMentionDropdown(); return; }
+  function onMentionInput() {
+    const ctx = getMentionContext();
+    if (!ctx) { closeMentionDropdown(); return; }
     mention.open = true;
-    mention.query = detected.query;
-    mention.start = detected.start;
+    mention.query = ctx.query;
     updateMentionFilter();
     // Refresh candidates from the server for large audiences (debounced).
     if (mention.debounce) { clearTimeout(mention.debounce); }
-    const q = detected.query;
+    const q = ctx.query;
     mention.debounce = setTimeout(() => {
       vscode.postMessage({ command: 'fetchMentionable', data: { search: q } });
     }, 200);
   }
 
   function selectMention(u) {
-    const textarea = document.getElementById('message-body');
-    if (!textarea || mention.start < 0) { return; }
-    const caret = textarea.selectionStart;
-    const token = '@[' + formatMentionName(u) + '](' + u.id + ') ';
-    const value = textarea.value;
-    const next = value.slice(0, mention.start) + token + value.slice(caret);
-    textarea.value = next;
-    const pos = mention.start + token.length;
-    textarea.setSelectionRange(pos, pos);
-    state.messageContent = next;
+    const ctx = getMentionContext();
+    if (!ctx) { closeMentionDropdown(); return; }
+    // Replace the "@query" text with an atomic chip + trailing space.
+    const range = document.createRange();
+    range.setStart(ctx.node, ctx.start);
+    range.setEnd(ctx.node, ctx.end);
+    range.deleteContents();
+    const chip = createMentionChip(u);
+    range.insertNode(chip);
+    const space = document.createTextNode(' ');
+    if (chip.nextSibling) { chip.parentNode.insertBefore(space, chip.nextSibling); }
+    else { chip.parentNode.appendChild(space); }
+    const after = document.createRange();
+    after.setStart(space, 1);
+    after.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(after);
     closeMentionDropdown();
-    textarea.focus();
+    syncEditorContent();
   }
 
-  function onMentionKeydown(e) {
-    if (!mention.open || mention.items.length === 0) { return; }
-    if (e.key === 'ArrowDown') {
+  // Insert a literal newline at the caret (Shift+Enter) without the browser
+  // wrapping lines in <div>s — keeps the serialized model flat.
+  function insertNewlineAtCaret() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) { return; }
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const nl = document.createTextNode('\n');
+    range.insertNode(nl);
+    const after = document.createRange();
+    after.setStartAfter(nl);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+  }
+
+  function onEditorKeydown(e) {
+    // When the dropdown is open, arrows/enter/tab/escape drive it.
+    if (mention.open && mention.items.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); mention.active = (mention.active + 1) % mention.items.length; renderMentionDropdown(); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); mention.active = (mention.active - 1 + mention.items.length) % mention.items.length; renderMentionDropdown(); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(mention.items[mention.active]); return; }
+      if (e.key === 'Escape') { e.preventDefault(); closeMentionDropdown(); return; }
+    }
+    // Enter sends (reuse the Send button); Shift+Enter inserts a newline.
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      mention.active = (mention.active + 1) % mention.items.length;
-      renderMentionDropdown();
-    } else if (e.key === 'ArrowUp') {
+      const btn = document.querySelector('.send-button');
+      if (btn && !btn.hasAttribute('disabled')) { btn.click(); }
+      return;
+    }
+    if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault();
-      mention.active = (mention.active - 1 + mention.items.length) % mention.items.length;
-      renderMentionDropdown();
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      selectMention(mention.items[mention.active]);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      closeMentionDropdown();
+      insertNewlineAtCaret();
+      syncEditorContent();
     }
   }
 
@@ -455,8 +542,7 @@
         if (state.loading) return;
 
         const titleValue = titleInput ? titleInput.getValue() : document.getElementById('message-title')?.value || '';
-        const textarea = document.getElementById('message-body');
-        const contentValue = (textarea ? textarea.value : state.messageContent).trim();
+        const contentValue = getEditorContent().trim();
 
         if (!contentValue) {
           vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
@@ -516,11 +602,8 @@
     });
     previewTab.addEventListener('click', () => {
       if (state.activeTab !== 'preview') {
-        // Save current textarea value before switching
-        const textarea = document.getElementById('message-body');
-        if (textarea) {
-          state.messageContent = textarea.value;
-        }
+        // Serialize the editor (text + mention chips) before switching.
+        state.messageContent = getEditorContent();
         setState({ activeTab: 'preview' });
       }
     });
@@ -533,35 +616,53 @@
     const contentArea = createElement('div', { className: 'editor-content' });
 
     if (state.activeTab === 'write') {
-      const textarea = createElement('textarea', {
-        className: 'vscode-input chat-textarea',
+      const editor = createElement('div', {
+        className: 'vscode-input chat-textarea mention-editor',
         attributes: {
           id: 'message-body',
-          rows: '3',
-          placeholder: 'Write your message… (Markdown supported, @ to mention)'
+          contenteditable: state.loading ? 'false' : 'true',
+          role: 'textbox',
+          'aria-multiline': 'true',
+          'data-placeholder': 'Write your message… (Markdown supported, @ to mention)'
         }
       });
-      // Use saved content or editing message content
+      // Use saved content or editing message content, rendered as text + chips.
       const initialValue = state.messageContent || (state.editingMessage ? state.editingMessage.content || '' : '');
-      textarea.value = initialValue;
-      if (state.loading) {
-        textarea.disabled = true;
-      }
-      // Dropdown for @-mention autocomplete (normal flow, below the textarea).
+      setEditorContent(editor, initialValue);
+
+      // Dropdown for @-mention autocomplete (normal flow, below the editor).
       const mentionDropdown = createElement('div', { className: 'mention-dropdown' });
       mentionDropdown.style.display = 'none';
       mention.dropdown = mentionDropdown;
       mention.open = false;
-      // Save content on input, notify typing, and drive @-mention autocomplete.
-      textarea.addEventListener('input', (e) => {
-        state.messageContent = e.target.value;
-        // Send typing indicator
+
+      // Typing fires native input; programmatic edits call syncEditorContent.
+      editor.addEventListener('input', () => {
+        syncEditorContent();
         vscode.postMessage({ command: 'typing' });
-        onMentionInput(e.target);
+        onMentionInput();
       });
-      textarea.addEventListener('keydown', onMentionKeydown);
-      textarea.addEventListener('blur', () => setTimeout(closeMentionDropdown, 120));
-      contentArea.appendChild(textarea);
+      editor.addEventListener('keydown', onEditorKeydown);
+      editor.addEventListener('blur', () => setTimeout(closeMentionDropdown, 120));
+      // Paste as plain text so foreign HTML/styles never enter the editor.
+      editor.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          const tn = document.createTextNode(text);
+          range.insertNode(tn);
+          range.setStartAfter(tn);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        syncEditorContent();
+        onMentionInput();
+      });
+      contentArea.appendChild(editor);
       contentArea.appendChild(mentionDropdown);
     } else {
       // Preview mode

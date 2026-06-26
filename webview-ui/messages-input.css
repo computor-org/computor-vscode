@@ -515,7 +515,7 @@ textarea.vscode-input.chat-textarea:disabled {
   color: var(--vscode-list-activeSelectionForeground);
 }
 
-/* Highlighted mention token (preview tab) */
+/* Highlighted mention token (preview tab + editor chips) */
 .mention-chip {
   color: var(--vscode-textLink-foreground);
   background: var(--vscode-textBlockQuote-background, rgba(120, 160, 255, 0.12));
@@ -523,4 +523,24 @@ textarea.vscode-input.chat-textarea:disabled {
   padding: 0 3px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* Contenteditable message editor — chips with the uuid hidden in data-id */
+.mention-editor {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  max-height: 200px;
+  cursor: text;
+}
+
+.mention-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+  pointer-events: none;
+}
+
+.mention-editor .mention-chip {
+  user-select: none;
+  cursor: default;
 }
