@@ -86,11 +86,11 @@
   function renderContentWithMentions(text) {
     const placeholders = [];
     const replaced = String(text || '').replace(MENTION_TOKEN_RE, (m, name, uuid) => {
+      // Preview mirrors the rendered message: no '@' prefix and no tooltip
+      // (the visible name is all the compose side knows).
+      const display = name || 'user';
       const idx = placeholders.length;
-      placeholders.push(
-        '<span class="mention-chip" title="' + escapeHtml(uuid.toLowerCase()) + '">@' +
-        escapeHtml(name || 'user') + '</span>'
-      );
+      placeholders.push('<span class="mention-chip">' + escapeHtml(display) + '</span>');
       return '@@CTMENTION' + idx + '@@';
     });
     let html = renderMarkdown(replaced);

@@ -106,21 +106,31 @@
   // falling back to the name embedded in the token.
   const MENTION_TOKEN_RE = /@\[([^\]]*)\]\(([0-9a-fA-F-]{36})\)/g;
 
+  function formatRoleLabel(roleId) {
+    if (!roleId) { return ''; }
+    return String(roleId).replace(/^_/, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   function renderContentWithMentions(message) {
-    const nameById = {};
+    const infoById = {};
     (message.mentions || []).forEach((m) => {
       if (m && m.id) {
-        nameById[String(m.id).toLowerCase()] = [m.given_name, m.family_name].filter(Boolean).join(' ').trim();
+        infoById[String(m.id).toLowerCase()] = {
+          name: [m.given_name, m.family_name].filter(Boolean).join(' ').trim(),
+          role: formatRoleLabel(m.course_role_id)
+        };
       }
     });
     const placeholders = [];
     const replaced = String(message.content || '').replace(MENTION_TOKEN_RE, (full, name, uuid) => {
-      const id = uuid.toLowerCase();
-      const display = nameById[id] || name || 'user';
+      const info = infoById[uuid.toLowerCase()] || {};
+      const display = info.name || name || 'user';
+      // Themed hover (data-tooltip + CSS, not the native black `title`) shows the
+      // course role; omitted when there's no extra info beyond the visible name.
+      const tooltip = info.role ? display + ' — ' + info.role : '';
+      const attr = tooltip ? ' data-tooltip="' + escapeHtml(tooltip) + '"' : '';
       const idx = placeholders.length;
-      placeholders.push(
-        '<span class="mention-chip" title="' + escapeHtml(id) + '">@' + escapeHtml(display) + '</span>'
-      );
+      placeholders.push('<span class="mention-chip"' + attr + '>' + escapeHtml(display) + '</span>');
       return '@@CTMENTION' + idx + '@@';
     });
     let html = renderMarkdown(replaced);

@@ -433,3 +433,27 @@ body {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Themed hover tooltip (matches VS Code's hover widget, not the native title) */
+.mention-chip[data-tooltip] {
+  position: relative;
+}
+
+.mention-chip[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 4px;
+  z-index: 100;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: normal;
+  font-size: 12px;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
