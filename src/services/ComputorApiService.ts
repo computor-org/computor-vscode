@@ -77,6 +77,8 @@ import {
   MessageCreate,
   MessageUpdate,
   MessageQuery,
+  MessageMentionRef,
+  MentionableQuery,
   CourseMemberCommentList,
   CourseContentStudentGet,
   ResultWithGrading,
@@ -2858,6 +2860,20 @@ export class ComputorApiService {
   async markMessageUnread(id: string): Promise<void> {
     const client = await this.getHttpClient();
     await client.delete(`/messages/${id}/reads`);
+  }
+
+  /**
+   * Users who may be @mentioned in a message of the given scope (its audience).
+   * Pass the same target you'd post to, or parent_id to inherit a thread's
+   * scope. Backed by GET /messages/mentionable-users.
+   */
+  async getMentionableUsers(query: MentionableQuery): Promise<MessageMentionRef[]> {
+    const client = await this.getHttpClient();
+    const params = Object.fromEntries(
+      Object.entries(query).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    );
+    const response = await client.get<MessageMentionRef[]>('/messages/mentionable-users', params);
+    return response.data || [];
   }
 
   async listCourseMemberComments(courseMemberId: string): Promise<CourseMemberCommentList[]> {

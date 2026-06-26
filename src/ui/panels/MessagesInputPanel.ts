@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { MessageCreate, MessageUpdate, MessageList } from '../../types/generated';
+import { MessageCreate, MessageUpdate, MessageList, MessageMentionRef, MentionableQuery } from '../../types/generated';
 import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
 import { WebSocketService } from '../../services/WebSocketService';
 
@@ -17,6 +17,7 @@ interface InputPanelState {
   messages?: MessageList[];
   wsChannel?: string;
   typingUsers: TypingUser[];
+  mentionableUsers?: MessageMentionRef[];
 }
 
 export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
@@ -72,6 +73,10 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
           break;
         case 'ready':
           this.postState();
+          void this.fetchAndPostMentionable();
+          break;
+        case 'fetchMentionable':
+          await this.fetchAndPostMentionable(message.data?.search);
           break;
         case 'typing':
           this.notifyTyping();
@@ -92,6 +97,52 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     this.state.replyTo = undefined;
     this.state.editingMessage = undefined;
     this.postState();
+    // Pre-fetch the audience so the @-mention dropdown is ready on first keystroke.
+    void this.fetchAndPostMentionable();
+  }
+
+  // Scope for the @-mention audience query: replies inherit the parent's scope;
+  // otherwise the most-specific target the message will be posted to.
+  private buildMentionScope(): MentionableQuery | undefined {
+    if (this.state.replyTo) {
+      return { parent_id: this.state.replyTo.id };
+    }
+    const payload = this.state.target?.createPayload as Record<string, unknown> | undefined;
+    if (!payload) {
+      return undefined;
+    }
+    for (const field of TARGET_FIELDS_BY_SPECIFICITY) {
+      const value = payload[field];
+      if (typeof value === 'string' && value.length > 0) {
+        return { [field]: value } as MentionableQuery;
+      }
+    }
+    return undefined;
+  }
+
+  private async fetchAndPostMentionable(search?: string): Promise<void> {
+    const query = this.buildMentionScope();
+    if (!query || !this.view) {
+      return;
+    }
+    query.limit = 200;
+    if (search) {
+      query.search = search;
+    }
+    try {
+      const users = await this.api.getMentionableUsers(query);
+      if (!this.view) {
+        return;
+      }
+      this.state.mentionableUsers = users;
+      this.view.webview.postMessage({
+        command: 'mentionableUsers',
+        data: { users, search: search ?? null }
+      });
+    } catch (error) {
+      // Non-fatal — the autocomplete just won't have suggestions.
+      console.warn('[MessagesInputPanel] failed to fetch mentionable users', error);
+    }
   }
 
   public setReplyTo(message: MessageList): void {

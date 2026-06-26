@@ -100,6 +100,36 @@
     return escapeHtml(text).replace(/\n/g, '<br/>');
   }
 
+  // @[name](uuid) tokens are markdown-link syntax, so swap them for safe
+  // placeholders around marked(), then re-insert highlighted mention chips.
+  // The display name comes from message.mentions (kept fresh on renames),
+  // falling back to the name embedded in the token.
+  const MENTION_TOKEN_RE = /@\[([^\]]*)\]\(([0-9a-fA-F-]{36})\)/g;
+
+  function renderContentWithMentions(message) {
+    const nameById = {};
+    (message.mentions || []).forEach((m) => {
+      if (m && m.id) {
+        nameById[String(m.id).toLowerCase()] = [m.given_name, m.family_name].filter(Boolean).join(' ').trim();
+      }
+    });
+    const placeholders = [];
+    const replaced = String(message.content || '').replace(MENTION_TOKEN_RE, (full, name, uuid) => {
+      const id = uuid.toLowerCase();
+      const display = nameById[id] || name || 'user';
+      const idx = placeholders.length;
+      placeholders.push(
+        '<span class="mention-chip" title="' + escapeHtml(id) + '">@' + escapeHtml(display) + '</span>'
+      );
+      return '@@CTMENTION' + idx + '@@';
+    });
+    let html = renderMarkdown(replaced);
+    placeholders.forEach((chip, idx) => {
+      html = html.split('@@CTMENTION' + idx + '@@').join(chip);
+    });
+    return html;
+  }
+
   function getAuthorDisplay(message) {
     const author = message.author || {};
     const authorNameFromParts = [author.given_name, author.family_name]
@@ -332,7 +362,7 @@
 
     const body = createElement('div', {
       className: 'message-body markdown-body',
-      innerHTML: renderMarkdown(message.content)
+      innerHTML: renderContentWithMentions(message)
     });
 
     const actions = createElement('div', { className: 'message-actions' });
