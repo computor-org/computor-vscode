@@ -150,6 +150,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.downloadTemplate",
+        "title": "Download Template",
+        "icon": "$(cloud-download)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.commitAssignment",
         "title": "Commit Assignment",
         "icon": "$(git-commit)",
@@ -1942,6 +1948,11 @@
           "command": "computor.student.setupCourseRepository",
           "when": "view == computor.student.courses && viewItem == studentCourseRoot",
           "group": "1_setup@1"
+        },
+        {
+          "command": "computor.student.downloadTemplate",
+          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "group": "1_setup@2"
         },
         {
           "command": "computor.student.showMessages",

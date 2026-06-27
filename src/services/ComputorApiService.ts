@@ -1447,6 +1447,16 @@ export class ComputorApiService {
   }
 
   /**
+   * Download the course template as a ZIP (download mode / offline work). The
+   * backend fetches it from the bound git server with its service token, so the
+   * student needs no git credentials of their own.
+   */
+  async downloadTemplateArchive(courseId: string): Promise<Buffer> {
+    const client = await this.getHttpClient();
+    return client.getBuffer(`/user/courses/${courseId}/template/archive`);
+  }
+
+  /**
    * Helper method to invalidate cache entries matching a pattern
    */
   private invalidateCachePattern(pattern: string): void {

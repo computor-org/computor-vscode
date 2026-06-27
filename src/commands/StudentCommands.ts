@@ -319,6 +319,127 @@ export class StudentCommands {
     }
   }
 
+  /** A short course slug for default file/folder names. */
+  private async courseSlugFor(courseId: string): Promise<string> {
+    try {
+      const course = await this.apiService.getStudentCourse(courseId);
+      const raw = String(course?.path || course?.title || courseId);
+      const slug = raw.split(/[./]/).filter(Boolean).pop() || courseId.slice(0, 8);
+      return slug.replace(/[^a-zA-Z0-9._-]/g, '-');
+    } catch {
+      return courseId.slice(0, 8);
+    }
+  }
+
+  /**
+   * Download the course template as a ZIP (download-mode courses, or offline
+   * work). Lets the student save the archive or extract it into a folder to work
+   * in. The backend streams the template using its service token — the student
+   * needs no git credentials.
+   */
+  private async downloadCourseTemplate(arg?: any): Promise<void> {
+    let courseId: string | undefined =
+      (typeof arg === 'string' ? arg : undefined) ||
+      arg?.courseId || arg?.course?.id || arg?.course_id;
+
+    if (!courseId) {
+      const courses = await this.apiService.getStudentCourses();
+      if (!courses.length) {
+        vscode.window.showInformationMessage('No student courses found.');
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        courses.map((c: any) => ({
+          label: c.title || c.path || c.id,
+          description: (c.title && c.path) ? c.path : undefined,
+          courseId: c.id as string
+        })),
+        { title: 'Download template — pick a course', ignoreFocusOut: true }
+      );
+      if (!picked) { return; }
+      courseId = picked.courseId;
+    }
+    const cid = courseId;
+
+    const how = await vscode.window.showQuickPick(
+      [
+        { label: '$(folder) Download and extract to a folder', value: 'extract' as const },
+        { label: '$(file-zip) Download as ZIP', value: 'zip' as const }
+      ],
+      { title: 'Download course template', ignoreFocusOut: true }
+    );
+    if (!how) { return; }
+
+    const slug = await this.courseSlugFor(cid);
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Computor', cancellable: false },
+      async (progress) => {
+        progress.report({ message: 'Downloading template…' });
+        let buffer: Buffer;
+        try {
+          buffer = await this.apiService.downloadTemplateArchive(cid);
+        } catch (err: any) {
+          vscode.window.showErrorMessage(`Could not download the template: ${err?.message || String(err)}`);
+          return;
+        }
+
+        if (how.value === 'zip') {
+          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          const dest = await vscode.window.showSaveDialog({
+            ...(wsRoot ? { defaultUri: vscode.Uri.file(path.join(wsRoot, `${slug}-template.zip`)) } : {}),
+            filters: { 'ZIP Archives': ['zip'] },
+            saveLabel: 'Save'
+          });
+          if (!dest) { return; }
+          await fs.promises.writeFile(dest.fsPath, buffer);
+          void vscode.window.showInformationMessage(`Template saved to ${dest.fsPath}`, 'Reveal').then(c => {
+            if (c === 'Reveal') { void vscode.commands.executeCommand('revealFileInOS', dest); }
+          });
+          return;
+        }
+
+        const folder = await vscode.window.showOpenDialog({
+          canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
+          openLabel: 'Extract here', title: 'Choose a folder to extract the template into'
+        });
+        if (!folder || !folder[0]) { return; }
+        const destDir = path.join(folder[0].fsPath, `${slug}-template`);
+        progress.report({ message: 'Extracting…' });
+        const count = await this.extractZipBuffer(buffer, destDir);
+        void vscode.window.showInformationMessage(
+          `Extracted ${count} file(s) to ${destDir}`, 'Open Folder', 'Reveal'
+        ).then(c => {
+          if (c === 'Open Folder') {
+            void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(destDir), { forceNewWindow: true });
+          } else if (c === 'Reveal') {
+            void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(destDir));
+          }
+        });
+      }
+    );
+  }
+
+  /** Extract a git-archive ZIP buffer into `destDir`, stripping the single
+   * wrapper directory git servers add (e.g. `repo-<sha>/`). Returns file count. */
+  private async extractZipBuffer(buffer: Buffer, destDir: string): Promise<number> {
+    const zip = await JSZip.loadAsync(buffer);
+    const entries = Object.values(zip.files);
+    const tops = new Set(entries.filter(e => !e.dir).map(e => e.name.split('/')[0]));
+    const strip = tops.size === 1 ? `${[...tops][0]}/` : '';
+    let count = 0;
+    for (const entry of entries) {
+      if (entry.dir) { continue; }
+      let rel = entry.name;
+      if (strip && rel.startsWith(strip)) { rel = rel.slice(strip.length); }
+      if (!rel) { continue; }
+      const target = path.join(destDir, rel);
+      await fs.promises.mkdir(path.dirname(target), { recursive: true });
+      await fs.promises.writeFile(target, await entry.async('nodebuffer'));
+      count++;
+    }
+    return count;
+  }
+
   registerCommands(): void {
 
 
@@ -328,6 +449,11 @@ export class StudentCommands {
     // Optional arg: a course id string, or a tree item carrying `courseId`.
     register('computor.student.setupCourseRepository', async (arg?: any) => {
       await this.setupCourseRepository(arg);
+    });
+
+    // Download the course template as a ZIP (download mode / offline work).
+    register('computor.student.downloadTemplate', async (arg?: any) => {
+      await this.downloadCourseTemplate(arg);
     });
 
     // Refresh student view
