@@ -7,6 +7,7 @@ import { execGitClone } from '../git/gitCloneHelpers';
 import { execAsyncWithTimeout } from '../utils/exec';
 import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } from '../utils/gitUrlHelpers';
 import { GitLabByoProvisioner } from './GitLabByoProvisioner';
+import { GitLabTokenManager } from './GitLabTokenManager';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
 export interface SetUpOptions {
@@ -39,12 +40,14 @@ export type SetUpOutcome =
  */
 export class StudentRepositoryProvisioningService {
   private readonly byo: GitLabByoProvisioner;
+  private readonly tokens: GitLabTokenManager;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly api: ComputorApiService
   ) {
     this.byo = new GitLabByoProvisioner(context);
+    this.tokens = GitLabTokenManager.getInstance(context);
   }
 
   /** Does the student already have a repo recorded for this course? */
@@ -85,12 +88,63 @@ export class StudentRepositoryProvisioningService {
     if (mode === 'forgejo') {
       return this.provisionAndCloneForgejo(courseId, opts);
     }
+    if (mode === 'gitlab_managed') {
+      return this.provisionAndCloneGitlabManaged(courseId, descriptor, opts);
+    }
     if (mode === 'gitlab_byo') {
       return this.provisionAndCloneGitLabByo(courseId, descriptor, opts);
     }
 
-    // download (and cross-instance BYO) — not wired in this increment.
+    // download — handled by a separate "Download template" command, not here.
     return { status: 'unsupported-mode', modes: descriptor.student_repo_modes };
+  }
+
+  // --- Managed GitLab (backend forks; student authenticates with their PAT) ---
+
+  private async provisionAndCloneGitlabManaged(
+    courseId: string,
+    descriptor: CourseGitDescriptor,
+    opts?: SetUpOptions
+  ): Promise<SetUpOutcome> {
+    const report = opts?.onProgress ?? (() => {});
+
+    report('Provisioning your GitLab repository…');
+    // Backend forks the template into the course's students group (idempotent).
+    // No clone token for GitLab — the student authenticates with their own PAT.
+    const repo = await this.api.provisionStudentRepository(courseId);
+    if (!repo.http_url) {
+      throw new Error('Provisioning did not return a repository URL.');
+    }
+
+    const serverUrl = repo.server_url || descriptor.template?.base_url;
+    if (!serverUrl) {
+      return { status: 'unsupported-mode', modes: descriptor.student_repo_modes };
+    }
+
+    // The student's own PAT proves their GitLab identity; the backend reads it
+    // (GET /user) and grants them access to the repo with its group token.
+    report('Connecting your GitLab account…');
+    const token = await this.tokens.ensureTokenForUrl(serverUrl);
+    if (!token) {
+      return { status: 'cancelled' };
+    }
+
+    report('Granting access to your repository…');
+    await this.api.registerGitlabManaged(courseId, token);
+
+    const targetPath = this.localPathFor(repo);
+    const authUrl = addTokenToGitUrl(repo.http_url, token);
+
+    if (this.isCloned(targetPath)) {
+      report('Refreshing repository credentials…');
+      await this.updateRemoteUrl(targetPath, authUrl);
+      return { status: 'already-cloned', path: targetPath, repo };
+    }
+
+    report('Cloning your repository…');
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    await execGitClone(authUrl, targetPath, { cancellationToken: opts?.cancellationToken });
+    return { status: 'cloned', path: targetPath, repo };
   }
 
   // --- Mode A — Forgejo (backend-babysat) -----------------------------------

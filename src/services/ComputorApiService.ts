@@ -1429,6 +1429,24 @@ export class ComputorApiService {
   }
 
   /**
+   * Managed GitLab: register the student's own GitLab PAT for a course and grant
+   * them access to their repository. The backend reads their identity from the
+   * PAT (`GET /api/v4/user`) and adds them as a member using its group token.
+   * Idempotent.
+   */
+  async registerGitlabManaged(
+    courseId: string,
+    providerAccessToken: string
+  ): Promise<CourseMemberRepositoryGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<CourseMemberRepositoryGet>(
+      `/user/courses/${courseId}/register-gitlab`,
+      { provider_access_token: providerAccessToken }
+    );
+    return response.data;
+  }
+
+  /**
    * Helper method to invalidate cache entries matching a pattern
    */
   private invalidateCachePattern(pattern: string): void {

@@ -233,7 +233,9 @@ export class StudentCommands {
           vscode.window.showInformationMessage('This course has no git repository configured yet.');
           return;
         }
-        const supported = descriptor.student_repo_modes.filter(m => m === 'forgejo' || m === 'gitlab_byo');
+        const supported = descriptor.student_repo_modes.filter(
+          m => m === 'forgejo' || m === 'gitlab_managed' || m === 'gitlab_byo'
+        );
         if (supported.length === 0) {
           vscode.window.showInformationMessage(
             `This course offers: ${descriptor.student_repo_modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`
@@ -244,6 +246,7 @@ export class StudentCommands {
           const pick = await vscode.window.showQuickPick(
             [
               { label: '$(server) Institution Forgejo', description: 'Recommended — no extra credentials', mode: 'forgejo' },
+              { label: '$(cloud) Institution GitLab', description: 'Hosted for you on the institution GitLab (needs your GitLab token)', mode: 'gitlab_managed' },
               { label: '$(repo-forked) Your own GitLab', description: 'Fork into a GitLab group you own (needs a token)', mode: 'gitlab_byo' }
             ].filter(o => supported.includes(o.mode)),
             { title: 'Where should your repository live?', ignoreFocusOut: true }
