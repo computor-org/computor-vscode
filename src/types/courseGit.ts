@@ -78,3 +78,26 @@ export interface CourseMemberRepositoryRegister {
   ssh_url?: string | null;
   web_url?: string | null;
 }
+
+/** A git server in the registry (`GET /git-servers`) — never carries secrets. */
+export interface GitServerGet {
+  id: string;
+  /** 'forgejo' | 'gitlab' */
+  type: string;
+  base_url: string;
+  name?: string | null;
+  managed: boolean;
+  has_token: boolean;
+  /** GitLab parent group id/path for managed provisioning (GitLab only). */
+  parent_group_id?: string | null;
+}
+
+/** Body for `PUT /courses/{course_id}/git` — lecturer binding upsert. */
+export interface CourseGitBindingUpsert {
+  delivery?: 'git' | 'download';
+  git_server_id?: string | null;
+  template_repo?: string | null;
+  template_url?: string | null;
+  default_branch?: string | null;
+  student_repo_modes?: string[];
+}

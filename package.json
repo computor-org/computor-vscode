@@ -724,6 +724,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.configureCourseGit",
+        "title": "Configure Course Git",
+        "icon": "$(git-branch)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.student.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -1648,6 +1654,11 @@
           "command": "computor.lecturer.viewDeploymentInfo",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
           "group": "4_example@4"
+        },
+        {
+          "command": "computor.lecturer.configureCourseGit",
+          "when": "view == computor.lecturer.courses && viewItem == course",
+          "group": "2_config@1"
         },
         {
           "command": "computor.lecturer.showCourseDetails",

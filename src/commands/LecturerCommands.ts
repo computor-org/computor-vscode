@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
+import type { GitServerGet } from '../types/courseGit';
 import { CourseGroupCommands } from './lecturer/courseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
@@ -136,6 +137,10 @@ export class LecturerCommands {
 
     register('computor.lecturer.manageCourse', async (item: CourseTreeItem) => {
       await this.manageCourse(item);
+    });
+
+    register('computor.lecturer.configureCourseGit', async (item: CourseTreeItem) => {
+      await this.configureCourseGit(item);
     });
 
     // Course content management
@@ -605,6 +610,78 @@ export class LecturerCommands {
   /**
    * Manage course settings and properties
    */
+  /**
+   * Configure a course's git binding: pick a managed git server and the
+   * student-repo modes to offer, then `PUT /courses/{id}/git`. For a managed
+   * GitLab server the backend also provisions the course group/template/
+   * reference/students structure. The binding locks once materialized.
+   */
+  private async configureCourseGit(item?: CourseTreeItem): Promise<void> {
+    const course = item?.course;
+    const courseId = course?.id;
+    if (!courseId) {
+      vscode.window.showWarningMessage('Open "Configure Course Git" from a course in the lecturer tree.');
+      return;
+    }
+
+    let servers: GitServerGet[];
+    try {
+      servers = await this.apiService.getGitServers();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Could not load git servers: ${err?.message || String(err)}`);
+      return;
+    }
+    const managed = servers.filter(s => s.managed && s.has_token);
+    if (managed.length === 0) {
+      vscode.window.showWarningMessage('No managed git server is registered. Ask an administrator to register one first.');
+      return;
+    }
+
+    const serverPick = await vscode.window.showQuickPick(
+      managed.map(s => ({
+        label: s.name || s.base_url,
+        description: `${s.type}${s.parent_group_id ? ` · group ${s.parent_group_id}` : ''}`,
+        server: s
+      })),
+      { title: 'Configure course git — choose the host server', ignoreFocusOut: true }
+    );
+    if (!serverPick) { return; }
+    const server = serverPick.server;
+
+    const managedMode = server.type === 'gitlab' ? 'gitlab_managed' : 'forgejo';
+    const modeOptions = [
+      { label: `$(server) Managed (${server.type})`, description: 'We host each student repository', mode: managedMode, picked: true },
+      { label: '$(cloud-download) Download', description: 'Students download the template as a ZIP', mode: 'download', picked: false },
+      ...(server.type === 'gitlab'
+        ? [{ label: '$(repo-forked) External (student-hosted)', description: 'Students bring their own GitLab repository', mode: 'gitlab_byo', picked: false }]
+        : [])
+    ];
+    const modePicks = await vscode.window.showQuickPick(modeOptions, {
+      title: 'Which student-repo modes should this course offer?',
+      canPickMany: true,
+      ignoreFocusOut: true
+    });
+    if (!modePicks || modePicks.length === 0) { return; }
+    const modes = modePicks.map(p => p.mode);
+
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Configuring course git…', cancellable: false },
+      async () => {
+        try {
+          await this.apiService.setCourseGitBinding(courseId, {
+            delivery: 'git',
+            git_server_id: server.id,
+            student_repo_modes: modes
+          });
+          vscode.window.showInformationMessage(`Course git configured (${modes.join(', ')}).`);
+        } catch (err: any) {
+          const detail = err?.response?.data?.detail || err?.message || String(err);
+          vscode.window.showErrorMessage(`Could not configure course git: ${detail}`);
+        }
+      }
+    );
+  }
+
   private async manageCourse(item?: CourseTreeItem): Promise<void> {
     let course;
     

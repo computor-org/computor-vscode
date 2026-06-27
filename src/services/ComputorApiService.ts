@@ -14,7 +14,9 @@ import type {
   CourseGitDescriptor,
   CourseMemberRepositoryGet,
   StudentRepositoryProvisioned,
-  CourseMemberRepositoryRegister
+  CourseMemberRepositoryRegister,
+  GitServerGet,
+  CourseGitBindingUpsert
 } from '../types/courseGit';
 import {
   OrganizationList,
@@ -1454,6 +1456,29 @@ export class ComputorApiService {
   async downloadTemplateArchive(courseId: string): Promise<Buffer> {
     const client = await this.getHttpClient();
     return client.getBuffer(`/user/courses/${courseId}/template/archive`);
+  }
+
+  /**
+   * List the registered git servers (no secrets — `has_token` only). Readable by
+   * any authenticated user so a lecturer can pick a host when configuring a course.
+   */
+  async getGitServers(): Promise<GitServerGet[]> {
+    const client = await this.getHttpClient();
+    const response = await client.get<GitServerGet[]>(`/git-servers`);
+    return response.data ?? [];
+  }
+
+  /**
+   * Set/replace a course's git binding (lecturer cohort). For a managed GitLab
+   * server the backend also provisions the course's group/template/reference/
+   * students structure. Locks once materialized.
+   */
+  async setCourseGitBinding(
+    courseId: string,
+    body: CourseGitBindingUpsert
+  ): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.put(`/courses/${courseId}/git`, body);
   }
 
   /**
