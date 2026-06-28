@@ -7,7 +7,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel, CourseContentStudentGet } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionCreate, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel, CourseContentStudentGet } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/StudentRepositoryProvisioningService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
@@ -689,6 +689,12 @@ export class StudentCommands {
     });
 
     // Submit assignment
+    // Submit without git (download mode): zip a folder and upload as a submission.
+    // The backend content-addresses it (a content hash), so no commit/repo is needed.
+    register('computor.student.submitDownload', async (item?: any) => {
+      await this.submitDownload(item);
+    });
+
     register('computor.student.submitAssignment', async (itemOrSubmissionGroup: any) => {
       try {
         // Support invocation from tree item (preferred)
@@ -1587,6 +1593,51 @@ export class StudentCommands {
     }
   }
   */
+
+  /**
+   * Submit without git (download mode): zip a chosen folder and upload it as a
+   * submission with NO version_identifier, so the backend content-addresses it
+   * (a content hash) — an unchanged re-submit is then detected by dedup.
+   */
+  private async submitDownload(item?: any): Promise<void> {
+    const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
+    const submissionGroupId = submissionGroup?.id;
+    if (!submissionGroupId) {
+      vscode.window.showWarningMessage('Open "Submit (without git)" from an assignment in the student tree.');
+      return;
+    }
+
+    const folder = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: 'Submit this folder',
+      title: 'Choose the folder with your work to submit'
+    });
+    if (!folder || !folder[0]) { return; }
+    const dir = folder[0].fsPath;
+
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Submitting…', cancellable: false },
+      async (progress) => {
+        try {
+          progress.report({ message: 'Packaging your work…' });
+          const archive = await this.createSubmissionArchive(dir);
+          progress.report({ message: 'Uploading…' });
+          // No version_identifier → the backend content-addresses the upload.
+          const res = await this.apiService.createStudentSubmission(
+            { submission_group_id: submissionGroupId, version_identifier: null, submit: true } as SubmissionCreate,
+            archive
+          );
+          if (res) {
+            void vscode.window.showInformationMessage('Submitted your work (no git).');
+          }
+        } catch (e: any) {
+          vscode.window.showErrorMessage(`Submit failed: ${e?.message || String(e)}`);
+        }
+      }
+    );
+  }
 
   private async createSubmissionArchive(directory: string): Promise<{ buffer: Buffer; fileName: string }> {
     const zip = new JSZip();
