@@ -145,14 +145,14 @@
   margin-top: auto;
 }
 
-/* GitLab stored tokens list */
-.gitlab-stored-list {
+/* Provider stored tokens list */
+.provider-stored-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.gitlab-stored-item {
+.provider-stored-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -163,7 +163,7 @@
   background: var(--vscode-sideBar-background, transparent);
 }
 
-.gitlab-stored-item .gitlab-stored-url {
+.provider-stored-item .provider-stored-url {
   flex: 1;
   font-family: var(--vscode-editor-fontFamily, monospace);
   font-size: 12px;
@@ -173,14 +173,14 @@
   white-space: nowrap;
 }
 
-.gitlab-stored-item .gitlab-stored-status {
+.provider-stored-item .provider-stored-status {
   font-size: 11px;
   color: var(--vscode-testing-iconPassed);
   white-space: nowrap;
 }
 
-/* GitLab update token panel */
-.gitlab-update-panel {
+/* Provider update token panel */
+.provider-update-panel {
   padding: 10px 10px 10px 16px;
   border-left: 2px solid var(--vscode-focusBorder);
   display: flex;
@@ -188,8 +188,8 @@
   gap: 8px;
 }
 
-/* GitLab entries (new/edit) */
-.gitlab-entry {
+/* Provider entries (new/edit) */
+.provider-entry {
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 4px;
   padding: 12px;
@@ -198,54 +198,54 @@
   gap: 8px;
 }
 
-.gitlab-entry-header {
+.provider-entry-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.gitlab-entry-header span {
+.provider-entry-header span {
   font-size: 13px;
   font-weight: 500;
   color: var(--vscode-foreground);
 }
 
-.gitlab-entry-fields {
+.provider-entry-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
 @media (max-width: 700px) {
-  .gitlab-entry-fields {
+  .provider-entry-fields {
     grid-template-columns: 1fr;
   }
 }
 
-.gitlab-entry-actions {
+.provider-entry-actions {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-.gitlab-validation-status {
+.provider-validation-status {
   font-size: 12px;
   flex: 1;
 }
 
-.gitlab-validation-status.valid {
+.provider-validation-status.valid {
   color: var(--vscode-testing-iconPassed);
 }
 
-.gitlab-validation-status.invalid {
+.provider-validation-status.invalid {
   color: var(--vscode-errorForeground);
 }
 
-.gitlab-validation-status.pending {
+.provider-validation-status.pending {
   color: var(--vscode-descriptionForeground);
 }
 
-.gitlab-validation-status.validating {
+.provider-validation-status.validating {
   color: var(--vscode-descriptionForeground);
   font-style: italic;
 }

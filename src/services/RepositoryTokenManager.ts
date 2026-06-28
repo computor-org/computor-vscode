@@ -280,7 +280,7 @@ export class RepositoryTokenManager {
   /**
    * Get all stored GitLab URLs
    */
-  async getStoredGitLabUrls(): Promise<string[]> {
+  async getStoredProviderUrls(): Promise<string[]> {
     // Get tracked URLs from settings (VS Code doesn't provide a way to list all secrets)
     return await this.settingsManager.getGitLabUrls();
   }
@@ -289,7 +289,7 @@ export class RepositoryTokenManager {
    * Clear all tokens
    */
   async clearAllTokens(): Promise<void> {
-    const urls = await this.getStoredGitLabUrls();
+    const urls = await this.getStoredProviderUrls();
     for (const url of urls) {
       await this.removeToken(url);
     }

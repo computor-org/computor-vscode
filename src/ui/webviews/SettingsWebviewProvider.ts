@@ -9,7 +9,7 @@ import { BackendConnectionService } from '../../services/BackendConnectionServic
 
 const execFileAsync = promisify(execFile);
 
-interface StoredGitLabToken {
+interface StoredProviderToken {
   url: string;
   hasToken: boolean;
 }
@@ -18,16 +18,16 @@ interface SettingsInitialState {
   backendUrl: string;
   gitName: string;
   gitEmail: string;
-  storedGitLabTokens: StoredGitLabToken[];
+  storedProviderTokens: StoredProviderToken[];
 }
 
 export class SettingsWebviewProvider extends BaseWebviewProvider {
-  private gitLabTokenManager: RepositoryTokenManager;
+  private providerTokenManager: RepositoryTokenManager;
   private settingsManager: ComputorSettingsManager;
 
   constructor(context: vscode.ExtensionContext) {
     super(context, 'computor.settingsView');
-    this.gitLabTokenManager = RepositoryTokenManager.getInstance(context);
+    this.providerTokenManager = RepositoryTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
   }
 
@@ -92,14 +92,14 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       case 'validateBackendUrl':
         await this.handleValidateBackendUrl(message.data);
         break;
-      case 'validateGitLabToken':
-        await this.handleValidateGitLabToken(message.data);
+      case 'validateProviderToken':
+        await this.handleValidateProviderToken(message.data);
         break;
-      case 'saveGitLabToken':
-        await this.handleSaveGitLabToken(message.data);
+      case 'saveProviderToken':
+        await this.handleSaveProviderToken(message.data);
         break;
-      case 'removeGitLabToken':
-        await this.handleRemoveGitLabToken(message.data);
+      case 'removeProviderToken':
+        await this.handleRemoveProviderToken(message.data);
         break;
       default:
         break;
@@ -110,16 +110,16 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
     const backendUrl = await this.settingsManager.getBaseUrl() || '';
     const gitName = await this.getGitConfig('user.name') || '';
     const gitEmail = await this.getGitConfig('user.email') || '';
-    const storedGitLabTokens = await this.loadStoredGitLabTokens();
+    const storedProviderTokens = await this.loadStoredProviderTokens();
 
-    return { backendUrl, gitName, gitEmail, storedGitLabTokens };
+    return { backendUrl, gitName, gitEmail, storedProviderTokens };
   }
 
-  private async loadStoredGitLabTokens(): Promise<StoredGitLabToken[]> {
-    const urls = await this.gitLabTokenManager.getStoredGitLabUrls();
-    const tokens: StoredGitLabToken[] = [];
+  private async loadStoredProviderTokens(): Promise<StoredProviderToken[]> {
+    const urls = await this.providerTokenManager.getStoredProviderUrls();
+    const tokens: StoredProviderToken[] = [];
     for (const url of urls) {
-      const token = await this.gitLabTokenManager.getToken(url);
+      const token = await this.providerTokenManager.getToken(url);
       tokens.push({ url, hasToken: !!token });
     }
     return tokens;
@@ -181,13 +181,13 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
     });
   }
 
-  private async handleValidateGitLabToken(data: { url: string; token: string }): Promise<void> {
+  private async handleValidateProviderToken(data: { url: string; token: string }): Promise<void> {
     if (!this.panel) {
       return;
     }
 
     try {
-      const validation = await this.gitLabTokenManager.validateToken(data.url, data.token);
+      const validation = await this.providerTokenManager.validateToken(data.url, data.token);
       this.panel.webview.postMessage({
         command: 'validationResult',
         data: {
@@ -210,39 +210,39 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private async handleSaveGitLabToken(data: { url: string; token: string }): Promise<void> {
+  private async handleSaveProviderToken(data: { url: string; token: string }): Promise<void> {
     if (!this.panel) {
       return;
     }
 
     try {
-      await this.gitLabTokenManager.storeToken(data.url, data.token);
-      const storedGitLabTokens = await this.loadStoredGitLabTokens();
+      await this.providerTokenManager.storeToken(data.url, data.token);
+      const storedProviderTokens = await this.loadStoredProviderTokens();
       this.panel.webview.postMessage({
-        command: 'gitLabTokenSaved',
-        data: { url: data.url, storedGitLabTokens }
+        command: 'providerTokenSaved',
+        data: { url: data.url, storedProviderTokens }
       });
-      this.postNotice('success', `GitLab token saved for ${data.url}.`);
+      this.postNotice('success', `Provider token saved for ${data.url}.`);
     } catch (error: any) {
-      this.postNotice('error', `Failed to save GitLab token: ${error?.message || error}`);
+      this.postNotice('error', `Failed to save Provider token: ${error?.message || error}`);
     }
   }
 
-  private async handleRemoveGitLabToken(data: { url: string }): Promise<void> {
+  private async handleRemoveProviderToken(data: { url: string }): Promise<void> {
     if (!this.panel) {
       return;
     }
 
     try {
-      await this.gitLabTokenManager.removeToken(data.url);
-      const storedGitLabTokens = await this.loadStoredGitLabTokens();
+      await this.providerTokenManager.removeToken(data.url);
+      const storedProviderTokens = await this.loadStoredProviderTokens();
       this.panel.webview.postMessage({
-        command: 'gitLabTokenRemoved',
-        data: { url: data.url, storedGitLabTokens }
+        command: 'providerTokenRemoved',
+        data: { url: data.url, storedProviderTokens }
       });
-      this.postNotice('success', `GitLab token removed for ${data.url}.`);
+      this.postNotice('success', `Provider token removed for ${data.url}.`);
     } catch (error: any) {
-      this.postNotice('error', `Failed to remove GitLab token: ${error?.message || error}`);
+      this.postNotice('error', `Failed to remove Provider token: ${error?.message || error}`);
     }
   }
 
