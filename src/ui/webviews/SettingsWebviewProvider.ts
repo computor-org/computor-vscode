@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { GitLabTokenManager } from '../../services/GitLabTokenManager';
+import { RepositoryTokenManager } from '../../services/RepositoryTokenManager';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { GitEnvironmentService } from '../../services/GitEnvironmentService';
 import { BackendConnectionService } from '../../services/BackendConnectionService';
@@ -22,12 +22,12 @@ interface SettingsInitialState {
 }
 
 export class SettingsWebviewProvider extends BaseWebviewProvider {
-  private gitLabTokenManager: GitLabTokenManager;
+  private gitLabTokenManager: RepositoryTokenManager;
   private settingsManager: ComputorSettingsManager;
 
   constructor(context: vscode.ExtensionContext) {
     super(context, 'computor.settingsView');
-    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+    this.gitLabTokenManager = RepositoryTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
   }
 

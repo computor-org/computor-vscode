@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
-import { GitLabTokenManager } from '../services/GitLabTokenManager';
+import { RepositoryTokenManager } from '../services/RepositoryTokenManager';
 import { ComputorApiService } from '../services/ComputorApiService';
 
-export async function manageGitLabTokens(context: vscode.ExtensionContext): Promise<void> {
+export async function manageRepositoryTokens(context: vscode.ExtensionContext): Promise<void> {
   const settingsManager = new ComputorSettingsManager(context);
-  const gitLabTokenManager = GitLabTokenManager.getInstance(context);
+  const gitLabTokenManager = RepositoryTokenManager.getInstance(context);
 
   const urls = await settingsManager.getGitLabUrls();
 
@@ -151,7 +151,7 @@ export async function manageGitLabTokens(context: vscode.ExtensionContext): Prom
   }
 }
 
-async function validateGitLabToken(gitlabUrl: string, token: string, tokenManager: GitLabTokenManager): Promise<{ valid: boolean; name?: string; username?: string; error?: string }> {
+async function validateGitLabToken(gitlabUrl: string, token: string, tokenManager: RepositoryTokenManager): Promise<{ valid: boolean; name?: string; username?: string; error?: string }> {
   return await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
     title: `Validating token for ${gitlabUrl}...`,
@@ -176,7 +176,7 @@ async function validateTokenWithCourses(
     // Get API service singleton instance
     const api = ComputorApiService.getInstance();
     if (!api) {
-      console.log('[manageGitLabTokens] API service not available (user may not be logged in), skipping course validation');
+      console.log('[manageRepositoryTokens] API service not available (user may not be logged in), skipping course validation');
       return { valid: false, error: 'Not logged in to Computor backend' };
     }
 
@@ -188,7 +188,7 @@ async function validateTokenWithCourses(
     const courses = providerMap.get(gitlabUrl);
 
     if (!courses || courses.length === 0) {
-      console.log(`[manageGitLabTokens] No courses found for provider ${gitlabUrl}`);
+      console.log(`[manageRepositoryTokens] No courses found for provider ${gitlabUrl}`);
       return { valid: false, error: 'No courses found for this provider' };
     }
 
@@ -222,13 +222,13 @@ async function validateTokenWithCourses(
             failureCount++;
           }
         } catch (error) {
-          console.warn(`[manageGitLabTokens] Failed to validate course ${course.courseId}:`, error);
+          console.warn(`[manageRepositoryTokens] Failed to validate course ${course.courseId}:`, error);
           failureCount++;
         }
       }
     });
 
-    console.log(`[manageGitLabTokens] Course validation complete for ${gitlabUrl}: ${successCount} succeeded, ${failureCount} failed`);
+    console.log(`[manageRepositoryTokens] Course validation complete for ${gitlabUrl}: ${successCount} succeeded, ${failureCount} failed`);
 
     if (successCount > 0) {
       return { valid: true, coursesValidated: successCount };
@@ -236,7 +236,7 @@ async function validateTokenWithCourses(
       return { valid: false, error: `Failed to validate ${failureCount} course(s)` };
     }
   } catch (error) {
-    console.error('[manageGitLabTokens] Failed to validate with courses:', error);
+    console.error('[manageRepositoryTokens] Failed to validate with courses:', error);
     return { valid: false, error: String(error) };
   }
 }

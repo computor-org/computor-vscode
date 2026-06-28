@@ -9,8 +9,8 @@ import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
-// GitLabTokenManager is dynamically imported in code blocks below
-// import { GitLabTokenManager } from './services/GitLabTokenManager';
+// RepositoryTokenManager is dynamically imported in code blocks below
+// import { RepositoryTokenManager } from './services/RepositoryTokenManager';
 
 import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
@@ -51,7 +51,7 @@ import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/pane
 import { TestResultService } from './services/TestResultService';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
-import { manageGitLabTokens } from './commands/manageGitLabTokens';
+import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
 import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
@@ -1620,7 +1620,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.manageRepositoryTokens', async () => {
-    await manageGitLabTokens(context);
+    await manageRepositoryTokens(context);
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.configureGit', async () => {

@@ -10,8 +10,8 @@ import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl }
  * GitLab Token Manager - Singleton service for managing GitLab tokens
  * Used by all views (lecturer, tutor, student) to access GitLab repositories
  */
-export class GitLabTokenManager {
-  private static instance: GitLabTokenManager;
+export class RepositoryTokenManager {
+  private static instance: RepositoryTokenManager;
   private settingsManager: ComputorSettingsManager;
   private tokenCache: Map<string, string> = new Map();
 
@@ -22,12 +22,12 @@ export class GitLabTokenManager {
   /**
    * Get the singleton instance
    */
-  static getInstance(context: vscode.ExtensionContext): GitLabTokenManager {
-    if (!GitLabTokenManager.instance) {
-      GitLabTokenManager.instance = new GitLabTokenManager(context);
-      void GitLabTokenManager.instance.migrateOldTokens();
+  static getInstance(context: vscode.ExtensionContext): RepositoryTokenManager {
+    if (!RepositoryTokenManager.instance) {
+      RepositoryTokenManager.instance = new RepositoryTokenManager(context);
+      void RepositoryTokenManager.instance.migrateOldTokens();
     }
-    return GitLabTokenManager.instance;
+    return RepositoryTokenManager.instance;
   }
 
   /**
@@ -40,22 +40,22 @@ export class GitLabTokenManager {
       const legacyTokens = (settings.workspace as any)?.gitlabTokens;
 
       if (legacyTokens && typeof legacyTokens === 'object' && Object.keys(legacyTokens).length > 0) {
-        console.log('[GitLabTokenManager] Migrating legacy tokens from JSON config...');
+        console.log('[RepositoryTokenManager] Migrating legacy tokens from JSON config...');
 
         for (const [url, token] of Object.entries(legacyTokens)) {
           if (typeof token === 'string' && token.length > 0) {
             await this.context.secrets.store(`gitlab-token-${url}`, token);
             await this.settingsManager.addGitLabUrl(url);
-            console.log(`[GitLabTokenManager] Migrated token for ${url}`);
+            console.log(`[RepositoryTokenManager] Migrated token for ${url}`);
           }
         }
 
         delete (settings.workspace as any).gitlabTokens;
         await this.settingsManager.saveSettings(settings);
-        console.log('[GitLabTokenManager] Migration complete, legacy tokens removed from JSON');
+        console.log('[RepositoryTokenManager] Migration complete, legacy tokens removed from JSON');
       }
     } catch (error) {
-      console.warn('[GitLabTokenManager] Migration failed, but continuing:', error);
+      console.warn('[RepositoryTokenManager] Migration failed, but continuing:', error);
     }
   }
 
@@ -259,7 +259,7 @@ export class GitLabTokenManager {
 
     // Refresh any repositories that already use this origin
     void this.updateWorkspaceRemotes(gitlabUrl, token).catch((error) => {
-      console.warn('[GitLabTokenManager] Failed to refresh workspace remotes:', error);
+      console.warn('[RepositoryTokenManager] Failed to refresh workspace remotes:', error);
     });
   }
 
@@ -419,13 +419,13 @@ export class GitLabTokenManager {
           }
 
           await execAsync(`git remote set-url ${remote} "${updatedUrl}"`, { cwd: repoPath });
-          console.log(`[GitLabTokenManager] Updated remote ${remote} for repository ${repoPath}`);
+          console.log(`[RepositoryTokenManager] Updated remote ${remote} for repository ${repoPath}`);
         } catch (remoteError) {
-          console.warn(`[GitLabTokenManager] Failed to update remote ${remote} in ${repoPath}:`, remoteError);
+          console.warn(`[RepositoryTokenManager] Failed to update remote ${remote} in ${repoPath}:`, remoteError);
         }
       }
     } catch (error) {
-      console.warn(`[GitLabTokenManager] Could not enumerate remotes for ${repoPath}:`, error);
+      console.warn(`[RepositoryTokenManager] Could not enumerate remotes for ${repoPath}:`, error);
     }
   }
 
@@ -437,35 +437,30 @@ export class GitLabTokenManager {
    */
   async validateToken(gitlabUrl: string, token: string): Promise<{ valid: boolean; name?: string; username?: string; error?: string }> {
     try {
-      // Normalize URL and construct API endpoint
+      // Try both provider APIs: GitLab (/api/v4 + PRIVATE-TOKEN) and Forgejo/Gitea
+      // (/api/v1 + Authorization: token). The first that returns a user wins.
       const baseUrl = gitlabUrl.endsWith('/') ? gitlabUrl.slice(0, -1) : gitlabUrl;
-      const apiUrl = `${baseUrl}/api/v4/user`;
-
-      const response = await fetch(apiUrl, {
-        headers: {
-          'PRIVATE-TOKEN': token
+      const attempts: Array<{ url: string; headers: Record<string, string> }> = [
+        { url: `${baseUrl}/api/v4/user`, headers: { 'PRIVATE-TOKEN': token } },
+        { url: `${baseUrl}/api/v1/user`, headers: { 'Authorization': `token ${token}` } }
+      ];
+      let lastError = '';
+      for (const attempt of attempts) {
+        const response = await fetch(attempt.url, { headers: attempt.headers });
+        if (response.ok) {
+          const userData = await response.json();
+          return {
+            valid: true,
+            name: userData.name || userData.full_name || 'Unknown',
+            username: userData.username || userData.login || 'unknown'
+          };
         }
-      });
-
-      if (!response.ok) {
         const errorText = await response.text();
-        return {
-          valid: false,
-          error: `HTTP ${response.status}: ${errorText || response.statusText}`
-        };
+        lastError = `HTTP ${response.status}: ${errorText || response.statusText}`;
       }
-
-      const userData = await response.json();
-      const name = userData.name || 'Unknown';
-      const username = userData.username || 'unknown';
-
-      return {
-        valid: true,
-        name,
-        username
-      };
+      return { valid: false, error: lastError || 'Token validation failed' };
     } catch (error: any) {
-      console.error('[GitLabTokenManager] Token validation failed:', error);
+      console.error('[RepositoryTokenManager] Token validation failed:', error);
       return {
         valid: false,
         error: error?.message || String(error)

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
-import { GitLabTokenManager } from './GitLabTokenManager';
+import { RepositoryTokenManager } from './RepositoryTokenManager';
 
 interface CourseProviderInfo {
   courseId: string;
@@ -115,7 +115,7 @@ export class CourseProviderValidationService {
       return;
     }
 
-    const tokenManager = GitLabTokenManager.getInstance(this.context);
+    const tokenManager = RepositoryTokenManager.getInstance(this.context);
 
     for (const [providerUrl, courses] of providerMap.entries()) {
       // Skip if already validated this session

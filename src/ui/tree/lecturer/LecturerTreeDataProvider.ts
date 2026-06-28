@@ -3,7 +3,7 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerRepositoryManager } from '../../../services/LecturerRepositoryManager';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GitLabTokenManager } from '../../../services/GitLabTokenManager';
+import { RepositoryTokenManager } from '../../../services/RepositoryTokenManager';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
@@ -91,7 +91,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   public readonly dragMimeTypes: string[] = ['application/vnd.code.tree.lecturermember', 'application/vnd.code.tree.lecturercontent'];
 
   private apiService: ComputorApiService;
-  private gitLabTokenManager: GitLabTokenManager;
+  private gitLabTokenManager: RepositoryTokenManager;
   private settingsManager: ComputorSettingsManager;
   private expandedStates: Record<string, boolean> = {};
   
@@ -111,7 +111,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
-    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+    this.gitLabTokenManager = RepositoryTokenManager.getInstance(context);
     this.settingsManager = new ComputorSettingsManager(context);
     this.gitWrapper = new GitWrapper();
     this.repositoryManager = new LecturerRepositoryManager(context, this.apiService as any);

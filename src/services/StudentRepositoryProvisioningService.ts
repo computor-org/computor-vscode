@@ -7,7 +7,7 @@ import { execGitClone } from '../git/gitCloneHelpers';
 import { execAsyncWithTimeout } from '../utils/exec';
 import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } from '../utils/gitUrlHelpers';
 import { extractZipBuffer } from '../utils/zipHelpers';
-import { GitLabTokenManager } from './GitLabTokenManager';
+import { RepositoryTokenManager } from './RepositoryTokenManager';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
 export interface SetUpOptions {
@@ -39,13 +39,13 @@ export type SetUpOutcome =
  * re-clones / refreshes the rotated clone token.
  */
 export class StudentRepositoryProvisioningService {
-  private readonly tokens: GitLabTokenManager;
+  private readonly tokens: RepositoryTokenManager;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly api: ComputorApiService
   ) {
-    this.tokens = GitLabTokenManager.getInstance(context);
+    this.tokens = RepositoryTokenManager.getInstance(context);
   }
 
   /** Does the student already have a repo recorded for this course? */

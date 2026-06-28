@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ComputorApiService } from './ComputorApiService';
-import { GitLabTokenManager } from './GitLabTokenManager';
+import { RepositoryTokenManager } from './RepositoryTokenManager';
 import { execAsync, execAsyncWithTimeout, GitTimeoutError, GitCancelledError } from '../utils/exec';
 import { execGitClone } from '../git/gitCloneHelpers';
 import { CTGit } from '../git/CTGit';
@@ -26,7 +26,7 @@ interface RepositoryInfo {
  */
 export class StudentRepositoryManager {
   private workspaceStructure: WorkspaceStructureManager;
-  private gitLabTokenManager: GitLabTokenManager;
+  private gitLabTokenManager: RepositoryTokenManager;
   private apiService: ComputorApiService;
   private corruptIndexHandler?: (repoPath: string) => void;
 
@@ -35,7 +35,7 @@ export class StudentRepositoryManager {
     apiService: ComputorApiService
   ) {
     this.apiService = apiService;
-    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+    this.gitLabTokenManager = RepositoryTokenManager.getInstance(context);
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
   }
 

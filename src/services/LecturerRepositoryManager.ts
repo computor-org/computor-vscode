@@ -3,19 +3,19 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execAsyncWithTimeout } from '../utils/exec';
 import { execGitClone } from '../git/gitCloneHelpers';
-import { GitLabTokenManager } from './GitLabTokenManager';
+import { RepositoryTokenManager } from './RepositoryTokenManager';
 import { ComputorApiService } from './ComputorApiService';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 
 export class LecturerRepositoryManager {
   private workspaceStructure: WorkspaceStructureManager;
-  private gitLabTokenManager: GitLabTokenManager;
+  private gitLabTokenManager: RepositoryTokenManager;
   private api: ComputorApiService;
 
   constructor(context: vscode.ExtensionContext, api: ComputorApiService) {
     this.api = api;
-    this.gitLabTokenManager = GitLabTokenManager.getInstance(context);
+    this.gitLabTokenManager = RepositoryTokenManager.getInstance(context);
     this.workspaceStructure = WorkspaceStructureManager.getInstance();
   }
 

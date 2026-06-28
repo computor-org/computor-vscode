@@ -5,7 +5,7 @@ import { TutorStudentTreeProvider } from '../ui/tree/tutor/TutorStudentTreeProvi
 import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import { createSimpleGit } from '../git/simpleGitFactory';
-import { GitLabTokenManager } from '../services/GitLabTokenManager';
+import { RepositoryTokenManager } from '../services/RepositoryTokenManager';
 import { deriveRepositoryDirectoryName } from '../utils/repositoryNaming';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
@@ -213,7 +213,7 @@ export class TutorCommands {
           vscode.window.showWarningMessage(`Directory not empty: ${dir}. Skipping clone.`);
         } else {
           const origin = (() => { try { const u = new URL(remoteUrl!); return u.origin; } catch { return undefined; } })();
-          const tokenManager = GitLabTokenManager.getInstance(this.context);
+          const tokenManager = RepositoryTokenManager.getInstance(this.context);
           let authUrl = remoteUrl!;
           if (origin) {
             const savedToken = await tokenManager.getToken(origin);
