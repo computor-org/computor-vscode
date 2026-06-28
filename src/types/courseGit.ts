@@ -10,7 +10,7 @@
  */
 
 /** Student-repo backends a course can offer. */
-export type StudentRepoMode = 'forgejo' | 'gitlab_managed' | 'gitlab_byo' | 'download';
+export type StudentRepoMode = 'managed' | 'external' | 'download';
 
 /** The `student-template` a student repository is derived from. */
 export interface GitTemplateRef {

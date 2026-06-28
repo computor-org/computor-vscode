@@ -1371,7 +1371,7 @@ export class ComputorApiService {
 
   /**
    * What a course offers for student repos: delivery mode, allowed backends
-   * (forgejo / gitlab_byo / download) and the student-template location.
+   * (managed / external / download) and the student-template location.
    * Returns an `unconfigured` descriptor when the course has no git binding.
    */
   async getCourseGitDescriptor(courseId: string): Promise<CourseGitDescriptor> {

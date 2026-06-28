@@ -234,7 +234,7 @@ export class StudentCommands {
           return;
         }
         const supported = descriptor.student_repo_modes.filter(
-          m => m === 'forgejo' || m === 'gitlab_managed' || m === 'gitlab_byo'
+          m => m === 'managed' || m === 'external'
         );
         if (supported.length === 0) {
           vscode.window.showInformationMessage(
@@ -245,9 +245,8 @@ export class StudentCommands {
         if (supported.length > 1) {
           const pick = await vscode.window.showQuickPick(
             [
-              { label: '$(server) Institution Forgejo', description: 'Recommended — no extra credentials', mode: 'forgejo' },
-              { label: '$(cloud) Institution GitLab', description: 'Hosted for you on the institution GitLab (needs your GitLab token)', mode: 'gitlab_managed' },
-              { label: '$(repo-forked) Your own GitLab', description: 'Fork into a GitLab group you own (needs a token)', mode: 'gitlab_byo' }
+              { label: '$(server) Institution-hosted', description: 'We host your repository — recommended, no extra setup', mode: 'managed' },
+              { label: '$(repo-forked) Your own repository', description: 'Bring your own repo on any git provider (needs a token)', mode: 'external' }
             ].filter(o => supported.includes(o.mode)),
             { title: 'Where should your repository live?', ignoreFocusOut: true }
           );

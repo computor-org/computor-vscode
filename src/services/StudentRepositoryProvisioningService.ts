@@ -83,15 +83,16 @@ export class StudentRepositoryProvisioningService {
       : undefined;
     const mode = existing?.mode
       || preferred
-      || (descriptor.student_repo_modes.includes('forgejo') ? 'forgejo' : descriptor.student_repo_modes[0]);
+      || (descriptor.student_repo_modes.includes('managed') ? 'managed' : descriptor.student_repo_modes[0]);
 
-    if (mode === 'forgejo') {
+    if (mode === 'managed') {
+      // 'managed' is provider-agnostic; the template's server type picks the backend.
+      if (descriptor.template?.server_type === 'gitlab') {
+        return this.provisionAndCloneGitlabManaged(courseId, descriptor, opts);
+      }
       return this.provisionAndCloneForgejo(courseId, opts);
     }
-    if (mode === 'gitlab_managed') {
-      return this.provisionAndCloneGitlabManaged(courseId, descriptor, opts);
-    }
-    if (mode === 'gitlab_byo') {
+    if (mode === 'external') {
       return this.provisionAndCloneGitLabByo(courseId, descriptor, opts);
     }
 
@@ -216,7 +217,7 @@ export class StudentRepositoryProvisioningService {
     // Register the location with Computor (tracking only — never used for grading).
     report('Registering your repository…');
     const repo = await this.api.registerStudentRepository(courseId, {
-      mode: 'gitlab_byo',
+      mode: 'external',
       server_url: fork.serverUrl,
       repo_ref: fork.repoRef,
       http_url: fork.httpUrl,

@@ -648,13 +648,10 @@ export class LecturerCommands {
     if (!serverPick) { return; }
     const server = serverPick.server;
 
-    const managedMode = server.type === 'gitlab' ? 'gitlab_managed' : 'forgejo';
     const modeOptions = [
-      { label: `$(server) Managed (${server.type})`, description: 'We host each student repository', mode: managedMode, picked: true },
-      { label: '$(cloud-download) Download', description: 'Students download the template as a ZIP', mode: 'download', picked: false },
-      ...(server.type === 'gitlab'
-        ? [{ label: '$(repo-forked) External (student-hosted)', description: 'Students bring their own GitLab repository', mode: 'gitlab_byo', picked: false }]
-        : [])
+      { label: `$(server) Managed (${server.type})`, description: 'We host each student repository', mode: 'managed', picked: true },
+      { label: '$(repo-forked) External', description: 'Students bring their own repository (any provider)', mode: 'external', picked: false },
+      { label: '$(cloud-download) Download', description: 'Students download the template + submit without git', mode: 'download', picked: false },
     ];
     const modePicks = await vscode.window.showQuickPick(modeOptions, {
       title: 'Which student-repo modes should this course offer?',
