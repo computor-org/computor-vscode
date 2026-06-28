@@ -28,7 +28,6 @@ import { HttpError } from '../http/errors/HttpError';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList, OrganizationTaskRequest } from '../types/generated/organizations';
-import type { GitLabCredentials } from '../types/generated/common';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
@@ -448,13 +447,11 @@ export class LecturerCommands {
     });
     if (!familyTitle) { return; }
 
-    const gitlab = await this.promptOptionalGitlab('Inherit from Organization');
-    if (gitlab === null) { return; }
-
+    // Course families carry no git config in the course-level model (git is
+    // per-course), so there is nothing to inherit from the organization.
     const request: CourseFamilyTaskRequest = {
       course_family: { path: familyPath, title: familyTitle },
       organization_id: organization.id,
-      ...(gitlab ? { gitlab } : {})
     };
 
     try {
@@ -570,43 +567,6 @@ export class LecturerCommands {
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to create course: ${error.message || error}`);
     }
-  }
-
-  /**
-   * Prompt user to optionally provide custom GitLab credentials.
-   * Returns undefined to inherit, GitLabCredentials for custom, or null if cancelled.
-   */
-  private async promptOptionalGitlab(inheritLabel: string): Promise<GitLabCredentials | undefined | null> {
-    const choice = await vscode.window.showQuickPick(
-      [
-        { label: inheritLabel, description: 'Use parent GitLab settings', value: 'inherit' as const },
-        { label: 'Custom GitLab Settings', description: 'Specify different GitLab credentials', value: 'custom' as const }
-      ],
-      { placeHolder: 'GitLab configuration' }
-    );
-    if (!choice) { return null; }
-    if (choice.value === 'inherit') { return undefined; }
-
-    const gitlabUrl = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab instance URL',
-      placeHolder: 'e.g., https://gitlab.example.com',
-      validateInput: (value) => {
-        if (!value) { return 'GitLab URL is required'; }
-        try { new URL(value); return null; }
-        catch { return 'Must be a valid URL'; }
-      }
-    });
-    if (!gitlabUrl) { return null; }
-
-    const gitlabToken = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab Personal Access Token',
-      placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
-      password: true,
-      validateInput: (value) => !value ? 'GitLab token is required' : null
-    });
-    if (!gitlabToken) { return null; }
-
-    return { gitlab_url: gitlabUrl, gitlab_token: gitlabToken };
   }
 
   /**
