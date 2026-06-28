@@ -1619,7 +1619,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await initializeOfflineMode(context);
   }));
 
-  context.subscriptions.push(vscode.commands.registerCommand('computor.manageGitLabTokens', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand('computor.manageRepositoryTokens', async () => {
     await manageGitLabTokens(context);
   }));
 

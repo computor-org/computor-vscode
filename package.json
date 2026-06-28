@@ -1000,14 +1000,14 @@
         "category": "Computor Lecturer"
       },
       {
-        "command": "computor.lecturer.openGitLabRepo",
-        "title": "Open GitLab Repository",
+        "command": "computor.lecturer.openRemoteRepository",
+        "title": "Open Remote Repository",
         "icon": "$(github)",
         "category": "Computor Lecturer"
       },
       {
-        "command": "computor.manageGitLabTokens",
-        "title": "Manage GitLab Tokens",
+        "command": "computor.manageRepositoryTokens",
+        "title": "Manage Repository Tokens",
         "icon": "$(key)",
         "category": "Computor"
       },
@@ -1305,7 +1305,7 @@
           "group": "navigation@2"
         },
         {
-          "command": "computor.manageGitLabTokens",
+          "command": "computor.manageRepositoryTokens",
           "when": "view == computor.student.courses",
           "group": "navigation@3"
         },
@@ -1345,12 +1345,12 @@
           "group": "navigation@4"
         },
         {
-          "command": "computor.manageGitLabTokens",
+          "command": "computor.manageRepositoryTokens",
           "when": "view == computor.tutor.courses",
           "group": "navigation@3"
         },
         {
-          "command": "computor.manageGitLabTokens",
+          "command": "computor.manageRepositoryTokens",
           "when": "view == computor.lecturer.courses",
           "group": "navigation@3"
         },
@@ -1732,9 +1732,9 @@
           "group": "3_delete@1"
         },
         {
-          "command": "computor.lecturer.openGitLabRepo",
+          "command": "computor.lecturer.openRemoteRepository",
           "when": "view == computor.lecturer.courses && (viewItem == course || viewItem == course.member)",
-          "group": "5_gitlab@1"
+          "group": "5_repository@1"
         },
         {
           "command": "computor.lecturer.releaseCourseContent",

@@ -238,8 +238,8 @@ export class LecturerCommands {
     });
 
     // GitLab repository opening
-    register('computor.lecturer.openGitLabRepo', async (item: CourseTreeItem | CourseMemberTreeItem) => {
-      await this.openGitLabRepository(item);
+    register('computor.lecturer.openRemoteRepository', async (item: CourseTreeItem | CourseMemberTreeItem) => {
+      await this.openRemoteRepository(item);
     });
 
     // Release/deployment commands
@@ -1762,7 +1762,7 @@ export class LecturerCommands {
     }
   }
 
-  private async openGitLabRepository(item: CourseTreeItem | CourseMemberTreeItem): Promise<void> {
+  private async openRemoteRepository(item: CourseTreeItem | CourseMemberTreeItem): Promise<void> {
     try {
       let webUrl: string | undefined;
       let itemType: string;
@@ -1778,7 +1778,7 @@ export class LecturerCommands {
           const projectPath = memberData.properties.gitlab.full_path;
           webUrl = `${gitlabHost}/${projectPath}`;
         } else {
-          vscode.window.showWarningMessage('No GitLab project found for this course member');
+          vscode.window.showWarningMessage('No repository found for this course member');
           return;
         }
       } else {
@@ -1792,7 +1792,7 @@ export class LecturerCommands {
           const groupPath = courseGitlab.full_path;
           webUrl = `${gitlabHost}/${groupPath}`;
         } else {
-          vscode.window.showWarningMessage('No GitLab group found for this course');
+          vscode.window.showWarningMessage('No repository found for this course');
           return;
         }
       }
@@ -1805,10 +1805,10 @@ export class LecturerCommands {
         
         // Open the URL in the default browser
         await vscode.env.openExternal(vscode.Uri.parse(webUrl));
-        vscode.window.showInformationMessage(`Opening GitLab ${itemType} in browser`);
+        vscode.window.showInformationMessage(`Opening ${itemType} in browser`);
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to open GitLab repository: ${error}`);
+      vscode.window.showErrorMessage(`Failed to open repository: ${error}`);
     }
   }
 

@@ -130,8 +130,8 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       case 'openFolder':
         await this.handleOpenFolder(message.data?.path);
         break;
-      case 'openGitlab':
-        await this.handleOpenGitlab(message.data?.url);
+      case 'openRepository':
+        await this.handleOpenRepository(message.data?.url);
         break;
       case 'copyCloneUrl':
         await this.handleCopyCloneUrl(message.data?.url);
@@ -170,7 +170,7 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
     }
   }
 
-  private async handleOpenGitlab(url?: string): Promise<void> {
+  private async handleOpenRepository(url?: string): Promise<void> {
     if (!url) {
       vscode.window.showWarningMessage('No repository URL available for this content.');
       return;

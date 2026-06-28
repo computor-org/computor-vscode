@@ -174,8 +174,8 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         }
         break;
 
-      case 'openGitLabRepo':
-        await vscode.commands.executeCommand('computor.lecturer.openGitLabRepo', message.data);
+      case 'openRemoteRepo':
+        await vscode.commands.executeCommand('computor.lecturer.openRemoteRepository', message.data);
         break;
     }
   }

@@ -91,7 +91,7 @@
       const openRepoBtn = document.createElement('button');
       openRepoBtn.className = 'vscode-button vscode-button--secondary';
       openRepoBtn.textContent = 'Open Repository';
-      openRepoBtn.addEventListener('click', () => sendMessage('openGitlab', { url: actions.webUrl }));
+      openRepoBtn.addEventListener('click', () => sendMessage('openRepository', { url: actions.webUrl }));
       actionsContainer.appendChild(openRepoBtn);
     }
 

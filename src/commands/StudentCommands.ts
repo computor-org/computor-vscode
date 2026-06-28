@@ -297,10 +297,10 @@ export class StudentCommands {
       case 'forgejo-login-required': {
         const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
         const choice = await vscode.window.showWarningMessage(
-          'Sign in to Forgejo once in your browser to finish setting up your repository, then run "Set up repository" again.',
-          ...(target ? ['Open Forgejo'] : [])
+          'Sign in to your repository provider once in your browser to finish setting up your repository, then run "Set up repository" again.',
+          ...(target ? ['Open in Browser'] : [])
         );
-        if (choice === 'Open Forgejo' && target) {
+        if (choice === 'Open in Browser' && target) {
           void vscode.env.openExternal(vscode.Uri.parse(target));
         }
         break;

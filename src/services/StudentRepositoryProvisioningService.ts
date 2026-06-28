@@ -151,7 +151,7 @@ export class StudentRepositoryProvisioningService {
   private async provisionAndCloneForgejo(courseId: string, opts?: SetUpOptions): Promise<SetUpOutcome> {
     const report = opts?.onProgress ?? (() => {});
 
-    report('Provisioning your Forgejo repository…');
+    report('Provisioning your repository…');
     // Idempotent + self-healing: returns the existing repo and a freshly-rotated
     // one-time clone token on every call.
     const repo = await this.api.provisionStudentRepository(courseId);
