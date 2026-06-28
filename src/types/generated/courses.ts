@@ -14,6 +14,8 @@ import type { CourseContentDeploymentGet, CourseContentDeploymentList, CourseMem
 
 import type { OrganizationGet } from './organizations';
 
+import type { CourseGitBindingUpsert } from '../courseGit';
+
 import type { TaskStatus } from './tasks';
 
 import type { UserList } from './users';
@@ -1119,7 +1121,8 @@ export interface CourseFamilyTaskRequest {
 export interface CourseTaskRequest {
   course: Record<string, any>;
   course_family_id: string;
-  gitlab?: GitLabCredentials | null;
+  /** Course-level git binding applied at creation (registry git_server_id + student-repo modes); omit to create the course unbound and configure git later. */
+  git?: CourseGitBindingUpsert | null;
 }
 
 export interface GradedByCourseMember {
