@@ -46,6 +46,8 @@ export interface CourseMemberRepositoryGet {
   course_member_id: string;
   /** StudentRepoMode */
   mode: string;
+  /** Git server type backing this repo: 'forgejo' | 'gitlab' (null for external/unknown) */
+  provider_type?: string | null;
   server_url?: string | null;
   repo_ref?: string | null;
   http_url?: string | null;
