@@ -6,7 +6,7 @@ import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { execGitClone } from '../git/gitCloneHelpers';
 import { execAsyncWithTimeout } from '../utils/exec';
 import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } from '../utils/gitUrlHelpers';
-import { GitLabByoProvisioner } from './GitLabByoProvisioner';
+import { extractZipBuffer } from '../utils/zipHelpers';
 import { GitLabTokenManager } from './GitLabTokenManager';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
@@ -39,14 +39,12 @@ export type SetUpOutcome =
  * re-clones / refreshes the rotated clone token.
  */
 export class StudentRepositoryProvisioningService {
-  private readonly byo: GitLabByoProvisioner;
   private readonly tokens: GitLabTokenManager;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly api: ComputorApiService
   ) {
-    this.byo = new GitLabByoProvisioner(context);
     this.tokens = GitLabTokenManager.getInstance(context);
   }
 
@@ -93,7 +91,7 @@ export class StudentRepositoryProvisioningService {
       return this.provisionAndCloneForgejo(courseId, opts);
     }
     if (mode === 'external') {
-      return this.provisionAndCloneGitLabByo(courseId, descriptor, opts);
+      return this.provisionAndCloneExternal(courseId, descriptor, opts);
     }
 
     // download — handled by a separate "Download template" command, not here.
@@ -190,43 +188,42 @@ export class StudentRepositoryProvisioningService {
     return { status: 'cloned', path: targetPath, repo };
   }
 
-  // --- Mode B — GitLab BYO (client-side fork) -------------------------------
+  // --- Mode: external (student-hosted on ANY provider; seeded from template) ---
 
-  private async provisionAndCloneGitLabByo(
+  private async provisionAndCloneExternal(
     courseId: string,
     descriptor: CourseGitDescriptor,
     opts?: SetUpOptions
   ): Promise<SetUpOutcome> {
     const report = opts?.onProgress ?? (() => {});
-    const template = descriptor.template;
 
-    // v1 handles the primary case: native fork on the GitLab instance the
-    // template lives on. Cross-instance (template elsewhere) clone-and-push is
-    // a later increment.
-    if (!template || template.server_type !== 'gitlab' || !template.repo) {
-      return { status: 'unsupported-mode', modes: descriptor.student_repo_modes };
-    }
+    // The student supplies an EMPTY repo they created on any provider; we seed it
+    // from the course template and link the template as `upstream` for later syncs.
+    const entered = await vscode.window.showInputBox({
+      title: 'Link your repository',
+      prompt: 'URL of an EMPTY git repository you created (any provider) to seed from the course template',
+      placeHolder: 'https://github.com/me/my-course.git',
+      ignoreFocusOut: true,
+      validateInput: (v) => (v && /^https?:\/\/.+/.test(v.trim())) ? undefined : 'Enter an http(s) git repository URL'
+    });
+    if (!entered) { return { status: 'cancelled' }; }
+    const url = entered.trim();
+    const host = this.originOf(url);
 
-    report('Preparing your GitLab repository…');
-    const slug = await this.courseSlug(courseId);
-    const fork = await this.byo.forkTemplate(template, slug);
-    if (!fork) {
-      return { status: 'cancelled' };
-    }
+    const token = await this.ensureExternalToken(host);
+    if (!token) { return { status: 'cancelled' }; }
 
-    // Register the location with Computor (tracking only — never used for grading).
+    // Record the location with Computor (tracking only — never used for grading).
     report('Registering your repository…');
     const repo = await this.api.registerStudentRepository(courseId, {
       mode: 'external',
-      server_url: fork.serverUrl,
-      repo_ref: fork.repoRef,
-      http_url: fork.httpUrl,
-      ssh_url: fork.sshUrl ?? null,
-      web_url: fork.webUrl ?? null
+      server_url: host,
+      repo_ref: this.repoRefFromUrl(url),
+      http_url: url
     });
 
     const targetPath = this.localPathFor(repo);
-    const authUrl = addTokenToGitUrl(fork.httpUrl, fork.token);
+    const authUrl = addTokenToGitUrl(url, token);
 
     if (this.isCloned(targetPath)) {
       report('Refreshing repository credentials…');
@@ -234,20 +231,55 @@ export class StudentRepositoryProvisioningService {
       return { status: 'already-cloned', path: targetPath, repo };
     }
 
-    report('Cloning your repository…');
-    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-    await execGitClone(authUrl, targetPath, { cancellationToken: opts?.cancellationToken });
+    // Seed: download the course template, push it into the empty repo, link upstream.
+    report('Downloading the course template…');
+    const buffer = await this.api.downloadTemplateArchive(courseId);
+    await fs.promises.mkdir(targetPath, { recursive: true });
+    await extractZipBuffer(buffer, targetPath);
+
+    report('Linking your repository to the course template…');
+    await this.seedAndPush(targetPath, authUrl, descriptor.template?.clone_url ?? undefined);
     return { status: 'cloned', path: targetPath, repo };
   }
 
-  /** A short, readable course slug for repo names (last path/title segment). */
-  private async courseSlug(courseId: string): Promise<string> {
-    try {
-      const course = await this.api.getStudentCourse(courseId);
-      const raw = String(course?.path || course?.title || courseId);
-      return raw.split(/[./]/).filter(Boolean).pop() || courseId.slice(0, 8);
-    } catch {
-      return courseId.slice(0, 8);
+  private originOf(url: string): string {
+    try { return new URL(url).origin; } catch { return url; }
+  }
+
+  private repoRefFromUrl(url: string): string {
+    try { return new URL(url).pathname.replace(/^\//, '').replace(/\.git$/, ''); } catch { return url; }
+  }
+
+  /** Prompt for (and cache) a write token for an arbitrary git host. */
+  private async ensureExternalToken(host: string): Promise<string | undefined> {
+    const key = `git-token-${host}`;
+    let token = await this.context.secrets.get(key);
+    if (!token) {
+      token = await vscode.window.showInputBox({
+        title: `Access token for ${host}`,
+        prompt: `Enter a git access token for ${host} with write access (stored securely on this machine)`,
+        password: true,
+        ignoreFocusOut: true,
+        validateInput: (v) => (v && v.trim()) ? undefined : 'A token is required'
+      });
+      if (!token) { return undefined; }
+      await this.context.secrets.store(key, token.trim());
+    }
+    return token.trim();
+  }
+
+  /** Initialise the extracted template as a git repo, push it to the student's
+   * empty origin, and link the course template as `upstream` for later syncs. */
+  private async seedAndPush(repoPath: string, authOriginUrl: string, templateUpstreamUrl?: string): Promise<void> {
+    const run = (cmd: string) => execAsyncWithTimeout(cmd, { cwd: repoPath, timeout: 60_000 });
+    await run('git init');
+    await run('git checkout -B main');
+    await run('git add -A');
+    await run('git -c user.name="Computor Student" -c user.email="student@computor.local" commit -m "Initialize from course template"');
+    await run(`git remote add origin "${authOriginUrl}"`);
+    await run('git push -u origin main');
+    if (templateUpstreamUrl) {
+      try { await run(`git remote add upstream "${templateUpstreamUrl}"`); } catch { /* best effort — upstream may need template access */ }
     }
   }
 

@@ -16,6 +16,7 @@ import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel
 import type { WebSocketService } from '../services/WebSocketService';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 import JSZip from 'jszip';
+import { extractZipBuffer } from '../utils/zipHelpers';
 import { commandRegistrar } from './commandHelpers';
 import { redactGitCredentials } from '../utils/gitUrlHelpers';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
@@ -404,7 +405,7 @@ export class StudentCommands {
         if (!folder || !folder[0]) { return; }
         const destDir = path.join(folder[0].fsPath, `${slug}-template`);
         progress.report({ message: 'Extracting…' });
-        const count = await this.extractZipBuffer(buffer, destDir);
+        const count = await extractZipBuffer(buffer, destDir);
         void vscode.window.showInformationMessage(
           `Extracted ${count} file(s) to ${destDir}`, 'Open Folder', 'Reveal'
         ).then(c => {
@@ -418,26 +419,6 @@ export class StudentCommands {
     );
   }
 
-  /** Extract a git-archive ZIP buffer into `destDir`, stripping the single
-   * wrapper directory git servers add (e.g. `repo-<sha>/`). Returns file count. */
-  private async extractZipBuffer(buffer: Buffer, destDir: string): Promise<number> {
-    const zip = await JSZip.loadAsync(buffer);
-    const entries = Object.values(zip.files);
-    const tops = new Set(entries.filter(e => !e.dir).map(e => e.name.split('/')[0]));
-    const strip = tops.size === 1 ? `${[...tops][0]}/` : '';
-    let count = 0;
-    for (const entry of entries) {
-      if (entry.dir) { continue; }
-      let rel = entry.name;
-      if (strip && rel.startsWith(strip)) { rel = rel.slice(strip.length); }
-      if (!rel) { continue; }
-      const target = path.join(destDir, rel);
-      await fs.promises.mkdir(path.dirname(target), { recursive: true });
-      await fs.promises.writeFile(target, await entry.async('nodebuffer'));
-      count++;
-    }
-    return count;
-  }
 
   registerCommands(): void {
 
