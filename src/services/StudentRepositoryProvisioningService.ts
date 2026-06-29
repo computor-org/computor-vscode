@@ -8,6 +8,7 @@ import { execAsyncWithTimeout } from '../utils/exec';
 import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } from '../utils/gitUrlHelpers';
 import { extractZipBuffer } from '../utils/zipHelpers';
 import { RepositoryTokenManager } from './RepositoryTokenManager';
+import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
 export interface SetUpOptions {
@@ -292,11 +293,8 @@ export class StudentRepositoryProvisioningService {
   }
 
   private repoFolderName(repo: CourseMemberRepositoryGet): string {
-    const ref = (repo.repo_ref || '').trim();
-    const base = ref
-      ? ref.split('/').filter(Boolean).join('.')
-      : (repo.course_member_id || repo.id);
-    return base.replace(/[^a-zA-Z0-9._-]/g, '-');
+    // Shared with the student tree so both agree on the clone location.
+    return studentRepoFolderFromRef(repo.repo_ref, repo.course_member_id || repo.id);
   }
 
   private isCloned(repoPath: string): boolean {

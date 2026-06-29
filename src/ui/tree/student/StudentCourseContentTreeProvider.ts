@@ -5,6 +5,7 @@ import { promisify } from 'util';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
 import { StudentRepositoryManager } from '../../../services/StudentRepositoryManager';
+import { StudentRepositoryProvisioningService } from '../../../services/StudentRepositoryProvisioningService';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
@@ -12,8 +13,22 @@ import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentType
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { extractGraderName } from '../../../utils/gradingHelpers';
-import { buildStudentRepoRoot } from '../../../utils/repositoryNaming';
+import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/repositoryNaming';
+import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../utils/exec';
+import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
+
+/** Resolved course-level-git state for one course (cached per session). */
+interface CourseGitModel {
+    /** True when the course has a git binding (new course-level-git model). */
+    configured: boolean;
+    /** Effective student-repo mode: 'managed' | 'external' | 'download'. */
+    mode?: string;
+    /** Offered modes from the descriptor. */
+    modes: string[];
+    /** Local root the assignment files live under, when known. */
+    repoRoot?: string;
+}
 
 interface ContentNode {
     name?: string;
@@ -39,7 +54,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
     private repositoryManager?: StudentRepositoryManager;
+    private provisioning?: StudentRepositoryProvisioningService;
     private settingsManager?: ComputorSettingsManager;
+    // Course-level-git model per course (descriptor + recorded repo), cached for
+    // the session; cleared when a course's contents are refreshed.
+    private gitModelCache: Map<string, CourseGitModel> = new Map();
     private courseContentsCache: Map<string, CourseContentStudentList[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Record<string, boolean> = {};
@@ -67,6 +86,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         this.repositoryManager = repositoryManager;
         if (context) {
             this.settingsManager = new ComputorSettingsManager(context);
+            // Course-level-git provisioning (managed/external/download) for courses
+            // on the new model; needs the extension context for secret storage.
+            this.provisioning = new StudentRepositoryProvisioningService(context, apiService);
             this.loadExpandedStates();
         }
     }
@@ -113,6 +135,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
     private refreshCourseById(courseId: string): void {
         this.courseContentsCache.delete(courseId);
+        this.gitModelCache.delete(courseId);
         const courseItem = this.itemIndex.get(`course-${courseId}`);
         if (courseItem) {
             this._onDidChangeTreeData.fire(courseItem);
@@ -144,6 +167,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     refresh(): void {
         this.forceRefresh = true;
         this.courseContentsCache.clear();
+        this.gitModelCache.clear();
         this.contentKinds = [];
         this.itemIndex.clear();
         this.orgGrouping.clear();
@@ -267,7 +291,23 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             const isAssignment = contentType?.course_content_kind_id === 'assignment';
             let directory = (element.courseContent as any).directory as string | undefined;
             const hasRepository = !!element.submissionGroup?.repository;
-            
+
+            // New course-level-git model (managed / external / download). When the
+            // course has a git binding, resolve and set up the repository via the
+            // descriptor + course-member repository instead of the legacy
+            // submission_group.repository — which the new model doesn't populate
+            // (the cause of "Repository metadata incomplete").
+            if (isAssignment && this.provisioning) {
+                const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                const courseId = await this.findCourseIdForContent(element.courseContent);
+                if (courseId) {
+                    const model = await this.resolveCourseGit(wsRoot, courseId);
+                    if (model.configured) {
+                        return await this.getAssignmentChildrenNewModel(element, wsRoot, courseId, directory, model);
+                    }
+                }
+            }
+
             if (isAssignment && hasRepository) {
                 let assignmentPath: string | undefined;
                 
@@ -907,6 +947,216 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         return items;
     }
 
+    /**
+     * Resolve a course's course-level-git model: whether it has a binding, the
+     * effective student-repo mode, and (when known) the local root the
+     * assignment files live under. Cached per session.
+     */
+    private async resolveCourseGit(wsRoot: string | undefined, courseId: string): Promise<CourseGitModel> {
+        const cached = this.gitModelCache.get(courseId);
+        if (cached) {
+            return cached;
+        }
+        let model: CourseGitModel = { configured: false, modes: [] };
+        try {
+            const descriptor = await this.apiService.getCourseGitDescriptor(courseId);
+            if (descriptor?.configured) {
+                const modes = descriptor.student_repo_modes || [];
+                let repo: CourseMemberRepositoryGet | null = null;
+                try {
+                    repo = await this.apiService.getCourseRepository(courseId);
+                } catch {
+                    repo = null;
+                }
+                // The student's recorded repo mode wins; otherwise default to the
+                // first usable offered mode (managed > external > download).
+                const mode = repo?.mode
+                    || (modes.includes('managed') ? 'managed'
+                        : modes.includes('external') ? 'external'
+                        : modes.includes('download') ? 'download'
+                        : undefined);
+                let repoRoot: string | undefined;
+                if (wsRoot) {
+                    if ((mode === 'managed' || mode === 'external') && repo?.repo_ref) {
+                        repoRoot = buildStudentRepoRoot(
+                            wsRoot,
+                            studentRepoFolderFromRef(repo.repo_ref, repo.course_member_id || repo.id),
+                        );
+                    } else if (mode === 'download') {
+                        // Deterministic, tree-owned extract location (the interactive
+                        // "Download template" command uses a user-chosen folder).
+                        repoRoot = buildStudentRepoRoot(wsRoot, `download.${courseId}`);
+                    }
+                }
+                model = { configured: true, mode, modes, repoRoot };
+            }
+        } catch (e) {
+            // Unconfigured / API error → fall back to the legacy submission-group flow.
+            console.warn('[StudentTree] resolveCourseGit failed, using legacy flow:', e);
+        }
+        this.gitModelCache.set(courseId, model);
+        return model;
+    }
+
+    /** Assignment children for a course on the new course-level-git model. */
+    private async getAssignmentChildrenNewModel(
+        element: CourseContentItem,
+        wsRoot: string | undefined,
+        courseId: string,
+        directory: string | undefined,
+        model: CourseGitModel,
+    ): Promise<TreeItem[]> {
+        if (!wsRoot) {
+            return [new MessageItem('Open a workspace folder to set up your repository.', 'warning')];
+        }
+        if (!model.mode) {
+            return [new MessageItem(`This course offers no usable git mode (${model.modes.join(', ') || 'none'}).`, 'warning')];
+        }
+
+        let repoRoot = model.repoRoot;
+        const setupKey = `${courseId}:${element.courseContent.id}`;
+        const dirMissing = !repoRoot || !directory || !fs.existsSync(path.join(repoRoot, directory));
+        if (dirMissing && !this.assignmentsSetupAttempted.has(setupKey)) {
+            this.assignmentsSetupAttempted.add(setupKey);
+            const setupRoot = await this.setupCourseGitWithProgress(courseId, model, element.courseContent.title || 'assignment');
+            if (setupRoot) {
+                repoRoot = setupRoot;
+            } else {
+                // Setup may have recorded the repo (repo_ref) without us having a
+                // path yet — recompute from the refreshed model.
+                const refreshed = await this.resolveCourseGit(wsRoot, courseId);
+                repoRoot = refreshed.repoRoot ?? repoRoot;
+            }
+        }
+
+        if (!repoRoot) {
+            return [this.gitModeGuidance(model, courseId)];
+        }
+        if (!directory) {
+            return [new MessageItem('Assignment not available yet', 'info')];
+        }
+        const absDir = path.isAbsolute(directory) ? directory : path.join(repoRoot, directory);
+        if (!fs.existsSync(absDir)) {
+            return [new MessageItem('Assignment not available yet', 'info')];
+        }
+        return this.listAssignmentFiles(absDir);
+    }
+
+    /** Provision/clone (managed, external) or download+extract (download) for a
+     * course on the new model, with a cancellable progress notification. Returns
+     * the local repo root on success, else undefined. */
+    private async setupCourseGitWithProgress(
+        courseId: string,
+        model: CourseGitModel,
+        title: string,
+    ): Promise<string | undefined> {
+        return vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Setting up repository for ${title}…`,
+            cancellable: true,
+        }, async (progress, token) => {
+            try {
+                if (model.mode === 'managed' || model.mode === 'external') {
+                    if (!this.provisioning) { return undefined; }
+                    const outcome = await this.provisioning.setUpRepository(courseId, {
+                        cancellationToken: token,
+                        onProgress: (m) => progress.report({ message: m }),
+                    });
+                    // The repo_ref (and thus the path) may now exist — drop the cache
+                    // so the next resolveCourseGit recomputes repoRoot.
+                    this.gitModelCache.delete(courseId);
+                    if (outcome.status === 'cloned' || outcome.status === 'already-cloned') {
+                        return outcome.path;
+                    }
+                    if (outcome.status === 'forgejo-login-required') {
+                        const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
+                        void vscode.window.showInformationMessage(
+                            `Sign in to the git server once${target ? ` (${target})` : ''}, then expand the assignment again.`,
+                        );
+                    } else if (outcome.status === 'unsupported-mode') {
+                        void vscode.window.showInformationMessage(
+                            `This course offers: ${outcome.modes.join(', ') || 'no git modes'}.`,
+                        );
+                    }
+                    return undefined;
+                }
+                if (model.mode === 'download' && model.repoRoot) {
+                    progress.report({ message: 'Downloading course template…' });
+                    const buffer = await this.apiService.downloadTemplateArchive(courseId);
+                    await fs.promises.mkdir(model.repoRoot, { recursive: true });
+                    progress.report({ message: 'Extracting…' });
+                    await extractZipBuffer(buffer, model.repoRoot);
+                    return model.repoRoot;
+                }
+            } catch (e) {
+                if (e instanceof GitCancelledError) {
+                    void vscode.window.showInformationMessage('Setup cancelled. Expand the assignment again to retry.');
+                    return undefined;
+                }
+                console.error('[StudentTree] new-model setup failed:', e);
+                void vscode.window.showErrorMessage(`Repository setup failed: ${e instanceof Error ? e.message : String(e)}`);
+            }
+            return undefined;
+        });
+    }
+
+    /** A clickable hint when we can't auto-resolve the repo for a mode. */
+    private gitModeGuidance(model: CourseGitModel, courseId: string): MessageItem {
+        if (model.mode === 'external') {
+            return new MessageItem(
+                'Set up your repository — click to configure',
+                'warning',
+                { command: 'computor.student.setupCourseRepository', title: 'Set up repository', arguments: [courseId] },
+            );
+        }
+        if (model.mode === 'download') {
+            return new MessageItem(
+                'Download the course template — click to download',
+                'info',
+                { command: 'computor.student.downloadTemplate', title: 'Download template', arguments: [courseId] },
+            );
+        }
+        return new MessageItem('Repository not ready yet. Expand the assignment again to retry.', 'info');
+    }
+
+    /** List the files of a cloned/extracted assignment directory (shared by the
+     * legacy and new-model paths). */
+    private async listAssignmentFiles(absDir: string): Promise<TreeItem[]> {
+        try {
+            const readdir = promisify(fs.readdir);
+            const stat = promisify(fs.stat);
+            const files = await readdir(absDir);
+            const items: TreeItem[] = [];
+            for (const file of files) {
+                if (file === 'mediaFiles' || file === 'README.md' || (file.startsWith('README_') && file.endsWith('.md'))) {
+                    continue;
+                }
+                const filePath = path.join(absDir, file);
+                const stats = await stat(filePath);
+                const isDirectory = stats.isDirectory();
+                items.push(new FileSystemItem(
+                    file,
+                    vscode.Uri.file(filePath),
+                    isDirectory ? vscode.FileType.Directory : vscode.FileType.File,
+                ));
+            }
+            if (items.length === 0) {
+                return [new MessageItem('Empty assignment - no files available', 'info')];
+            }
+            items.sort((a, b) => {
+                const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
+                const bIsDir = (b as FileSystemItem).type === vscode.FileType.Directory;
+                if (aIsDir && !bIsDir) return -1;
+                if (!aIsDir && bIsDir) return 1;
+                return a.label!.toString().localeCompare(b.label!.toString());
+            });
+            return items;
+        } catch (error) {
+            console.error('Error reading assignment directory:', error);
+            return [new MessageItem('Error reading repository files', 'error')];
+        }
+    }
+
     private getStudentRepoRoot(
         workspaceRoot: string,
         courseId: string,
@@ -1110,9 +1360,9 @@ class CourseFamilyItem extends TreeItem {
 }
 
 class MessageItem extends TreeItem {
-    constructor(message: string, severity: 'info' | 'warning' | 'error') {
+    constructor(message: string, severity: 'info' | 'warning' | 'error', command?: vscode.Command) {
         super(message, vscode.TreeItemCollapsibleState.None);
-        
+
         switch (severity) {
             case 'warning':
                 this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
@@ -1122,6 +1372,9 @@ class MessageItem extends TreeItem {
                 break;
             default:
                 this.iconPath = new vscode.ThemeIcon('info');
+        }
+        if (command) {
+            this.command = command;
         }
     }
 }

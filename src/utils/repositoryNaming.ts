@@ -58,6 +58,18 @@ export function buildStudentRepoRoot(workspaceRoot: string, repoName: string): s
   return path.join(workspaceRoot, 'student', repoName);
 }
 
+/**
+ * Folder name for a course-level-git student repository, derived from its
+ * `repo_ref` (e.g. "courses/algo-2026-mmusterm" -> "courses.algo-2026-mmusterm").
+ * Shared by the provisioning service (where it clones) and the student tree
+ * (where it looks) so the two never disagree on the location.
+ */
+export function studentRepoFolderFromRef(repoRef?: string | null, fallback?: string): string {
+  const ref = (repoRef || '').trim();
+  const base = ref ? ref.split('/').filter(Boolean).join('.') : (fallback || 'repository');
+  return base.replace(/[^a-zA-Z0-9._-]/g, '-');
+}
+
 export function buildReviewRepoRoot(workspaceRoot: string, repoName: string): string {
   return path.join(workspaceRoot, 'review', 'repositories', repoName);
 }
