@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
-import type { GitServerGet } from '../types/courseGit';
+import type { GitServerGet, CourseGitBindingUpsert } from '../types/courseGit';
 import { CourseGroupCommands } from './lecturer/courseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
@@ -28,7 +28,6 @@ import { HttpError } from '../http/errors/HttpError';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList, OrganizationTaskRequest } from '../types/generated/organizations';
-import type { GitLabCredentials } from '../types/generated/common';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
@@ -448,13 +447,11 @@ export class LecturerCommands {
     });
     if (!familyTitle) { return; }
 
-    const gitlab = await this.promptOptionalGitlab('Inherit from Organization');
-    if (gitlab === null) { return; }
-
+    // Course families carry no git config in the course-level model (git is
+    // per-course), so there is nothing to inherit from the organization.
     const request: CourseFamilyTaskRequest = {
       course_family: { path: familyPath, title: familyTitle },
       organization_id: organization.id,
-      ...(gitlab ? { gitlab } : {})
     };
 
     try {
@@ -541,13 +538,15 @@ export class LecturerCommands {
     });
     if (!courseTitle) { return; }
 
-    const gitlab = await this.promptOptionalGitlab('Inherit from Course Family');
-    if (gitlab === null) { return; }
+    // Git is per-course in the course-level model — pick a registry git server
+    // (or skip and bind later), not "inherit from the course family".
+    const git = await this.promptCourseGitBinding({ allowSkip: true });
+    if (git === null) { return; }  // cancelled
 
     const request: CourseTaskRequest = {
       course: { path: coursePath, title: courseTitle },
       course_family_id: courseFamilyId,
-      ...(gitlab ? { gitlab } : {})
+      ...(git ? { git } : {})
     };
 
     try {
@@ -571,47 +570,73 @@ export class LecturerCommands {
   }
 
   /**
-   * Prompt user to optionally provide custom GitLab credentials.
-   * Returns undefined to inherit, GitLabCredentials for custom, or null if cancelled.
+   * Prompt for a course git binding from the registry (`GET /git-servers`): pick
+   * a managed git server and the student-repo modes to offer. Git is per-course
+   * in the course-level model — there is no "inherit from organization/family".
+   * Returns the binding upsert, `undefined` if the user skipped (course left
+   * unbound — only offered when `allowSkip`), or `null` if cancelled / no
+   * managed server is available.
    */
-  private async promptOptionalGitlab(inheritLabel: string): Promise<GitLabCredentials | undefined | null> {
-    const choice = await vscode.window.showQuickPick(
-      [
-        { label: inheritLabel, description: 'Use parent GitLab settings', value: 'inherit' as const },
-        { label: 'Custom GitLab Settings', description: 'Specify different GitLab credentials', value: 'custom' as const }
-      ],
-      { placeHolder: 'GitLab configuration' }
-    );
-    if (!choice) { return null; }
-    if (choice.value === 'inherit') { return undefined; }
-
-    const gitlabUrl = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab instance URL',
-      placeHolder: 'e.g., https://gitlab.example.com',
-      validateInput: (value) => {
-        if (!value) { return 'GitLab URL is required'; }
-        try { new URL(value); return null; }
-        catch { return 'Must be a valid URL'; }
+  private async promptCourseGitBinding(opts: { allowSkip: boolean }): Promise<CourseGitBindingUpsert | undefined | null> {
+    let servers: GitServerGet[];
+    try {
+      servers = await this.apiService.getGitServers();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Could not load git servers: ${err?.message || String(err)}`);
+      return null;
+    }
+    const managed = servers.filter(s => s.managed && s.has_token);
+    if (managed.length === 0) {
+      if (opts.allowSkip) {
+        vscode.window.showWarningMessage('No managed git server is registered — creating the course unbound. An administrator can register one, then configure the course git later.');
+        return undefined;
       }
-    });
-    if (!gitlabUrl) { return null; }
+      vscode.window.showWarningMessage('No managed git server is registered. Ask an administrator to register one first.');
+      return null;
+    }
 
-    const gitlabToken = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab Personal Access Token',
-      placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
-      password: true,
-      validateInput: (value) => !value ? 'GitLab token is required' : null
-    });
-    if (!gitlabToken) { return null; }
+    type ServerPick = vscode.QuickPickItem & { server?: GitServerGet; skip?: boolean };
+    const items: ServerPick[] = managed.map(s => ({
+      label: s.name || s.base_url,
+      description: `${s.type}${s.parent_group_id ? ` · group ${s.parent_group_id}` : ''}`,
+      server: s,
+    }));
+    if (opts.allowSkip) {
+      items.push({ label: '$(circle-slash) Skip for now', description: 'Create the course unbound; configure git later', skip: true });
+    }
 
-    return { gitlab_url: gitlabUrl, gitlab_token: gitlabToken };
+    const serverPick = await vscode.window.showQuickPick(items, {
+      title: 'Course git — choose the host server',
+      ignoreFocusOut: true,
+    });
+    if (!serverPick) { return null; }
+    if (serverPick.skip || !serverPick.server) { return undefined; }
+    const server = serverPick.server;
+
+    const modeOptions = [
+      { label: `$(server) Managed (${server.type})`, description: 'We host each student repository', mode: 'managed', picked: true },
+      { label: '$(repo-forked) External', description: 'Students bring their own repository (any provider)', mode: 'external', picked: false },
+      { label: '$(cloud-download) Download', description: 'Students download the template + submit without git', mode: 'download', picked: false },
+    ];
+    const modePicks = await vscode.window.showQuickPick(modeOptions, {
+      title: 'Which student-repo modes should this course offer?',
+      canPickMany: true,
+      ignoreFocusOut: true,
+    });
+    if (!modePicks || modePicks.length === 0) { return null; }
+
+    return {
+      delivery: 'git',
+      git_server_id: server.id,
+      student_repo_modes: modePicks.map(p => p.mode),
+    };
   }
 
   /**
    * Manage course settings and properties
    */
   /**
-   * Configure a course's git binding: pick a managed git server and the
+   * Configure an existing course's git binding: pick a managed git server and the
    * student-repo modes to offer, then `PUT /courses/{id}/git`. For a managed
    * GitLab server the backend also provisions the course group/template/
    * reference/students structure. The binding locks once materialized.
@@ -624,53 +649,15 @@ export class LecturerCommands {
       return;
     }
 
-    let servers: GitServerGet[];
-    try {
-      servers = await this.apiService.getGitServers();
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`Could not load git servers: ${err?.message || String(err)}`);
-      return;
-    }
-    const managed = servers.filter(s => s.managed && s.has_token);
-    if (managed.length === 0) {
-      vscode.window.showWarningMessage('No managed git server is registered. Ask an administrator to register one first.');
-      return;
-    }
-
-    const serverPick = await vscode.window.showQuickPick(
-      managed.map(s => ({
-        label: s.name || s.base_url,
-        description: `${s.type}${s.parent_group_id ? ` · group ${s.parent_group_id}` : ''}`,
-        server: s
-      })),
-      { title: 'Configure course git — choose the host server', ignoreFocusOut: true }
-    );
-    if (!serverPick) { return; }
-    const server = serverPick.server;
-
-    const modeOptions = [
-      { label: `$(server) Managed (${server.type})`, description: 'We host each student repository', mode: 'managed', picked: true },
-      { label: '$(repo-forked) External', description: 'Students bring their own repository (any provider)', mode: 'external', picked: false },
-      { label: '$(cloud-download) Download', description: 'Students download the template + submit without git', mode: 'download', picked: false },
-    ];
-    const modePicks = await vscode.window.showQuickPick(modeOptions, {
-      title: 'Which student-repo modes should this course offer?',
-      canPickMany: true,
-      ignoreFocusOut: true
-    });
-    if (!modePicks || modePicks.length === 0) { return; }
-    const modes = modePicks.map(p => p.mode);
+    const binding = await this.promptCourseGitBinding({ allowSkip: false });
+    if (!binding) { return; }  // null = cancelled / no managed server
 
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Configuring course git…', cancellable: false },
       async () => {
         try {
-          await this.apiService.setCourseGitBinding(courseId, {
-            delivery: 'git',
-            git_server_id: server.id,
-            student_repo_modes: modes
-          });
-          vscode.window.showInformationMessage(`Course git configured (${modes.join(', ')}).`);
+          await this.apiService.setCourseGitBinding(courseId, binding);
+          vscode.window.showInformationMessage(`Course git configured (${(binding.student_repo_modes || []).join(', ')}).`);
         } catch (err: any) {
           const detail = err?.response?.data?.detail || err?.message || String(err);
           vscode.window.showErrorMessage(`Could not configure course git: ${detail}`);
