@@ -1219,6 +1219,10 @@ export class StudentCommands {
         : String(item.courseContent.id);
 
       let testSucceeded = false;
+      // True once the artifact is handed to TestResultService, which surfaces its
+      // own errors. Errors before this point (commit/push/artifact upload — e.g.
+      // the backend rejecting the upload) must be shown here, or they vanish.
+      let reachedTestSubmission = false;
       try {
         // Save all open files in the assignment directory
         await this.saveAllFilesInDirectory(submissionDirectory);
@@ -1313,6 +1317,7 @@ export class StudentCommands {
         if (submissionResponse?.artifacts?.length > 0) {
           const artifactId = submissionResponse.artifacts[0];
           console.log(`[TestAssignment] Submitting test with artifact ID: ${artifactId}`);
+          reachedTestSubmission = true;
           await this.testResultService.submitTestByArtifactAndAwaitResults(
             artifactId,
             assignmentTitle,
@@ -1336,12 +1341,13 @@ export class StudentCommands {
         }
       } catch (error: any) {
         console.error('Failed to test assignment:', error);
-        // Only show error message for git push failures
-        // Other errors (like test submission errors) are already handled by TestResultService
-        if (error?.message && error.message.includes('Failed to push changes to remote')) {
-          vscode.window.showErrorMessage(`Assignment test aborted: ${error.message}`);
+        // Errors during the test run itself are surfaced by TestResultService.
+        // Anything earlier (commit/push/artifact upload — e.g. the backend
+        // rejecting the upload because the content has no testing service) must
+        // be shown here, or the command fails silently.
+        if (!reachedTestSubmission) {
+          vscode.window.showErrorMessage(`Could not run the test: ${error?.message || String(error)}`);
         }
-        // For other errors, TestResultService has already shown the error message
       }
     });
 

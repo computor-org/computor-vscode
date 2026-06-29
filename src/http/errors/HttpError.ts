@@ -11,59 +11,63 @@ export class HttpError extends Error {
     public readonly statusText: string,
     public readonly response?: any
   ) {
-    let enhancedMessage = message;
     let errorCode: string | undefined;
     let backendError: BackendErrorDefinition | undefined;
 
-    // Check for backend error_code in response
-    console.log('[HttpError] Response data:', JSON.stringify(response));
+    // The backend's specific, actionable text for THIS request (e.g. "Course
+    // content is missing a testing service to link submissions"). Prefer it over
+    // the generic per-code catalog text so the user sees the real reason — the
+    // catalog message is only a fallback when the server sent no specific text.
+    const serverDetail = HttpError.extractServerDetail(response);
+
+    let enhancedMessage = message;
     if (response?.error_code && typeof response.error_code === 'string') {
-      const codeFromResponse: string = response.error_code;
-      errorCode = codeFromResponse;
-      const catalogError = errorCatalog.getError(codeFromResponse);
-      console.log(`[HttpError] Found error_code: ${codeFromResponse}, catalog entry:`, catalogError);
+      const code: string = response.error_code;
+      errorCode = code;
+      const catalogError = errorCatalog.getError(code);
       if (catalogError) {
         backendError = catalogError;
-        // If we found the error in catalog, use its user-friendly message
-        enhancedMessage = backendError.message.plain;
-        console.log(`[HttpError] Using backend error catalog for ${codeFromResponse}: ${backendError.title}`);
-      } else {
-        // Error code provided but not found in catalog
-        console.warn(`[HttpError] Error code '${codeFromResponse}' not found in catalog. Available codes: ${errorCatalog.isLoaded() ? 'catalog loaded' : 'catalog not loaded'}`);
+        enhancedMessage = serverDetail || backendError.message.plain;
+      } else if (serverDetail) {
+        enhancedMessage = `${message} - ${serverDetail}`;
       }
-    } else {
-      console.log('[HttpError] No error_code found in response');
-    }
-
-    // Fallback to legacy error message extraction if no backend error found
-    if (!backendError) {
-      if (response?.detail) {
-        // If detail is a string, append it
-        if (typeof response.detail === 'string') {
-          enhancedMessage = `${message} - ${response.detail}`;
-        }
-        // If detail is an array (validation errors), format them
-        else if (Array.isArray(response.detail)) {
-          const details = response.detail.map((d: any) =>
-            typeof d === 'string' ? d : d.msg || JSON.stringify(d)
-          ).join(', ');
-          enhancedMessage = `${message} - ${details}`;
-        }
-        // If detail is an object, try to extract a message
-        else if (typeof response.detail === 'object' && response.detail.message) {
-          enhancedMessage = `${message} - ${response.detail.message}`;
-        }
-      }
-      // Also check for 'message' field in response (some APIs use this)
-      else if (response?.message && typeof response.message === 'string') {
-        enhancedMessage = `${message} - ${response.message}`;
-      }
+    } else if (serverDetail) {
+      enhancedMessage = `${message} - ${serverDetail}`;
     }
 
     super(enhancedMessage);
     this.name = 'HttpError';
     this.errorCode = errorCode;
     this.backendError = backendError;
+  }
+
+  /**
+   * Pull the server's specific human-readable reason out of an error response,
+   * regardless of which field carries it: `message` (the backend's default),
+   * `detail` (string), `detail[]` (FastAPI validation errors), or
+   * `detail.message`. Returns undefined when there's nothing specific.
+   */
+  private static extractServerDetail(response: any): string | undefined {
+    if (!response || typeof response !== 'object') {
+      return undefined;
+    }
+    const detail = response.detail;
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail.trim();
+    }
+    if (Array.isArray(detail)) {
+      const joined = detail
+        .map((d: any) => (typeof d === 'string' ? d : d?.msg || JSON.stringify(d)))
+        .filter(Boolean)
+        .join(', ');
+      if (joined) return joined;
+    } else if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
+      return detail.message;
+    }
+    if (typeof response.message === 'string' && response.message.trim()) {
+      return response.message.trim();
+    }
+    return undefined;
   }
 
   /**

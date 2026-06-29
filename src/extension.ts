@@ -807,7 +807,7 @@ class UnifiedController {
     const courseSelectionService = CourseSelectionService.initialize(this.context, api, statusBar);
 
     // Initialize tree view
-    const tree = new StudentCourseContentTreeProvider(api, courseSelectionService, repositoryManager, this.context);
+    const tree = new StudentCourseContentTreeProvider(api, courseSelectionService, this.context);
     if (this.wsService) tree.setWebSocketService(this.wsService);
     registerTreeView('computor.student.courses', {
       provider: tree,

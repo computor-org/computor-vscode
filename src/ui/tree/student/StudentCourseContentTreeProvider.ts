@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { promisify } from 'util';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
-import { StudentRepositoryManager } from '../../../services/StudentRepositoryManager';
+import { StudentRepositoryProvisioningService } from '../../../services/StudentRepositoryProvisioningService';
 import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
@@ -12,8 +12,22 @@ import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentType
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { extractGraderName } from '../../../utils/gradingHelpers';
-import { buildStudentRepoRoot } from '../../../utils/repositoryNaming';
+import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/repositoryNaming';
+import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../utils/exec';
+import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
+
+/** Resolved course-level-git state for one course (cached per session). */
+interface CourseGitModel {
+    /** True when the course has a git binding (new course-level-git model). */
+    configured: boolean;
+    /** Effective student-repo mode: 'managed' | 'external' | 'download'. */
+    mode?: string;
+    /** Offered modes from the descriptor. */
+    modes: string[];
+    /** Local root the assignment files live under, when known. */
+    repoRoot?: string;
+}
 
 interface ContentNode {
     name?: string;
@@ -38,8 +52,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
-    private repositoryManager?: StudentRepositoryManager;
+    private provisioning?: StudentRepositoryProvisioningService;
     private settingsManager?: ComputorSettingsManager;
+    // Course-level-git model per course (descriptor + recorded repo), cached for
+    // the session; cleared when a course's contents are refreshed.
+    private gitModelCache: Map<string, CourseGitModel> = new Map();
     private courseContentsCache: Map<string, CourseContentStudentList[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Record<string, boolean> = {};
@@ -57,16 +74,17 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     private wsSubscription = new CourseChannelSubscription('student-tree');
     
     constructor(
-        apiService: ComputorApiService, 
-        courseSelection: CourseSelectionService, 
-        repositoryManager?: StudentRepositoryManager,
+        apiService: ComputorApiService,
+        courseSelection: CourseSelectionService,
         context?: vscode.ExtensionContext
     ) {
         this.apiService = apiService;
         this.courseSelection = courseSelection;
-        this.repositoryManager = repositoryManager;
         if (context) {
             this.settingsManager = new ComputorSettingsManager(context);
+            // Course-level-git provisioning (managed/external/download) for courses
+            // on the new model; needs the extension context for secret storage.
+            this.provisioning = new StudentRepositoryProvisioningService(context, apiService);
             this.loadExpandedStates();
         }
     }
@@ -113,6 +131,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
     private refreshCourseById(courseId: string): void {
         this.courseContentsCache.delete(courseId);
+        this.gitModelCache.delete(courseId);
         const courseItem = this.itemIndex.get(`course-${courseId}`);
         if (courseItem) {
             this._onDidChangeTreeData.fire(courseItem);
@@ -144,6 +163,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
     refresh(): void {
         this.forceRefresh = true;
         this.courseContentsCache.clear();
+        this.gitModelCache.clear();
         this.contentKinds = [];
         this.itemIndex.clear();
         this.orgGrouping.clear();
@@ -177,9 +197,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 const refreshedList = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
                 console.log(`[TreeProvider] Fetched ${refreshedList.length} course contents`);
                 this.courseContentsCache.set(selectedCourseId, refreshedList);
-                if (this.repositoryManager) {
-                    this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, refreshedList);
-                }
+                await this.annotateCourseGit(selectedCourseId, refreshedList);
 
                 // Prefer the freshly cached entry so we retain content type data.
                 updatedFromList = refreshedList.find(c => c.id === contentId);
@@ -265,221 +283,25 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (element instanceof CourseContentItem) {
             const contentType = element.contentType;
             const isAssignment = contentType?.course_content_kind_id === 'assignment';
-            let directory = (element.courseContent as any).directory as string | undefined;
-            const hasRepository = !!element.submissionGroup?.repository;
-            
-            if (isAssignment && hasRepository) {
-                let assignmentPath: string | undefined;
-                
-                // First, check if we need to setup the repository
-                // Resolve directory to absolute path if necessary
-                const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                const courseId = await this.findCourseIdForContent(element.courseContent);
-                let repoRoot = wsRoot && courseId ? this.getStudentRepoRoot(wsRoot, courseId, element.submissionGroup) : undefined;
-                const resolvePath = (base: string | undefined, p?: string) => {
-                    if (!p) return undefined;
-                    if (path.isAbsolute(p)) return p;
-                    return base ? path.join(base, p) : undefined;
-                };
-                if (!repoRoot) {
-                    console.log('[StudentTree] Repository name missing, cannot resolve local path.');
-                    return [new MessageItem('Repository metadata incomplete. Please clone the assignment manually.', 'warning')];
-                }
-
-                const absDir = resolvePath(repoRoot, directory);
-                if (!absDir || !fs.existsSync(absDir)) {
-                    // Only trigger setup if this specific assignment hasn't been attempted yet this session
-                    const setupKey = `${courseId}:${element.courseContent.id}`;
-                    if (courseId && this.repositoryManager && !this.assignmentsSetupAttempted.has(setupKey)) {
-                        this.assignmentsSetupAttempted.add(setupKey);
-                        console.log('[StudentTree] Setting up repository for assignment:', element.courseContent.title);
-                        
-                        // Show progress while setting up
-                        let assignmentSetupCancelled = false;
-                        await vscode.window.withProgress({
-                            location: vscode.ProgressLocation.Notification,
-                            title: `Setting up repository for ${element.courseContent.title}...`,
-                            cancellable: true
-                        }, async (progress, token) => {
-                            void progress;
-                            try {
-                                await this.repositoryManager!.autoSetupRepositories(courseId, undefined, undefined, token);
-                            } catch (e) {
-                                if (e instanceof GitCancelledError) {
-                                    assignmentSetupCancelled = true;
-                                    return;
-                                }
-                                throw e;
-                            }
-
-                            // Re-fetch course contents to get updated directory paths
-                            const courseContents = await this.apiService.getStudentCourseContents(courseId, { force: true }) || [];
-                            this.courseContentsCache.set(courseId, courseContents);
-
-                            // Update directory paths for existing repositories
-                            this.repositoryManager!.updateExistingRepositoryPaths(courseId, courseContents);
-
-                            // Update the directory on the current element directly
-                            const updatedContent = courseContents.find(c => c.id === element.courseContent.id);
-                            if (updatedContent && updatedContent.directory) {
-                                (element.courseContent as any).directory = updatedContent.directory;
-                                directory = updatedContent.directory as any;
-                            }
-                        });
-                        if (assignmentSetupCancelled) {
-                            vscode.window.showInformationMessage('Repository setup was cancelled. Expand the assignment again to retry.');
-                        }
-                        
-                        // Now that directory is updated, continue to show files
-                        // Re-check the directory after setup
-                        const updatedRepoRoot = wsRoot && courseId ? this.getStudentRepoRoot(wsRoot, courseId, element.submissionGroup) : undefined;
-                        repoRoot = updatedRepoRoot;
-                        const updatedDirectory = resolvePath(updatedRepoRoot, (element.courseContent as any).directory);
-
-                        if (updatedDirectory) {
-                            assignmentPath = updatedDirectory;
-                            console.log('[StudentTree] Repository setup complete, directory path:', assignmentPath);
-                            
-                            // If the directory still doesn't exist, it's not available yet
-                            if (assignmentPath && !fs.existsSync(assignmentPath)) {
-                                console.log('[StudentTree] Assignment subdirectory does not exist:', assignmentPath);
-                                // Don't fall back to repository root - the assignment isn't available
-                                assignmentPath = undefined;
-                            }
-                        }
-                        
-                        if (!assignmentPath || !fs.existsSync(assignmentPath)) {
-                            console.log('[StudentTree] Directory not available after setup:', assignmentPath);
-                            return [new MessageItem('Assignment not available yet', 'info')];
-                        }
-                    } else {
-                        return [new MessageItem('Unable to setup repository', 'error')];
-                    }
-                } else {
-                    // Directory exists, use it
-                    assignmentPath = absDir;
-                    console.log('[StudentTree] Using existing directory:', assignmentPath);
-                }
-                
-                if (assignmentPath && fs.existsSync(assignmentPath)) {
-                    // Repository is cloned - show actual files
-                    try {
-                        const readdir = promisify(fs.readdir);
-                        const stat = promisify(fs.stat);
-                        const files = await readdir(assignmentPath);
-                        const items: TreeItem[] = [];
-                        
-                        // First, populate items from existing files
-                        for (const file of files) {
-                            // Filter out README files and mediaFiles directory
-                            if (file === 'mediaFiles' || 
-                                file === 'README.md' || 
-                                file.startsWith('README_') && file.endsWith('.md')) {
-                                continue;
-                            }
-                            
-                            const filePath = path.join(assignmentPath, file);
-                            const stats = await stat(filePath);
-                            const isDirectory = stats.isDirectory();
-                            
-                            const fileItem = new FileSystemItem(
-                                file,
-                                vscode.Uri.file(filePath),
-                                isDirectory ? vscode.FileType.Directory : vscode.FileType.File
-                            );
-                            items.push(fileItem);
-                        }
-                        
-                        // If directory is empty or only contains filtered files, trigger fork update
-                        if (items.length === 0) {
-                            console.log('[StudentTree] Assignment directory appears empty, triggering fork update...');
-                            
-                            // Get course ID and trigger repository update
-                                if (courseId && this.repositoryManager) {
-                                try {
-                                    let updateCancelled = false;
-                                    await vscode.window.withProgress({
-                                        location: vscode.ProgressLocation.Notification,
-                                        title: `Updating ${element.courseContent.title} from template...`,
-                                        cancellable: true
-                                    }, async (progress, token) => {
-                                        void progress;
-                                        try {
-                                            await this.repositoryManager!.autoSetupRepositories(courseId, undefined, undefined, token);
-                                        } catch (e) {
-                                            if (e instanceof GitCancelledError) {
-                                                updateCancelled = true;
-                                                return;
-                                            }
-                                            throw e;
-                                        }
-                                    });
-                                    if (updateCancelled) {
-                                        vscode.window.showInformationMessage('Repository update was cancelled.');
-                                    }
-                                    
-                                    // Re-read the directory after update
-                                        const updatedFiles = await readdir(assignmentPath);
-                                    for (const file of updatedFiles) {
-                                        // Filter out README files and mediaFiles directory
-                                        if (file === 'mediaFiles' || 
-                                            file === 'README.md' || 
-                                            file.startsWith('README_') && file.endsWith('.md')) {
-                                            continue;
-                                        }
-                                        
-                                        const filePath = path.join(assignmentPath, file);
-                                        const stats = await stat(filePath);
-                                        const isDirectory = stats.isDirectory();
-                                        
-                                        const fileItem = new FileSystemItem(
-                                            file,
-                                            vscode.Uri.file(filePath),
-                                            isDirectory ? vscode.FileType.Directory : vscode.FileType.File
-                                        );
-                                        items.push(fileItem);
-                                    }
-                                    
-                                    // If still empty after update
-                                    if (items.length === 0) {
-                                        return [new MessageItem('Empty assignment - no files available', 'info')];
-                                    }
-                                } catch (error) {
-                                    console.error('[StudentTree] Failed to update from template:', error);
-                                    return [new MessageItem('Empty directory - update failed', 'warning')];
-                                }
-                            } else {
-                                return [new MessageItem('Empty directory', 'info')];
-                            }
-                        }
-                        
-                        // Sort: directories first, then files, alphabetically
-                        items.sort((a, b) => {
-                            const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
-                            const bIsDir = (b as FileSystemItem).type === vscode.FileType.Directory;
-                            if (aIsDir && !bIsDir) return -1;
-                            if (!aIsDir && bIsDir) return 1;
-                            return a.label!.toString().localeCompare(b.label!.toString());
-                        });
-                        
-                        return items;
-                    } catch (error) {
-                        console.error('Error reading assignment directory:', error);
-                        return [new MessageItem('Error reading repository files', 'error')];
-                    }
-                } else {
-                    // Repository not cloned yet or directory not set
-                    console.log('[StudentTree] Directory not available:', {
-                        directory,
-                        assignmentPath,
-                        exists: assignmentPath ? fs.existsSync(assignmentPath) : false
-                    });
-                    return [new MessageItem('Click course to clone repository', 'info')];
-                }
+            if (!isAssignment) {
+                return [];
             }
-            return [];
+            // Assignment files come from the course-level-git model (managed /
+            // external / download); there is no legacy submission_group.repository
+            // path anymore.
+            const directory = (element.courseContent as any).directory as string | undefined;
+            const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const courseId = await this.findCourseIdForContent(element.courseContent);
+            if (!courseId) {
+                return [new MessageItem('Could not determine the course for this assignment.', 'warning')];
+            }
+            const model = await this.resolveCourseGit(wsRoot, courseId);
+            if (!model.configured) {
+                return [new MessageItem('This course has no git repository configured.', 'info')];
+            }
+            return this.getAssignmentChildrenNewModel(element, wsRoot, courseId, directory, model);
         }
-        
+
         // Handle filesystem children for FileSystemItem
         if (element instanceof FileSystemItem && element.type === vscode.FileType.Directory) {
             try {
@@ -547,7 +369,6 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     if (!courseContents || shouldForce) {
                         courseContents = await this.apiService.getStudentCourseContents(course.id, { force: shouldForce }) || [];
                         this.courseContentsCache.set(course.id, courseContents);
-                        if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(course.id, courseContents);
                     }
                 }
 
@@ -644,39 +465,17 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (element instanceof CourseRootItem) {
             const selectedCourseId = element.courseId;
             try {
-                // Check if this course needs initial repository setup
-                // (first expansion of a course that wasn't expanded at startup)
-                if (this.repositoryManager && !this.coursesSetupThisSession.has(selectedCourseId)) {
-                    console.log(`[StudentTree] First expansion of course ${selectedCourseId}, triggering repository setup`);
-
-                    let setupCancelled = false;
-                    await vscode.window.withProgress({
-                        location: vscode.ProgressLocation.Notification,
-                        title: `Setting up repositories for ${element.title}...`,
-                        cancellable: true
-                    }, async (progress, token) => {
-                        progress.report({ message: 'Starting...' });
-                        try {
-                            await this.repositoryManager!.autoSetupRepositories(
-                                selectedCourseId,
-                                (msg) => progress.report({ message: msg }),
-                                undefined,
-                                token
-                            );
-                        } catch (e) {
-                            if (e instanceof GitCancelledError) {
-                                setupCancelled = true;
-                                return;
-                            }
-                            console.error(`[StudentTree] Repository setup failed for course ${selectedCourseId}:`, e);
-                        }
-                    });
-
-                    if (setupCancelled) {
-                        vscode.window.showInformationMessage('Repository setup was cancelled. Expand the course again to retry.');
-                    } else {
-                        this.coursesSetupThisSession.add(selectedCourseId);
+                // First expansion: for a MANAGED course, pre-clone the single
+                // course repository (course-level-git model) so all its
+                // assignments are ready. external/download are deferred to
+                // per-assignment expansion (they may prompt / download).
+                if (this.provisioning && !this.coursesSetupThisSession.has(selectedCourseId)) {
+                    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                    const model = await this.resolveCourseGit(wsRoot, selectedCourseId);
+                    if (model.configured && model.mode === 'managed') {
+                        await this.setupCourseGitWithProgress(selectedCourseId, model, String(element.title ?? 'course'));
                     }
+                    this.coursesSetupThisSession.add(selectedCourseId);
                 }
 
                 // Ensure kinds and contents
@@ -690,7 +489,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 if (shouldForce) {
                     this.forceRefresh = false;
                 }
-                if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(selectedCourseId, courseContents);
+
+                // Resolve course-level-git paths/mode onto the contents so files,
+                // README and the commit/test/submit actions resolve correctly.
+                await this.annotateCourseGit(selectedCourseId, courseContents);
 
                 // Build and present under course root
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
@@ -717,6 +519,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 if (shouldForce) {
                     this.forceRefresh = false;
                 }
+                await this.annotateCourseGit(selectedCourseId, courseContents);
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 const targetPath = element.node.courseContent?.path;
                 if (!targetPath) return this.createTreeItems(element.node);
@@ -907,37 +710,239 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         return items;
     }
 
-    private getStudentRepoRoot(
-        workspaceRoot: string,
+    /**
+     * Resolve a course's course-level-git model: whether it has a binding, the
+     * effective student-repo mode, and (when known) the local root the
+     * assignment files live under. Cached per session.
+     */
+    private async resolveCourseGit(wsRoot: string | undefined, courseId: string): Promise<CourseGitModel> {
+        const cached = this.gitModelCache.get(courseId);
+        if (cached) {
+            return cached;
+        }
+        let model: CourseGitModel = { configured: false, modes: [] };
+        try {
+            const descriptor = await this.apiService.getCourseGitDescriptor(courseId);
+            if (descriptor?.configured) {
+                const modes = descriptor.student_repo_modes || [];
+                let repo: CourseMemberRepositoryGet | null = null;
+                try {
+                    repo = await this.apiService.getCourseRepository(courseId);
+                } catch {
+                    repo = null;
+                }
+                // The student's recorded repo mode wins; otherwise default to the
+                // first usable offered mode (managed > external > download).
+                const mode = repo?.mode
+                    || (modes.includes('managed') ? 'managed'
+                        : modes.includes('external') ? 'external'
+                        : modes.includes('download') ? 'download'
+                        : undefined);
+                let repoRoot: string | undefined;
+                if (wsRoot) {
+                    if ((mode === 'managed' || mode === 'external') && repo?.repo_ref) {
+                        repoRoot = buildStudentRepoRoot(
+                            wsRoot,
+                            studentRepoFolderFromRef(repo.repo_ref, repo.course_member_id || repo.id),
+                        );
+                    } else if (mode === 'download') {
+                        // Deterministic, tree-owned extract location (the interactive
+                        // "Download template" command uses a user-chosen folder).
+                        repoRoot = buildStudentRepoRoot(wsRoot, `download.${courseId}`);
+                    }
+                }
+                model = { configured: true, mode, modes, repoRoot };
+            }
+        } catch (e) {
+            // Unconfigured / API error → fall back to the legacy submission-group flow.
+            console.warn('[StudentTree] resolveCourseGit failed, using legacy flow:', e);
+        }
+        this.gitModelCache.set(courseId, model);
+        return model;
+    }
+
+    /**
+     * Stamp each course content with its resolved course-level-git info so the
+     * tree items (and the README / commit / test / submit handlers) work:
+     *  - `directory` is rewritten to the ABSOLUTE local path ({repoRoot}/{dir}),
+     *    which everything downstream relies on (the legacy model did this via
+     *    StudentRepositoryManager.updateExistingRepositoryPaths);
+     *  - `__studentRepoMode` carries the mode (managed/external/download) so the
+     *    item can expose the right actions.
+     * Idempotent: skips contents whose directory is already absolute.
+     */
+    private async annotateCourseGit(courseId: string, contents: CourseContentStudentList[]): Promise<void> {
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const model = await this.resolveCourseGit(wsRoot, courseId);
+        if (!model.configured) {
+            return;
+        }
+        for (const c of contents) {
+            (c as any).__studentRepoMode = model.mode;
+            const dir = (c as any).directory as string | undefined;
+            if (model.repoRoot && dir && !path.isAbsolute(dir)) {
+                (c as any).directory = path.join(model.repoRoot, dir);
+            }
+        }
+    }
+
+    /** Assignment children for a course on the new course-level-git model. */
+    private async getAssignmentChildrenNewModel(
+        element: CourseContentItem,
+        wsRoot: string | undefined,
         courseId: string,
-        submissionGroup?: SubmissionGroupStudentList
-    ): string | undefined {
-        void courseId; // courseId - only used for logging/context
-
-        if (!submissionGroup) {
-            console.log('[StudentTree] No submission group available');
-            return undefined;
+        directory: string | undefined,
+        model: CourseGitModel,
+    ): Promise<TreeItem[]> {
+        if (!wsRoot) {
+            return [new MessageItem('Open a workspace folder to set up your repository.', 'warning')];
+        }
+        if (!model.mode) {
+            return [new MessageItem(`This course offers no usable git mode (${model.modes.join(', ') || 'none'}).`, 'warning')];
         }
 
-        if (!submissionGroup.repository) {
-            console.log('[StudentTree] No repository in submission group');
-            return undefined;
+        let repoRoot = model.repoRoot;
+        const setupKey = `${courseId}:${element.courseContent.id}`;
+        const dirMissing = !repoRoot || !directory || !fs.existsSync(path.join(repoRoot, directory));
+        if (dirMissing && !this.assignmentsSetupAttempted.has(setupKey)) {
+            this.assignmentsSetupAttempted.add(setupKey);
+            const setupRoot = await this.setupCourseGitWithProgress(courseId, model, element.courseContent.title || 'assignment');
+            if (setupRoot) {
+                repoRoot = setupRoot;
+            } else {
+                // Setup may have recorded the repo (repo_ref) without us having a
+                // path yet — recompute from the refreshed model.
+                const refreshed = await this.resolveCourseGit(wsRoot, courseId);
+                repoRoot = refreshed.repoRoot ?? repoRoot;
+            }
         }
 
-        if (!submissionGroup.repository.full_path) {
-            console.log('[StudentTree] Repository missing full_path:', {
-                clone_url: submissionGroup.repository.clone_url,
-                url: submissionGroup.repository.url,
-                web_url: submissionGroup.repository.web_url
+        if (!repoRoot) {
+            return [this.gitModeGuidance(model, courseId)];
+        }
+        if (!directory) {
+            return [new MessageItem('Assignment not available yet', 'info')];
+        }
+        const absDir = path.isAbsolute(directory) ? directory : path.join(repoRoot, directory);
+        if (!fs.existsSync(absDir)) {
+            return [new MessageItem('Assignment not available yet', 'info')];
+        }
+        return this.listAssignmentFiles(absDir);
+    }
+
+    /** Provision/clone (managed, external) or download+extract (download) for a
+     * course on the new model, with a cancellable progress notification. Returns
+     * the local repo root on success, else undefined. */
+    private async setupCourseGitWithProgress(
+        courseId: string,
+        model: CourseGitModel,
+        title: string,
+    ): Promise<string | undefined> {
+        return vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Setting up repository for ${title}…`,
+            cancellable: true,
+        }, async (progress, token) => {
+            try {
+                if (model.mode === 'managed' || model.mode === 'external') {
+                    if (!this.provisioning) { return undefined; }
+                    const outcome = await this.provisioning.setUpRepository(courseId, {
+                        cancellationToken: token,
+                        onProgress: (m) => progress.report({ message: m }),
+                    });
+                    // The repo_ref (and thus the path) may now exist — drop the cache
+                    // so the next resolveCourseGit recomputes repoRoot.
+                    this.gitModelCache.delete(courseId);
+                    if (outcome.status === 'cloned' || outcome.status === 'already-cloned') {
+                        return outcome.path;
+                    }
+                    if (outcome.status === 'forgejo-login-required') {
+                        const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
+                        void vscode.window.showInformationMessage(
+                            `Sign in to the git server once${target ? ` (${target})` : ''}, then expand the assignment again.`,
+                        );
+                    } else if (outcome.status === 'unsupported-mode') {
+                        void vscode.window.showInformationMessage(
+                            `This course offers: ${outcome.modes.join(', ') || 'no git modes'}.`,
+                        );
+                    }
+                    return undefined;
+                }
+                if (model.mode === 'download' && model.repoRoot) {
+                    progress.report({ message: 'Downloading course template…' });
+                    const buffer = await this.apiService.downloadTemplateArchive(courseId);
+                    await fs.promises.mkdir(model.repoRoot, { recursive: true });
+                    progress.report({ message: 'Extracting…' });
+                    await extractZipBuffer(buffer, model.repoRoot);
+                    return model.repoRoot;
+                }
+            } catch (e) {
+                if (e instanceof GitCancelledError) {
+                    void vscode.window.showInformationMessage('Setup cancelled. Expand the assignment again to retry.');
+                    return undefined;
+                }
+                console.error('[StudentTree] new-model setup failed:', e);
+                void vscode.window.showErrorMessage(`Repository setup failed: ${e instanceof Error ? e.message : String(e)}`);
+            }
+            return undefined;
+        });
+    }
+
+    /** A clickable hint when we can't auto-resolve the repo for a mode. */
+    private gitModeGuidance(model: CourseGitModel, courseId: string): MessageItem {
+        if (model.mode === 'external') {
+            return new MessageItem(
+                'Set up your repository — click to configure',
+                'warning',
+                { command: 'computor.student.setupCourseRepository', title: 'Set up repository', arguments: [courseId] },
+            );
+        }
+        if (model.mode === 'download') {
+            return new MessageItem(
+                'Download the course template — click to download',
+                'info',
+                { command: 'computor.student.downloadTemplate', title: 'Download template', arguments: [courseId] },
+            );
+        }
+        return new MessageItem('Repository not ready yet. Expand the assignment again to retry.', 'info');
+    }
+
+    /** List the files of a cloned/extracted assignment directory (shared by the
+     * legacy and new-model paths). */
+    private async listAssignmentFiles(absDir: string): Promise<TreeItem[]> {
+        try {
+            const readdir = promisify(fs.readdir);
+            const stat = promisify(fs.stat);
+            const files = await readdir(absDir);
+            const items: TreeItem[] = [];
+            for (const file of files) {
+                if (file === 'mediaFiles' || file === 'README.md' || (file.startsWith('README_') && file.endsWith('.md'))) {
+                    continue;
+                }
+                const filePath = path.join(absDir, file);
+                const stats = await stat(filePath);
+                const isDirectory = stats.isDirectory();
+                items.push(new FileSystemItem(
+                    file,
+                    vscode.Uri.file(filePath),
+                    isDirectory ? vscode.FileType.Directory : vscode.FileType.File,
+                ));
+            }
+            if (items.length === 0) {
+                return [new MessageItem('Empty assignment - no files available', 'info')];
+            }
+            items.sort((a, b) => {
+                const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
+                const bIsDir = (b as FileSystemItem).type === vscode.FileType.Directory;
+                if (aIsDir && !bIsDir) return -1;
+                if (!aIsDir && bIsDir) return 1;
+                return a.label!.toString().localeCompare(b.label!.toString());
             });
-            return undefined;
+            return items;
+        } catch (error) {
+            console.error('Error reading assignment directory:', error);
+            return [new MessageItem('Error reading repository files', 'error')];
         }
-
-        // Use the same logic as StudentRepositoryManager for consistency
-        // Convert repository full_path (e.g., "course/student-123") to directory name (e.g., "course.student-123")
-        const dirName = submissionGroup.repository.full_path.replace(/\//g, '.');
-        console.log('[StudentTree] Derived repository directory name:', dirName);
-        return buildStudentRepoRoot(workspaceRoot, dirName);
     }
 
     getExpandedCourseIds(): Set<string> {
@@ -1003,7 +1008,6 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         if (!courseContents || shouldForce) {
             courseContents = await this.apiService.getStudentCourseContents(courseId, { force: shouldForce }) || [];
             this.courseContentsCache.set(courseId, courseContents);
-            if (this.repositoryManager) this.repositoryManager.updateExistingRepositoryPaths(courseId, courseContents);
         }
 
         const itemCount = courseContents.length;
@@ -1110,9 +1114,9 @@ class CourseFamilyItem extends TreeItem {
 }
 
 class MessageItem extends TreeItem {
-    constructor(message: string, severity: 'info' | 'warning' | 'error') {
+    constructor(message: string, severity: 'info' | 'warning' | 'error', command?: vscode.Command) {
         super(message, vscode.TreeItemCollapsibleState.None);
-        
+
         switch (severity) {
             case 'warning':
                 this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
@@ -1122,6 +1126,9 @@ class MessageItem extends TreeItem {
                 break;
             default:
                 this.iconPath = new vscode.ThemeIcon('info');
+        }
+        if (command) {
+            this.command = command;
         }
     }
 }
@@ -1505,14 +1512,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             contexts.push('reading');
         }
         
-        // Add repository context
-        if (this.submissionGroup?.repository) {
+        // Add repository / mode context (course-level git). `annotateCourseGit`
+        // has rewritten `directory` to the absolute local path when the course
+        // has a git binding, and stamped the student-repo mode — so treat an
+        // absolute directory as "has a repository" and its existence as cloned.
+        const dir = (this.courseContent as any).directory as string | undefined;
+        const mode = (this.courseContent as any).__studentRepoMode as string | undefined;
+        if (this.isAssignment() && dir && path.isAbsolute(dir)) {
             contexts.push('withRepository');
-            if (this.checkIfCloned()) {
-                contexts.push('cloned');
-            } else {
-                contexts.push('notCloned');
-            }
+            contexts.push(fs.existsSync(dir) ? 'cloned' : 'notCloned');
+            if (mode === 'managed') contexts.push('gitManaged');
+            else if (mode === 'external') contexts.push('gitExternal');
+            else if (mode === 'download') contexts.push('gitDownload');
         } else if (hasExampleAssigned(this.courseContent)) {
             contexts.push('hasExample');
         }
@@ -1532,43 +1543,12 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         this.contextValue = contexts.join('.');
     }
     
-    private checkIfCloned(): boolean {
-        if (!this.submissionGroup) return false;
-        const repoPath = this.getRepositoryPath();
-        return fs.existsSync(repoPath);
-    }
-    
     getRepositoryPath(): string {
-        // Always prefer the directory field from courseContent
-        // This is set by StudentRepositoryManager after cloning
-        const directory = (this.courseContent as any).directory;
-        if (directory) {
-            // Resolve relative directory against repository root when possible
-            if (path.isAbsolute(directory)) return directory;
-            const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            let repoName: string | undefined;
-            const repo = this.submissionGroup?.repository as any;
-            if (repo) {
-                if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
-                    const parts = repo.full_path.split('/');
-                    repoName = parts[parts.length - 1] || undefined;
-                } else if (typeof repo.clone_url === 'string' && repo.clone_url.length > 0) {
-                    const clean = repo.clone_url.replace(/\.git$/, '');
-                    const parts = clean.split('/');
-                    repoName = parts[parts.length - 1] || undefined;
-                } else if (typeof repo.web_url === 'string' && repo.web_url.length > 0) {
-                    const parts = repo.web_url.split('/');
-                    repoName = parts[parts.length - 1] || undefined;
-                }
-            }
-            if (ws && repoName) return path.join(ws, repoName, directory);
-            // Without a resolvable repo name, avoid guessing a path
-            return '';
-        }
-        
-        // If no directory field, we can't determine the path
-        // The directory will be set after the repository is cloned
-        return '';
+        // `annotateCourseGit` rewrites `directory` to the absolute local path
+        // ({repoRoot}/{dir}) once the course's git binding is resolved. Until then
+        // it's relative and we can't resolve a local path.
+        const directory = (this.courseContent as any).directory as string | undefined;
+        return directory && path.isAbsolute(directory) ? directory : '';
     }
 }
 
