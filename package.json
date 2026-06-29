@@ -169,13 +169,13 @@
       },
       {
         "command": "computor.student.submitAssignment",
-        "title": "Submit Assignment",
+        "title": "Submit",
         "icon": "$(cloud-upload)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.submitDownload",
-        "title": "Submit (without git)",
+        "title": "Submit",
         "icon": "$(cloud-upload)",
         "category": "Computor Student"
       },
@@ -1998,7 +1998,7 @@
         },
         {
           "command": "computor.student.commitAssignment",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/ && viewItem =~ /git(Managed|External)/",
           "group": "inline@3"
         },
         {
@@ -2008,13 +2008,13 @@
         },
         {
           "command": "computor.student.submitAssignment",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/ && viewItem =~ /git(Managed|External)/",
           "group": "inline@5"
         },
         {
           "command": "computor.student.submitDownload",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
-          "group": "1_submit@9"
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*gitDownload/",
+          "group": "inline@5"
         },
         {
           "command": "computor.student.showMessages",

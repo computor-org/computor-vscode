@@ -197,6 +197,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 const refreshedList = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
                 console.log(`[TreeProvider] Fetched ${refreshedList.length} course contents`);
                 this.courseContentsCache.set(selectedCourseId, refreshedList);
+                await this.annotateCourseGit(selectedCourseId, refreshedList);
 
                 // Prefer the freshly cached entry so we retain content type data.
                 updatedFromList = refreshedList.find(c => c.id === contentId);
@@ -489,6 +490,10 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     this.forceRefresh = false;
                 }
 
+                // Resolve course-level-git paths/mode onto the contents so files,
+                // README and the commit/test/submit actions resolve correctly.
+                await this.annotateCourseGit(selectedCourseId, courseContents);
+
                 // Build and present under course root
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 // Optionally update root item description
@@ -514,6 +519,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                 if (shouldForce) {
                     this.forceRefresh = false;
                 }
+                await this.annotateCourseGit(selectedCourseId, courseContents);
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 const targetPath = element.node.courseContent?.path;
                 if (!targetPath) return this.createTreeItems(element.node);
@@ -753,6 +759,31 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         }
         this.gitModelCache.set(courseId, model);
         return model;
+    }
+
+    /**
+     * Stamp each course content with its resolved course-level-git info so the
+     * tree items (and the README / commit / test / submit handlers) work:
+     *  - `directory` is rewritten to the ABSOLUTE local path ({repoRoot}/{dir}),
+     *    which everything downstream relies on (the legacy model did this via
+     *    StudentRepositoryManager.updateExistingRepositoryPaths);
+     *  - `__studentRepoMode` carries the mode (managed/external/download) so the
+     *    item can expose the right actions.
+     * Idempotent: skips contents whose directory is already absolute.
+     */
+    private async annotateCourseGit(courseId: string, contents: CourseContentStudentList[]): Promise<void> {
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const model = await this.resolveCourseGit(wsRoot, courseId);
+        if (!model.configured) {
+            return;
+        }
+        for (const c of contents) {
+            (c as any).__studentRepoMode = model.mode;
+            const dir = (c as any).directory as string | undefined;
+            if (model.repoRoot && dir && !path.isAbsolute(dir)) {
+                (c as any).directory = path.join(model.repoRoot, dir);
+            }
+        }
     }
 
     /** Assignment children for a course on the new course-level-git model. */
@@ -1481,14 +1512,18 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             contexts.push('reading');
         }
         
-        // Add repository context
-        if (this.submissionGroup?.repository) {
+        // Add repository / mode context (course-level git). `annotateCourseGit`
+        // has rewritten `directory` to the absolute local path when the course
+        // has a git binding, and stamped the student-repo mode — so treat an
+        // absolute directory as "has a repository" and its existence as cloned.
+        const dir = (this.courseContent as any).directory as string | undefined;
+        const mode = (this.courseContent as any).__studentRepoMode as string | undefined;
+        if (this.isAssignment() && dir && path.isAbsolute(dir)) {
             contexts.push('withRepository');
-            if (this.checkIfCloned()) {
-                contexts.push('cloned');
-            } else {
-                contexts.push('notCloned');
-            }
+            contexts.push(fs.existsSync(dir) ? 'cloned' : 'notCloned');
+            if (mode === 'managed') contexts.push('gitManaged');
+            else if (mode === 'external') contexts.push('gitExternal');
+            else if (mode === 'download') contexts.push('gitDownload');
         } else if (hasExampleAssigned(this.courseContent)) {
             contexts.push('hasExample');
         }
@@ -1508,43 +1543,12 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         this.contextValue = contexts.join('.');
     }
     
-    private checkIfCloned(): boolean {
-        if (!this.submissionGroup) return false;
-        const repoPath = this.getRepositoryPath();
-        return fs.existsSync(repoPath);
-    }
-    
     getRepositoryPath(): string {
-        // Always prefer the directory field from courseContent
-        // This is set by StudentRepositoryManager after cloning
-        const directory = (this.courseContent as any).directory;
-        if (directory) {
-            // Resolve relative directory against repository root when possible
-            if (path.isAbsolute(directory)) return directory;
-            const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            let repoName: string | undefined;
-            const repo = this.submissionGroup?.repository as any;
-            if (repo) {
-                if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
-                    const parts = repo.full_path.split('/');
-                    repoName = parts[parts.length - 1] || undefined;
-                } else if (typeof repo.clone_url === 'string' && repo.clone_url.length > 0) {
-                    const clean = repo.clone_url.replace(/\.git$/, '');
-                    const parts = clean.split('/');
-                    repoName = parts[parts.length - 1] || undefined;
-                } else if (typeof repo.web_url === 'string' && repo.web_url.length > 0) {
-                    const parts = repo.web_url.split('/');
-                    repoName = parts[parts.length - 1] || undefined;
-                }
-            }
-            if (ws && repoName) return path.join(ws, repoName, directory);
-            // Without a resolvable repo name, avoid guessing a path
-            return '';
-        }
-        
-        // If no directory field, we can't determine the path
-        // The directory will be set after the repository is cloned
-        return '';
+        // `annotateCourseGit` rewrites `directory` to the absolute local path
+        // ({repoRoot}/{dir}) once the course's git binding is resolved. Until then
+        // it's relative and we can't resolve a local path.
+        const directory = (this.courseContent as any).directory as string | undefined;
+        return directory && path.isAbsolute(directory) ? directory : '';
     }
 }
 
