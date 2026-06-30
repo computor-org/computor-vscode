@@ -53,6 +53,7 @@ import {
   CourseRoleList,
   CourseMemberList,
   CourseMemberGet,
+  CourseMemberCreate,
   CourseMemberUpdate,
   CourseMemberReadinessStatus,
   CourseMemberImportResponse,
@@ -1306,6 +1307,24 @@ export class ComputorApiService {
     return response.data;
   }
 
+  async createCourseMember(member: CourseMemberCreate): Promise<CourseMemberGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<CourseMemberGet>('/course-members', member);
+
+    // Invalidate related caches so the roster reflects the new member.
+    this.invalidateCachePattern('courseMembers-');
+
+    return response.data;
+  }
+
+  async deleteCourseMember(memberId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/course-members/${memberId}`);
+
+    // Invalidate related caches so the roster reflects the removal.
+    this.invalidateCachePattern('courseMembers-');
+  }
+
   /**
    * Lecturer: Sync GitLab permissions for a course member
    */
@@ -2265,6 +2284,23 @@ export class ComputorApiService {
       console.error('[getUsers] Failed to fetch users:', error);
       throw error;
     }
+  }
+
+  /**
+   * Search/paginate users via the backend's permission-scoped /users list.
+   * `search` is a substring match over name + email; the backend still filters
+   * to users the caller may see, so this never widens visibility. Not cached —
+   * the result set depends on the (search, skip) cursor.
+   */
+  async searchUsers(params?: { search?: string; skip?: number; limit?: number }): Promise<UserList[]> {
+    const client = await this.getHttpClient();
+    return (
+      await client.get<UserList[]>('/users', {
+        search: params?.search || undefined,
+        skip: params?.skip,
+        limit: params?.limit,
+      })
+    ).data;
   }
 
   // User Management: Get a specific user by ID
