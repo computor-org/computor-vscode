@@ -37,6 +37,16 @@ function highestRole(roleIds: string[]): string | null {
   return best;
 }
 
+// The highest role a caller with authority `ceiling` may *grant*. Lecturers
+// (and below) are capped at _student; only _maintainer and above (incl.
+// admins/org-managers, passed as _owner) may grant a role above _student.
+// Mirrors the backend Principal.get_course_assignment_ceiling. Distinct from
+// `ceiling`, which still governs which existing members may be edited/removed.
+function maxAssignableRole(ceiling: string | null): string | null {
+  if (!ceiling) return null;
+  return rank(ceiling) >= rank('_maintainer') ? ceiling : '_student';
+}
+
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -100,8 +110,9 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
       this.currentUserId = this.apiService.getCurrentUserId();
     }
     this.canManage = rank(this.ceiling) >= rank('_lecturer');
+    const assignCeiling = maxAssignableRole(this.ceiling);
     this.assignableRoles = this.canManage
-      ? COURSE_ROLES.filter((r) => rank(r) <= rank(this.ceiling))
+      ? COURSE_ROLES.filter((r) => rank(r) <= rank(assignCeiling))
       : [];
 
     const members = await this.loadMembers();

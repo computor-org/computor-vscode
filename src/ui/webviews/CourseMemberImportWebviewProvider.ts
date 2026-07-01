@@ -14,6 +14,35 @@ interface ImportMemberRow extends CourseMemberImportRow {
   isSelected: boolean;
 }
 
+// Course-role ranks (mirrors backend permissions/principal.py). Used to cap the
+// roles a caller may grant: lecturers (and below) may only assign _student;
+// only _maintainer and above (incl. admins / organization managers) may grant a
+// role above _student. The backend re-enforces this on every import.
+const ROLE_RANK: Record<string, number> = {
+  _student: 1,
+  _tutor: 2,
+  _lecturer: 3,
+  _maintainer: 4,
+  _owner: 5,
+};
+
+function rank(roleId?: string | null): number {
+  return roleId ? ROLE_RANK[roleId] ?? 0 : 0;
+}
+
+function highestRole(roleIds: string[]): string | null {
+  let best: string | null = null;
+  for (const r of roleIds) {
+    if (rank(r) > rank(best)) best = r;
+  }
+  return best;
+}
+
+function assignmentCeiling(authority: string | null): string | null {
+  if (!authority) return null;
+  return rank(authority) >= rank('_maintainer') ? authority : '_student';
+}
+
 export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
   private treeDataProvider?: LecturerTreeDataProvider;
@@ -21,6 +50,9 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
   private members: ImportMemberRow[] = [];
   private availableRoles: CourseRoleList[] = [];
   private availableGroups: CourseGroupList[] = [];
+  // Highest role rank the caller may grant (0 = unknown → no client-side cap;
+  // the backend still enforces the assignment ceiling). Lecturers → _student.
+  private maxAssignRank = 0;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -53,6 +85,27 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
         { id: '_lecturer', title: 'Lecturer' }
       ] as CourseRoleList[];
       this.availableGroups = [];
+    }
+
+    // Cap the roles offered in the UI to what the caller may actually grant
+    // (lecturers → _student only). The backend re-enforces this on import.
+    try {
+      const [scopes, account] = await Promise.all([
+        this.apiService.getUserScopes(),
+        this.apiService.getUserAccount(),
+      ]);
+      const userRoleIds = (account?.user_roles ?? []).map((r) => r.role_id);
+      const isAdmin = !!scopes?.is_admin || userRoleIds.includes('_admin');
+      const isOrgManager = userRoleIds.includes('_organization_manager');
+      const authority = isAdmin || isOrgManager ? '_owner' : highestRole(scopes?.course?.[courseId] ?? []);
+      this.maxAssignRank = rank(assignmentCeiling(authority));
+      if (this.maxAssignRank > 0) {
+        this.availableRoles = this.availableRoles.filter((r) => rank(r.id) <= this.maxAssignRank);
+      }
+    } catch {
+      // Couldn't determine the ceiling — leave roles as-is; the backend still
+      // enforces the assignment ceiling on every import.
+      this.maxAssignRank = 0;
     }
 
     // Convert existing members to display format
@@ -120,6 +173,10 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
 
         status = hasChanges ? 'modified' : 'existing';
         selectedRoleId = existing.course_role_id;
+      } else if (this.maxAssignRank > 0 && rank(selectedRoleId) > this.maxAssignRank) {
+        // New member whose file-specified role exceeds the caller's ceiling:
+        // imported members default to _student (only maintainers+ may grant more).
+        selectedRoleId = '_student';
       }
 
       mergedMembers.push({
