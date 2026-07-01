@@ -203,26 +203,43 @@ button.secondary:hover:not(:disabled) {
   margin-left: 6px;
 }
 
-/* Add section layout */
-.add-grid {
+/* Tabs */
+.tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
+  gap: 4px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.3));
+  margin-bottom: 16px;
 }
 
-.users-pane {
-  flex: 1 1 480px;
-  min-width: 0;
+.tab {
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 12px;
+  margin-bottom: -1px;
 }
 
-.email-pane {
-  flex: 0 0 300px;
+.tab:hover {
+  color: var(--vscode-foreground);
 }
 
+.tab.active {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--vscode-focusBorder, var(--vscode-button-background));
+}
+
+.tab-panel.hidden {
+  display: none;
+}
+
+/* Add-by-email form */
 #email-form {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-width: 420px;
 }
 
 #email-form label {

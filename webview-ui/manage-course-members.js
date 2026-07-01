@@ -7,9 +7,12 @@
   const roleLabels = state.roleLabels || {};
   const assignableRoles = state.assignableRoles || [];
   const canManage = !!state.canManage;
-  const usersPageSize = state.usersPageSize || 10;
 
   let members = state.members || [];
+  let memberIds = new Set(members.map((m) => m.userId));
+
+  let currentTab = 'roster';
+  let usersLoaded = false;
 
   // Users-table local state.
   let userSearch = '';
@@ -47,44 +50,54 @@
       .join('');
   }
 
+  // Members already in the course don't belong in the add picker (they're on the
+  // roster tab). Keep users added this session visible so their "Added ✓" shows.
+  function visibleUserList() {
+    return userList.filter((u) => addedUsers.has(u.id) || !memberIds.has(u.id));
+  }
+
   // ---- shell (built once) -------------------------------------------------
   function buildShell() {
-    const addSection = canManage
+    const tabs = canManage
+      ? `<button class="tab" data-tab="roster">Members (<span id="member-count">${members.length}</span>)</button>
+         <button class="tab" data-tab="add">Add from list</button>
+         <button class="tab" data-tab="email">By email</button>`
+      : `<button class="tab" data-tab="roster">Members (<span id="member-count">${members.length}</span>)</button>`;
+
+    const addPanels = canManage
       ? `
-      <section class="add">
-        <div class="add-grid">
-          <div class="pane users-pane">
-            <h2>Add from the user list</h2>
-            <p class="hint">You can only see users your permissions allow. Pick a role and add them.</p>
-            <input id="user-search" type="text" placeholder="Search by name or email…" autocomplete="off" />
-            <div id="users-status" class="status"></div>
-            <table class="grid">
-              <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
-              <tbody id="users-body"></tbody>
-            </table>
-            <div class="pager">
-              <span id="users-page-label" class="muted"></span>
-              <span>
-                <button id="users-prev" class="secondary">Previous</button>
-                <button id="users-next" class="secondary">Next</button>
-              </span>
-            </div>
-          </div>
-          <div class="pane email-pane">
-            <h2>By email</h2>
-            <p class="hint">Adds the user with this email, creating the account if it does not exist yet.</p>
-            <form id="email-form">
-              <label>Email *<input id="email-input" type="email" placeholder="person@example.org" required /></label>
-              <label>Given name<input id="email-given" type="text" /></label>
-              <label>Family name<input id="email-family" type="text" /></label>
-              <label>Role *<select id="email-role">${roleOptions(assignableRoles[0])}</select></label>
-              <label>Group<input id="email-group" type="text" placeholder="Optional — created if missing" /></label>
-              <button id="email-submit" type="submit" class="primary">Add by email</button>
-            </form>
-            <div id="email-status" class="status"></div>
-          </div>
+      <section id="tab-add" class="tab-panel">
+        <p class="hint">You can only see users your permissions allow. Members already in the course are hidden — pick a role and add them.</p>
+        <input id="user-search" type="text" placeholder="Search by name or email…" autocomplete="off" />
+        <div id="users-status" class="status"></div>
+        <table class="grid">
+          <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
+          <tbody id="users-body"></tbody>
+        </table>
+        <div class="pager">
+          <span id="users-page-label" class="muted"></span>
+          <span>
+            <button id="users-prev" class="secondary">Previous</button>
+            <button id="users-next" class="secondary">Next</button>
+          </span>
         </div>
+      </section>
+      <section id="tab-email" class="tab-panel">
+        <p class="hint">Adds the user with this email, creating the account if it does not exist yet. Use this for people not yet in the system.</p>
+        <form id="email-form">
+          <label>Email *<input id="email-input" type="email" placeholder="person@example.org" required /></label>
+          <label>Given name<input id="email-given" type="text" /></label>
+          <label>Family name<input id="email-family" type="text" /></label>
+          <label>Role *<select id="email-role">${roleOptions(assignableRoles[0])}</select></label>
+          <label>Group<input id="email-group" type="text" placeholder="Optional — created if missing" /></label>
+          <button id="email-submit" type="submit" class="primary">Add by email</button>
+        </form>
+        <div id="email-status" class="status"></div>
       </section>`
+      : '';
+
+    const readonlyNotice = canManage
+      ? ''
       : `<div class="notice">You have read-only access to this roster. A lecturer role (or higher) on this course is required to add or change members.</div>`;
 
     app.innerHTML = `
@@ -92,26 +105,44 @@
         <h1>Members</h1>
         <div class="muted">${esc(state.courseName || 'Course')}</div>
       </header>
-      <section class="roster">
-        <h2>Roster (<span id="member-count">${members.length}</span>)</h2>
+      <nav class="tabs">${tabs}</nav>
+      <section id="tab-roster" class="tab-panel">
+        ${readonlyNotice}
         <table class="grid">
           <thead><tr><th>Member</th><th>Role</th><th>Group</th><th></th></tr></thead>
           <tbody id="roster-body"></tbody>
         </table>
       </section>
-      ${addSection}`;
+      ${addPanels}`;
 
     attachShellEvents();
+    showTab('roster');
     renderRoster();
-    if (canManage) requestUsers();
+  }
+
+  function showTab(name) {
+    currentTab = name;
+    ['roster', 'add', 'email'].forEach((t) => {
+      const panel = document.getElementById('tab-' + t);
+      if (panel) panel.classList.toggle('hidden', t !== name);
+    });
+    app.querySelectorAll('.tab').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === name);
+    });
+    // Load the user list lazily the first time the Add tab is opened.
+    if (name === 'add' && canManage && !usersLoaded) {
+      usersLoaded = true;
+      requestUsers();
+    }
   }
 
   // ---- roster -------------------------------------------------------------
   function renderRoster() {
-    const body = document.getElementById('roster-body');
-    if (!body) return;
     const count = document.getElementById('member-count');
     if (count) count.textContent = String(members.length);
+
+    const body = document.getElementById('roster-body');
+    if (!body) return;
 
     if (!members.length) {
       body.innerHTML = `<tr><td colspan="4" class="empty">No members yet.</td></tr>`;
@@ -150,15 +181,18 @@
     const body = document.getElementById('users-body');
     if (!body) return;
     const status = document.getElementById('users-status');
-    if (status) status.textContent = usersError ? usersError : '';
-    if (status) status.className = 'status' + (usersError ? ' error' : '');
+    if (status) {
+      status.textContent = usersError || '';
+      status.className = 'status' + (usersError ? ' error' : '');
+    }
 
+    const visible = visibleUserList();
     if (usersLoading) {
       body.innerHTML = `<tr><td colspan="3" class="empty">Loading users…</td></tr>`;
-    } else if (!userList.length) {
-      body.innerHTML = `<tr><td colspan="3" class="empty">No users found.</td></tr>`;
+    } else if (!visible.length) {
+      body.innerHTML = `<tr><td colspan="3" class="empty">No users to add.</td></tr>`;
     } else {
-      body.innerHTML = userList
+      body.innerHTML = visible
         .map((u) => {
           const isAdded = addedUsers.has(u.id);
           const err = rowError[u.id];
@@ -194,6 +228,10 @@
   let searchTimer = null;
 
   function attachShellEvents() {
+    app.querySelectorAll('.tab').forEach((b) => {
+      b.addEventListener('click', () => showTab(b.getAttribute('data-tab')));
+    });
+
     // Roster delegation.
     const rosterBody = document.getElementById('roster-body');
     if (rosterBody) {
@@ -297,7 +335,9 @@
     switch (msg.command) {
       case 'membersUpdated':
         members = (msg.data && msg.data.members) || [];
+        memberIds = new Set(members.map((m) => m.userId));
         renderRoster();
+        renderUsers(); // drop any freshly-added members from the picker
         break;
       case 'usersResult': {
         const d = msg.data || {};
