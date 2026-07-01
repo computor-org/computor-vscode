@@ -14,6 +14,7 @@ import { CourseContentTypeWebviewProvider } from '../ui/webviews/CourseContentTy
 import { CourseGroupWebviewProvider } from '../ui/webviews/CourseGroupWebviewProvider';
 import { CourseMemberWebviewProvider } from '../ui/webviews/CourseMemberWebviewProvider';
 import { CourseMemberImportWebviewProvider } from '../ui/webviews/CourseMemberImportWebviewProvider';
+import { ManageCourseMembersWebviewProvider } from '../ui/webviews/ManageCourseMembersWebviewProvider';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMemberCommentsInputPanel';
@@ -53,6 +54,7 @@ export class LecturerCommands {
   private courseGroupWebviewProvider: CourseGroupWebviewProvider;
   private courseMemberWebviewProvider: CourseMemberWebviewProvider;
   private courseMemberImportWebviewProvider: CourseMemberImportWebviewProvider;
+  private manageCourseMembersWebviewProvider: ManageCourseMembersWebviewProvider;
   private courseGroupCommands: CourseGroupCommands;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
@@ -79,6 +81,7 @@ export class LecturerCommands {
     this.courseGroupWebviewProvider = new CourseGroupWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberWebviewProvider = new CourseMemberWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.courseMemberImportWebviewProvider = new CourseMemberImportWebviewProvider(context, this.apiService, this.treeDataProvider);
+    this.manageCourseMembersWebviewProvider = new ManageCourseMembersWebviewProvider(context, this.apiService, this.treeDataProvider);
     this.messagesWebviewProvider = MessagesWebviewProvider.getShared(context, this.apiService);
     if (messagesInputPanel) {
       this.messagesWebviewProvider.setInputPanel(messagesInputPanel);
@@ -193,6 +196,11 @@ export class LecturerCommands {
     // Course member import with preview
     register('computor.lecturer.importCourseMembersPreview', async (item: CourseTreeItem | CourseFolderTreeItem) => {
       await this.importCourseMembersWithPreview(item);
+    });
+
+    // Manage members (roster + add) — on the course node
+    register('computor.lecturer.manageCourseMembers', async (item: CourseTreeItem) => {
+      await this.manageCourseMembers(item);
     });
 
     register('computor.lecturer.editCourseContentType', async (item: CourseContentTypeTreeItem) => {
@@ -2440,6 +2448,24 @@ export class LecturerCommands {
       console.error('Failed to show course members:', error);
       vscode.window.showErrorMessage(
         `Failed to show course members: ${error?.message || error}`
+      );
+    }
+  }
+
+  async manageCourseMembers(item: CourseTreeItem): Promise<void> {
+    try {
+      if (!(item instanceof CourseTreeItem) || !item.course?.id) {
+        vscode.window.showErrorMessage('Please select a course to manage its members.');
+        return;
+      }
+      await this.manageCourseMembersWebviewProvider.open(
+        item.course.id,
+        item.course.title || item.course.path
+      );
+    } catch (error: any) {
+      console.error('Failed to open course member management:', error);
+      vscode.window.showErrorMessage(
+        `Failed to open course member management: ${error?.message || error}`
       );
     }
   }

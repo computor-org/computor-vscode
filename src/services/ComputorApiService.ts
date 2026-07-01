@@ -53,6 +53,7 @@ import {
   CourseRoleList,
   CourseMemberList,
   CourseMemberGet,
+  CourseMemberCreate,
   CourseMemberUpdate,
   CourseMemberReadinessStatus,
   CourseMemberImportResponse,
@@ -1306,6 +1307,42 @@ export class ComputorApiService {
     return response.data;
   }
 
+  async createCourseMember(member: CourseMemberCreate): Promise<CourseMemberGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<CourseMemberGet>('/course-members', member);
+
+    // Invalidate related caches so the roster reflects the new member.
+    this.invalidateCachePattern('courseMembers-');
+
+    return response.data;
+  }
+
+  async deleteCourseMember(memberId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/course-members/${memberId}`);
+
+    // Invalidate related caches so the roster reflects the removal.
+    this.invalidateCachePattern('courseMembers-');
+  }
+
+  /**
+   * Parse an uploaded member file (CSV/JSON/XLSX/Excel-XML) into preview rows.
+   * Read-only on the backend — no members are imported. `contentBase64` is the
+   * raw file bytes base64-encoded (handles binary xlsx over plain JSON).
+   */
+  async parseCourseMemberFile(
+    courseId: string,
+    filename: string,
+    contentBase64: string
+  ): Promise<{ rows: any[]; detected_format?: string; warnings?: string[] }> {
+    const client = await this.getHttpClient();
+    const response = await client.post<{ rows: any[]; detected_format?: string; warnings?: string[] }>(
+      `/course-member-import/parse/${courseId}`,
+      { filename, content_base64: contentBase64 }
+    );
+    return response.data;
+  }
+
   /**
    * Lecturer: Sync GitLab permissions for a course member
    */
@@ -2265,6 +2302,23 @@ export class ComputorApiService {
       console.error('[getUsers] Failed to fetch users:', error);
       throw error;
     }
+  }
+
+  /**
+   * Search/paginate users via the backend's permission-scoped /users list.
+   * `search` is a substring match over name + email; the backend still filters
+   * to users the caller may see, so this never widens visibility. Not cached —
+   * the result set depends on the (search, skip) cursor.
+   */
+  async searchUsers(params?: { search?: string; skip?: number; limit?: number }): Promise<UserList[]> {
+    const client = await this.getHttpClient();
+    return (
+      await client.get<UserList[]>('/users', {
+        search: params?.search || undefined,
+        skip: params?.skip,
+        limit: params?.limit,
+      })
+    ).data;
   }
 
   // User Management: Get a specific user by ID

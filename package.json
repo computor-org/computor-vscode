@@ -878,6 +878,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.manageCourseMembers",
+        "title": "Manage Members",
+        "icon": "$(organization)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.showCourseGroupDetails",
         "title": "Show Details",
         "icon": "$(info)",
@@ -1665,6 +1671,11 @@
           "command": "computor.lecturer.configureCourseGit",
           "when": "view == computor.lecturer.courses && viewItem == course",
           "group": "2_config@1"
+        },
+        {
+          "command": "computor.lecturer.manageCourseMembers",
+          "when": "view == computor.lecturer.courses && viewItem == course",
+          "group": "2_discussion@2"
         },
         {
           "command": "computor.lecturer.showCourseDetails",
