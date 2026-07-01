@@ -25,6 +25,15 @@
   const addedUsers = new Set(); // userIds added this session
   const rowError = {}; // userId -> error message
 
+  // Import-from-file local state (index-keyed).
+  let fileRows = [];
+  const fileSel = {};
+  const fileRole = {};
+  const fileGroup = {};
+  const fileResults = {};
+  let fileImporting = false;
+  let fileQueue = [];
+
   const app = document.getElementById('app');
 
   function esc(s) {
@@ -61,7 +70,8 @@
     const tabs = canManage
       ? `<button class="tab" data-tab="roster">Members (<span id="member-count">${members.length}</span>)</button>
          <button class="tab" data-tab="add">Add from list</button>
-         <button class="tab" data-tab="email">By email</button>`
+         <button class="tab" data-tab="email">By email</button>
+         <button class="tab" data-tab="file">Import file</button>`
       : `<button class="tab" data-tab="roster">Members (<span id="member-count">${members.length}</span>)</button>`;
 
     const addPanels = canManage
@@ -93,6 +103,12 @@
           <button id="email-submit" type="submit" class="primary">Add by email</button>
         </form>
         <div id="email-status" class="status"></div>
+      </section>
+      <section id="tab-file" class="tab-panel">
+        <p class="hint">Upload a CSV, JSON, Excel (.xlsx) or Excel-XML student list. Review and adjust the rows, then import the ones you want.</p>
+        <button id="file-pick" class="secondary">Choose file…</button>
+        <div id="file-status" class="status"></div>
+        <div id="file-preview"></div>
       </section>`
       : '';
 
@@ -122,7 +138,7 @@
 
   function showTab(name) {
     currentTab = name;
-    ['roster', 'add', 'email'].forEach((t) => {
+    ['roster', 'add', 'email', 'file'].forEach((t) => {
       const panel = document.getElementById('tab-' + t);
       if (panel) panel.classList.toggle('hidden', t !== name);
     });
@@ -222,6 +238,87 @@
     const next = document.getElementById('users-next');
     if (prev) prev.disabled = userPage === 0 || usersLoading;
     if (next) next.disabled = !userHasNext || usersLoading;
+  }
+
+  // ---- import from file ---------------------------------------------------
+  function renderFile() {
+    const preview = document.getElementById('file-preview');
+    if (!preview) return;
+    if (!fileRows.length) {
+      preview.innerHTML = '';
+      return;
+    }
+    const selCount = fileRows.reduce((n, _, i) => n + (fileSel[i] ? 1 : 0), 0);
+    const body = fileRows
+      .map((r, i) => {
+        const res = fileResults[i];
+        const name = `${r.given_name || ''} ${r.family_name || ''}`.trim() || r.email;
+        const status = res
+          ? res.ok
+            ? '<span class="ok">Added ✓</span>'
+            : `<span class="error" title="${esc(res.message || '')}">Failed</span>`
+          : '<span class="muted">—</span>';
+        const dis = fileImporting ? ' disabled' : '';
+        return `<tr>
+          <td><input type="checkbox" class="file-sel" data-i="${i}"${fileSel[i] ? ' checked' : ''}${dis} /></td>
+          <td><div class="strong">${esc(name)}</div><div class="muted">${esc(r.email)}</div></td>
+          <td><select class="file-role" data-i="${i}"${dis}>${roleOptions(fileRole[i] || assignableRoles[0])}</select></td>
+          <td><input class="file-group" data-i="${i}" value="${esc(fileGroup[i] || '')}" placeholder="—"${dis} /></td>
+          <td class="right">${status}</td>
+        </tr>`;
+      })
+      .join('');
+    preview.innerHTML = `
+      <table class="grid">
+        <thead><tr><th></th><th>User</th><th>Role</th><th>Group</th><th>Status</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+      <div class="pager">
+        <span class="muted">${selCount} selected</span>
+        <button id="file-import" class="primary"${fileImporting || selCount === 0 ? ' disabled' : ''}>${fileImporting ? 'Importing…' : 'Import selected'}</button>
+      </div>`;
+  }
+
+  function startFileImport() {
+    if (fileImporting) return;
+    fileQueue = fileRows
+      .map((_, i) => i)
+      .filter((i) => fileSel[i] && !(fileResults[i] && fileResults[i].ok));
+    if (!fileQueue.length) return;
+    fileImporting = true;
+    renderFile();
+    processNextFileImport();
+  }
+
+  // Import one row at a time (serialised) so concurrent create-missing-group
+  // calls can't race on the same new group.
+  function processNextFileImport() {
+    if (!fileQueue.length) {
+      fileImporting = false;
+      renderFile();
+      vscode.postMessage({ command: 'refresh' });
+      const st = document.getElementById('file-status');
+      if (st) {
+        st.textContent = 'Import finished.';
+        st.className = 'status ok';
+      }
+      return;
+    }
+    const i = fileQueue[0];
+    const r = fileRows[i];
+    vscode.postMessage({
+      command: 'importFileRow',
+      data: {
+        index: i,
+        member: {
+          email: r.email,
+          given_name: r.given_name,
+          family_name: r.family_name,
+          course_role_id: fileRole[i] || assignableRoles[0],
+          course_group_title: fileGroup[i],
+        },
+      },
+    });
   }
 
   // ---- events -------------------------------------------------------------
@@ -327,6 +424,36 @@
         });
       });
     }
+
+    const filePick = document.getElementById('file-pick');
+    if (filePick) {
+      filePick.addEventListener('click', () => vscode.postMessage({ command: 'pickImportFile' }));
+    }
+    const fileSection = document.getElementById('tab-file');
+    if (fileSection) {
+      fileSection.addEventListener('change', (e) => {
+        const cb = e.target.closest('input.file-sel');
+        if (cb) {
+          fileSel[Number(cb.getAttribute('data-i'))] = cb.checked;
+          renderFile();
+          return;
+        }
+        const role = e.target.closest('select.file-role');
+        if (role) {
+          fileRole[Number(role.getAttribute('data-i'))] = role.value;
+          return;
+        }
+        const group = e.target.closest('input.file-group');
+        if (group) fileGroup[Number(group.getAttribute('data-i'))] = group.value;
+      });
+      fileSection.addEventListener('input', (e) => {
+        const group = e.target.closest('input.file-group');
+        if (group) fileGroup[Number(group.getAttribute('data-i'))] = group.value;
+      });
+      fileSection.addEventListener('click', (e) => {
+        if (e.target.closest('#file-import')) startFileImport();
+      });
+    }
   }
 
   // ---- inbound messages ---------------------------------------------------
@@ -376,6 +503,44 @@
             if (el) el.value = '';
           });
         }
+        break;
+      }
+      case 'parsedRows': {
+        const d = msg.data || {};
+        fileRows = d.rows || [];
+        [fileSel, fileRole, fileGroup, fileResults].forEach((m) => {
+          Object.keys(m).forEach((k) => delete m[k]);
+        });
+        fileRows.forEach((r, i) => {
+          fileSel[i] = true;
+          fileRole[i] =
+            r.course_role_id && assignableRoles.indexOf(r.course_role_id) !== -1
+              ? r.course_role_id
+              : assignableRoles[0];
+          fileGroup[i] = r.course_group_title || '';
+        });
+        const st = document.getElementById('file-status');
+        if (st) {
+          if (d.error) {
+            st.textContent = d.error;
+            st.className = 'status error';
+          } else if (!fileRows.length) {
+            st.textContent = 'No members with an email address were found in the file.';
+            st.className = 'status';
+          } else {
+            st.textContent = `Parsed ${fileRows.length} member(s) from ${d.filename || 'the file'}.`;
+            st.className = 'status';
+          }
+        }
+        renderFile();
+        break;
+      }
+      case 'fileRowResult': {
+        const d = msg.data || {};
+        fileResults[d.index] = { ok: d.ok, message: d.message };
+        fileQueue = fileQueue.filter((x) => x !== d.index);
+        renderFile();
+        processNextFileImport();
         break;
       }
       default:

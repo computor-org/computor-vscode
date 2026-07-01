@@ -1326,6 +1326,24 @@ export class ComputorApiService {
   }
 
   /**
+   * Parse an uploaded member file (CSV/JSON/XLSX/Excel-XML) into preview rows.
+   * Read-only on the backend — no members are imported. `contentBase64` is the
+   * raw file bytes base64-encoded (handles binary xlsx over plain JSON).
+   */
+  async parseCourseMemberFile(
+    courseId: string,
+    filename: string,
+    contentBase64: string
+  ): Promise<{ rows: any[]; detected_format?: string; warnings?: string[] }> {
+    const client = await this.getHttpClient();
+    const response = await client.post<{ rows: any[]; detected_format?: string; warnings?: string[] }>(
+      `/course-member-import/parse/${courseId}`,
+      { filename, content_base64: contentBase64 }
+    );
+    return response.data;
+  }
+
+  /**
    * Lecturer: Sync GitLab permissions for a course member
    */
   async syncMemberGitlabPermissions(

@@ -172,6 +172,10 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
         return this.handleRemoveMember(message.data);
       case 'importByEmail':
         return this.handleImportByEmail(message.data);
+      case 'pickImportFile':
+        return this.handlePickImportFile();
+      case 'importFileRow':
+        return this.handleImportFileRow(message.data);
       case 'refresh':
         return this.refreshAndPostMembers();
       case 'showError':
@@ -288,6 +292,59 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
       await this.panel?.webview.postMessage({
         command: 'importResult',
         data: { ok: false, message: errMessage(e) },
+      });
+    }
+  }
+
+  private async handlePickImportFile(): Promise<void> {
+    if (!this.courseId) return;
+    const picked = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      openLabel: 'Select member file',
+      filters: { 'Member lists': ['csv', 'tsv', 'txt', 'json', 'xlsx', 'xls', 'xml'] },
+    });
+    const uri = picked && picked[0];
+    if (!uri) return;
+    const filename = uri.path.split('/').pop() || 'members';
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      const contentBase64 = Buffer.from(bytes).toString('base64');
+      const res = await this.apiService.parseCourseMemberFile(this.courseId, filename, contentBase64);
+      await this.panel?.webview.postMessage({
+        command: 'parsedRows',
+        data: { filename, rows: res.rows || [] },
+      });
+    } catch (e) {
+      await this.panel?.webview.postMessage({
+        command: 'parsedRows',
+        data: { filename, rows: [], error: errMessage(e) },
+      });
+    }
+  }
+
+  private async handleImportFileRow(data: any): Promise<void> {
+    const member = data?.member;
+    if (!this.courseId || !member?.email) return;
+    try {
+      const res = await this.apiService.importSingleCourseMember(
+        this.courseId,
+        {
+          email: String(member.email).trim(),
+          given_name: member.given_name?.trim() || null,
+          family_name: member.family_name?.trim() || null,
+          course_group_title: member.course_group_title?.trim() || null,
+          course_role_id: member.course_role_id,
+        },
+        { createMissingGroup: true, updateIfExists: true }
+      );
+      await this.panel?.webview.postMessage({
+        command: 'fileRowResult',
+        data: { index: data.index, ok: !!res.success, message: res.message },
+      });
+    } catch (e) {
+      await this.panel?.webview.postMessage({
+        command: 'fileRowResult',
+        data: { index: data.index, ok: false, message: errMessage(e) },
       });
     }
   }
