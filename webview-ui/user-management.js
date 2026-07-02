@@ -87,6 +87,10 @@
       ? `<div class="notice warning">⚠️ This user was archived on ${formatDate(user.archived_at)}</div>`
       : '';
 
+    const bannedBanner = user.banned_at
+      ? `<div class="notice error">🚫 This user is banned${user.ban_reason ? ` — ${escapeHtml(user.ban_reason)}` : ''} (since ${formatDate(user.banned_at)}). They cannot authenticate.</div>`
+      : '';
+
     const serviceAccountBanner = user.is_service
       ? `<div class="notice info">🤖 This is a service account</div>`
       : '';
@@ -94,6 +98,7 @@
     root.innerHTML = `
       <div data-notice class="notice" style="display: none;"></div>
 
+      ${bannedBanner}
       ${archivedBanner}
       ${serviceAccountBanner}
 
@@ -252,6 +257,21 @@
             </button>
           </div>
         </div>
+
+        <div class="form-field">
+          <label>Access Control</label>
+          <p class="field-hint">${user.banned_at
+            ? 'This user is banned. Unbanning restores their ability to sign in.'
+            : 'Banning immediately blocks this user from signing in and revokes their active sessions.'}</p>
+          ${user.banned_at ? '' : `
+          <input id="ban-reason" type="text" maxlength="1024" placeholder="Reason (optional)" value="">
+          `}
+          <div class="form-actions">
+            <button type="button" id="ban-toggle-btn" class="${user.banned_at ? 'primary' : 'btn-danger'}">
+              ${user.banned_at ? 'Unban User' : 'Ban User'}
+            </button>
+          </div>
+        </div>
       </section>
     `;
 
@@ -275,6 +295,20 @@
       archiveBtn.addEventListener('click', () => {
         const isArchived = !!(state.user && state.user.archived_at);
         post(isArchived ? 'unarchiveUser' : 'archiveUser');
+      });
+    }
+
+    const banBtn = document.getElementById('ban-toggle-btn');
+    if (banBtn) {
+      banBtn.addEventListener('click', () => {
+        const isBanned = !!(state.user && state.user.banned_at);
+        if (isBanned) {
+          post('unbanUser');
+        } else {
+          const reasonInput = document.getElementById('ban-reason');
+          const reason = reasonInput instanceof HTMLInputElement ? reasonInput.value : '';
+          post('banUser', { reason });
+        }
       });
     }
 

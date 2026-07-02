@@ -87,6 +87,12 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       case 'unarchiveUser':
         await this.handleArchiveToggle(false);
         break;
+      case 'banUser':
+        await this.handleBanToggle(true, message.data?.reason);
+        break;
+      case 'unbanUser':
+        await this.handleBanToggle(false);
+        break;
       case 'assignRole':
         await this.handleAssignRole(message.data);
         break;
@@ -231,6 +237,39 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       await this.refreshState({
         force: true,
         notice: { type: 'success', message: `User ${action}d.` }
+      });
+    } catch (error: any) {
+      this.handleError(`Failed to ${action} user`, error);
+    }
+  }
+
+  private async handleBanToggle(ban: boolean, reason?: string): Promise<void> {
+    if (!this.currentUserId) {
+      return;
+    }
+
+    const action = ban ? 'ban' : 'unban';
+    const confirmation = await vscode.window.showWarningMessage(
+      ban
+        ? 'Ban this user? They will be signed out and blocked from authenticating until unbanned.'
+        : 'Unban this user? They will be able to sign in again.',
+      { modal: true },
+      ban ? 'Ban' : 'Unban'
+    );
+
+    if (!confirmation) {
+      return;
+    }
+
+    try {
+      if (ban) {
+        await this.apiService.banUser(this.currentUserId, typeof reason === 'string' ? reason : undefined);
+      } else {
+        await this.apiService.unbanUser(this.currentUserId);
+      }
+      await this.refreshState({
+        force: true,
+        notice: { type: 'success', message: `User ${action}ned.` }
       });
     } catch (error: any) {
       this.handleError(`Failed to ${action} user`, error);
