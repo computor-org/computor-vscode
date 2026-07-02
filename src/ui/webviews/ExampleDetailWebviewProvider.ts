@@ -46,40 +46,22 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       localVersion = readMetaYamlVersion(data.downloadPath);
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'example-details.js');
-    const styleUri = this.getWebviewUri(webview, 'webview-ui', 'example-details.css');
-
-    const initialState = JSON.stringify({
-      example: data.example,
-      repository: data.repository,
-      versions,
-      latestVersion,
-      isDownloaded: data.isDownloaded,
-      downloadPath: data.downloadPath,
-      localVersion: localVersion ? normalizeSemVer(localVersion) : undefined,
-      currentVersion: data.currentVersion
+    return this.renderPage({
+      title: `Example: ${data.example.title}`,
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['example-details.css'],
+      scriptFiles: ['example-details.js'],
+      initialState: {
+        example: data.example,
+        repository: data.repository,
+        versions,
+        latestVersion,
+        isDownloaded: data.isDownloaded,
+        downloadPath: data.downloadPath,
+        localVersion: localVersion ? normalizeSemVer(localVersion) : undefined,
+        currentVersion: data.currentVersion
+      }
     });
-
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-      <title>Example: ${data.example.title}</title>
-      <link rel="stylesheet" href="${styleUri}">
-    </head>
-    <body>
-      <div id="app"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {

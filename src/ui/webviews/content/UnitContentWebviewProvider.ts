@@ -2,8 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { SHARED_STYLES } from '../shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
 
 export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -20,7 +19,6 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
     }
 
     const { courseContent, course, contentType } = data;
-    const nonce = this.getNonce();
 
     let childCount = 0;
     try {
@@ -105,7 +103,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
       });
     `;
 
-    return pageShell(nonce, 'Unit', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Unit', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {

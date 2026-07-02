@@ -79,47 +79,27 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('Meta Editor', '<p>No data available</p>');
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
     const existingData = this.parseMetaYaml(data.filePath);
     const exampleFiles = this.listExampleFiles(data.exampleDir);
 
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'meta-yaml-editor.js');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'meta-yaml-editor.css');
-
-    const initialState = JSON.stringify({
-      meta: existingData || null,
-      filePath: data.filePath,
-      exampleDir: data.exampleDir,
-      exampleTitle: data.exampleTitle || path.basename(data.exampleDir),
-      exampleFiles,
-      languages: data.languages || []
-    });
-
     this.setupFileWatcher(data.exampleDir);
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>Meta Editor</title>
-  <link rel="stylesheet" href="${stylesUri}">
-</head>
-<body>
-  <div class="header">
-    <h1>Example Configuration</h1>
-    <p>${escapeHtml(data.exampleTitle || '')} &mdash; meta.yaml</p>
-  </div>
-  <div id="app"></div>
-  <script nonce="${nonce}">
-    window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-    window.__INITIAL_STATE__ = ${initialState};
-  </script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+    return this.renderPage({
+      title: 'Meta Editor',
+      headerHtml: `<h1>Example Configuration</h1>
+    <p>${escapeHtml(data.exampleTitle || '')} &mdash; meta.yaml</p>`,
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['meta-yaml-editor.css'],
+      scriptFiles: ['meta-yaml-editor.js'],
+      initialState: {
+        meta: existingData || null,
+        filePath: data.filePath,
+        exampleDir: data.exampleDir,
+        exampleTitle: data.exampleTitle || path.basename(data.exampleDir),
+        exampleFiles,
+        languages: data.languages || []
+      }
+    });
   }
 
   protected async handleMessage(message: any): Promise<void> {

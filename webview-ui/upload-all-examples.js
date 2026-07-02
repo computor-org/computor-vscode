@@ -1,5 +1,5 @@
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.vscodeApi || acquireVsCodeApi();
   let examples = window.__INITIAL_STATE__ || [];
   let isUploading = false;
 

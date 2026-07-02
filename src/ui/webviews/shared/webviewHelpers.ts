@@ -92,26 +92,3 @@ export function selectInput(name: string, options: { value: string; label: strin
   ).join('\n');
   return `<select name="${escapeHtml(name)}" id="${escapeHtml(name)}">${optionsHtml}</select>`;
 }
-
-export function pageShell(nonce: string, title: string, headerHtml: string, bodyHtml: string, scriptHtml: string, styles: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>${escapeHtml(title)}</title>
-  <style>${styles}</style>
-</head>
-<body>
-  <div class="header">
-    ${headerHtml}
-  </div>
-  ${bodyHtml}
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    ${scriptHtml}
-  </script>
-</body>
-</html>`;
-}

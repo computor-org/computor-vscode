@@ -3,8 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { OrganizationGet } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { SHARED_STYLES } from './shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
 
 export class OrganizationWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -24,7 +23,6 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
     }
 
     const { organization } = data;
-    const nonce = this.getNonce();
 
     let courseFamiliesCount = 0;
     try {
@@ -85,7 +83,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       });
     `;
 
-    return pageShell(nonce, 'Organization', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Organization', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

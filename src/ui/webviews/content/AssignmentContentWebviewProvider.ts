@@ -2,8 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { SHARED_STYLES } from '../shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, statusBadge, formGroup, textInput, textareaInput, pageShell } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, statusBadge, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
 
 export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -20,7 +19,6 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
     }
 
     const { courseContent, course, contentType, exampleInfo, exampleVersionInfo } = data;
-    const nonce = this.getNonce();
 
     const statusColors: Record<string, string> = {
       pending: '#FFA500',
@@ -142,7 +140,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       });
     `;
 
-    return pageShell(nonce, 'Assignment', headerHtml, infoHtml + deploymentHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Assignment', headerHtml, bodyHtml: infoHtml + deploymentHtml + editHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {

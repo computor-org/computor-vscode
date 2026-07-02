@@ -3,8 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentTypeGet, CourseList, CourseContentKindList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { SHARED_STYLES } from './shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput, pageShell } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -26,7 +25,6 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
     }
 
     const { contentType, course, contentKind } = data;
-    const nonce = this.getNonce();
 
     let kind = contentKind;
     if (!kind) {
@@ -112,7 +110,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       });
     `;
 
-    return pageShell(nonce, 'Content Type', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Content Type', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

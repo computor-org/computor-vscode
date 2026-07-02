@@ -3,8 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { CourseGroupGet, CourseList } from '../../types/generated';
-import { SHARED_STYLES } from './shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
 
 export class CourseGroupWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -26,7 +25,6 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
     }
 
     const { group, course, membersCount } = data;
-    const nonce = this.getNonce();
 
     const headerHtml = `
       <h1>${escapeHtml(group.title || group.id)}</h1>
@@ -77,7 +75,7 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
       });
     `;
 
-    return pageShell(nonce, 'Course Group', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Course Group', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

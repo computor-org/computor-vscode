@@ -2,8 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { SHARED_STYLES } from '../shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
 
 export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -20,7 +19,6 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
     }
 
     const { courseContent, course, contentType } = data;
-    const nonce = this.getNonce();
 
     const headerHtml = `
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
@@ -93,6 +91,6 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
       });
     `;
 
-    return pageShell(nonce, 'Content', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Content', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
   }
 }

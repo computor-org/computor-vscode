@@ -49,31 +49,14 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
   }
 
   protected async getWebviewContent(): Promise<string> {
-    const nonce = this.getNonce();
-    const webview = this.panel!.webview;
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'upload-all-examples.js');
-    const cssUri = this.getWebviewUri(webview, 'webview-ui', 'upload-all-examples.css');
-
     const examples = await this.collectExamples();
-    const initialState = JSON.stringify(examples);
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>Upload All Examples</title>
-  <link rel="stylesheet" href="${cssUri}">
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Upload All Examples</h1>
-      <p>Upload all local working examples to the server.</p>
-    </div>
-
-    <div class="policy-section">
+    return this.renderPage({
+      title: 'Upload All Examples',
+      container: true,
+      headerHtml: `<h1>Upload All Examples</h1>
+      <p>Upload all local working examples to the server.</p>`,
+      bodyHtml: `<div class="policy-section">
       <h2>Version Bump Policy</h2>
       <div class="policy-options">
         <label class="radio-option">
@@ -101,12 +84,11 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
       <button id="uploadSelectedBtn" class="btn-secondary">Upload Selected</button>
     </div>
 
-    <div id="summary" class="summary" style="display:none;"></div>
-  </div>
-  <script nonce="${nonce}">window.__INITIAL_STATE__ = ${initialState};</script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+    <div id="summary" class="summary" style="display:none;"></div>`,
+      cssFiles: ['upload-all-examples.css'],
+      scriptFiles: ['upload-all-examples.js'],
+      initialState: examples
+    });
   }
 
   protected async handleMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {

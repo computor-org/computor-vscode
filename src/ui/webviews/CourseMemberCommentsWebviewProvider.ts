@@ -60,36 +60,13 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('Comments', '<p>Loading…</p>');
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify(data ?? { courseMemberId: '', title: 'Comments', comments: [] });
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const commentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'comments.css');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const commentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'comments.js');
-    const markedJsUri = this.getWebviewUri(webview, 'webview-ui', 'lib', 'marked.min.js');
-
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Course Member Comments</title>
-      <link rel="stylesheet" href="${componentsCssUri}">
-      <link rel="stylesheet" href="${commentsCssUri}">
-    </head>
-    <body>
-      <div id="app"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${markedJsUri}"></script>
-      <script nonce="${nonce}" src="${componentsJsUri}"></script>
-      <script nonce="${nonce}" src="${commentsJsUri}"></script>
-    </body>
-    </html>`;
+    return this.renderPage({
+      title: 'Course Member Comments',
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['components/components.css', 'comments.css'],
+      scriptFiles: ['lib/marked.min.js', 'components.js', 'comments.js'],
+      initialState: data ?? { courseMemberId: '', title: 'Comments', comments: [] }
+    });
   }
 
   protected onPanelDisposed(): void {
