@@ -13,6 +13,7 @@ import { VirtualScrollingService } from '../../../services/VirtualScrollingServi
 import { DragDropManager } from '../../../services/DragDropManager';
 import { GitWrapper } from '../../../git/GitWrapper';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -82,10 +83,7 @@ interface PaginationInfo {
   hasMore: boolean;
 }
 
-export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeItem>, vscode.TreeDragAndDropController<TreeItem> {
-  private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> = new vscode.EventEmitter<TreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
-
+export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> implements vscode.TreeDragAndDropController<TreeItem> {
   // Drag and drop support
   public readonly dropMimeTypes = ['application/vnd.code.tree.computorexample', 'application/vnd.code.tree.lecturermember', 'application/vnd.code.tree.lecturercontent'];
   public readonly dragMimeTypes: string[] = ['application/vnd.code.tree.lecturermember', 'application/vnd.code.tree.lecturercontent'];
@@ -109,6 +107,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
   private wsSubscription = new CourseChannelSubscription('lecturer-tree');
 
   constructor(context: vscode.ExtensionContext, apiService?: ComputorApiService) {
+    super();
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.gitLabTokenManager = RepositoryTokenManager.getInstance(context);
@@ -144,7 +143,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     });
   }
 
-  refresh(): void {
+  override refresh(): void {
     // Clear ALL backend API caches - organizations, courses, course families, etc.
     this.clearAllCaches();
     this.paginationState.clear();
@@ -161,11 +160,11 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     // NOTE: We do NOT clear expandedStates here - we want to preserve them across refreshes
     
     // Fire with undefined to refresh entire tree
-    this._onDidChangeTreeData.fire(undefined);
+    super.refresh();
   }
 
   refreshNode(element?: TreeItem): void {
-    this._onDidChangeTreeData.fire(element);
+    this.onDidChangeTreeDataEmitter.fire(element);
   }
   
   /**
@@ -178,7 +177,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
     this.clearCourseCache(courseId);
     
     // Fire tree data change event with undefined to refresh entire tree
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
   
   /**
@@ -194,7 +193,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       void loadMoreItem.pageSize; // pageSize - accessed but not used in this context
       
       // Trigger refresh to load more items
-      this._onDidChangeTreeData.fire(undefined);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
     } else {
       // Fallback to pagination state
       const paginationKey = `${loadMoreItem.parentType}-${loadMoreItem.parentId}`;
@@ -206,7 +205,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
         
         // Find the parent element and refresh it
         // This will trigger getChildren again with the updated pagination
-        this._onDidChangeTreeData.fire(undefined);
+        this.onDidChangeTreeDataEmitter.fire(undefined);
       }
     }
   }
@@ -1246,7 +1245,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
       this.apiService.clearCourseCache(contentItem.course.id);
       
       // Refresh the specific item
-      this._onDidChangeTreeData.fire(contentItem);
+      this.onDidChangeTreeDataEmitter.fire(contentItem);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to update course content: ${error}`);
     }
@@ -1547,7 +1546,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
       this.apiService.clearCourseCache(draggedData.courseId);
       this.clearCourseCache(draggedData.courseId);
-      this._onDidChangeTreeData.fire(undefined);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to reorder: ${error?.message || error}`);
     }
@@ -1589,7 +1588,7 @@ export class LecturerTreeDataProvider implements vscode.TreeDataProvider<TreeIte
 
       this.apiService.clearCourseCache(courseId);
       this.clearCourseCache(courseId);
-      this._onDidChangeTreeData.fire(undefined);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to move: ${error?.message || error}`);
     }

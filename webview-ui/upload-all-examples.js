@@ -1,13 +1,8 @@
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.vscodeApi || acquireVsCodeApi();
+  const { escapeHtml } = window.ComputorWebview;
   let examples = window.__INITIAL_STATE__ || [];
   let isUploading = false;
-
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text || '';
-    return div.innerHTML;
-  }
 
   function render() {
     const listEl = document.getElementById('exampleList');

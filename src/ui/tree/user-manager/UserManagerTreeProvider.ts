@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { UserList } from '../../../types/generated/users';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 const STATE_KEY = 'computor.userManager.filterState';
 
@@ -107,10 +108,7 @@ class UserManagerFilterChipItem extends vscode.TreeItem {
 
 type TreeItem = UserTreeItem | vscode.TreeItem;
 
-export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem> {
-  private onDidChangeTreeDataEmitter = new vscode.EventEmitter<TreeItem | undefined | null>();
-  readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
-
+export class UserManagerTreeProvider extends BaseTreeDataProvider<TreeItem> {
   private users: UserList[] = [];
   private filterState: FilterState;
   private loading = false;
@@ -121,6 +119,7 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
     private readonly apiService: ComputorApiService,
     private readonly context: vscode.ExtensionContext
   ) {
+    super();
     this.filterState = this.loadFilterState();
     void this.applyContextKeys();
   }
@@ -165,11 +164,11 @@ export class UserManagerTreeProvider implements vscode.TreeDataProvider<TreeItem
 
   // ----- Tree data -----
 
-  refresh(): void {
+  override refresh(): void {
     this.users = [];
     this.hasLoaded = false;
     this.loadError = undefined;
-    this.fireChange();
+    super.refresh();
   }
 
   getTreeItem(element: TreeItem): vscode.TreeItem {

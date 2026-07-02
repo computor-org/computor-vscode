@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberCommentList } from '../../types/generated';
+import { renderWebviewPage } from '../webviews/shared/webviewPage';
 
 interface InputPanelState {
   courseMemberId?: string;
@@ -174,30 +175,11 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
       return;
     }
 
-    const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    const webview = this.view.webview;
-    const componentsCssUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'components', 'components.css'));
-    const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'comments-input.css'));
-    const componentsJsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'components.js'));
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'comments-input.js'));
-
-    this.view.webview.html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="${componentsCssUri}" rel="stylesheet" />
-  <link href="${stylesUri}" rel="stylesheet" />
-</head>
-<body>
-  <div id="app"></div>
-  <script nonce="${nonce}">
-    window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-  </script>
-  <script nonce="${nonce}" src="${componentsJsUri}"></script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+    this.view.webview.html = renderWebviewPage(this.view.webview, this.extensionUri, {
+      title: 'Comment',
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['components/components.css', 'comments-input.css'],
+      scriptFiles: ['components.js', 'comments-input.js']
+    });
   }
 }

@@ -18,6 +18,7 @@ import {
   MessageScope,
   scopeLabel
 } from './ChatInboxTreeItems';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 /** Scopes that are rendered as Course → threads inside the inbox tree.
  *  All other scopes keep the original flat-per-scope rendering. */
@@ -65,9 +66,7 @@ interface ScopeFetchState {
   total: number;
 }
 
-export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeItem> {
-  private readonly _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeItem | undefined | void>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   private readonly _onDidChangeUnread = new vscode.EventEmitter<number>();
   readonly onDidChangeUnread = this._onDidChangeUnread.event;
 
@@ -141,6 +140,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     api: ComputorApiService,
     messagesProvider: MessagesWebviewProvider
   ) {
+    super();
     this.context = context;
     this.api = api;
     this.messagesProvider = messagesProvider;
@@ -157,7 +157,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.maybeSubscribeUserChannels();
   }
 
-  refresh(): void {
+  override refresh(): void {
     void this.requestReload();
   }
 
@@ -280,7 +280,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       const grouped = this.groupMessages(this.cachedMessages);
       this.scopeItems = this.buildScopeItems(grouped);
     }
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
     this._onDidChangeUnread.fire(this.getTotalUnread());
   }
 
@@ -395,7 +395,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
     } finally {
       this.scopeLoadingMore.delete(scope);
-      this._onDidChangeTreeData.fire(undefined);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
       this._onDidChangeUnread.fire(this.getTotalUnread());
     }
   }
@@ -431,7 +431,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
     } finally {
       this.courseScopeLoadingMore.delete(key);
-      this._onDidChangeTreeData.fire(undefined);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
       this._onDidChangeUnread.fire(this.getTotalUnread());
     }
   }
@@ -655,7 +655,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
     this.loading = true;
     this.loadError = undefined;
     if (showSpinner) {
-      this._onDidChangeTreeData.fire(undefined);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
     }
 
     try {
@@ -731,7 +731,7 @@ export class ChatInboxTreeProvider implements vscode.TreeDataProvider<AnyTreeIte
       this.courseScopeStates.clear();
     } finally {
       this.loading = false;
-      this._onDidChangeTreeData.fire(undefined);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
       this._onDidChangeUnread.fire(this.getTotalUnread());
     }
   }

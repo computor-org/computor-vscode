@@ -151,46 +151,26 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('Test Editor', '<p>No data available</p>');
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
     const registry = this.loadBlockRegistry();
     const existingData = this.parseTestYaml(data.filePath);
     const detectedLanguage = existingData?.type as string
       || this.detectLanguage(data.exampleDir);
 
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'test-yaml-editor.js');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'test-yaml-editor.css');
-
-    const initialState = JSON.stringify({
-      registry,
-      testSuite: existingData || null,
-      detectedLanguage: detectedLanguage || null,
-      filePath: data.filePath,
-      exampleTitle: data.exampleTitle || path.basename(data.exampleDir)
+    return this.renderPage({
+      title: 'Test Editor',
+      headerHtml: `<h1>Test Configuration</h1>
+    <p>${escapeHtml(data.exampleTitle || '')} &mdash; test.yaml</p>`,
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['test-yaml-editor.css'],
+      scriptFiles: ['test-yaml-editor.js'],
+      initialState: {
+        registry,
+        testSuite: existingData || null,
+        detectedLanguage: detectedLanguage || null,
+        filePath: data.filePath,
+        exampleTitle: data.exampleTitle || path.basename(data.exampleDir)
+      }
     });
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>Test Editor</title>
-  <link rel="stylesheet" href="${stylesUri}">
-</head>
-<body>
-  <div class="header">
-    <h1>Test Configuration</h1>
-    <p>${escapeHtml(data.exampleTitle || '')} &mdash; test.yaml</p>
-  </div>
-  <div id="app"></div>
-  <script nonce="${nonce}">
-    window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-    window.__INITIAL_STATE__ = ${initialState};
-  </script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {

@@ -34,41 +34,13 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('Student Progress', '<p>Loading…</p>');
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify(data ?? { memberGradings: null });
-
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const chartsCssUri = this.getWebviewUri(webview, 'webview-ui', 'charts.css');
-    const progressCssUri = this.getWebviewUri(webview, 'webview-ui', 'course-member-progress.css');
-    const chartJsUri = this.getWebviewUri(webview, 'webview-ui', 'lib', 'chart.min.js');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const chartsJsUri = this.getWebviewUri(webview, 'webview-ui', 'charts.js');
-    const progressJsUri = this.getWebviewUri(webview, 'webview-ui', 'course-member-progress.js');
-
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Student Progress</title>
-      <link rel="stylesheet" href="${componentsCssUri}">
-      <link rel="stylesheet" href="${chartsCssUri}">
-      <link rel="stylesheet" href="${progressCssUri}">
-    </head>
-    <body>
-      <div id="app"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${chartJsUri}"></script>
-      <script nonce="${nonce}" src="${componentsJsUri}"></script>
-      <script nonce="${nonce}" src="${chartsJsUri}"></script>
-      <script nonce="${nonce}" src="${progressJsUri}"></script>
-    </body>
-    </html>`;
+    return this.renderPage({
+      title: 'Student Progress',
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['charts.css', 'course-member-progress.css'],
+      scriptFiles: ['lib/chart.min.js', 'charts.js', 'course-member-progress.js'],
+      initialState: data ?? { memberGradings: null }
+    });
   }
 
   protected async handleMessage(message: any): Promise<void> {

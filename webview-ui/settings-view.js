@@ -1,5 +1,6 @@
 (function () {
   var V = window.Validators;
+  var escapeHtml = window.ComputorWebview.escapeHtml;
   var vscode = window.vscodeApi || acquireVsCodeApi();
 
   var state = {
@@ -23,18 +24,6 @@
   var nextEntryId = 1;
   var liveValidators = [];
   var updatingTokens = {};
-
-  function escapeHtml(value) {
-    if (value === undefined || value === null) {
-      return '';
-    }
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
 
   function post(command, data) {
     vscode.postMessage({ command: command, data: data });
@@ -301,7 +290,7 @@
 
     var noticeHtml = '';
     if (state.notice) {
-      noticeHtml = '<div class="settings-notice ' + escapeHtml(state.notice.type) + '">' +
+      noticeHtml = '<div class="notice ' + escapeHtml(state.notice.type) + '">' +
         escapeHtml(state.notice.message) + '</div>';
     }
 

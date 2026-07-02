@@ -1,6 +1,6 @@
 /**
  * Computor Charts - Reusable Chart Styles
- * Designed for VS Code theme compatibility
+ * Loaded after base.css; colors come from the --c-* design tokens.
  */
 
 /* ============================================
@@ -11,25 +11,45 @@
   position: relative;
   width: 100%;
   min-height: 200px;
-  padding: 16px;
-  background-color: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 6px;
+  padding: var(--sp-4);
+  background-color: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
   box-sizing: border-box;
 }
 
 .computor-chart-container--sm {
   min-height: 150px;
-  padding: 12px;
+  padding: var(--sp-3);
 }
 
 .computor-chart-container--lg {
   min-height: 300px;
-  padding: 20px;
+  padding: var(--sp-5);
 }
 
 .computor-chart-container canvas {
   max-width: 100%;
+}
+
+/* Chart card (shared by the dashboard views) */
+.chart-card {
+  background-color: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+}
+
+.chart-card__title {
+  margin: 0 0 var(--sp-4);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-fg);
+}
+
+.chart-card__canvas {
+  position: relative;
+  height: 200px;
 }
 
 /* ============================================
@@ -39,24 +59,24 @@
 .computor-stat-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
 }
 
 .computor-stat-card {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 16px;
-  background-color: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
+  padding: var(--sp-4);
+  background-color: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-left: 4px solid var(--vscode-button-background);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .computor-stat-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-1);
 }
 
 .computor-stat-card__content {
@@ -65,52 +85,52 @@
 }
 
 .computor-stat-card__title {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-2);
 }
 
 .computor-stat-card__value {
   font-size: 28px;
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
   line-height: 1.2;
 }
 
 .computor-stat-card__subtitle {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-  margin-top: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
+  margin-top: var(--sp-1);
 }
 
 .computor-stat-card__trend {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  margin-top: 8px;
+  margin-top: var(--sp-2);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   padding: 2px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
 }
 
 .computor-stat-card__trend--up {
-  color: var(--vscode-debugIcon-continueForeground, #89d185);
-  background-color: rgba(137, 209, 133, 0.15);
+  color: var(--c-success);
+  background-color: var(--c-success-bg);
 }
 
 .computor-stat-card__trend--down {
-  color: var(--vscode-editorError-foreground, #f14c4c);
-  background-color: rgba(241, 76, 76, 0.15);
+  color: var(--c-error);
+  background-color: var(--c-error-bg);
 }
 
 .computor-stat-card__icon {
   font-size: 24px;
   opacity: 0.6;
-  margin-left: 12px;
+  margin-left: var(--sp-3);
 }
 
 /* ============================================
@@ -133,23 +153,23 @@
 }
 
 .computor-progress--sm .computor-progress__label {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   min-width: 32px;
 }
 
 .computor-progress__bar {
   flex: 1;
   height: 8px;
-  background-color: rgba(100, 149, 237, 0.2); /* Light blue for unfilled */
-  border-radius: 4px;
+  background-color: var(--c-progress-track);
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
 .computor-progress__fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius);
   transition: width 0.3s ease;
-  background-color: #1e90ff; /* Dark blue for filled */
+  background-color: var(--c-progress-fill);
 }
 
 .computor-progress__fill--animated {
@@ -169,9 +189,9 @@
 }
 
 .computor-progress__label {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
   min-width: 40px;
   text-align: right;
 }
@@ -183,27 +203,27 @@
 .computor-table-container {
   width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 6px;
-  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--c-bg);
 }
 
 .computor-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 .computor-table th,
 .computor-table td {
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
   text-align: left;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .computor-table th {
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
   background-color: var(--vscode-sideBar-background);
   position: sticky;
   top: 0;
@@ -218,7 +238,7 @@
 }
 
 .computor-table__sortable:hover {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--c-hover);
 }
 
 .computor-table__sortable::after {
@@ -226,12 +246,12 @@
   display: inline-block;
   width: 0;
   height: 0;
-  margin-left: 8px;
+  margin-left: var(--sp-2);
   vertical-align: middle;
   opacity: 0.3;
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
-  border-top: 5px solid var(--vscode-foreground);
+  border-top: 5px solid var(--c-fg);
 }
 
 .computor-table__sorted-asc::after {
@@ -246,7 +266,7 @@
 }
 
 .computor-table td {
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .computor-table tbody tr:last-child td {
@@ -254,7 +274,7 @@
 }
 
 .computor-table tbody tr:hover {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--c-hover);
 }
 
 .computor-table__clickable {
@@ -262,13 +282,13 @@
 }
 
 .computor-table__clickable:hover {
-  background-color: var(--vscode-list-hoverBackground) !important;
+  background-color: var(--c-hover) !important;
 }
 
 .computor-table__empty {
   text-align: center !important;
-  color: var(--vscode-descriptionForeground);
-  padding: 32px !important;
+  color: var(--c-fg-muted);
+  padding: var(--sp-8) !important;
   font-style: italic;
 }
 
@@ -278,8 +298,8 @@
 
 .computor-chart-grid {
   display: grid;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-6);
 }
 
 .computor-chart-grid--2 {
@@ -302,34 +322,34 @@
    ============================================ */
 
 .computor-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--sp-6);
 }
 
 .computor-section__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  margin-bottom: var(--sp-4);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .computor-section__title {
   font-size: 16px;
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
   margin: 0;
 }
 
 .computor-section__subtitle {
-  font-size: 13px;
-  color: var(--vscode-descriptionForeground);
-  margin-top: 4px;
+  font-size: var(--font-size);
+  color: var(--c-fg-muted);
+  margin-top: var(--sp-1);
 }
 
 .computor-section__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 /* ============================================
@@ -340,30 +360,30 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
 
 .computor-badge--success {
-  background-color: rgba(137, 209, 133, 0.2);
-  color: var(--vscode-debugIcon-continueForeground, #89d185);
+  background-color: var(--c-success-bg);
+  color: var(--c-success);
 }
 
 .computor-badge--warning {
-  background-color: rgba(204, 167, 0, 0.2);
-  color: var(--vscode-editorWarning-foreground, #cca700);
+  background-color: var(--c-warning-bg);
+  color: var(--c-warning);
 }
 
 .computor-badge--error {
-  background-color: rgba(241, 76, 76, 0.2);
-  color: var(--vscode-editorError-foreground, #f14c4c);
+  background-color: var(--c-error-bg);
+  color: var(--c-error);
 }
 
 .computor-badge--info {
-  background-color: rgba(55, 148, 255, 0.2);
-  color: var(--vscode-editorInfo-foreground, #3794ff);
+  background-color: var(--c-info-bg);
+  color: var(--c-info);
 }
 
 .computor-badge--neutral {
@@ -379,7 +399,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .computor-activity__dot {
@@ -389,16 +409,16 @@
 }
 
 .computor-activity--active .computor-activity__dot {
-  background-color: var(--vscode-debugIcon-continueForeground, #89d185);
-  box-shadow: 0 0 6px var(--vscode-debugIcon-continueForeground, #89d185);
+  background-color: var(--c-success);
+  box-shadow: 0 0 6px var(--c-success);
 }
 
 .computor-activity--warning .computor-activity__dot {
-  background-color: var(--vscode-editorWarning-foreground, #cca700);
+  background-color: var(--c-warning);
 }
 
 .computor-activity--inactive .computor-activity__dot {
-  background-color: var(--vscode-editorError-foreground, #f14c4c);
+  background-color: var(--c-error);
 }
 
 /* ============================================
@@ -410,26 +430,26 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: var(--sp-8) var(--sp-6);
   text-align: center;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
 }
 
 .computor-empty-state__icon {
   font-size: 48px;
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-4);
   opacity: 0.5;
 }
 
 .computor-empty-state__title {
   font-size: 16px;
   font-weight: 600;
-  color: var(--vscode-foreground);
-  margin-bottom: 8px;
+  color: var(--c-fg);
+  margin-bottom: var(--sp-2);
 }
 
 .computor-empty-state__description {
-  font-size: 13px;
+  font-size: var(--font-size);
   max-width: 300px;
 }
 
@@ -440,12 +460,12 @@
 .computor-filter-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 12px 16px;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
   background-color: var(--vscode-sideBar-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
 }
 
 .computor-filter-bar__search {
@@ -457,21 +477,6 @@
 .computor-filter-bar__search input {
   width: 100%;
   padding: 6px 12px;
-  font-size: 13px;
-  border: 1px solid var(--vscode-input-border);
-  border-radius: 4px;
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  outline: none;
-  box-sizing: border-box;
-}
-
-.computor-filter-bar__search input:focus {
-  border-color: var(--vscode-focusBorder);
-}
-
-.computor-filter-bar__search input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
 }
 
 .computor-filter-bar__select {
@@ -481,22 +486,14 @@
 .computor-filter-bar__select select {
   width: 100%;
   padding: 6px 32px 6px 12px;
-  font-size: 13px;
   border: 1px solid var(--vscode-dropdown-border);
-  border-radius: 4px;
   background-color: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
-  cursor: pointer;
-  outline: none;
   appearance: none;
   background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='%23888888' d='M4.427 5.427l3.573 3.573 3.573-3.573L12 6l-4 4-4-4z'/%3e%3c/svg%3e");
   background-repeat: no-repeat;
   background-position: right 8px center;
   background-size: 16px;
-}
-
-.computor-filter-bar__select select:focus {
-  border-color: var(--vscode-focusBorder);
 }
 
 /* ============================================
@@ -508,26 +505,22 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
-  color: var(--vscode-descriptionForeground);
+  padding: var(--sp-8) var(--sp-6);
+  color: var(--c-fg-muted);
 }
 
 .computor-loading__spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid var(--vscode-progressBar-background);
-  border-top-color: var(--vscode-button-background);
+  border: 3px solid var(--c-muted-bg);
+  border-top-color: var(--c-progress-fill);
   border-radius: 50%;
-  animation: loading-spin 0.8s linear infinite;
-  margin-bottom: 16px;
-}
-
-@keyframes loading-spin {
-  to { transform: rotate(360deg); }
+  animation: spin 0.8s linear infinite;
+  margin-bottom: var(--sp-4);
 }
 
 .computor-loading__text {
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 /* ============================================
@@ -535,7 +528,7 @@
    ============================================ */
 
 .computor-tree {
-  padding: 8px 0;
+  padding: var(--sp-2) 0;
 }
 
 .computor-tree-node {
@@ -548,12 +541,12 @@
   align-items: center;
   padding: 6px 12px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius);
   transition: background-color 0.15s ease;
 }
 
 .computor-tree-node__header:hover {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--c-hover);
 }
 
 .computor-tree-node__toggle {
@@ -562,8 +555,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 4px;
-  color: var(--vscode-descriptionForeground);
+  margin-right: var(--sp-1);
+  color: var(--c-fg-muted);
   font-size: 10px;
 }
 
@@ -582,7 +575,7 @@
 .computor-tree-node__icon {
   width: 16px;
   height: 16px;
-  margin-right: 8px;
+  margin-right: var(--sp-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -590,15 +583,15 @@
 
 .computor-tree-node__label {
   flex: 1;
-  font-size: 13px;
-  color: var(--vscode-foreground);
+  font-size: var(--font-size);
+  color: var(--c-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .computor-tree-node__badge {
-  margin-left: 8px;
+  margin-left: var(--sp-2);
 }
 
 .computor-tree-node__children {

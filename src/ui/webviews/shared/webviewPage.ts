@@ -1,0 +1,99 @@
+import * as vscode from 'vscode';
+import { escapeHtml } from './webviewHelpers';
+
+/**
+ * The single message envelope used between extension host and webviews,
+ * in both directions.
+ */
+export interface WebviewMessage<T = any> {
+  command: string;
+  data?: T;
+}
+
+export interface WebviewPageOptions {
+  title: string;
+  /** Main page markup. Placed inside <body> (and .container when set). */
+  bodyHtml: string;
+  /** Optional markup wrapped in a <div class="header"> above the body. */
+  headerHtml?: string;
+  /** Stylesheets under webview-ui/, loaded after base.css (e.g. 'settings-view.css'). */
+  cssFiles?: string[];
+  /** Scripts under webview-ui/, loaded after base.js (e.g. 'settings-view.js'). */
+  scriptFiles?: string[];
+  /** Inline script, executed after all external scripts. `vscode` is in scope. */
+  inlineScript?: string;
+  /** Serialized to window.__INITIAL_STATE__ before any script runs. */
+  initialState?: unknown;
+  /** Escape hatch for small view-specific styles; prefer cssFiles. */
+  inlineStyles?: string;
+  /** Wrap the body in a centered .container (max-width 1200px). */
+  container?: boolean;
+}
+
+export function getNonce(): string {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
+
+/**
+ * Renders the canonical HTML document for a webview. Every webview —
+ * editor panel or sidebar view — goes through here so CSP, nonce handling,
+ * the design system (base.css) and the client runtime (base.js) are
+ * identical everywhere.
+ */
+export function renderWebviewPage(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  options: WebviewPageOptions
+): string {
+  const nonce = getNonce();
+  const assetUri = (file: string): vscode.Uri =>
+    webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview-ui', ...file.split('/')));
+
+  const cssLinks = ['base.css', ...(options.cssFiles ?? [])]
+    .map((file) => `<link rel="stylesheet" href="${assetUri(file)}">`)
+    .join('\n  ');
+
+  const scriptTags = ['base.js', ...(options.scriptFiles ?? [])]
+    .map((file) => `<script nonce="${nonce}" src="${assetUri(file)}"></script>`)
+    .join('\n  ');
+
+  const initialStateScript =
+    options.initialState !== undefined
+      ? `<script nonce="${nonce}">window.__INITIAL_STATE__ = ${JSON.stringify(options.initialState).replace(/</g, '\\u003c')};</script>`
+      : '';
+
+  const inlineScript = options.inlineScript
+    ? `<script nonce="${nonce}">
+  const vscode = window.vscodeApi || acquireVsCodeApi();
+  window.vscodeApi = vscode;
+  ${options.inlineScript.replace(/{{NONCE}}/g, nonce)}
+</script>`
+    : '';
+
+  const headerHtml = options.headerHtml ? `<div class="header">${options.headerHtml}</div>` : '';
+  const bodyHtml = options.bodyHtml.replace(/{{NONCE}}/g, nonce);
+  const content = `${headerHtml}\n  ${bodyHtml}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https: data:; font-src ${webview.cspSource};">
+  <title>${escapeHtml(options.title)}</title>
+  ${cssLinks}
+  ${options.inlineStyles ? `<style>${options.inlineStyles}</style>` : ''}
+</head>
+<body>
+  ${options.container ? `<div class="container">${content}</div>` : content}
+  ${initialStateScript}
+  ${scriptTags}
+  ${inlineScript}
+</body>
+</html>`;
+}

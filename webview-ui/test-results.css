@@ -1,0 +1,94 @@
+/* Test results sidebar view — layout only; primitives come from base.css. */
+
+body {
+  padding: var(--sp-3);
+}
+
+.header {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-2);
+}
+
+.content {
+  padding: var(--sp-2) 0;
+  white-space: pre-wrap;
+  font-family: var(--vscode-editor-font-family);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.test-results {
+  font-family: var(--vscode-editor-font-family);
+}
+
+.summary {
+  margin-bottom: var(--sp-4);
+}
+
+.summary h3,
+.tests h3 {
+  font-size: var(--font-size);
+  font-weight: bold;
+  margin: var(--sp-2) 0;
+}
+
+.summary ul,
+.test-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.summary li {
+  padding: 2px 0;
+}
+
+.test-item {
+  padding: var(--sp-1) 0;
+  margin: 2px 0;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.test-item.passed {
+  color: var(--c-success);
+}
+
+.test-item.failed {
+  color: var(--vscode-testing-iconFailed, var(--c-error));
+}
+
+.test-icon {
+  margin-right: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.test-name {
+  font-weight: 500;
+}
+
+.test-message {
+  margin-top: var(--sp-1);
+  margin-left: var(--sp-6);
+  font-size: var(--font-size-sm);
+  opacity: 0.8;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre;
+  font-family: var(--vscode-editor-font-family);
+  flex-basis: 100%;
+}
+
+pre {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  overflow: auto;
+}
+
+.no-results {
+  color: var(--c-fg-muted);
+  font-style: italic;
+}

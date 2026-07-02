@@ -1,23 +1,23 @@
+/* Student Course Content Details — view-specific layout on top of base.css */
+
 .view-root {
-  font-family: var(--vscode-font-family);
-  color: var(--vscode-foreground);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 0 4px 24px;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-1) var(--sp-6);
 }
 
 .view-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
 }
 
 .header-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .header-row h1 {
@@ -26,8 +26,8 @@
 
 .header-close {
   margin-left: auto;
-  padding: 4px 12px;
-  font-size: 12px;
+  padding: 4px var(--sp-3);
+  font-size: var(--font-size-sm);
   line-height: 1.2;
 }
 
@@ -38,18 +38,18 @@
 }
 
 .view-header .subtitle {
-  color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  color: var(--c-fg-muted);
+  font-size: var(--font-size);
 }
 
 .card {
   border: 1px solid var(--vscode-editorWidget-border);
   background: var(--vscode-editorWidget-background);
-  border-radius: 6px;
-  padding: 16px;
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .card h2 {
@@ -61,7 +61,7 @@
 .info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .info-item {
@@ -71,8 +71,8 @@
 }
 
 .info-item-label {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -85,14 +85,14 @@
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .stat-card {
   border: 1px solid var(--vscode-editorWidget-border);
-  background: var(--vscode-editor-background);
-  border-radius: 4px;
-  padding: 12px;
+  background: var(--c-bg);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -103,24 +103,14 @@
 }
 
 .stat-card span {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
 }
 
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  background: var(--vscode-toolbar-hoverBackground);
-  color: var(--vscode-descriptionForeground);
+  gap: var(--sp-2);
 }
 
 .chip-strong {
@@ -129,73 +119,47 @@
 }
 
 .chip-success {
-  background: color-mix(in srgb, var(--vscode-testing-passIcon) 25%, transparent);
-  color: var(--vscode-testing-passIcon);
+  background: var(--c-success-bg);
+  color: var(--c-success);
 }
 
 .chip-warning {
-  background: color-mix(in srgb, var(--vscode-testing-queuedIcon) 25%, transparent);
-  color: var(--vscode-testing-queuedIcon);
+  background: var(--c-warning-bg);
+  color: var(--c-warning);
 }
 
 .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  margin-top: 0;
 }
 
 .team-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-left: 12px;
+  padding-left: var(--sp-3);
 }
 
 .team-member {
   position: relative;
-  padding-left: 12px;
+  padding-left: var(--sp-3);
 }
 
 .team-member::before {
   content: '•';
   position: absolute;
   left: 0;
-  color: var(--vscode-descriptionForeground);
-}
-
-.muted {
-  color: var(--vscode-descriptionForeground);
-}
-
-.divider {
-  border-top: 1px solid var(--vscode-editorWidget-border);
-  margin: 8px 0;
+  color: var(--c-fg-muted);
 }
 
 .monospace {
   font-family: var(--vscode-editor-font-family, monospace);
 }
 
-.badge-success {
-  background: color-mix(in srgb, var(--vscode-testing-passIcon) 20%, transparent);
-  color: var(--vscode-testing-passIcon);
-}
-
-.badge-warning {
-  background: color-mix(in srgb, var(--vscode-testing-queuedIcon) 25%, transparent);
-  color: var(--vscode-testing-queuedIcon);
-}
-
-.badge-danger {
-  background: color-mix(in srgb, var(--vscode-testing-failIcon) 25%, transparent);
-  color: var(--vscode-testing-failIcon);
-}
-
 .empty-state {
   border: 1px dashed var(--vscode-editorWidget-border);
-  border-radius: 4px;
-  padding: 12px;
-  color: var(--vscode-descriptionForeground);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  text-align: left;
 }
 
 .grading-history .history-list,
@@ -207,9 +171,9 @@
 
 .history-item {
   border: 1px solid var(--vscode-editorWidget-border);
-  background: var(--vscode-editor-background);
-  border-radius: 4px;
-  padding: 12px;
+  background: var(--c-bg);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -218,7 +182,7 @@
 .history-header {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
 }
 
@@ -232,22 +196,22 @@
 }
 
 .history-status {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .history-date {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
   margin-left: auto;
 }
 
 .history-meta {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
 }
 
 .history-feedback {
-  font-size: 13px;
+  font-size: var(--font-size);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -255,28 +219,28 @@
 .history-body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
+  gap: var(--sp-4);
+  margin-top: var(--sp-3);
 }
 
 .history-card {
   border: 1px solid var(--vscode-editorWidget-border);
-  background: var(--vscode-editor-background);
-  border-radius: 4px;
-  padding: 12px;
+  background: var(--c-bg);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.history-card .label {
-  font-size: 11px;
+.history-card .history-label {
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
 }
 
-.history-card .value {
+.history-card .history-value {
   font-size: 14px;
 }
 
@@ -285,15 +249,15 @@
   border-color: var(--vscode-editorHoverWidget-border);
 }
 
-.history-card--score .value {
+.history-card--score .history-value {
   font-size: 18px;
   font-weight: 600;
 }
 
 .history-note {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  margin-top: var(--sp-3);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
   border-left: 2px solid var(--vscode-editorWidget-border);
-  padding-left: 8px;
+  padding-left: var(--sp-2);
 }

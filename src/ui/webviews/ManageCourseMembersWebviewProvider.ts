@@ -362,31 +362,12 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
 
   protected async getWebviewContent(data?: any): Promise<string> {
     if (!this.panel) return '';
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify(data ?? {});
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'manage-course-members.css');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'manage-course-members.js');
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>Manage Members</title>
-  <link rel="stylesheet" href="${stylesUri}">
-</head>
-<body>
-  <div id="app" class="members-container">
-    <div class="loading">Loading members…</div>
-  </div>
-  <script nonce="${nonce}">
-    window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-    window.__INITIAL_STATE__ = ${initialState};
-  </script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+    return this.renderPage({
+      title: 'Manage Members',
+      bodyHtml: '<div id="app" class="members-container"><div class="loading">Loading members…</div></div>',
+      cssFiles: ['manage-course-members.css'],
+      scriptFiles: ['manage-course-members.js'],
+      initialState: data ?? {}
+    });
   }
 }

@@ -1,3 +1,5 @@
+/* Messages input panel — compose/reply/edit UI (see chat-shared.css). */
+
 html,
 body,
 #app {
@@ -8,9 +10,6 @@ body,
 
 body {
   background: var(--vscode-panel-background);
-  color: var(--vscode-foreground);
-  font-family: var(--vscode-font-family);
-  font-size: 13px;
 }
 
 .placeholder-state {
@@ -19,9 +18,9 @@ body {
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 16px;
+  padding: var(--sp-4);
   text-align: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .placeholder-icon {
@@ -32,25 +31,25 @@ body {
 .placeholder-text {
   font-size: 14px;
   font-weight: 500;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
   opacity: 0.7;
 }
 
 .placeholder-hint {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
   max-width: 200px;
 }
 
 .read-only-notice {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 4px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 10px;
+  border-radius: var(--radius);
   background: var(--vscode-editorWidget-background);
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 
@@ -67,9 +66,9 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 10px 12px 16px;
+  padding: 10px var(--sp-3) var(--sp-4);
   box-sizing: border-box;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .input-header {
@@ -77,26 +76,26 @@ body {
   flex-direction: column;
   gap: 2px;
   flex-shrink: 0;
-  padding-bottom: 4px;
+  padding-bottom: var(--sp-1);
   border-bottom: 1px solid var(--vscode-editorWidget-border);
 }
 
 .input-context {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-  padding: 4px 0;
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
+  padding: var(--sp-1) 0;
 }
 
 .input-context.reply-context,
 .input-context.edit-context {
-  color: var(--vscode-textLink-foreground);
+  color: var(--c-link);
 }
 
 .input-context-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .context-close-btn {
@@ -109,8 +108,8 @@ body {
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-sm);
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.15s, background-color 0.15s, color 0.15s;
@@ -120,17 +119,17 @@ body {
 .context-close-btn:hover {
   opacity: 1;
   background-color: var(--vscode-toolbar-hoverBackground);
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .input-context strong {
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .input-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -138,7 +137,7 @@ body {
 .title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   flex-shrink: 0;
 }
 
@@ -162,7 +161,7 @@ input.vscode-input.chat-title-input {
   border: 1px solid var(--vscode-editorWidget-border);
   background-color: var(--vscode-editor-inactiveSelectionBackground);
   color: var(--vscode-input-foreground);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   font-family: var(--vscode-font-family);
   font-size: 13px;
   font-weight: 500;
@@ -171,7 +170,7 @@ input.vscode-input.chat-title-input {
 .chat-title-input:focus,
 input.vscode-input.chat-title-input:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder);
+  border-color: var(--c-focus);
   background-color: var(--vscode-input-background);
 }
 
@@ -189,7 +188,7 @@ textarea.vscode-input.chat-textarea {
   border: 1px solid var(--vscode-editorWidget-border);
   background-color: var(--vscode-editor-inactiveSelectionBackground);
   color: var(--vscode-input-foreground);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   font-family: var(--vscode-font-family);
   font-size: 13px;
   line-height: 1.5;
@@ -202,7 +201,7 @@ textarea.vscode-input.chat-textarea {
 .chat-textarea:focus,
 textarea.vscode-input.chat-textarea:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder);
+  border-color: var(--c-focus);
   background-color: var(--vscode-input-background);
 }
 
@@ -212,19 +211,6 @@ textarea.vscode-input.chat-textarea:disabled {
   cursor: not-allowed;
 }
 
-.form-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-  justify-content: flex-end;
-  padding-top: 8px;
-  margin-top: auto;
-}
-
-.form-actions > * {
-  flex-shrink: 0;
-}
-
 /* Markdown Editor with Tabs */
 .markdown-editor {
   display: flex;
@@ -232,7 +218,7 @@ textarea.vscode-input.chat-textarea:disabled {
   flex: 1 1 auto;
   min-height: 0;
   border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background-color: var(--vscode-editor-inactiveSelectionBackground);
 }
@@ -247,23 +233,24 @@ textarea.vscode-input.chat-textarea:disabled {
 
 .editor-tab {
   padding: 6px 14px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
+  border-radius: 0;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 
 .editor-tab:hover {
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .editor-tab.active {
-  color: var(--vscode-foreground);
-  border-bottom-color: var(--vscode-focusBorder);
+  color: var(--c-fg);
+  border-bottom-color: var(--c-focus);
   background-color: var(--vscode-editor-inactiveSelectionBackground);
 }
 
@@ -290,7 +277,7 @@ textarea.vscode-input.chat-textarea:disabled {
   background-color: transparent;
 }
 
-/* Preview area */
+/* Preview area (markdown-body styling comes from chat-shared.css) */
 .markdown-preview {
   padding: 10px 12px;
   overflow-y: auto;
@@ -299,64 +286,8 @@ textarea.vscode-input.chat-textarea:disabled {
   max-height: 200px;
 }
 
-.markdown-preview .markdown-body {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--vscode-foreground);
-}
-
-.markdown-preview .markdown-body p {
-  margin: 0 0 8px;
-}
-
-.markdown-preview .markdown-body p:last-child {
-  margin-bottom: 0;
-}
-
-.markdown-preview .markdown-body code {
-  font-family: var(--vscode-editor-font-family, monospace);
-  background-color: var(--vscode-textCodeBlock-background);
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
-.markdown-preview .markdown-body pre {
-  background-color: var(--vscode-textCodeBlock-background);
-  padding: 8px 10px;
-  border-radius: 4px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-
-.markdown-preview .markdown-body pre code {
-  background: none;
-  padding: 0;
-}
-
-.markdown-preview .markdown-body ul,
-.markdown-preview .markdown-body ol {
-  margin: 8px 0;
-  padding-left: 20px;
-}
-
-.markdown-preview .markdown-body blockquote {
-  margin: 8px 0;
-  padding-left: 12px;
-  border-left: 3px solid var(--vscode-textBlockQuote-border);
-  color: var(--vscode-textBlockQuote-foreground);
-}
-
-.markdown-preview .markdown-body a {
-  color: var(--vscode-textLink-foreground);
-}
-
-.markdown-preview .markdown-body a:hover {
-  color: var(--vscode-textLink-activeForeground);
-}
-
 .preview-empty {
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
   font-style: italic;
   margin: 0;
 }
@@ -365,65 +296,24 @@ textarea.vscode-input.chat-textarea:disabled {
 .actions-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   flex-shrink: 0;
 }
 
 /* Markdown hint */
 .markdown-hint {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-xs);
+  color: var(--c-fg-muted);
   opacity: 0.7;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Typing indicator */
+/* Typing indicator specifics on top of chat-shared.css */
 .typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--vscode-textLink-foreground);
+  color: var(--c-link);
   overflow: hidden;
-}
-
-.typing-dots {
-  display: inline-flex;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.typing-dots span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background-color: var(--vscode-textLink-foreground);
-  animation: typingBounce 1.4s infinite ease-in-out both;
-}
-
-.typing-dots span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.typing-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-.typing-dots span:nth-child(3) {
-  animation-delay: 0s;
-}
-
-@keyframes typingBounce {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.5;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
 }
 
 .typing-text {
@@ -434,7 +324,7 @@ textarea.vscode-input.chat-textarea:disabled {
 
 /* Cancel button */
 .cancel-btn {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* Modern Send Button */
@@ -452,12 +342,12 @@ textarea.vscode-input.chat-textarea:disabled {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-1);
 }
 
 .send-button:hover:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-2);
 }
 
 .send-button:active:not(:disabled) {
@@ -474,11 +364,11 @@ textarea.vscode-input.chat-textarea:disabled {
 }
 
 .send-button.save-mode {
-  background: var(--vscode-charts-green, #89d668);
+  background: var(--c-success);
 }
 
 .send-button.save-mode:hover:not(:disabled) {
-  background: var(--vscode-charts-green, #7ac85a);
+  background: var(--c-success);
   filter: brightness(1.1);
 }
 
@@ -494,21 +384,21 @@ textarea.vscode-input.chat-textarea:disabled {
 
 /* @-mention autocomplete */
 .mention-dropdown {
-  margin-top: 4px;
+  margin-top: var(--sp-1);
   max-height: 180px;
   overflow-y: auto;
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--vscode-dropdown-background, var(--vscode-editorWidget-background));
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-1);
   z-index: 10;
 }
 
 .mention-item {
-  padding: 4px 8px;
+  padding: var(--sp-1) var(--sp-2);
   cursor: pointer;
-  font-size: 12px;
-  color: var(--vscode-foreground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -520,17 +410,8 @@ textarea.vscode-input.chat-textarea:disabled {
   color: var(--vscode-list-activeSelectionForeground);
 }
 
-/* Highlighted mention token (preview tab + editor chips) */
-.mention-chip {
-  color: var(--vscode-textLink-foreground);
-  background: var(--vscode-textBlockQuote-background, rgba(120, 160, 255, 0.12));
-  border-radius: 3px;
-  padding: 0 3px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* Contenteditable message editor — chips with the uuid hidden in data-id */
+/* Contenteditable message editor — chips with the uuid hidden in data-id.
+   Base .mention-chip styling lives in chat-shared.css. */
 .mention-editor {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -541,7 +422,7 @@ textarea.vscode-input.chat-textarea:disabled {
 
 .mention-editor:empty::before {
   content: attr(data-placeholder);
-  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+  color: var(--vscode-input-placeholderForeground, var(--c-fg-muted));
   pointer-events: none;
 }
 

@@ -13,6 +13,7 @@ import {
   DocumentsErrorItem,
   type DocumentsTreeItem
 } from './DocumentsTreeItems';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 /** Fixed scope used for the documents that live at the very top of the
  *  tree (no entity scope). Listing/uploading at this scope is admin-only
@@ -31,10 +32,7 @@ const SYSTEM_SCOPE: DocumentScope = { scope: 'system' };
  *
  * Course is the leaf entity; expanding a course yields just its documents.
  */
-export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentsTreeItem>, vscode.TreeDragAndDropController<DocumentsTreeItem> {
-  private readonly _onDidChangeTreeData = new vscode.EventEmitter<DocumentsTreeItem | undefined | void>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
+export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeItem> implements vscode.TreeDragAndDropController<DocumentsTreeItem> {
   /** External files dropped onto the view. We don't drag rows out of the
    *  view, so dragMimeTypes is empty. */
   readonly dropMimeTypes = ['text/uri-list', 'application/vnd.code.uri-list'];
@@ -52,20 +50,22 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentsT
   constructor(
     private readonly api: ComputorApiService,
     public readonly cache: DocumentsCacheService = new DocumentsCacheService()
-  ) {}
+  ) {
+    super();
+  }
 
-  refresh(): void {
+  override refresh(): void {
     this.listingCache.clear();
     this.orgsCache = undefined;
     this.familiesCache.clear();
     this.coursesCache.clear();
-    this._onDidChangeTreeData.fire(undefined);
+    super.refresh();
   }
 
   /** Re-render a single document subtree without dropping the rest. */
   invalidateDirectory(scope: DocumentScope, dirPath: string): void {
     this.listingCache.delete(this.cacheKey(scope, dirPath));
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
   // ----- TreeDataProvider -----

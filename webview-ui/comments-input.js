@@ -1,53 +1,29 @@
 (function () {
-  const vscode = window.vscodeApi || acquireVsCodeApi();
+  // Shared runtime (base.js). The old local escapeHtml was unused and dropped.
+  const { vscode, el, createStore } = window.ComputorWebview;
   const { createButton } = window.UIComponents || {};
 
-  const state = {
+  const { state, setState } = createStore({
     courseMemberId: undefined,
     title: undefined,
     editingComment: undefined,
     loading: false,
     draft: ''
-  };
+  }, render);
 
   const root = () => document.getElementById('app');
 
-  function setState(patch) {
-    Object.assign(state, patch);
-    render();
-  }
-
-  function escapeHtml(value) {
-    if (value === undefined || value === null) return '';
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
+  // ComputorWebview.el with the legacy options shape: children live in the
+  // options object and null/undefined attribute values mean "omit" (el would
+  // stringify them via setAttribute).
   function createElement(tag, options = {}) {
-    const el = document.createElement(tag);
-    if (options.className) el.className = options.className;
-    if (options.textContent !== undefined) el.textContent = options.textContent;
-    if (options.innerHTML !== undefined) el.innerHTML = options.innerHTML;
-    if (options.attributes) {
-      Object.entries(options.attributes).forEach(([k, v]) => {
-        if (v !== undefined && v !== null) el.setAttribute(k, v);
-      });
+    const { children, attributes, ...props } = options;
+    if (attributes) {
+      props.attributes = Object.fromEntries(
+        Object.entries(attributes).filter(([, value]) => value !== undefined && value !== null)
+      );
     }
-    if (options.children) {
-      options.children.forEach((child) => {
-        if (!child) return;
-        if (typeof child === 'string') {
-          el.appendChild(document.createTextNode(child));
-        } else {
-          el.appendChild(child);
-        }
-      });
-    }
-    return el;
+    return el(tag, props, children);
   }
 
   function submit(value) {
@@ -207,7 +183,4 @@
   // Render once immediately so first paint isn't blank
   render();
   vscode.postMessage({ command: 'ready' });
-
-  // Suppress unused lint
-  void escapeHtml;
 })();

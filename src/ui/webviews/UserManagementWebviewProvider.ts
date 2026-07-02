@@ -57,34 +57,13 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('User Details', '<p>Loading…</p>');
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify(data ?? {});
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'user-management.css');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'user-management.js');
-
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>User Management</title>
-      <link rel="stylesheet" href="${componentsCssUri}">
-      <link rel="stylesheet" href="${stylesUri}">
-    </head>
-    <body>
-      <div id="app" class="user-management-root"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${componentsJsUri}"></script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    return this.renderPage({
+      title: 'User Management',
+      bodyHtml: '<div id="app" class="user-management-root"></div>',
+      cssFiles: ['user-management.css'],
+      scriptFiles: ['user-management.js'],
+      initialState: data ?? {}
+    });
   }
 
   protected async handleMessage(message: any): Promise<void> {

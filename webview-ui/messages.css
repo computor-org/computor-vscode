@@ -1,3 +1,5 @@
+/* Messages view — chat-style full-height layout (see chat-shared.css). */
+
 html,
 body,
 #app {
@@ -6,19 +8,20 @@ body,
 
 html,
 body {
-  margin: 0;
   background: var(--vscode-editorPane-background);
-  color: var(--vscode-foreground);
-  font-family: var(--vscode-font-family);
   overflow: hidden;
+}
+
+body {
+  padding: 0;
 }
 
 .view-root {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -34,7 +37,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .view-header-top h1 {
@@ -55,21 +58,14 @@ body {
 
 .view-header p {
   margin: 0;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
 }
 
 .messages-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   flex: 1 1 auto;
   overflow-y: auto;
   padding-right: 6px;
@@ -86,22 +82,22 @@ body {
 
 .message-card {
   border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--vscode-editorWidget-background);
-  padding: 8px 10px;
+  padding: var(--sp-2) 10px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .message-card.message-reply {
-  border-left: 3px solid var(--vscode-textLink-foreground);
-  margin-left: 16px;
+  border-left: 3px solid var(--c-link);
+  margin-left: var(--sp-4);
 }
 
 .reply-context-line {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-xs);
+  color: var(--c-fg-muted);
   margin-bottom: 2px;
 }
 
@@ -109,20 +105,20 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
 }
 
 .message-meta-left {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
   flex-wrap: wrap;
 }
 
 .message-meta-left > span:first-child {
   font-weight: 500;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 /* Message scope tag - outlined rectangular style */
@@ -138,62 +134,62 @@ body {
 }
 
 .message-scope-tag.scope-submission_group {
-  background-color: rgba(75, 156, 211, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-charts-blue, #4b9cd3) 15%, transparent);
   color: var(--vscode-charts-blue);
   border-color: var(--vscode-charts-blue);
 }
 
 .message-scope-tag.scope-course_content {
-  background-color: rgba(180, 128, 215, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-charts-purple, #b480d7) 15%, transparent);
   color: var(--vscode-charts-purple);
   border-color: var(--vscode-charts-purple);
 }
 
 .message-scope-tag.scope-course {
-  background-color: rgba(137, 209, 102, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-charts-green, #89d166) 15%, transparent);
   color: var(--vscode-charts-green);
   border-color: var(--vscode-charts-green);
 }
 
 .message-scope-tag.scope-course_group {
-  background-color: rgba(255, 171, 112, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-charts-orange, #ffab70) 15%, transparent);
   color: var(--vscode-charts-orange);
   border-color: var(--vscode-charts-orange);
 }
 
 .message-scope-tag.scope-course_member {
-  background-color: rgba(229, 199, 79, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-charts-yellow, #e5c74f) 15%, transparent);
   color: var(--vscode-charts-yellow);
   border-color: var(--vscode-charts-yellow);
 }
 
 .message-scope-tag.scope-user {
-  background-color: rgba(229, 108, 111, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-charts-red, #e56c6f) 15%, transparent);
   color: var(--vscode-charts-red);
   border-color: var(--vscode-charts-red);
 }
 
 .message-scope-tag.scope-global {
-  background-color: rgba(238, 157, 40, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-symbolIcon-classForeground, #ee9d28) 15%, transparent);
   color: var(--vscode-symbolIcon-classForeground, #ee9d28);
   border-color: var(--vscode-symbolIcon-classForeground, #ee9d28);
 }
 
 .message-scope-tag.scope-organization {
-  background-color: rgba(177, 128, 215, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-symbolIcon-namespaceForeground, #b180d7) 15%, transparent);
   color: var(--vscode-symbolIcon-namespaceForeground, #b180d7);
   border-color: var(--vscode-symbolIcon-namespaceForeground, #b180d7);
 }
 
 .message-scope-tag.scope-course_family {
-  background-color: rgba(117, 190, 255, 0.15);
+  background-color: color-mix(in srgb, var(--vscode-symbolIcon-interfaceForeground, #75beff) 15%, transparent);
   color: var(--vscode-symbolIcon-interfaceForeground, #75beff);
   border-color: var(--vscode-symbolIcon-interfaceForeground, #75beff);
 }
 
 .message-meta-right {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
 }
 
@@ -202,7 +198,7 @@ body {
 }
 
 .message-meta-date {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .message-title {
@@ -212,7 +208,7 @@ body {
 }
 
 .message-body {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 
@@ -224,39 +220,21 @@ body {
 .empty-state,
 .error-state {
   text-align: center;
-  padding: 16px;
+  padding: var(--sp-4);
   border: 1px dashed var(--vscode-editorWidget-border);
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-sm);
 }
-
-
-.markdown-body {
-  line-height: 1.4;
-  font-size: 12px;
-}
-
-.markdown-body pre {
-  background: var(--vscode-editor-inactiveSelectionBackground);
-  padding: 6px;
-  border-radius: 4px;
-  overflow-x: auto;
-}
-
-.markdown-body code {
-  font-family: var(--vscode-editor-font-family, monospace);
-}
-
 
 /* Filter Bar Styles */
 .filter-bar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
   background: var(--vscode-editorWidget-background);
   border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
@@ -273,12 +251,12 @@ body {
 
 .clear-filters-btn {
   margin-left: auto;
-  color: var(--vscode-errorForeground);
+  color: var(--c-error);
 }
 
 .advanced-toggle {
   align-self: flex-start;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   opacity: 0.8;
 }
 
@@ -292,21 +270,21 @@ body {
   gap: 10px;
   padding: 10px;
   background: var(--vscode-editor-inactiveSelectionBackground);
-  border-radius: 4px;
-  margin-top: 4px;
+  border-radius: var(--radius);
+  margin-top: var(--sp-1);
 }
 
 .filter-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
 }
 
 .filter-row > label:first-child {
   min-width: 140px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
 }
 
 .filter-input {
@@ -321,16 +299,16 @@ body {
 }
 
 .date-separator {
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-sm);
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--vscode-foreground);
+  gap: var(--sp-1);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg);
   cursor: pointer;
 }
 
@@ -342,7 +320,7 @@ body {
 
 .filter-actions {
   justify-content: flex-end;
-  margin-top: 4px;
+  margin-top: var(--sp-1);
 }
 
 /* Author role badge - solid pill style */
@@ -354,7 +332,7 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-1);
 }
 
 .author-role-badge.role-student {
@@ -377,64 +355,14 @@ body {
   color: var(--vscode-editor-background);
 }
 
-/* Typing indicator */
+/* Typing indicator specifics on top of chat-shared.css */
 .typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  padding: var(--sp-2) var(--sp-3);
   font-style: italic;
 }
 
-.typing-dots {
-  display: inline-flex;
-  gap: 3px;
-}
-
-.typing-dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--vscode-descriptionForeground);
-  animation: typingBounce 1.4s infinite ease-in-out both;
-}
-
-.typing-dots span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.typing-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-.typing-dots span:nth-child(3) {
-  animation-delay: 0s;
-}
-
-@keyframes typingBounce {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.5;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-/* Highlighted @-mention chips in rendered message bodies */
-.mention-chip {
-  color: var(--vscode-textLink-foreground);
-  background: var(--vscode-textBlockQuote-background, rgba(120, 160, 255, 0.12));
-  border-radius: 3px;
-  padding: 0 3px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* Themed hover tooltip (matches VS Code's hover widget, not the native title) */
+/* Themed hover tooltip on mention chips (matches VS Code's hover widget, not
+   the native title). Base .mention-chip styling lives in chat-shared.css. */
 .mention-chip[data-tooltip] {
   position: relative;
 }
@@ -444,16 +372,16 @@ body {
   position: absolute;
   left: 0;
   top: 100%;
-  margin-top: 4px;
+  margin-top: var(--sp-1);
   z-index: 100;
   white-space: nowrap;
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-weight: normal;
-  font-size: 12px;
-  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  font-size: var(--font-size-sm);
+  color: var(--vscode-editorHoverWidget-foreground, var(--c-fg));
   background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
   border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-1);
   pointer-events: none;
 }

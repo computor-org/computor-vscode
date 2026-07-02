@@ -11,6 +11,7 @@ import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 import { scanCheckedOutExamples, getVersionPath } from '../../../utils/checkedOutExampleManager';
 import type { CheckedOutExampleGroup, CheckedOutVersion } from '../../../utils/checkedOutExampleManager';
 import { computeExampleDiff } from '../../../utils/exampleDiffHelper';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 export {
   ExampleRepositoryTreeItem,
@@ -303,10 +304,7 @@ class FileSystemTreeItem extends vscode.TreeItem {
   }
 }
 
-export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.TreeDragAndDropController<vscode.TreeItem> {
-  private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
-
+export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.TreeItem> implements vscode.TreeDragAndDropController<vscode.TreeItem> {
   private static readonly FS_MIME_TYPE = 'application/vnd.code.tree.computorfilesystem';
 
   public readonly dropMimeTypes: string[] = [LecturerExampleTreeProvider.FS_MIME_TYPE];
@@ -338,6 +336,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
     context: vscode.ExtensionContext,
     providedApiService?: ComputorApiService
   ) {
+    super();
     this.context = context;
     this.apiService = providedApiService || new ComputorApiService(context);
     const storedRepoIds = context.globalState.get<string[]>(LecturerExampleTreeProvider.REPO_FILTER_STATE_KEY, []);
@@ -379,18 +378,18 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       timeout = setTimeout(() => {
         this.checkedOutCache = null;
         this.mergedCache = null;
-        this._onDidChangeTreeData.fire(undefined);
+        this.onDidChangeTreeDataEmitter.fire(undefined);
       }, 300);
     };
   }
 
-  refresh(): void {
+  override refresh(): void {
     this.repositoriesCache = null;
     this.examplesCache.clear();
     this.checkedOutCache = null;
     this.mergedCache = null;
     this.parentMap.clear();
-    this._onDidChangeTreeData.fire(undefined);
+    super.refresh();
   }
 
   refreshAndExpand(directory: string): void {
@@ -399,7 +398,7 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   }
 
   refreshNode(element?: vscode.TreeItem): void {
-    this._onDidChangeTreeData.fire(element);
+    this.onDidChangeTreeDataEmitter.fire(element);
   }
 
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
@@ -740,21 +739,21 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
   setSearchQuery(query: string): void {
     this.searchQuery = query;
     this.mergedCache = null;
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
   clearSearch(): void { this.setSearchQuery(''); }
 
   getSelectedCategory(): string | undefined { return this.selectedCategory; }
   setCategory(category: string | undefined): void {
     this.selectedCategory = category;
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
   clearCategoryFilter(): void { this.setCategory(undefined); }
 
   getSelectedTags(): string[] { return this.selectedTags; }
   setTags(tags: string[]): void {
     this.selectedTags = tags;
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
   clearTagsFilter(): void { this.setTags([]); }
 
@@ -765,13 +764,13 @@ export class LecturerExampleTreeProvider implements vscode.TreeDataProvider<vsco
       this.selectedRepositoryIds.add(repositoryId);
     }
     this.persistRepoFilter();
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
   clearRepositoriesFilter(): void {
     this.selectedRepositoryIds.clear();
     this.persistRepoFilter();
-    this._onDidChangeTreeData.fire(undefined);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
   getSelectedRepositoryIds(): string[] {

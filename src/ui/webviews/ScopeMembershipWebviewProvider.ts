@@ -67,34 +67,14 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     if (!this.panel) {
       return this.getBaseHtml('Members', '<p>Loading…</p>');
     }
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify(data ?? null);
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'scope-membership.css');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'scope-membership.js');
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-  <title>Members</title>
-  <link rel="stylesheet" href="${componentsCssUri}">
-  <link rel="stylesheet" href="${stylesUri}">
-</head>
-<body>
-  <div id="app" class="scope-membership-root"></div>
-  <script nonce="${nonce}">
-    window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-    window.__INITIAL_STATE__ = ${initialState};
-  </script>
-  <script nonce="${nonce}" src="${componentsJsUri}"></script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+    return this.renderPage({
+      title: 'Members',
+      bodyHtml: '<div id="app" class="scope-membership-root"></div>',
+      cssFiles: ['scope-membership.css'],
+      scriptFiles: ['scope-membership.js'],
+      initialState: data ?? null
+    });
   }
 
   protected async handleMessage(message: any): Promise<void> {

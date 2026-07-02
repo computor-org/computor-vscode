@@ -5,17 +5,7 @@
     ...(window.__INITIAL_STATE__ || {})
   };
 
-  function escapeHtml(value) {
-    if (value === undefined || value === null) {
-      return '';
-    }
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  const { escapeHtml, formatDateTime: formatDate } = window.ComputorWebview;
 
   function formatPercent(value) {
     if (value === undefined || value === null || Number.isNaN(value)) {
@@ -32,17 +22,6 @@
       return `${current}`;
     }
     return `${current} / ${max}`;
-  }
-
-  function formatDate(value) {
-    if (!value) {
-      return undefined;
-    }
-    try {
-      return new Date(value).toLocaleString();
-    } catch {
-      return value;
-    }
   }
 
   function formatStatus(value) {
@@ -193,8 +172,8 @@
         }
         return `
           <div class="${classes.join(' ')}">
-            <span class="label">${escapeHtml(card.label)}</span>
-            <span class="value">${escapeHtml(card.value)}</span>
+            <span class="history-label">${escapeHtml(card.label)}</span>
+            <span class="history-value">${escapeHtml(card.value)}</span>
           </div>
         `;
       }).join('')}</div>`;

@@ -37,6 +37,19 @@ export function badge(text: string, variant: 'success' | 'warning' | 'error' | '
   return `<span class="badge badge-${variant}">${escapeHtml(text)}</span>`;
 }
 
+/** Colors for course-content deployment statuses (badges, icons). */
+export const DEPLOYMENT_STATUS_COLORS: Record<string, string> = {
+  pending: '#FFA500',
+  deployed: '#107c10',
+  failed: '#d13438',
+  deploying: '#0078d4',
+  unassigned: '#666666'
+};
+
+export function deploymentStatusColor(status: string): string {
+  return DEPLOYMENT_STATUS_COLORS[status] || DEPLOYMENT_STATUS_COLORS.unassigned!;
+}
+
 export function statusBadge(text: string, color: string): string {
   return `<span class="status-badge" style="background-color:${escapeHtml(color)}">${escapeHtml(text)}</span>`;
 }
@@ -91,27 +104,4 @@ export function selectInput(name: string, options: { value: string; label: strin
     `<option value="${escapeHtml(o.value)}"${o.value === selectedValue ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
   ).join('\n');
   return `<select name="${escapeHtml(name)}" id="${escapeHtml(name)}">${optionsHtml}</select>`;
-}
-
-export function pageShell(nonce: string, title: string, headerHtml: string, bodyHtml: string, scriptHtml: string, styles: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>${escapeHtml(title)}</title>
-  <style>${styles}</style>
-</head>
-<body>
-  <div class="header">
-    ${headerHtml}
-  </div>
-  ${bodyHtml}
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    ${scriptHtml}
-  </script>
-</body>
-</html>`;
 }

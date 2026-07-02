@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { SHARED_STYLES } from './shared/webviewStyles';
 import { escapeHtml } from './shared/webviewHelpers';
 import { ClientErrorDefinition } from '../../exceptions/client-error-types';
 import { clientErrorCatalog } from '../../exceptions/ClientErrorCatalog';
@@ -45,9 +44,6 @@ export class ErrorPageWebviewProvider extends BaseWebviewProvider {
     }
 
     const { errorDef } = data;
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const markedJsUri = this.getWebviewUri(webview, 'webview-ui', 'lib', 'marked.min.js');
 
     const headerHtml = `
       <h1>${escapeHtml(errorDef.title)}</h1>
@@ -65,28 +61,15 @@ export class ErrorPageWebviewProvider extends BaseWebviewProvider {
       errorCode: errorDef.code
     });
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-  <title>${escapeHtml(errorDef.title)}</title>
-  <style>${SHARED_STYLES}${ERROR_PAGE_STYLES}</style>
-</head>
-<body>
-  <div class="header">
-    ${headerHtml}
-  </div>
+    const bodyHtml = `
   <div class="section">
     <div id="error-content"></div>
   </div>
   <div class="actions">
     ${actionsHtml}
-  </div>
-  <script nonce="${nonce}" src="${markedJsUri}"></script>
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
+  </div>`;
+
+    const inlineScript = `
     const state = ${initialState};
 
     if (typeof marked !== 'undefined' && marked.parse) {
@@ -102,10 +85,16 @@ export class ErrorPageWebviewProvider extends BaseWebviewProvider {
           data: { actionId: this.dataset.action, errorCode: state.errorCode }
         });
       });
+    });`;
+
+    return this.renderPage({
+      title: errorDef.title,
+      headerHtml,
+      bodyHtml,
+      inlineStyles: ERROR_PAGE_STYLES,
+      scriptFiles: ['lib/marked.min.js'],
+      inlineScript
     });
-  </script>
-</body>
-</html>`;
   }
 
   protected async handleMessage(message: any): Promise<void> {

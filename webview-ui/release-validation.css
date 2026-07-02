@@ -1,0 +1,72 @@
+/* Release validation view — layout only; primitives come from base.css. */
+
+.error-summary {
+  background: var(--vscode-inputValidation-errorBackground, var(--c-error-bg));
+  border-left: 4px solid var(--vscode-inputValidation-errorBorder, var(--c-error));
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-6);
+  border-radius: var(--radius);
+}
+.error-summary h2 {
+  margin: 0 0 var(--sp-2) 0;
+  color: var(--vscode-errorForeground);
+}
+.error-summary p {
+  margin: var(--sp-1) 0;
+}
+
+.error-list {
+  margin-top: var(--sp-5);
+}
+.error-item {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-4);
+  border-radius: var(--radius-lg);
+}
+.error-item h3 {
+  margin: 0 0 var(--sp-2) 0;
+}
+.error-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.error-item .info-row {
+  justify-content: flex-start;
+  gap: var(--sp-2);
+  border-bottom: none;
+  padding: 2px 0;
+}
+.error-item .info-row .value {
+  text-align: left;
+  flex: 1;
+}
+.error-item .actions {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
+
+.next-steps {
+  margin-top: var(--sp-6);
+  padding: var(--sp-5);
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: var(--radius-lg);
+}
+.next-steps h3 {
+  margin: 0 0 var(--sp-4) 0;
+}
+.next-steps ol {
+  margin: var(--sp-2) 0;
+  padding-left: var(--sp-5);
+}
+.next-steps li {
+  margin: var(--sp-2) 0;
+}
+
+.close-row {
+  margin-top: var(--sp-5);
+  text-align: right;
+}

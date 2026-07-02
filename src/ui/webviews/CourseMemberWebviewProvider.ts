@@ -3,8 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseMemberGet, CourseList, CourseGroupGet, CourseRoleList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { SHARED_STYLES } from './shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, selectInput, pageShell } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, selectInput } from './shared/webviewHelpers';
 
 export class CourseMemberWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -29,7 +28,6 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
     }
 
     const { member, course, group, role, availableGroups, availableRoles } = data;
-    const nonce = this.getNonce();
     const user = member.user;
     const displayName = user ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || user.username : member.user_id;
 
@@ -58,7 +56,7 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
         ${formGroup('Group', selectInput('courseGroupId', groupOptions, member.course_group_id || ''))}
         <div class="actions">
           <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
         </div>
       </form>
     `);
@@ -85,12 +83,11 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
         vscode.postMessage({ command: 'refresh', data: { memberId: memberId } });
       }
 
-      window.addEventListener('message', function(event) {
-        if (event.data.command === 'updateState') { location.reload(); }
-      });
+      ComputorWebview.registerActions({ refreshData: refreshData });
+      ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return pageShell(nonce, 'Course Member', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Course Member', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

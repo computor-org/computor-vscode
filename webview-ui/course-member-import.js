@@ -1,5 +1,6 @@
 (function() {
   const vscode = window.vscodeApi || acquireVsCodeApi();
+  const { escapeHtml } = window.ComputorWebview;
   const state = window.__INITIAL_STATE__ || {};
 
   let currentFilter = 'all';
@@ -785,11 +786,11 @@
         </div>
         <div class="summary-stat">
           <span class="summary-stat-label">Success</span>
-          <span class="summary-stat-value" style="color: rgb(0, 255, 0);">${data.success}</span>
+          <span class="summary-stat-value" style="color: var(--c-success);">${data.success}</span>
         </div>
         <div class="summary-stat">
           <span class="summary-stat-label">Errors</span>
-          <span class="summary-stat-value" style="color: rgb(255, 100, 100);">${data.errors}</span>
+          <span class="summary-stat-value" style="color: var(--c-error);">${data.errors}</span>
         </div>
       `;
       summary.classList.add('visible');
@@ -841,12 +842,6 @@
     if (app) {
       app.innerHTML = `<div class="error-state">${escapeHtml(message)}</div>`;
     }
-  }
-
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   // Context menu for rows

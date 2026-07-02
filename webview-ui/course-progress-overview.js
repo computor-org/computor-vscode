@@ -7,6 +7,7 @@
   'use strict';
 
   const vscode = window.vscodeApi || acquireVsCodeApi();
+  const { escapeHtml, setLoading } = window.ComputorWebview;
   const state = window.__INITIAL_STATE__ || { course: null, students: [] };
 
   let histogramChart = null;
@@ -91,7 +92,7 @@
           <h1 class="course-progress-header__title">${escapeHtml(course.title || course.path)}</h1>
           <p class="course-progress-header__subtitle">Student Progress Overview</p>
         </div>
-        <button type="button" class="button button-secondary" id="refreshBtn" title="Refresh data">Refresh</button>
+        <button type="button" class="btn btn-secondary" id="refreshBtn" title="Refresh data">Refresh</button>
       </header>
     `;
   }
@@ -168,9 +169,9 @@
   function renderEmptyState(title, description) {
     return `
       <div class="empty-state">
-        <div class="empty-state__icon">📊</div>
-        <div class="empty-state__title">${escapeHtml(title)}</div>
-        <div class="empty-state__description">${escapeHtml(description)}</div>
+        <div class="empty-state-icon">📊</div>
+        <div class="empty-state-title">${escapeHtml(title)}</div>
+        <div>${escapeHtml(description)}</div>
       </div>
     `;
   }
@@ -431,20 +432,6 @@
           : s.family_name || s.given_name || s.username || 'Unknown'
       })));
     }
-  }
-
-  function setLoading(loading) {
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
-      overlay.classList.toggle('loading-overlay--hidden', !loading);
-    }
-  }
-
-  function escapeHtml(text) {
-    if (text == null) return '';
-    const div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
   }
 
   const COPY_ICON = '<svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>';

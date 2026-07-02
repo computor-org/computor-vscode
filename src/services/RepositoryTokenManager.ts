@@ -307,8 +307,7 @@ export class RepositoryTokenManager {
       url.password = token;
       return url.toString();
     } catch {
-      // If URL parsing fails, try basic concatenation
-      return repoUrl.replace('https://', `https://oauth2:${token}@`);
+      return addTokenToGitUrl(repoUrl, token);
     }
   }
 

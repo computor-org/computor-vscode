@@ -243,32 +243,13 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('Course Member Import', '<p>No import data available</p>');
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify(data);
-    const stylesUri = this.getWebviewUri(webview, 'webview-ui', 'course-member-import.css');
-    const scriptUri = this.getWebviewUri(webview, 'webview-ui', 'course-member-import.js');
-
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-      <title>Course Members</title>
-      <link rel="stylesheet" href="${stylesUri}">
-    </head>
-    <body>
-      <div id="app" class="import-container">
-        <div class="loading">Loading import preview...</div>
-      </div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+    return this.renderPage({
+      title: 'Course Members',
+      bodyHtml: '<div id="app" class="import-container"><div class="loading">Loading import preview...</div></div>',
+      cssFiles: ['course-member-import.css'],
+      scriptFiles: ['course-member-import.js'],
+      initialState: data
+    });
   }
 
   protected async handleMessage(message: any): Promise<void> {

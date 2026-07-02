@@ -341,36 +341,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('Messages', '<p>Loading…</p>');
     }
 
-    const webview = this.panel.webview;
-    const nonce = this.getNonce();
-    const initialState = JSON.stringify(data ?? { target: null, messages: [] });
-    const componentsCssUri = this.getWebviewUri(webview, 'webview-ui', 'components', 'components.css');
-    const messagesCssUri = this.getWebviewUri(webview, 'webview-ui', 'messages.css');
-    const componentsJsUri = this.getWebviewUri(webview, 'webview-ui', 'components.js');
-    const messagesJsUri = this.getWebviewUri(webview, 'webview-ui', 'messages.js');
-    const markedJsUri = this.getWebviewUri(webview, 'webview-ui', 'lib', 'marked.min.js');
-
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
-      <title>Messages</title>
-      <link rel="stylesheet" href="${componentsCssUri}">
-      <link rel="stylesheet" href="${messagesCssUri}">
-    </head>
-    <body>
-      <div id="app"></div>
-      <script nonce="${nonce}">
-        window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-        window.__INITIAL_STATE__ = ${initialState};
-      </script>
-      <script nonce="${nonce}" src="${markedJsUri}"></script>
-      <script nonce="${nonce}" src="${componentsJsUri}"></script>
-      <script nonce="${nonce}" src="${messagesJsUri}"></script>
-    </body>
-    </html>`;
+    return this.renderPage({
+      title: 'Messages',
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['components/components.css', 'chat-shared.css', 'messages.css'],
+      scriptFiles: ['lib/marked.min.js', 'components.js', 'messages.js'],
+      initialState: data ?? { target: null, messages: [] }
+    });
   }
 
   protected async handleMessage(message: any): Promise<void> {

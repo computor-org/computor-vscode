@@ -2,8 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { SHARED_STYLES } from '../shared/webviewStyles';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, pageShell } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
 
 export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -20,7 +19,6 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
     }
 
     const { courseContent, course, contentType } = data;
-    const nonce = this.getNonce();
 
     let childCount = 0;
     try {
@@ -51,8 +49,8 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
         ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Unit description' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
-          <button type="button" class="btn-danger" onclick="deleteContent()">Delete</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
         </div>
       </form>
     `);
@@ -95,17 +93,14 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
       }
 
       function deleteContent() {
-        if (confirm('Are you sure you want to delete this unit and all its children?')) {
-          vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
-        }
+        vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
       }
 
-      window.addEventListener('message', function(event) {
-        if (event.data.command === 'updateState') { location.reload(); }
-      });
+      ComputorWebview.registerActions({ refreshData: refreshData, deleteContent: deleteContent });
+      ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return pageShell(nonce, 'Unit', headerHtml, infoHtml + editHtml, scriptHtml, SHARED_STYLES);
+    return this.renderPage({ title: 'Unit', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
