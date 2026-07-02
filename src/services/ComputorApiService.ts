@@ -2588,6 +2588,30 @@ export class ComputorApiService {
     }
   }
 
+  async banUser(userId: string, reason?: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/ban`, { reason: reason?.trim() || null });
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[banUser] Failed to ban user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async unbanUser(userId: string): Promise<void> {
+    try {
+      const client = await this.getHttpClient();
+      await client.patch(`/users/${userId}/unban`);
+      multiTierCache.delete(`user-${userId}`);
+      multiTierCache.delete('allUsers');
+    } catch (error) {
+      console.error(`[unbanUser] Failed to unban user ${userId}:`, error);
+      throw error;
+    }
+  }
+
   // Tutor: course contents for a specific member in a course
   async getTutorCourseContents(courseId: string, memberId: string): Promise<any[]> {
     const cacheKey = `tutorContents-${memberId}`;

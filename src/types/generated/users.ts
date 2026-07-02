@@ -207,12 +207,18 @@ export interface UserGet {
   archived_at?: string | null;
   /** Whether this is a service account */
   is_service: boolean;
+  /** Timestamp when the user was banned (null = not banned) */
+  banned_at?: string | null;
+  /** Optional reason recorded when the user was banned */
+  ban_reason?: string | null;
   /** Associated student profiles */
   student_profiles?: StudentProfileGet[];
   /** User profile */
   profile?: ProfileGet | null;
   /** User's global roles */
   user_roles?: UserRoleGet[];
+  /** Whether the user is currently banned from authenticating. */
+  banned: boolean;
 }
 
 export interface UserList {
@@ -234,6 +240,10 @@ export interface UserList {
   archived_at?: string | null;
   /** Whether this is a service account */
   is_service: boolean;
+  /** Timestamp when the user was banned (null = not banned) */
+  banned_at?: string | null;
+  /** Whether the user is currently banned from authenticating. */
+  banned: boolean;
 }
 
 export interface UserUpdate {
@@ -259,6 +269,7 @@ export interface UserQuery {
   archived?: boolean | null;
   username?: string | null;
   is_service?: boolean | null;
+  banned?: boolean | null;
 }
 
 /**
