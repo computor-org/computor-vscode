@@ -2,6 +2,7 @@
 
 (function () {
   const vscode = window.vscodeApi || acquireVsCodeApi();
+  const { escapeHtml, formatDate } = window.ComputorWebview;
   let state = window.__INITIAL_STATE__ || {};
 
   function init() {
@@ -43,7 +44,7 @@
         }
       </header>
 
-      <section class="section">
+      <section class="detail-section">
         <h2 class="section-title">Details</h2>
         <div class="card">
           <dl class="field-grid">
@@ -69,7 +70,7 @@
         </div>
       </section>
 
-      <section class="section">
+      <section class="detail-section">
         <h2 class="section-title">Actions</h2>
         <div class="card">
           <div class="action-row">
@@ -90,7 +91,7 @@
         </div>
       </section>
 
-      <section class="section">
+      <section class="detail-section">
         <h2 class="section-title">Versions (${sortedVersions.length})</h2>
         ${sortedVersions.length === 0
           ? '<div class="empty-state">No versions available yet.</div>'
@@ -105,9 +106,9 @@
                   <div class="${rowClasses.join(' ')}">
                     <span class="version-tag">${escapeHtml(v.version_tag)}</span>
                     <span class="version-number">#${v.version_number}</span>
-                    <span class="version-date">${v.created_at ? formatDate(v.created_at) : ''}</span>
+                    <span class="version-date">${formatDate(v.created_at, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     <span class="version-actions">
-                      <button class="btn secondary compact" data-checkout-version="${escapeHtml(v.id)}" title="Checkout this version">
+                      <button class="btn secondary sm" data-checkout-version="${escapeHtml(v.id)}" title="Checkout this version">
                         Checkout
                       </button>
                     </span>
@@ -152,22 +153,6 @@
         vscode.postMessage({ command: 'checkoutVersion', data: { versionId: btn.dataset.checkoutVersion } });
       });
     });
-  }
-
-  function formatDate(isoString) {
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch {
-      return isoString;
-    }
-  }
-
-  function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    const div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
   }
 
   window.addEventListener('message', (event) => {

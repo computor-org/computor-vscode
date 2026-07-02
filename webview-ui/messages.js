@@ -1,8 +1,10 @@
 (function () {
-  const vscode = window.vscodeApi || acquireVsCodeApi();
+  // Shared runtime (base.js). formatDateTime matches the old local
+  // formatDate (toLocaleString, i.e. date + time).
+  const { vscode, escapeHtml, formatDateTime: formatDate, el, createStore } = window.ComputorWebview;
   const { createButton } = window.UIComponents || {};
 
-  const state = {
+  const { state, setState } = createStore({
     target: undefined,
     messages: [],
     loading: false,
@@ -20,35 +22,9 @@
     typingUsers: [], // { userId, userName }
     _scrollToBottom: false,
     ...(window.__INITIAL_STATE__ || {})
-  };
+  }, render);
 
   const root = () => document.getElementById('app');
-
-  function setState(patch) {
-    Object.assign(state, patch);
-    render();
-  }
-
-  function escapeHtml(value) {
-    if (value === undefined || value === null) {
-      return '';
-    }
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function formatDate(dateString) {
-    if (!dateString) return '';
-    try {
-      return new Date(dateString).toLocaleString();
-    } catch {
-      return dateString;
-    }
-  }
 
   function buildThreads(messages) {
     const map = new Map();
@@ -164,35 +140,17 @@
     );
   }
 
+  // ComputorWebview.el with the legacy options shape: children live in the
+  // options object and null/undefined attribute values mean "omit" (el would
+  // stringify them via setAttribute).
   function createElement(tag, options = {}) {
-    const el = document.createElement(tag);
-    if (options.className) {
-      el.className = options.className;
+    const { children, attributes, ...props } = options;
+    if (attributes) {
+      props.attributes = Object.fromEntries(
+        Object.entries(attributes).filter(([, value]) => value !== undefined && value !== null)
+      );
     }
-    if (options.textContent !== undefined) {
-      el.textContent = options.textContent;
-    }
-    if (options.innerHTML !== undefined) {
-      el.innerHTML = options.innerHTML;
-    }
-    if (options.attributes) {
-      Object.entries(options.attributes).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          el.setAttribute(key, value);
-        }
-      });
-    }
-    if (options.children) {
-      options.children.forEach((child) => {
-        if (!child) return;
-        if (typeof child === 'string') {
-          el.appendChild(document.createTextNode(child));
-        } else {
-          el.appendChild(child);
-        }
-      });
-    }
-    return el;
+    return el(tag, props, children);
   }
 
   function getScopeLabel(scope) {

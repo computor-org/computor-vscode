@@ -552,8 +552,10 @@
     }
     fill.style.width = `${Math.min(100, Math.max(0, percentage))}%`;
 
-    // Always use dark blue for filled portion
-    fill.style.backgroundColor = options.color || '#1e90ff';
+    // Default fill color comes from the .computor-progress__fill CSS token
+    if (options.color) {
+      fill.style.backgroundColor = options.color;
+    }
 
     bar.appendChild(fill);
     wrapper.appendChild(bar);

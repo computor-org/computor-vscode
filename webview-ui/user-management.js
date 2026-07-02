@@ -1,4 +1,5 @@
 (function () {
+  const { escapeHtml, formatDateTime } = window.ComputorWebview;
   const vscode = window.vscodeApi || acquireVsCodeApi();
 
   const state = {
@@ -12,18 +13,6 @@
 
   let currentNotice = null;
 
-  function escapeHtml(value) {
-    if (value === undefined || value === null) {
-      return '';
-    }
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
   function toInputValue(value) {
     if (value === undefined || value === null) {
       return '';
@@ -36,15 +25,7 @@
   }
 
   function formatDate(dateString) {
-    if (!dateString) {
-      return 'N/A';
-    }
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString();
-    } catch (e) {
-      return dateString;
-    }
+    return formatDateTime(dateString) || 'N/A';
   }
 
   function render() {
@@ -103,15 +84,15 @@
       : '<div class="empty-state">No student profiles</div>';
 
     const archivedBanner = user.archived_at
-      ? `<div class="warning-banner">⚠️ This user was archived on ${formatDate(user.archived_at)}</div>`
+      ? `<div class="notice warning">⚠️ This user was archived on ${formatDate(user.archived_at)}</div>`
       : '';
 
     const serviceAccountBanner = user.is_service
-      ? `<div class="info-banner">🤖 This is a service account</div>`
+      ? `<div class="notice info">🤖 This is a service account</div>`
       : '';
 
     root.innerHTML = `
-      <div data-notice class="user-management-notice" style="display: none;"></div>
+      <div data-notice class="notice" style="display: none;"></div>
 
       ${archivedBanner}
       ${serviceAccountBanner}
@@ -266,7 +247,7 @@
             ? 'This user is archived. Unarchiving restores access.'
             : 'Archiving hides the user from default lists and blocks authentication.'}</p>
           <div class="form-actions">
-            <button type="button" id="archive-toggle-btn" class="${user.archived_at ? 'primary' : 'danger'}">
+            <button type="button" id="archive-toggle-btn" class="${user.archived_at ? 'primary' : 'btn-danger'}">
               ${user.archived_at ? 'Unarchive User' : 'Archive User'}
             </button>
           </div>
@@ -375,7 +356,7 @@
       return;
     }
 
-    noticeEl.className = `user-management-notice ${currentNotice.type}`;
+    noticeEl.className = `notice ${currentNotice.type}`;
     noticeEl.textContent = currentNotice.message;
     noticeEl.style.display = 'block';
 

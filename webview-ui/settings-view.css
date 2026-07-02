@@ -1,3 +1,5 @@
+/* Settings view — view-specific layout on top of base.css. */
+
 .settings-root {
   padding: 16px 24px 32px;
   display: flex;
@@ -11,13 +13,13 @@
   margin: 0 0 4px;
   font-size: 22px;
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .settings-root .subtitle {
   margin: 0 0 8px;
   font-size: 13px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
 }
 
 /* Two-column grid for top sections */
@@ -35,9 +37,9 @@
 
 /* Sections */
 .settings-section {
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 6px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -48,13 +50,13 @@
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .settings-section .section-description {
   margin: 0;
   font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
 }
 
 .section-header {
@@ -67,55 +69,18 @@
   margin: 0;
 }
 
-/* Form fields */
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-field label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--vscode-foreground);
-}
-
-.form-field input {
-  padding: 8px 10px;
-  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: var(--vscode-font-family);
-  outline: none;
-  box-sizing: border-box;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-
-.form-field input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
-}
-
-.form-field input:focus {
-  border-color: var(--vscode-focusBorder);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--vscode-focusBorder);
-}
-
-.form-field input.invalid {
-  border-color: var(--vscode-inputValidation-errorBorder);
-  background-color: var(--vscode-inputValidation-errorBackground, rgba(211, 47, 47, 0.08));
-  box-shadow: inset 0 1px 2px rgba(211, 47, 47, 0.15);
+/* Form fields: base.css styles .form-field, labels and inputs. Only the
+   validation-driven states below are view-specific. */
+.settings-section .form-field {
+  margin-bottom: 0;
 }
 
 .form-field input.valid {
-  border-color: var(--vscode-testing-iconPassed, #388e3c);
-  box-shadow: inset 0 1px 2px rgba(56, 142, 60, 0.12);
+  border-color: var(--c-success);
 }
 
+/* Collapsible field error (validators.js toggles .visible) */
 .form-field .field-error {
-  font-size: 11px;
-  color: var(--vscode-errorForeground);
   min-height: 0;
   max-height: 0;
   overflow: hidden;
@@ -129,12 +94,6 @@
   max-height: 28px;
   opacity: 1;
   margin-top: 2px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
 }
 
 /* Section actions (save buttons) — pushed to bottom of section */
@@ -157,8 +116,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
   font-size: 13px;
   background: var(--vscode-sideBar-background, transparent);
 }
@@ -167,7 +126,7 @@
   flex: 1;
   font-family: var(--vscode-editor-fontFamily, monospace);
   font-size: 12px;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -175,14 +134,14 @@
 
 .provider-stored-item .provider-stored-status {
   font-size: 11px;
-  color: var(--vscode-testing-iconPassed);
+  color: var(--c-success);
   white-space: nowrap;
 }
 
 /* Provider update token panel */
 .provider-update-panel {
   padding: 10px 10px 10px 16px;
-  border-left: 2px solid var(--vscode-focusBorder);
+  border-left: 2px solid var(--c-focus);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -190,8 +149,8 @@
 
 /* Provider entries (new/edit) */
 .provider-entry {
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -207,7 +166,7 @@
 .provider-entry-header span {
   font-size: 13px;
   font-weight: 500;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .provider-entry-fields {
@@ -234,118 +193,23 @@
 }
 
 .provider-validation-status.valid {
-  color: var(--vscode-testing-iconPassed);
+  color: var(--c-success);
 }
 
 .provider-validation-status.invalid {
-  color: var(--vscode-errorForeground);
+  color: var(--c-error);
 }
 
 .provider-validation-status.pending {
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
 }
 
 .provider-validation-status.validating {
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
   font-style: italic;
 }
 
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 14px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: var(--vscode-font-family);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--vscode-button-hoverBackground);
-}
-
-.btn-secondary {
-  background-color: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background-color: var(--vscode-button-secondaryHoverBackground);
-}
-
-.btn-danger {
-  background-color: transparent;
-  color: var(--vscode-errorForeground);
-  border-color: var(--vscode-errorForeground);
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background-color: rgba(211, 47, 47, 0.15);
-}
-
-.btn-icon {
-  background: transparent;
-  border: none;
-  color: var(--vscode-foreground);
-  padding: 4px;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.btn-icon:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
-}
-
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-/* Global notice/error */
-.settings-notice {
-  padding: 12px 16px;
-  border-radius: 4px;
-  font-size: 13px;
-  border: 1px solid transparent;
-}
-
-.settings-notice.error {
-  background: rgba(211, 47, 47, 0.2);
-  border-color: rgba(211, 47, 47, 0.5);
-  color: var(--vscode-foreground);
-}
-
-.settings-notice.success {
-  background: rgba(56, 142, 60, 0.2);
-  border-color: rgba(56, 142, 60, 0.5);
-  color: var(--vscode-foreground);
-}
-
-.settings-notice.info {
-  background: var(--vscode-infoMessageBackground, rgba(0, 122, 204, 0.2));
-  border-color: var(--vscode-inputValidation-infoBorder, rgba(0, 122, 204, 0.4));
-  color: var(--vscode-foreground);
-}
-
-/* Save indicator (inline success/error flash) */
+/* Save indicator (inline success/error flash, inserted by validators.js) */
 .save-indicator {
   display: inline-flex;
   align-items: center;
@@ -362,7 +226,7 @@
 }
 
 .save-indicator-success {
-  color: var(--vscode-testing-iconPassed, #388e3c);
+  color: var(--c-success);
 }
 
 .save-indicator-success::before {
@@ -372,7 +236,7 @@
 }
 
 .save-indicator-error {
-  color: var(--vscode-errorForeground);
+  color: var(--c-error);
 }
 
 .save-indicator-error::before {

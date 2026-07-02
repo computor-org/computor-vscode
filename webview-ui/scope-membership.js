@@ -1,4 +1,5 @@
 (function () {
+  const { escapeHtml } = window.ComputorWebview;
   const vscode = window.vscodeApi || acquireVsCodeApi();
 
   const state = window.__INITIAL_STATE__ || null;
@@ -7,16 +8,6 @@
     pending: false,
     notice: null
   };
-
-  function escapeHtml(value) {
-    if (value === undefined || value === null) { return ''; }
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
 
   function post(command, data) {
     vscode.postMessage({ command, data });
@@ -38,7 +29,7 @@
   function noticeHtml() {
     if (!localState.notice) { return ''; }
     const { type, message } = localState.notice;
-    return `<div class="scope-notice scope-notice-${escapeHtml(type)}">${escapeHtml(message)}</div>`;
+    return `<div class="notice ${escapeHtml(type)}">${escapeHtml(message)}</div>`;
   }
 
   function renderRoot() {
@@ -57,7 +48,7 @@
       <header class="scope-header">
         <h1>${escapeHtml(target.scopeTitle)}</h1>
         <p class="scope-subtitle">${escapeHtml(target.scopeSubtitle || headerLabel)} · Members</p>
-        ${canManage ? '' : '<p class="scope-notice scope-notice-info">You have read-only access. Backend rejects mutations from non-managers.</p>'}
+        ${canManage ? '' : '<p class="notice info">You have read-only access. Backend rejects mutations from non-managers.</p>'}
       </header>
 
       ${noticeHtml()}
@@ -95,7 +86,7 @@
                       </td>
                       <td class="member-actions">
                         ${canManage
-                          ? `<button type="button" class="danger" data-remove-member="${escapeHtml(member.id)}">Remove</button>`
+                          ? `<button type="button" class="btn-danger btn-sm" data-remove-member="${escapeHtml(member.id)}">Remove</button>`
                           : ''}
                       </td>
                     </tr>
@@ -124,7 +115,7 @@
             <p class="field-hint">Looks up the user by exact email, then by exact username.</p>
           </div>
           <div class="form-actions">
-            <button type="button" id="browse-users-btn" class="secondary">Browse users…</button>
+            <button type="button" id="browse-users-btn" class="btn-secondary">Browse users…</button>
             <button type="submit" class="primary">Add Member</button>
           </div>
         </form>

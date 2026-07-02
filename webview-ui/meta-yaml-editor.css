@@ -1,44 +1,9 @@
-body {
-  font-family: var(--vscode-font-family);
-  padding: 20px;
-  color: var(--vscode-foreground);
-  background-color: var(--vscode-editor-background);
-  margin: 0;
-}
-
-.header {
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--vscode-panel-border);
-}
-.header h1 {
-  margin: 0 0 4px 0;
-  font-size: 22px;
-  color: var(--vscode-foreground);
-}
-.header p {
-  margin: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 13px;
-}
-
-.section {
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-  padding: 16px 20px;
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-.section h2 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  color: var(--vscode-foreground);
-}
+/* Meta YAML editor — view-specific layout on top of base.css. */
 
 .subsection {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--vscode-panel-border);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border);
 }
 .subsection:first-child {
   margin-top: 0;
@@ -46,109 +11,23 @@ body {
   border-top: none;
 }
 .subsection h3 {
-  margin: 0 0 8px 0;
+  margin: 0 0 var(--sp-2) 0;
   font-size: 14px;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
-/* Form styles */
-.form-group {
-  margin-bottom: 14px;
-}
-.form-group label {
-  display: block;
-  margin-bottom: 4px;
-  font-weight: 500;
-  font-size: 13px;
-  color: var(--vscode-foreground);
-}
-.form-group .hint,
-.hint {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-  margin-top: 2px;
-}
 .section-hint {
   margin-bottom: 10px;
-}
-
-input, textarea, select {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border-radius: 4px;
-  font-family: var(--vscode-font-family);
-  font-size: 13px;
-  box-sizing: border-box;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
-}
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--vscode-focusBorder);
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
-}
-textarea {
-  resize: vertical;
-  min-height: 60px;
-}
-
-/* Validation */
-input.invalid, select.invalid {
-  border-color: var(--vscode-editorError-foreground, #d13438);
-  box-shadow: inset 0 1px 2px rgba(209, 52, 56, 0.15);
-}
-.validation-error {
-  font-size: 11px;
-  color: var(--vscode-editorError-foreground, #d13438);
-  margin-top: 2px;
 }
 
 /* Meta grid */
 .meta-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .meta-grid .form-group { margin-bottom: 0; }
 .meta-grid .form-group.full-width { grid-column: 1 / -1; }
-
-/* Buttons */
-button, .btn {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border: none;
-  padding: 6px 14px;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: var(--vscode-font-family);
-}
-button:hover, .btn:hover {
-  background: var(--vscode-button-hoverBackground);
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.btn-secondary {
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-.btn-secondary:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
-}
-
-/* Toolbar */
-.toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.toolbar-spacer { flex: 1; }
 
 /* Dirty indicator */
 .dirty-indicator {
@@ -156,10 +35,9 @@ button:disabled {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--vscode-editorWarning-foreground);
-  margin-left: 4px;
+  background: var(--c-warning);
+  margin-left: var(--sp-1);
 }
-.dirty-indicator.hidden { display: none; }
 
 /* List containers */
 .list-container {
@@ -176,7 +54,7 @@ button:disabled {
 .list-item input {
   flex: 1;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* Person rows */
@@ -196,25 +74,25 @@ button:disabled {
   margin-top: 2px;
 }
 .file-picker {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* Chip input */
 .chip-input-container {
-  border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.3));
+  border: 1px solid var(--c-input-border);
   background-color: var(--vscode-input-background);
-  border-radius: 4px;
-  padding: 4px 6px;
+  border-radius: var(--radius);
+  padding: var(--sp-1) 6px;
   cursor: text;
 }
 .chip-input-container:focus-within {
-  border-color: var(--vscode-focusBorder);
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+  border-color: var(--c-focus);
+  box-shadow: 0 0 0 1px var(--c-focus);
 }
 .chip-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-1);
   align-items: center;
 }
 .chip {
@@ -222,10 +100,11 @@ button:disabled {
   align-items: center;
   gap: 2px;
   padding: 2px 8px;
-  border-radius: 12px;
-  background: var(--vscode-badge-background, rgba(0, 120, 212, 0.15));
-  color: var(--vscode-badge-foreground, var(--vscode-foreground));
-  font-size: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--vscode-badge-background, var(--c-info-bg));
+  color: var(--vscode-badge-foreground, var(--c-fg));
+  font-size: var(--font-size-sm);
+  font-weight: 400;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -235,14 +114,14 @@ button:disabled {
   color: inherit;
   cursor: pointer;
   padding: 0 2px;
-  font-size: 13px;
+  font-size: var(--font-size);
   line-height: 1;
   opacity: 0.7;
   border-radius: 50%;
 }
-.chip-remove:hover {
+.chip-remove:hover:not(:disabled) {
   opacity: 1;
-  background: rgba(128, 128, 128, 0.2);
+  background: var(--c-muted-bg);
 }
 .chip-text-input {
   border: none !important;
@@ -250,7 +129,7 @@ button:disabled {
   box-shadow: none !important;
   outline: none !important;
   padding: 3px 4px !important;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   flex: 1;
   min-width: 100px;
   color: var(--vscode-input-foreground);
@@ -260,44 +139,39 @@ button:disabled {
 .remove-btn {
   background: none;
   border: none;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
   cursor: pointer;
   padding: 4px 6px;
   font-size: 14px;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
-.remove-btn:hover {
-  color: #d13438;
-  background: rgba(209, 52, 56, 0.1);
+.remove-btn:hover:not(:disabled) {
+  color: var(--c-error);
+  background: var(--c-error-bg);
 }
 
 /* Add button */
 .btn-add {
   background: none;
-  border: 1px dashed var(--vscode-panel-border);
-  color: var(--vscode-textLink-foreground);
+  border: 1px dashed var(--c-border);
+  color: var(--c-link);
   padding: 6px 12px;
   cursor: pointer;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius);
+  font-size: var(--font-size-sm);
   width: 100%;
   text-align: center;
 }
-.btn-add:hover {
-  background: var(--vscode-list-hoverBackground);
-  border-color: var(--vscode-focusBorder);
+.btn-add:hover:not(:disabled) {
+  background: var(--c-hover);
+  border-color: var(--c-focus);
 }
 
 /* Info rows (read-only display) */
-.info-row {
-  font-size: 12px;
-  padding: 4px 0;
-  color: var(--vscode-foreground);
-}
 .info-label {
-  color: var(--vscode-descriptionForeground);
-  margin-right: 8px;
+  color: var(--c-fg-muted);
+  margin-right: var(--sp-2);
 }
 .info-value {
   font-family: var(--vscode-editor-font-family, monospace);
@@ -305,15 +179,15 @@ button:disabled {
 
 /* YAML preview */
 .yaml-preview {
-  margin-top: 16px;
+  margin-top: var(--sp-4);
 }
 .yaml-preview-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   cursor: pointer;
   user-select: none;
-  padding: 8px 0;
+  padding: var(--sp-2) 0;
 }
 .yaml-preview-header h2 {
   margin: 0;
@@ -322,18 +196,18 @@ button:disabled {
 .yaml-preview-header .chevron {
   font-size: 10px;
   transition: transform 0.15s;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
 }
 .yaml-preview-header .chevron.open {
   transform: rotate(90deg);
 }
 .yaml-preview-content {
   background: var(--vscode-textCodeBlock-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 4px;
-  padding: 12px 16px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--sp-3) var(--sp-4);
   font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   white-space: pre;
   overflow-x: auto;

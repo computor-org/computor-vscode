@@ -1,4 +1,5 @@
 (function () {
+  const { escapeHtml } = window.ComputorWebview;
   const vscode = window.vscodeApi || acquireVsCodeApi();
 
   const state = {
@@ -11,18 +12,6 @@
   };
 
   let currentNotice = null;
-
-  function escapeHtml(value) {
-    if (value === undefined || value === null) {
-      return '';
-    }
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
 
   function toInputValue(value) {
     if (value === undefined || value === null) {
@@ -78,7 +67,7 @@
       : '<div class="empty-state">No student profiles yet.</div>';
 
     root.innerHTML = `
-      <div data-notice class="profile-notice" style="display: none;"></div>
+      <div data-notice class="notice" style="display: none;"></div>
 
       <section class="profile-section">
         <div>
@@ -276,12 +265,12 @@
     if (!currentNotice) {
       container.style.display = 'none';
       container.textContent = '';
-      container.className = 'profile-notice';
+      container.className = 'notice';
       return;
     }
     container.style.display = 'block';
     container.textContent = currentNotice.message;
-    container.className = `profile-notice ${currentNotice.type || 'info'}`;
+    container.className = `notice ${currentNotice.type || 'info'}`;
   }
 
   window.addEventListener('message', (event) => {

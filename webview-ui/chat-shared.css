@@ -1,0 +1,114 @@
+/*
+ * Shared chat styling for the messages / comments webviews and their input
+ * panels. Loaded after base.css and before the per-view stylesheet, which may
+ * override these rules (e.g. .typing-indicator color per view).
+ */
+
+/* ------------------------------------------------- markdown-rendered body */
+
+.markdown-body {
+  line-height: 1.5;
+}
+
+.markdown-body p {
+  margin: 0 0 var(--sp-2);
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body pre {
+  background: var(--vscode-textCodeBlock-background);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: var(--sp-2) 0;
+}
+
+/* base.css styles the code element; inside pre blocks reset the inline look */
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: var(--sp-2) 0;
+  padding-left: 20px;
+}
+
+.markdown-body blockquote {
+  margin: var(--sp-2) 0;
+  padding-left: var(--sp-3);
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  color: var(--vscode-textBlockQuote-foreground);
+}
+
+.markdown-body a {
+  color: var(--c-link);
+}
+
+.markdown-body a:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+/* -------------------------------------------------------- typing indicator */
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+/* Dots follow the indicator's text color (views recolor via .typing-indicator) */
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes typingBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ----------------------------------------------------------- mention chips */
+
+/* Highlighted @-mention tokens in rendered bodies, previews and the editor */
+.mention-chip {
+  color: var(--c-link);
+  background: var(--vscode-textBlockQuote-background, rgba(120, 160, 255, 0.12));
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}

@@ -1,28 +1,10 @@
 /**
  * Course Progress Overview Webview Styles
+ * View-specific layout on top of base.css + charts.css.
  */
 
-/* Button styles */
-.button {
-  padding: 6px 14px;
-  border: none;
-  border-radius: 2px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background-color 0.1s ease;
-}
-
-.button-secondary {
-  background-color: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-
-.button-secondary:hover {
-  background-color: var(--vscode-button-secondaryHoverBackground);
-}
-
 .course-progress-overview {
-  padding: 20px 0;
+  padding: var(--sp-5) 0;
   max-width: 1400px;
   margin: 0 auto;
   box-sizing: border-box;
@@ -33,35 +15,35 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  margin-bottom: var(--sp-6);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .course-progress-header__title {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .course-progress-header__subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--vscode-descriptionForeground);
+  margin: var(--sp-1) 0 0;
+  font-size: var(--font-size);
+  color: var(--c-fg-muted);
 }
 
 .course-progress-header__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 /* Charts row */
 .charts-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-6);
 }
 
 @media (max-width: 900px) {
@@ -70,71 +52,33 @@
   }
 }
 
-.chart-card {
-  background-color: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 6px;
-  padding: 16px;
-}
-
-.chart-card__title {
-  margin: 0 0 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--vscode-foreground);
-}
-
 .chart-card__canvas {
-  position: relative;
   height: 220px;
 }
 
 /* Student table section */
 .students-section {
-  margin-top: 24px;
+  margin-top: var(--sp-6);
 }
 
 .students-section__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-4);
 }
 
 .students-section__title {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--vscode-foreground);
+  color: var(--c-fg);
 }
 
 .students-section__count {
-  font-size: 13px;
-  color: var(--vscode-descriptionForeground);
-  margin-left: 8px;
-}
-
-.students-search {
-  flex-shrink: 0;
-}
-
-.students-search input {
-  width: 200px;
-  padding: 6px 10px;
-  font-size: 13px;
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border-radius: 4px;
-  outline: none;
-}
-
-.students-search input:focus {
-  border-color: var(--vscode-focusBorder);
-}
-
-.students-search input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
+  font-size: var(--font-size);
+  color: var(--c-fg-muted);
+  margin-left: var(--sp-2);
 }
 
 /* Table customizations */
@@ -143,19 +87,19 @@
 }
 
 .student-username {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
 }
 
 /* Copyable ID badge (GitLab-style) */
 .copyable-id {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   margin-top: 2px;
   font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace);
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-xs);
+  color: var(--c-fg-muted);
   cursor: default;
 }
 
@@ -174,16 +118,16 @@
   margin-left: 2px;
   background: transparent;
   border: none;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  color: var(--vscode-descriptionForeground);
+  color: var(--c-fg-muted);
   opacity: 0.6;
   transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
-.copyable-id__btn:hover {
+.copyable-id__btn:hover:not(:disabled) {
   opacity: 1;
-  background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+  background-color: var(--vscode-toolbar-hoverBackground, var(--c-hover));
 }
 
 .copyable-id__btn:active {
@@ -191,7 +135,7 @@
 }
 
 .copyable-id__btn--copied {
-  color: var(--vscode-debugIcon-continueForeground, #89d185);
+  color: var(--c-success);
   opacity: 1;
 }
 
@@ -201,32 +145,22 @@
   fill: currentColor;
 }
 
-.progress-cell {
-  min-width: 120px;
-}
-
-.content-type-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 .content-type-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .content-type-label {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-xs);
+  color: var(--c-fg-muted);
   min-width: 70px;
 }
 
 .content-type-bar {
   flex: 1;
   height: 6px;
-  background-color: rgba(100, 149, 237, 0.2); /* Light blue for unfilled */
+  background-color: var(--c-progress-track);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -235,12 +169,12 @@
   height: 100%;
   border-radius: 3px;
   transition: width 0.3s ease;
-  background-color: #1e90ff; /* Dark blue for filled */
+  background-color: var(--c-progress-fill);
 }
 
 .content-type-value {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-xs);
+  color: var(--c-fg-muted);
   min-width: 32px;
   text-align: right;
 }
@@ -250,7 +184,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .activity-dot {
@@ -260,73 +194,13 @@
 }
 
 .activity-status--active .activity-dot {
-  background-color: var(--vscode-debugIcon-continueForeground, #89d185);
+  background-color: var(--c-success);
 }
 
 .activity-status--warning .activity-dot {
-  background-color: var(--vscode-editorWarning-foreground, #cca700);
+  background-color: var(--c-warning);
 }
 
 .activity-status--inactive .activity-dot {
-  background-color: var(--vscode-editorError-foreground, #f14c4c);
-}
-
-/* Loading overlay */
-.loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.loading-overlay--hidden {
-  display: none;
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--vscode-progressBar-background);
-  border-top-color: var(--vscode-button-background);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Empty state */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 64px 24px;
-  text-align: center;
-  color: var(--vscode-descriptionForeground);
-}
-
-.empty-state__icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state__title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--vscode-foreground);
-  margin-bottom: 8px;
-}
-
-.empty-state__description {
-  font-size: 13px;
-  max-width: 300px;
+  background-color: var(--c-error);
 }

@@ -117,7 +117,9 @@
           Object.assign(node.dataset, value);
         } else if (key === 'attributes') {
           for (const attr of Object.keys(value)) {
-            node.setAttribute(attr, value[attr]);
+            if (value[attr] !== null && value[attr] !== undefined) {
+              node.setAttribute(attr, value[attr]);
+            }
           }
         } else if (key.startsWith('on') && typeof value === 'function') {
           node.addEventListener(key.slice(2).toLowerCase(), value);

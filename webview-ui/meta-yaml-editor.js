@@ -16,12 +16,7 @@
     if (indicator) { indicator.classList.remove('hidden'); }
   }
 
-  function esc(text) {
-    if (!text) { return ''; }
-    var div = document.createElement('div');
-    div.textContent = String(text);
-    return div.innerHTML;
-  }
+  var esc = window.ComputorWebview.escapeHtml;
 
   // Ensure arrays exist
   function ensureArray(val) {

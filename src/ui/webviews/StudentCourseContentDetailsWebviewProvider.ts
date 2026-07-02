@@ -95,7 +95,7 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       title: 'Student Content Details',
       bodyHtml: '<div id="app" class="view-root"></div>',
       cssFiles: ['components/components.css', 'student-content-details.css'],
-      scriptFiles: ['components.js', 'student-content-details.js'],
+      scriptFiles: ['student-content-details.js'],
       initialState: data ?? {}
     });
   }

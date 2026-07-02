@@ -1,14 +1,11 @@
+/* Manage Course Members — view-specific layout on top of base.css */
+
 :root {
   color-scheme: light dark;
 }
 
 body {
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
-  color: var(--vscode-foreground);
-  background: var(--vscode-editor-background);
-  margin: 0;
-  padding: 16px;
+  padding: var(--sp-4);
 }
 
 .members-container {
@@ -18,35 +15,18 @@ body {
 
 .loading,
 .empty {
-  color: var(--vscode-descriptionForeground);
-  padding: 16px 8px;
+  color: var(--c-fg-muted);
+  padding: var(--sp-4) var(--sp-2);
   text-align: center;
-}
-
-header {
-  margin-bottom: 20px;
-}
-
-header h1 {
-  margin: 0;
-  font-size: 1.5em;
-}
-
-h2 {
-  font-size: 1.05em;
-  margin: 0 0 8px;
-}
-
-.muted {
-  color: var(--vscode-descriptionForeground);
 }
 
 .small {
   font-size: 0.9em;
 }
 
+/* Paragraph-level hints (base .hint is sized for form fields). */
 .hint {
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size);
   margin: 0 0 10px;
 }
 
@@ -55,140 +35,56 @@ h2 {
 }
 
 section {
-  margin-bottom: 24px;
+  margin-bottom: var(--sp-6);
 }
 
-/* Tables */
-table.grid {
-  width: 100%;
-  border-collapse: collapse;
-}
-
+/* Tables: column behaviour on top of base .table */
 table.grid th,
 table.grid td {
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
   vertical-align: top;
 }
 
-table.grid th {
-  font-size: 0.8em;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--vscode-descriptionForeground);
-}
-
-td.right,
-th:last-child {
+table.grid td.right,
+table.grid th:last-child {
   text-align: right;
 }
 
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.85em;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-}
-
-/* Inputs */
-input,
-select {
-  font-family: inherit;
-  font-size: inherit;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--vscode-dropdown-border, transparent));
-  border-radius: 4px;
-  padding: 5px 8px;
-  box-sizing: border-box;
-}
-
-input:focus,
-select:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
 #user-search {
-  width: 100%;
   max-width: 420px;
   margin-bottom: 10px;
 }
 
-/* Buttons */
-button {
-  font-family: inherit;
-  font-size: inherit;
-  cursor: pointer;
-  border: none;
-  border-radius: 4px;
-  padding: 5px 12px;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-button.primary {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-button.primary:hover:not(:disabled) {
-  background: var(--vscode-button-hoverBackground);
-}
-
-button.secondary {
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-
-button.secondary:hover:not(:disabled) {
-  background: var(--vscode-button-secondaryHoverBackground);
-}
-
 .link-danger {
   background: none;
-  color: var(--vscode-errorForeground);
+  color: var(--c-error);
   padding: 4px 0;
 }
 
-.link-danger:hover {
+.link-danger:hover:not(:disabled) {
+  background: none;
   text-decoration: underline;
 }
 
 .ok {
-  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fb950));
+  color: var(--c-success);
 }
 
 .error {
-  color: var(--vscode-errorForeground);
+  color: var(--c-error);
 }
 
 .status {
   min-height: 1.2em;
-  margin: 8px 0;
+  margin: var(--sp-2) 0;
   font-size: 0.95em;
 }
 
 .status.ok {
-  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fb950));
+  color: var(--c-success);
 }
 
 .status.error {
-  color: var(--vscode-errorForeground);
-}
-
-.notice {
-  padding: 12px 14px;
-  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.3));
-  border-radius: 6px;
-  color: var(--vscode-descriptionForeground);
-  background: var(--vscode-editorWidget-background, transparent);
+  color: var(--c-error);
 }
 
 .pager {
@@ -196,42 +92,11 @@ button.secondary:hover:not(:disabled) {
   align-items: center;
   justify-content: space-between;
   margin-top: 10px;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .pager button {
   margin-left: 6px;
-}
-
-/* Tabs */
-.tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.3));
-  margin-bottom: 16px;
-}
-
-.tab {
-  background: none;
-  color: var(--vscode-descriptionForeground);
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 8px 12px;
-  margin-bottom: -1px;
-}
-
-.tab:hover {
-  color: var(--vscode-foreground);
-}
-
-.tab.active {
-  color: var(--vscode-foreground);
-  border-bottom-color: var(--vscode-focusBorder, var(--vscode-button-background));
-}
-
-.tab-panel.hidden {
-  display: none;
 }
 
 /* Add-by-email form */
@@ -245,14 +110,9 @@ button.secondary:hover:not(:disabled) {
 #email-form label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   font-size: 0.85em;
-  color: var(--vscode-descriptionForeground);
-}
-
-#email-form input,
-#email-form select {
-  width: 100%;
+  color: var(--c-fg-muted);
 }
 
 #email-submit {

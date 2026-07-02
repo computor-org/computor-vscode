@@ -36,13 +36,7 @@
 
   const app = document.getElementById('app');
 
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
+  const { escapeHtml: esc } = window.ComputorWebview;
 
   function roleLabel(id) {
     return roleLabels[id] || (id ? id.replace(/^_/, '') : '—');
@@ -80,15 +74,15 @@
         <p class="hint">You can only see users your permissions allow. Members already in the course are hidden — pick a role and add them.</p>
         <input id="user-search" type="text" placeholder="Search by name or email…" autocomplete="off" />
         <div id="users-status" class="status"></div>
-        <table class="grid">
+        <table class="table grid">
           <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
           <tbody id="users-body"></tbody>
         </table>
         <div class="pager">
-          <span id="users-page-label" class="muted"></span>
+          <span id="users-page-label" class="text-muted"></span>
           <span>
-            <button id="users-prev" class="secondary">Previous</button>
-            <button id="users-next" class="secondary">Next</button>
+            <button id="users-prev" class="btn-secondary">Previous</button>
+            <button id="users-next" class="btn-secondary">Next</button>
           </span>
         </div>
       </section>
@@ -100,13 +94,13 @@
           <label>Family name<input id="email-family" type="text" /></label>
           <label>Role *<select id="email-role">${roleOptions(assignableRoles[0])}</select></label>
           <label>Group<input id="email-group" type="text" placeholder="Optional — created if missing" /></label>
-          <button id="email-submit" type="submit" class="primary">Add by email</button>
+          <button id="email-submit" type="submit">Add by email</button>
         </form>
         <div id="email-status" class="status"></div>
       </section>
       <section id="tab-file" class="tab-panel">
         <p class="hint">Upload a CSV, JSON, Excel (.xlsx) or Excel-XML student list. Review and adjust the rows, then import the ones you want.</p>
-        <button id="file-pick" class="secondary">Choose file…</button>
+        <button id="file-pick" class="btn-secondary">Choose file…</button>
         <div id="file-status" class="status"></div>
         <div id="file-preview"></div>
       </section>`
@@ -114,17 +108,17 @@
 
     const readonlyNotice = canManage
       ? ''
-      : `<div class="notice">You have read-only access to this roster. A lecturer role (or higher) on this course is required to add or change members.</div>`;
+      : `<div class="notice info">You have read-only access to this roster. A lecturer role (or higher) on this course is required to add or change members.</div>`;
 
     app.innerHTML = `
-      <header>
+      <header class="header">
         <h1>Members</h1>
-        <div class="muted">${esc(state.courseName || 'Course')}</div>
+        <div class="text-muted">${esc(state.courseName || 'Course')}</div>
       </header>
       <nav class="tabs">${tabs}</nav>
       <section id="tab-roster" class="tab-panel">
         ${readonlyNotice}
-        <table class="grid">
+        <table class="table grid">
           <thead><tr><th>Member</th><th>Role</th><th>Group</th><th></th></tr></thead>
           <tbody id="roster-body"></tbody>
         </table>
@@ -140,7 +134,7 @@
     currentTab = name;
     ['roster', 'add', 'email', 'file'].forEach((t) => {
       const panel = document.getElementById('tab-' + t);
-      if (panel) panel.classList.toggle('hidden', t !== name);
+      if (panel) panel.classList.toggle('active', t === name);
     });
     app.querySelectorAll('.tab').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-tab') === name);
@@ -168,14 +162,14 @@
       .map((m) => {
         const roleCell = m.manageable
           ? `<select class="member-role" data-id="${esc(m.id)}">${roleOptions(m.roleId)}</select>`
-          : `<span class="badge">${esc(roleLabel(m.roleId))}</span>`;
+          : `<span class="badge badge-muted">${esc(roleLabel(m.roleId))}</span>`;
         const actionCell = m.manageable
           ? `<button class="link-danger remove-member" data-id="${esc(m.id)}" data-name="${esc(m.name)}">Remove</button>`
           : '';
         return `<tr>
           <td>
-            <div class="strong">${esc(m.name)}${m.isSelf ? ' <span class="muted">(you)</span>' : ''}</div>
-            <div class="muted">${esc(m.email || '—')}</div>
+            <div class="strong">${esc(m.name)}${m.isSelf ? ' <span class="text-muted">(you)</span>' : ''}</div>
+            <div class="text-muted">${esc(m.email || '—')}</div>
           </td>
           <td>${roleCell}</td>
           <td>${esc(m.group || '—')}</td>
@@ -214,11 +208,11 @@
           const err = rowError[u.id];
           const action = isAdded
             ? `<span class="ok">Added ✓</span>`
-            : `<button class="primary add-user" data-id="${esc(u.id)}">Add</button>`;
+            : `<button class="add-user" data-id="${esc(u.id)}">Add</button>`;
           return `<tr>
             <td>
               <div class="strong">${esc(u.name)}</div>
-              <div class="muted">${esc(u.email || '—')}</div>
+              <div class="text-muted">${esc(u.email || '—')}</div>
               ${err ? `<div class="error small">${esc(err)}</div>` : ''}
             </td>
             <td>
@@ -257,11 +251,11 @@
           ? res.ok
             ? '<span class="ok">Added ✓</span>'
             : `<span class="error" title="${esc(res.message || '')}">Failed</span>`
-          : '<span class="muted">—</span>';
+          : '<span class="text-muted">—</span>';
         const dis = fileImporting ? ' disabled' : '';
         return `<tr>
           <td><input type="checkbox" class="file-sel" data-i="${i}"${fileSel[i] ? ' checked' : ''}${dis} /></td>
-          <td><div class="strong">${esc(name)}</div><div class="muted">${esc(r.email)}</div></td>
+          <td><div class="strong">${esc(name)}</div><div class="text-muted">${esc(r.email)}</div></td>
           <td><select class="file-role" data-i="${i}"${dis}>${roleOptions(fileRole[i] || assignableRoles[0])}</select></td>
           <td><input class="file-group" data-i="${i}" value="${esc(fileGroup[i] || '')}" placeholder="—"${dis} /></td>
           <td class="right">${status}</td>
@@ -269,13 +263,13 @@
       })
       .join('');
     preview.innerHTML = `
-      <table class="grid">
+      <table class="table grid">
         <thead><tr><th></th><th>User</th><th>Role</th><th>Group</th><th>Status</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
       <div class="pager">
-        <span class="muted">${selCount} selected</span>
-        <button id="file-import" class="primary"${fileImporting || selCount === 0 ? ' disabled' : ''}>${fileImporting ? 'Importing…' : 'Import selected'}</button>
+        <span class="text-muted">${selCount} selected</span>
+        <button id="file-import"${fileImporting || selCount === 0 ? ' disabled' : ''}>${fileImporting ? 'Importing…' : 'Import selected'}</button>
       </div>`;
   }
 

@@ -60,8 +60,8 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'User Management',
       bodyHtml: '<div id="app" class="user-management-root"></div>',
-      cssFiles: ['components/components.css', 'user-management.css'],
-      scriptFiles: ['components.js', 'user-management.js'],
+      cssFiles: ['user-management.css'],
+      scriptFiles: ['user-management.js'],
       initialState: data ?? {}
     });
   }
