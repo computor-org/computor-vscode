@@ -14,6 +14,7 @@ import {
   formatMemberName,
   compareMembersByName
 } from './tutor-filter-tree-items';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 const NO_ORG_KEY = '__no_org__';
 const NO_FAMILY_KEY = '__no_family__';
@@ -26,10 +27,7 @@ type FilterTreeItem =
   | TutorGroupOptionItem
   | TutorMemberFilterItem;
 
-export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTreeItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<FilterTreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
+export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem> {
   private courses: CourseTutorList[] = [];
   private orgLabels = new Map<string, string>();
   private familyLabels = new Map<string, string>();
@@ -51,6 +49,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     private readonly selection: TutorSelectionService,
     private readonly settingsManager?: ComputorSettingsManager
   ) {
+    super();
     void this.loadExpandedStates();
   }
 
@@ -106,7 +105,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     return [];
   }
 
-  refresh(): void {
+  override refresh(): void {
     this.courses = [];
     this.orgLabels.clear();
     this.familyLabels.clear();
@@ -116,7 +115,7 @@ export class TutorFilterTreeProvider implements vscode.TreeDataProvider<FilterTr
     this.hierarchyLoadingPromise = undefined;
     this.groupsCache.clear();
     this.membersCache.clear();
-    this._onDidChangeTreeData.fire(undefined);
+    super.refresh();
   }
 
   refreshFilters(): void {

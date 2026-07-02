@@ -11,6 +11,7 @@ import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../uti
 import { extractGraderName } from '../../../utils/gradingHelpers';
 import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 function getEmbeddedCourseContentType(courseContent: any): any | undefined {
   const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
@@ -24,10 +25,7 @@ function normalizeStatus(value: unknown): string | undefined {
   return s ? s : undefined;
 }
 
-export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
+export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeItem> {
   private contentKinds: CourseContentKindList[] = [];
 
   // Content ID that should be expanded on next getChildren call (one-time trigger)
@@ -42,6 +40,7 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
   private wsSubscription = new CourseChannelSubscription('tutor-tree');
 
   constructor(private api: ComputorApiService, private selection: TutorSelectionService) {
+    super();
     selection.onDidChangeSelection(() => this.refresh());
   }
 
@@ -85,8 +84,6 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     this.expandedSubmissionIds.delete(baseId);
   }
 
-  refresh(): void { this._onDidChangeTreeData.fire(undefined); }
-
   /**
    * Mark a content item to be expanded (with its virtual folders visible) after refresh.
    * The item will be created with collapsibleState.Expanded and a temporary unique ID
@@ -97,9 +94,6 @@ export class TutorStudentTreeProvider implements vscode.TreeDataProvider<vscode.
     this.pendingExpandContentId = contentId;
     this.pendingExpandVirtualFoldersForContentId = contentId;
   }
-
-  // Allow targeted refresh of a specific element
-  refreshItem(element: vscode.TreeItem): void { this._onDidChangeTreeData.fire(element); }
 
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem { return element; }
 

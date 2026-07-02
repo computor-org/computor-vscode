@@ -16,6 +16,7 @@ import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/r
 import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../utils/exec';
 import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 /** Resolved course-level-git state for one course (cached per session). */
 interface CourseGitModel {
@@ -46,10 +47,7 @@ interface CloneRepositoryItem {
 }
 
 
-export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider<TreeItem> {
-    private _onDidChangeTreeData = new vscode.EventEmitter<TreeItem | undefined | null>();
-    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
+export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeItem> {
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
     private provisioning?: StudentRepositoryProvisioningService;
@@ -78,6 +76,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         courseSelection: CourseSelectionService,
         context?: vscode.ExtensionContext
     ) {
+        super();
         this.apiService = apiService;
         this.courseSelection = courseSelection;
         if (context) {
@@ -123,7 +122,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         // Try to find and refresh the specific item, fall back to course refresh
         const item = this.itemIndex.get(courseContentId);
         if (item) {
-            this._onDidChangeTreeData.fire(item);
+            this.onDidChangeTreeDataEmitter.fire(item);
         } else {
             this.refreshCourseById(courseId);
         }
@@ -134,9 +133,9 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         this.gitModelCache.delete(courseId);
         const courseItem = this.itemIndex.get(`course-${courseId}`);
         if (courseItem) {
-            this._onDidChangeTreeData.fire(courseItem);
+            this.onDidChangeTreeDataEmitter.fire(courseItem);
         } else {
-            this._onDidChangeTreeData.fire(undefined);
+            this.onDidChangeTreeDataEmitter.fire(undefined);
         }
     }
 
@@ -160,7 +159,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         }
     }
     
-    refresh(): void {
+    override refresh(): void {
         this.forceRefresh = true;
         this.courseContentsCache.clear();
         this.gitModelCache.clear();
@@ -172,11 +171,11 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
         // Clear assignment setup tracking so failed assignments can retry on refresh
         this.assignmentsSetupAttempted.clear();
         // Don't clear expanded states on refresh - preserve them
-        this._onDidChangeTreeData.fire(undefined);
+        super.refresh();
     }
-    
+
     refreshNode(element?: TreeItem): void {
-        this._onDidChangeTreeData.fire(element);
+        this.onDidChangeTreeDataEmitter.fire(element);
     }
     
     /**
@@ -209,7 +208,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
 
             if (!updatedFromList) {
                 console.log(`[TreeProvider] No updated content found in list, firing full tree refresh`);
-                this._onDidChangeTreeData.fire(undefined);
+                this.onDidChangeTreeDataEmitter.fire(undefined);
                 return;
             }
 
@@ -219,7 +218,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
             if (ti && ti instanceof CourseContentItem) {
                 console.log(`[TreeProvider] Applying update to CourseContentItem`);
                 ti.applyUpdate(updatedFromList);
-                this._onDidChangeTreeData.fire(ti);
+                this.onDidChangeTreeDataEmitter.fire(ti);
                 console.log(`[TreeProvider] Tree change event fired for item`);
                 // Also refresh parent unit if possible
                 const parentPath = (updatedFromList.path || '').split('.').slice(0, -1).join('.');
@@ -234,7 +233,7 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                             const freshNode = this.findNodeByPath(tree, parentPath);
                             if (freshNode) {
                                 parentItem.updateFromNode(freshNode);
-                                this._onDidChangeTreeData.fire(parentItem);
+                                this.onDidChangeTreeDataEmitter.fire(parentItem);
                             }
                         }
                     }
@@ -246,16 +245,16 @@ export class StudentCourseContentTreeProvider implements vscode.TreeDataProvider
                     if (rootItem && rootItem instanceof CourseRootItem) {
                         const list = this.courseContentsCache.get(courseId) || [];
                         rootItem.updateCounts(list.length);
-                        this._onDidChangeTreeData.fire(rootItem);
+                        this.onDidChangeTreeDataEmitter.fire(rootItem);
                     }
                 }
                 return;
             }
             console.log(`[TreeProvider] Item not found or wrong type, firing full tree refresh`);
-            this._onDidChangeTreeData.fire(undefined);
+            this.onDidChangeTreeDataEmitter.fire(undefined);
         } catch (e) {
             console.error('refreshContentItem failed:', e);
-            this._onDidChangeTreeData.fire(undefined);
+            this.onDidChangeTreeDataEmitter.fire(undefined);
         }
     }
     

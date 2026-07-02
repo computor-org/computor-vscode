@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import { GitWrapper } from '../../../git/GitWrapper';
+import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
 const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
@@ -14,13 +15,11 @@ type TreeItem = CourseRepositoryItem | AssignmentDirectoryItem | FileSystemItem;
  * Tree provider for offline student mode
  * Shows course repositories and assignments from the filesystem without API calls
  */
-export class StudentOfflineTreeProvider implements vscode.TreeDataProvider<TreeItem> {
-    private onDidChangeTreeDataEmitter = new vscode.EventEmitter<TreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
-
+export class StudentOfflineTreeProvider extends BaseTreeDataProvider<TreeItem> {
     private studentBasePath: string | undefined;
 
     constructor(context: vscode.ExtensionContext) {
+        super();
         void context; // Unused parameter
         this.initializeBasePath();
     }
@@ -33,9 +32,9 @@ export class StudentOfflineTreeProvider implements vscode.TreeDataProvider<TreeI
         }
     }
 
-    refresh(): void {
+    override refresh(): void {
         this.initializeBasePath();
-        this.onDidChangeTreeDataEmitter.fire();
+        super.refresh();
     }
 
     getTreeItem(element: TreeItem): vscode.TreeItem {
