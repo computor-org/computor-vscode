@@ -24,7 +24,7 @@ describe('commandHelpers', () => {
     (vscode.commands as any).registerCommand = originalRegister;
   });
 
-  it('commandRegistrar returns a function bound to the provided context', () => {
+  it('commandRegistrar returns a function bound to the provided context', async () => {
     const subs: { dispose(): void }[] = [];
     const ctx = { subscriptions: subs } as unknown as vscode.ExtensionContext;
 
@@ -36,7 +36,10 @@ describe('commandHelpers', () => {
 
     expect(registrations).to.have.length(1);
     expect(registrations[0]!.id).to.equal('computor.test.alpha');
-    expect(registrations[0]!.handler).to.equal(handler);
+    // commandRegistrar wraps the handler in an error-catching safety net, so the
+    // registered function is a wrapper, not the raw handler — assert it delegates.
+    expect(registrations[0]!.handler).to.be.a('function');
+    expect(await registrations[0]!.handler()).to.equal(42);
     expect(subs).to.have.length(1);
   });
 
