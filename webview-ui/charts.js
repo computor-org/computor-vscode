@@ -431,7 +431,8 @@
       backgroundColor: (ds.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length]) + '20',
       borderWidth: 2,
       fill: options.fill !== false,
-      tension: options.tension || 0.3,
+      stepped: options.stepped || false,
+      tension: options.stepped ? 0 : (options.tension || 0.3),
       pointRadius: options.showPoints !== false ? 4 : 0,
       pointHoverRadius: 6,
       pointBackgroundColor: ds.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length],
@@ -470,7 +471,8 @@
           ...config.scales,
           y: {
             ...config.scales.y,
-            beginAtZero: options.beginAtZero !== false
+            beginAtZero: options.beginAtZero !== false,
+            max: options.yMax
           }
         },
         onClick: options.onClick

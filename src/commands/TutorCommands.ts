@@ -119,6 +119,10 @@ export class TutorCommands {
 
     // Show Course Progress (uses current selected course from filters)
     register('computor.tutor.showCourseProgress', async () => {
+      if (!(await this.hasLecturerView())) {
+        vscode.window.showInformationMessage('Grading and progress views are available to lecturers only.');
+        return;
+      }
       const sel = TutorSelectionService.getInstance();
       const courseId = sel.getCurrentCourseId();
       if (!courseId) {
@@ -130,6 +134,10 @@ export class TutorCommands {
 
     // Show Member Progress (uses current selected member from filters)
     register('computor.tutor.showMemberProgress', async () => {
+      if (!(await this.hasLecturerView())) {
+        vscode.window.showInformationMessage('Grading and progress views are available to lecturers only.');
+        return;
+      }
       const sel = TutorSelectionService.getInstance();
       const memberId = sel.getCurrentMemberId();
       const memberName = sel.getCurrentMemberLabel();
@@ -447,6 +455,16 @@ export class TutorCommands {
     register('computor.tutor.runTest', async (item: any) => {
       await this.runTestOnSubmission(item);
     });
+  }
+
+  // Grading/progress views are lecturer+ only (the backend enforces this too).
+  // getUserViews() is cached, so this is cheap on repeated invocations.
+  private async hasLecturerView(): Promise<boolean> {
+    try {
+      return (await this.apiService.getUserViews()).includes('lecturer');
+    } catch {
+      return false;
+    }
   }
 
   private async queueCheckout(item: unknown, confirmRedownload: boolean): Promise<void> {

@@ -1302,12 +1302,12 @@
         },
         {
           "command": "computor.tutor.showCourseProgress",
-          "when": "view == computor.tutor.filters",
+          "when": "view == computor.tutor.filters && computor.lecturer.show",
           "group": "navigation@1"
         },
         {
           "command": "computor.tutor.showMemberProgress",
-          "when": "view == computor.tutor.filters",
+          "when": "view == computor.tutor.filters && computor.lecturer.show",
           "group": "navigation@2"
         },
         {

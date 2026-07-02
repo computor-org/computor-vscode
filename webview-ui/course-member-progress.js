@@ -11,6 +11,7 @@
   const state = window.__INITIAL_STATE__ || { memberGradings: null };
 
   let donutChart = null;
+  let submissionChart = null;
 
   function init() {
     render();
@@ -70,6 +71,7 @@
       <div class="course-member-progress">
         ${renderHeader(gradings, state.fallbackName)}
         ${renderOverallProgress(gradings)}
+        ${renderSubmissionSection(gradings)}
         ${renderChartsRow(gradings)}
         ${renderContentTree(gradings)}
         <div class="loading-overlay loading-overlay--hidden" id="loadingOverlay">
@@ -79,6 +81,7 @@
     `;
 
     initDonutChart(gradings);
+    initSubmissionChart(gradings);
     attachCopyButtonListeners();
     attachButtonListeners();
   }
@@ -497,6 +500,75 @@
         </div>
       `;
     }).join('');
+  }
+
+  // One point per submittable assignment that has an official submission, using
+  // its latest official submission time — the same source the web UI uses (the
+  // grading payload carries no per-submission timeseries).
+  function computeSubmissionSeries(gradings) {
+    const nodes = (gradings && gradings.nodes) || [];
+    return nodes
+      .filter(n => n && n.submittable === true && n.latest_submission_at)
+      .map(n => {
+        const t = new Date(n.latest_submission_at).getTime();
+        return Number.isFinite(t) ? { t } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.t - b.t);
+  }
+
+  function renderSubmissionSection(gradings) {
+    const series = computeSubmissionSeries(gradings);
+    const total = toNonNegativeInt(gradings.total_max_assignments);
+    const body = series.length === 0
+      ? '<p style="color: var(--vscode-descriptionForeground); font-size: 13px;">No official submissions to plot yet.</p>'
+      : `
+          <div class="chart-card__canvas">
+            <canvas id="submissionCurve"></canvas>
+          </div>
+          <p style="margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground);">
+            Cumulative assignments submitted (${series.length}/${total})
+          </p>
+        `;
+    return `
+      <section class="submission-timeline-section">
+        <div class="chart-card">
+          <h3 class="chart-card__title">Submission timeline</h3>
+          ${body}
+        </div>
+      </section>
+    `;
+  }
+
+  function initSubmissionChart(gradings) {
+    const canvas = document.getElementById('submissionCurve');
+    if (!canvas) return;
+    const series = computeSubmissionSeries(gradings);
+    if (series.length === 0) return;
+
+    // Guard against Chart.js "canvas already in use" across re-renders.
+    if (submissionChart) { submissionChart.destroy(); submissionChart = null; }
+    if (window.Chart && typeof Chart.getChart === 'function') {
+      const existing = Chart.getChart(canvas);
+      if (existing) { existing.destroy(); }
+    }
+
+    const total = Math.max(toNonNegativeInt(gradings.total_max_assignments), series.length);
+    const labels = series.map(p =>
+      new Date(p.t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' })
+    );
+    const values = series.map((_, i) => i + 1);
+
+    submissionChart = ComputorCharts.createLineChart('submissionCurve', {
+      labels,
+      datasets: [{ label: 'Submitted', values, color: ComputorCharts.ThemeColors.info }]
+    }, {
+      stepped: true,
+      fill: false,
+      showPoints: series.length <= 40,
+      beginAtZero: true,
+      yMax: total
+    });
   }
 
   function initDonutChart(gradings) {
