@@ -52,7 +52,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         ${formGroup('GitLab Repository URL', textInput('gitlabUrl', gitlabUrl, { type: 'url', placeholder: 'https://gitlab.example.com/...' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
         </div>
       </form>
     `);
@@ -79,9 +79,8 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         vscode.postMessage({ command: 'refresh', data: { courseId: courseId } });
       }
 
-      window.addEventListener('message', function(event) {
-        if (event.data.command === 'updateState') { location.reload(); }
-      });
+      ComputorWebview.registerActions({ refreshData: refreshData });
+      ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
     return this.renderPage({ title: 'Course', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });

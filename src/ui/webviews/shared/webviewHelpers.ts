@@ -37,6 +37,19 @@ export function badge(text: string, variant: 'success' | 'warning' | 'error' | '
   return `<span class="badge badge-${variant}">${escapeHtml(text)}</span>`;
 }
 
+/** Colors for course-content deployment statuses (badges, icons). */
+export const DEPLOYMENT_STATUS_COLORS: Record<string, string> = {
+  pending: '#FFA500',
+  deployed: '#107c10',
+  failed: '#d13438',
+  deploying: '#0078d4',
+  unassigned: '#666666'
+};
+
+export function deploymentStatusColor(status: string): string {
+  return DEPLOYMENT_STATUS_COLORS[status] || DEPLOYMENT_STATUS_COLORS.unassigned!;
+}
+
 export function statusBadge(text: string, color: string): string {
   return `<span class="status-badge" style="background-color:${escapeHtml(color)}">${escapeHtml(text)}</span>`;
 }

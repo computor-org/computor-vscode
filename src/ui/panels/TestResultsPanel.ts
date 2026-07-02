@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { ResultArtifactInfo } from '../../types/generated/common';
+import { escapeHtml } from '../webviews/shared/webviewHelpers';
+import { renderWebviewPage } from '../webviews/shared/webviewPage';
 
 interface ResultsTreeNode {
     id: string;
@@ -476,22 +478,18 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
 
     public updateTestResults(testResults: any): void {
         this.value = this.buildMessage(testResults);
-        if (this.view) {
-            this.view.webview.postMessage({
-                message: "results-update",
-                data: {
-                    message: this.value.message,
-                    label: this.value.label
-                }
-            });
-        }
+        this.postResultsUpdate();
     }
 
     public clearResults(): void {
         this.value = this.buildMessage(undefined);
+        this.postResultsUpdate();
+    }
+
+    private postResultsUpdate(): void {
         if (this.view) {
             this.view.webview.postMessage({
-                message: "results-update",
+                command: 'resultsUpdate',
                 data: {
                     message: this.value.message,
                     label: this.value.label
@@ -583,14 +581,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private escapeHtml(text: string): string {
-        const div = { textContent: text } as any;
-        const escaped = div.textContent
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-        return escaped;
+        return escapeHtml(text);
     }
 
     private formatMessage(message: string): string {
@@ -627,137 +618,21 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private getHtmlContent(): string {
-        const nonce = this.getNonce();
-
-        return `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this.view?.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-            
-            <style>
-                body {
-                    font-family: var(--vscode-font-family);
-                    font-size: var(--vscode-font-size);
-                    color: var(--vscode-foreground);
-                    background-color: var(--vscode-editor-background);
-                    margin: 0;
-                    padding: 12px;
-                }
-                
-                .header {
-                    font-size: 14px;
-                    font-weight: bold;
-                    margin-bottom: 12px;
-                    padding-bottom: 8px;
-                    border-bottom: 1px solid var(--vscode-panel-border);
-                }
-                
-                .content {
-                    padding: 8px 0;
-                    white-space: pre-wrap;
-                    font-family: var(--vscode-editor-font-family);
-                    word-wrap: break-word;
-                    overflow-wrap: break-word;
-                }
-                
-                .test-results {
-                    font-family: var(--vscode-editor-font-family);
-                }
-                
-                .summary {
-                    margin-bottom: 16px;
-                }
-                
-                .summary h3, .tests h3 {
-                    font-size: 13px;
-                    font-weight: bold;
-                    margin: 8px 0;
-                }
-                
-                .summary ul, .test-list {
-                    list-style: none;
-                    padding: 0;
-                    margin: 0;
-                }
-                
-                .summary li {
-                    padding: 2px 0;
-                }
-                
-                .test-item {
-                    padding: 4px 0;
-                    margin: 2px 0;
-                    display: flex;
-                    align-items: flex-start;
-                }
-                
-                .test-item.passed {
-                    color: var(--vscode-testing-iconPassed);
-                }
-                
-                .test-item.failed {
-                    color: var(--vscode-testing-iconFailed);
-                }
-                
-                .test-icon {
-                    margin-right: 8px;
-                    flex-shrink: 0;
-                }
-                
-                .test-name {
-                    font-weight: 500;
-                }
-                
-                .test-message {
-                    margin-top: 4px;
-                    margin-left: 24px;
-                    font-size: 12px;
-                    opacity: 0.8;
-                    word-wrap: break-word;
-                    overflow-wrap: break-word;
-                    white-space: pre;
-                    font-family: var(--vscode-editor-font-family);
-                }
-                
-                pre {
-                    font-family: var(--vscode-editor-font-family);
-                    font-size: var(--vscode-editor-font-size);
-                    overflow: auto;
-                }
-                
-                .no-results {
-                    color: var(--vscode-descriptionForeground);
-                    font-style: italic;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header" id="header">${this.value?.label || 'Test Results'}</div>
-            <div class="content" id="content">${this.value?.message || '<span class="no-results">No test results available</span>'}</div>
-            
-            <script nonce="${nonce}">
-                const vscode = acquireVsCodeApi();
-                
-                window.addEventListener('message', event => {
-                    const message = event.data;
-                    if (message.message === 'results-update') {
-                        document.getElementById('header').innerText = message.data.label;
-                        document.getElementById('content').innerHTML = message.data.message;
-                    }
-                });
-            </script>
-        </body>
-        </html>`;
-    }
-
-    private getNonce(): string {
-        let text = '';
-        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        for (let i = 0; i < 32; i++) {
-            text += possible.charAt(Math.floor(Math.random() * possible.length));
+        if (!this.view) {
+            return '';
         }
-        return text;
+        return renderWebviewPage(this.view.webview, this.extensionUri, {
+            title: 'Test Results',
+            bodyHtml: `
+            <div class="header" id="header">${this.value?.label || 'Test Results'}</div>
+            <div class="content" id="content">${this.value?.message || '<span class="no-results">No test results available</span>'}</div>`,
+            cssFiles: ['test-results.css'],
+            inlineScript: `
+                ComputorWebview.onCommand('resultsUpdate', (data) => {
+                    document.getElementById('header').innerText = data.label;
+                    document.getElementById('content').innerHTML = data.message;
+                });`
+        });
     }
+
 }

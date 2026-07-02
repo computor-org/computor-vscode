@@ -56,7 +56,7 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
         ${formGroup('Group', selectInput('courseGroupId', groupOptions, member.course_group_id || ''))}
         <div class="actions">
           <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
         </div>
       </form>
     `);
@@ -83,9 +83,8 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
         vscode.postMessage({ command: 'refresh', data: { memberId: memberId } });
       }
 
-      window.addEventListener('message', function(event) {
-        if (event.data.command === 'updateState') { location.reload(); }
-      });
+      ComputorWebview.registerActions({ refreshData: refreshData });
+      ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
     return this.renderPage({ title: 'Course Member', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });

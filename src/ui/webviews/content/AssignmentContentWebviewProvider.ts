@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, statusBadge, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, statusBadge, deploymentStatusColor, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
 
 export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -20,16 +20,8 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
 
     const { courseContent, course, contentType, exampleInfo, exampleVersionInfo } = data;
 
-    const statusColors: Record<string, string> = {
-      pending: '#FFA500',
-      deployed: '#107c10',
-      failed: '#d13438',
-      deploying: '#0078d4',
-      unassigned: '#666666'
-    };
-
     const deploymentStatus = (courseContent as any).deployment_status || 'unassigned';
-    const statusColor = statusColors[deploymentStatus] || '#666666';
+    const statusColor = deploymentStatusColor(deploymentStatus);
 
     const headerHtml = `
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
@@ -52,10 +44,10 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       ${exampleVersionInfo?.version_tag ? infoRowCode('Version', exampleVersionInfo.version_tag) : ''}
       <div class="actions">
         ${exampleInfo ? `
-          <button class="btn-secondary" onclick="updateExampleVersion()">Update Version</button>
-          <button onclick="deployAssignment()">Deploy</button>
+          <button class="btn-secondary" data-action="updateExampleVersion">Update Version</button>
+          <button data-action="deployAssignment">Deploy</button>
         ` : ''}
-        <button class="btn-secondary" onclick="viewDeployment()">View Deployment Info</button>
+        <button class="btn-secondary" data-action="viewDeployment">View Deployment Info</button>
       </div>
     `);
 
@@ -69,8 +61,8 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         ${courseContent.max_submissions !== undefined ? formGroup('Max Submissions', textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0 })) : ''}
         <div class="actions">
           <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
-          <button type="button" class="btn-danger" onclick="deleteContent()">Delete</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
         </div>
       </form>
     `);
@@ -130,14 +122,11 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       }
 
       function deleteContent() {
-        if (confirm('Are you sure you want to delete this assignment?')) {
-          vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
-        }
+        vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
       }
 
-      window.addEventListener('message', function(event) {
-        if (event.data.command === 'updateState') { location.reload(); }
-      });
+      ComputorWebview.registerActions({ refreshData: refreshData, deleteContent: deleteContent, updateExampleVersion: updateExampleVersion, deployAssignment: deployAssignment, viewDeployment: viewDeployment });
+      ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
     return this.renderPage({ title: 'Assignment', headerHtml, bodyHtml: infoHtml + deploymentHtml + editHtml, inlineScript: scriptHtml });

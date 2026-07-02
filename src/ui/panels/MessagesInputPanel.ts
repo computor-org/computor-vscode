@@ -3,6 +3,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { MessageCreate, MessageUpdate, MessageList, MessageMentionRef, MentionableQuery } from '../../types/generated';
 import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
 import { WebSocketService } from '../../services/WebSocketService';
+import { renderWebviewPage } from '../webviews/shared/webviewPage';
 
 interface TypingUser {
   userId: string;
@@ -403,33 +404,12 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    const webview = this.view.webview;
-    const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'messages-input.css'));
-    const componentsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'components', 'components.css'));
-    const componentsJsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'components.js'));
-    const markedJsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'lib', 'marked.min.js'));
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'messages-input.js'));
-
-    this.view.webview.html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="${componentsUri}" rel="stylesheet" />
-  <link href="${stylesUri}" rel="stylesheet" />
-</head>
-<body>
-  <div id="app"></div>
-  <script nonce="${nonce}">
-    window.vscodeApi = window.vscodeApi || acquireVsCodeApi();
-  </script>
-  <script nonce="${nonce}" src="${markedJsUri}"></script>
-  <script nonce="${nonce}" src="${componentsJsUri}"></script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+    this.view.webview.html = renderWebviewPage(this.view.webview, this.extensionUri, {
+      title: 'New Message',
+      bodyHtml: '<div id="app"></div>',
+      cssFiles: ['components/components.css', 'messages-input.css'],
+      scriptFiles: ['lib/marked.min.js', 'components.js', 'messages-input.js']
+    });
   }
 }
 

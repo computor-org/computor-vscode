@@ -49,8 +49,8 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
         ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Unit description' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
-          <button type="button" class="btn-danger" onclick="deleteContent()">Delete</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
         </div>
       </form>
     `);
@@ -93,14 +93,11 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
       }
 
       function deleteContent() {
-        if (confirm('Are you sure you want to delete this unit and all its children?')) {
-          vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
-        }
+        vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
       }
 
-      window.addEventListener('message', function(event) {
-        if (event.data.command === 'updateState') { location.reload(); }
-      });
+      ComputorWebview.registerActions({ refreshData: refreshData, deleteContent: deleteContent });
+      ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
     return this.renderPage({ title: 'Unit', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });

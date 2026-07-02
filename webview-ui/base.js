@@ -187,6 +187,28 @@
     return activate;
   }
 
+  /*
+   * Generic button wiring. The CSP forbids inline onclick= handlers, so
+   * pages mark buttons with data-action="name" and register handlers via
+   * registerActions({ name: (dataset, element) => ... }).
+   */
+  const actions = Object.create(null);
+
+  function registerActions(map) {
+    Object.assign(actions, map);
+  }
+
+  document.addEventListener('click', (event) => {
+    const target = event.target && event.target.closest ? event.target.closest('[data-action]') : null;
+    if (!target) {
+      return;
+    }
+    const handler = actions[target.dataset.action];
+    if (handler) {
+      handler(target.dataset, target);
+    }
+  });
+
   /** Debounce a function; trailing edge, default 200ms. */
   function debounce(fn, waitMs) {
     let timer;
@@ -201,6 +223,7 @@
     vscode: vscode,
     post: post,
     onCommand: onCommand,
+    registerActions: registerActions,
     escapeHtml: escapeHtml,
     formatDate: formatDate,
     formatDateTime: formatDateTime,

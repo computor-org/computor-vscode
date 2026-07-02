@@ -50,7 +50,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         ${formGroup('Description', textareaInput('description', organization.description, { placeholder: 'Organization description' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" onclick="refreshData()">Refresh</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
         </div>
       </form>
     `);
@@ -76,11 +76,8 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         vscode.postMessage({ command: 'refresh', data: { organizationId: orgId } });
       }
 
-      window.addEventListener('message', function(event) {
-        if (event.data.command === 'updateState') {
-          location.reload();
-        }
-      });
+      ComputorWebview.registerActions({ refreshData: refreshData });
+      ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
     return this.renderPage({ title: 'Organization', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
