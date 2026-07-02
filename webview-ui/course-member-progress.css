@@ -181,6 +181,10 @@
 }
 
 /* Charts row */
+.submission-timeline-section {
+  margin-bottom: var(--sp-6);
+}
+
 .member-charts-row {
   display: grid;
   grid-template-columns: 300px 1fr;
