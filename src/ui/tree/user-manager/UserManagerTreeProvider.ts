@@ -24,11 +24,16 @@ export class UserTreeItem extends vscode.TreeItem {
 
     super(displayName, collapsibleState);
 
-    this.contextValue = user.is_service ? 'user.service' : 'user';
+    this.contextValue = user.banned_at
+      ? (user.is_service ? 'user.service.banned' : 'user.banned')
+      : (user.is_service ? 'user.service' : 'user');
     this.tooltip = this.buildTooltip();
     this.description = user.email || user.username || '';
-    // Robot icon for service accounts, human icon for real users.
-    this.iconPath = new vscode.ThemeIcon(user.is_service ? 'robot' : 'account');
+    // Banned users get a red "blocked" icon; otherwise a robot for service
+    // accounts and a human icon for real users.
+    this.iconPath = user.banned_at
+      ? new vscode.ThemeIcon('circle-slash', new vscode.ThemeColor('errorForeground'))
+      : new vscode.ThemeIcon(user.is_service ? 'robot' : 'account');
     this.command = {
       command: 'computor.userManager.openUserDetails',
       title: 'Open User Details',
@@ -49,6 +54,10 @@ export class UserTreeItem extends vscode.TreeItem {
 
     if (this.user.username) {
       parts.push(`Username: ${this.user.username}`);
+    }
+
+    if (this.user.banned_at) {
+      parts.push('🚫 BANNED');
     }
 
     if (this.user.archived_at) {
