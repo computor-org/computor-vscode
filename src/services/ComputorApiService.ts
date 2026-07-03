@@ -42,6 +42,7 @@ import {
   ExampleList,
   ExampleRepositoryList,
   ExampleRepositoryGet,
+  ExampleRepositoryCreate,
   ExampleGet,
   ExampleVersionGet,
   ExampleVersionList,
@@ -2098,6 +2099,12 @@ export class ComputorApiService {
       console.error('Failed to get example repositories:', error);
       return [];
     }
+  }
+
+  async createExampleRepository(payload: ExampleRepositoryCreate): Promise<ExampleRepositoryGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<ExampleRepositoryGet>('/example-repositories', payload);
+    return response.data;
   }
 
   async getExamples(repositoryId?: string): Promise<ExampleList[]> {

@@ -5,7 +5,7 @@ import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, FileSystemTreeItem, RepositoryFilterToggleItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
-import { ExampleUploadRequest, CourseContentCreate, CourseContentList, CourseList, CodeAbilityMeta } from '../types/generated';
+import { ExampleUploadRequest, ExampleRepositoryCreate, CourseContentCreate, CourseContentList, CourseList, CodeAbilityMeta } from '../types/generated';
 import { writeExampleFiles } from '../utils/exampleFileWriter';
 import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
 import { TestYamlEditorWebviewProvider } from '../ui/webviews/TestYamlEditorWebviewProvider';
@@ -236,6 +236,11 @@ export class LecturerExampleCommands {
     });
     register('computor.lecturer.deleteItem', async (item: FileSystemTreeItem) => {
       await this.deleteFileSystemItem(item);
+    });
+
+    // Create a new example repository
+    register('computor.lecturer.createExampleRepository', async () => {
+      await this.createExampleRepository();
     });
 
     // Create new example
@@ -905,6 +910,58 @@ export class LecturerExampleCommands {
     } catch (error) {
       console.error('Failed to upload example:', error);
       vscode.window.showErrorMessage(`Failed to upload: ${error}`);
+    }
+  }
+
+  private async createExampleRepository(): Promise<void> {
+    const name = await vscode.window.showInputBox({
+      prompt: 'Example Repository name',
+      placeHolder: 'e.g., Default Examples',
+      validateInput: (value) => (value && value.trim() ? undefined : 'A name is required')
+    });
+    if (!name) { return; }
+
+    const sourceTypePick = await vscode.window.showQuickPick(
+      [
+        { label: 'MinIO (uploadable)', value: 'minio' },
+        { label: 'S3 (uploadable)', value: 's3' },
+        { label: 'Git (read-only — synced via push)', value: 'git' }
+      ],
+      { placeHolder: 'Select the repository source type' }
+    );
+    if (!sourceTypePick) { return; }
+    const sourceType = sourceTypePick.value;
+
+    const isObjectStore = sourceType === 'minio' || sourceType === 's3';
+    const sourceUrl = await vscode.window.showInputBox({
+      prompt: isObjectStore ? 'Bucket (source URL)' : 'Git URL',
+      placeHolder: isObjectStore ? 'e.g., computor-storage' : 'e.g., https://git.example.com/org/examples.git',
+      value: isObjectStore ? 'computor-storage' : '',
+      // First path segment is the bucket for minio/s3; must be unique across repositories.
+      validateInput: (value) => (value && value.trim() ? undefined : 'A source URL is required')
+    });
+    if (!sourceUrl) { return; }
+
+    const description = await vscode.window.showInputBox({
+      prompt: 'Description (optional)',
+      placeHolder: 'What does this repository contain?'
+    });
+    if (description === undefined) { return; }
+
+    const payload: ExampleRepositoryCreate = {
+      name: name.trim(),
+      source_type: sourceType,
+      source_url: sourceUrl.trim(),
+      description: description.trim() || null
+    };
+
+    try {
+      const repo = await this.apiService.createExampleRepository(payload);
+      vscode.window.showInformationMessage(`Example repository "${repo.name}" created.`);
+      try { this.apiService.clearExamplesCache(); } catch {}
+      this.treeProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to create example repository: ${error?.message || error}`);
     }
   }
 

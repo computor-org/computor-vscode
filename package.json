@@ -623,6 +623,12 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.createExampleRepository",
+        "title": "Create Example Repository",
+        "icon": "$(repo-create)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.createNewExample",
         "title": "Create New Example",
         "icon": "$(add)",
@@ -1361,6 +1367,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "computor.lecturer.createExampleRepository",
+          "when": "view == computor.lecturer.examples",
+          "group": "navigation@0"
+        },
+        {
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
           "group": "navigation@1"
@@ -1500,6 +1511,11 @@
         {
           "command": "computor.chat.markThreadRead",
           "when": "view == computor.chat.inbox && viewItem == chatThread.unread",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "computor.lecturer.createExampleRepository",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_repositories",
           "group": "1_actions@1"
         },
         {
