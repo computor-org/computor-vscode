@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
+import { NO_GROUP_SENTINEL } from '../ui/tree/tutor/tutor-filter-tree-items';
 
 export class TutorSelectionService {
   private static instance: TutorSelectionService | null = null;
@@ -54,6 +55,21 @@ export class TutorSelectionService {
 
   getCurrentCourseId(): string | null { return this.courseId; }
   getCurrentGroupId(): string | null { return this.groupId; }
+
+  /**
+   * Group id safe to send to the backend / use as a cache key.
+   *
+   * `getCurrentGroupId()` may return the UI-only `NO_GROUP_SENTINEL`
+   * (`__no_group__`) when the "No Group" filter is selected. That value is not
+   * a UUID: sending it as `course_group_id` makes the backend 500 (psycopg2
+   * rejects the malformed UUID), and using it as a cache-key suffix leaves the
+   * real "no group" roster cache un-invalidated. Callers that hit the API or
+   * the members cache must use this instead — it collapses both "All" and
+   * "No Group" to `null` (the "No Group" narrowing is applied client-side).
+   */
+  getApiGroupId(): string | null {
+    return this.groupId === NO_GROUP_SENTINEL ? null : this.groupId;
+  }
   getCurrentMemberId(): string | null { return this.memberId; }
   getCurrentCourseLabel(): string | null { return this.courseLabel; }
   getCurrentGroupLabel(): string | null { return this.groupLabel; }

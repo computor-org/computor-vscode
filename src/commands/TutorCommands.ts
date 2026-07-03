@@ -84,7 +84,8 @@ export class TutorCommands {
         const sel = TutorSelectionService.getInstance();
         const memberId = sel.getCurrentMemberId();
         const courseId = sel.getCurrentCourseId();
-        const groupId = sel.getCurrentGroupId();
+        // API-safe id: never the "No Group" sentinel (would 500 the backend).
+        const groupId = sel.getApiGroupId();
 
         // Clear all tutor-related caches to ensure fresh data
         this.apiService.clearTutorCoursesCache();
@@ -402,7 +403,8 @@ export class TutorCommands {
 
         // Clear caches and refresh to get updated data
         const courseId = sel.getCurrentCourseId();
-        const groupId = sel.getCurrentGroupId();
+        // API-safe id: never the "No Group" sentinel (would target a stale cache key).
+        const groupId = sel.getApiGroupId();
 
         this.apiService.clearTutorMemberCourseContentsCache(memberId);
         if (courseId) {
