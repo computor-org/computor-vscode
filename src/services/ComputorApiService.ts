@@ -6,7 +6,7 @@ import { errorRecoveryService, RetryOptions } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
-import type { CourseDeploymentGet, VersionUpgradeGet } from '../types/generated';
+import type { CourseDeploymentGet, VersionUpgradeGet, CourseDeployRequest, CourseDeployResult } from '../types/generated';
 import type { CourseTaskRequest } from '../types/generated/courses';
 import type { TaskInfo } from '../types/generated/tasks';
 import type {
@@ -1516,6 +1516,26 @@ export class ComputorApiService {
   ): Promise<void> {
     const client = await this.getHttpClient();
     await client.put(`/courses/${courseId}/git`, body);
+  }
+
+  /**
+   * Deploy a course into a course family from a raw `course_deployment.yaml`.
+   * With `validateOnly` the backend only parses and checks the config (examples
+   * resolve, content types exist, path free) without creating anything; otherwise
+   * it materializes the course. Returns the deploy outcome (warnings/errors).
+   */
+  async deployCourseFromFile(
+    courseFamilyId: string,
+    yaml: string,
+    validateOnly: boolean
+  ): Promise<CourseDeployResult | null> {
+    const client = await this.getHttpClient();
+    const request: CourseDeployRequest = { yaml, validate_only: validateOnly };
+    const response = await client.post<CourseDeployResult>(
+      `/course-families/${courseFamilyId}/deploy-course`,
+      request
+    );
+    return response.data ?? null;
   }
 
   /**

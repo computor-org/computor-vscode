@@ -137,6 +137,10 @@ export class LecturerCommands {
       await this.createCourse(item);
     });
 
+    register('computor.lecturer.deployCourseFromFile', async (item?: CourseFamilyTreeItem) => {
+      await this.deployCourseFromFile(item);
+    });
+
     register('computor.lecturer.manageCourse', async (item: CourseTreeItem) => {
       await this.manageCourse(item);
     });
@@ -515,6 +519,129 @@ export class LecturerCommands {
       }
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to create course: ${error.message || error}`);
+    }
+  }
+
+  /**
+   * Deploy a course into a course family from a `course_deployment.yaml` file.
+   * Validates first (surfacing errors/warnings), then applies on confirmation.
+   */
+  private async deployCourseFromFile(item?: CourseFamilyTreeItem): Promise<void> {
+    let courseFamilyId: string;
+    let familyLabel: string;
+
+    if (item) {
+      courseFamilyId = item.courseFamily.id;
+      familyLabel = item.courseFamily.title || item.courseFamily.path;
+    } else {
+      const organizations = await this.apiService.getOrganizations();
+      if (!organizations || organizations.length === 0) {
+        vscode.window.showErrorMessage('No organizations available');
+        return;
+      }
+
+      const selectedOrg = await vscode.window.showQuickPick(
+        organizations.map(org => ({
+          label: org.title || org.path,
+          description: org.path,
+          organization: org
+        })),
+        { placeHolder: 'Select organization' }
+      );
+      if (!selectedOrg) { return; }
+
+      const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
+      if (!families || families.length === 0) {
+        vscode.window.showErrorMessage('No course families available in this organization');
+        return;
+      }
+
+      const selectedFamily = await vscode.window.showQuickPick(
+        families.map(family => ({
+          label: family.title || family.path,
+          description: family.path,
+          family: family
+        })),
+        { placeHolder: 'Select course family' }
+      );
+      if (!selectedFamily) { return; }
+
+      courseFamilyId = selectedFamily.family.id;
+      familyLabel = selectedFamily.family.title || selectedFamily.family.path;
+    }
+
+    const fileUri = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      filters: {
+        'YAML': ['yaml', 'yml']
+      },
+      title: 'Select course_deployment.yaml to deploy'
+    });
+    if (!fileUri || fileUri.length === 0) { return; }
+    const firstFile = fileUri[0];
+    if (!firstFile) { return; }
+
+    let text: string;
+    try {
+      text = await fs.promises.readFile(firstFile.fsPath, 'utf8');
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to read file: ${error.message || error}`);
+      return;
+    }
+
+    try {
+      // Validate first — surface fatal errors and abort before applying.
+      const validation = await this.apiService.deployCourseFromFile(courseFamilyId, text, true);
+      if (!validation) {
+        vscode.window.showErrorMessage('Course deployment validation returned no result.');
+        return;
+      }
+
+      if (validation.errors && validation.errors.length > 0) {
+        vscode.window.showErrorMessage(`Course deployment cannot proceed: ${validation.errors.join('; ')}`);
+        return;
+      }
+
+      const courseLabel = validation.course_title || validation.course_path;
+
+      if (validation.warnings && validation.warnings.length > 0) {
+        const warningLines = validation.warnings.map(w => {
+          const loc = w.path || w.example_identifier;
+          return loc ? `• ${loc}: ${w.reason}` : `• ${w.reason}`;
+        }).join('\n');
+        const proceed = await vscode.window.showWarningMessage(
+          `Deploying "${courseLabel}" produced ${validation.warnings.length} warning(s). Deploy anyway?`,
+          { modal: true, detail: warningLines },
+          'Deploy anyway'
+        );
+        if (proceed !== 'Deploy anyway') { return; }
+      }
+
+      // Apply.
+      const result = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Deploying course "${courseLabel}"...`,
+        cancellable: false
+      }, async () => this.apiService.deployCourseFromFile(courseFamilyId, text, false));
+
+      if (!result || !result.applied) {
+        const errs = result?.errors?.join('; ');
+        vscode.window.showErrorMessage(`Course deployment failed${errs ? `: ${errs}` : '.'}`);
+        return;
+      }
+
+      const s = result.summary;
+      const summaryText = s
+        ? ` — ${s.content_types ?? 0} content type(s), ${s.units ?? 0} unit(s), ${s.assignments ?? 0} assignment(s), ${s.examples_assigned ?? 0} example(s) assigned`
+        : '';
+      vscode.window.showInformationMessage(
+        `Course "${result.course_title || result.course_path}" deployed to ${familyLabel}${summaryText}.`
+      );
+      this.treeDataProvider.refresh();
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to deploy course: ${error.message || error}`);
     }
   }
 

@@ -730,6 +730,11 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.deployCourseFromFile",
+        "title": "Deploy Course from File",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.manageCourse",
         "title": "Manage Course",
         "icon": "$(gear)",
@@ -1722,6 +1727,11 @@
           "command": "computor.lecturer.createCourse",
           "when": "view == computor.lecturer.courses && viewItem == courseFamily",
           "group": "1_create@1"
+        },
+        {
+          "command": "computor.lecturer.deployCourseFromFile",
+          "when": "view == computor.lecturer.courses && viewItem == courseFamily",
+          "group": "1_create@2"
         },
         {
           "command": "computor.lecturer.showCourseFamilyDetails",
