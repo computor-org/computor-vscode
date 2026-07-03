@@ -89,10 +89,6 @@
               <input id="account-email" name="email" type="email" value="${escapeHtml(toInputValue(user.email))}" placeholder="Email" autocomplete="email" readonly>
             </div>
             <div class="form-field">
-              <label for="account-username">Username</label>
-              <input id="account-username" name="username" value="${escapeHtml(toInputValue(user.username))}" placeholder="Username" autocomplete="username" readonly>
-            </div>
-            <div class="form-field">
               <label for="account-number">Student Number</label>
               <input id="account-number" name="number" value="${escapeHtml(toInputValue(user.number))}" placeholder="Optional student number" readonly>
             </div>
@@ -190,7 +186,6 @@
         event.preventDefault();
         const formData = new FormData(accountForm);
         const payload = {
-          username: formData.get('username')?.toString().trim() || undefined,
           email: formData.get('email')?.toString().trim() || undefined,
           given_name: formData.get('given_name')?.toString().trim() || undefined,
           family_name: formData.get('family_name')?.toString().trim() || undefined,

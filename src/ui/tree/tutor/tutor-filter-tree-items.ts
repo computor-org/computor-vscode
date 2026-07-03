@@ -8,7 +8,7 @@ export function formatMemberName(member: TutorCourseMemberList): string {
   if (user?.given_name && user?.family_name) {
     return `${user.family_name}, ${user.given_name}`;
   }
-  return user?.email || user?.username || member.id;
+  return user?.email || member.id;
 }
 
 export function buildBadgeDescription(member: TutorCourseMemberList): string | undefined {
@@ -30,9 +30,6 @@ export function buildMemberTooltip(member: TutorCourseMemberList): string {
   }
   if (user?.email) {
     parts.push(`Email: ${user.email}`);
-  }
-  if (user?.username) {
-    parts.push(`Username: ${user.username}`);
   }
   return parts.join('\n');
 }

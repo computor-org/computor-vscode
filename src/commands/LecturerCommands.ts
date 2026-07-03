@@ -389,27 +389,13 @@ export class LecturerCommands {
     });
     if (!gitlabToken) { return; }
 
-    const parentGroupIdStr = await vscode.window.showInputBox({
-      prompt: 'Enter parent GitLab group ID (0 for root-level)',
-      placeHolder: '0',
-      value: '0',
-      validateInput: (value) => {
-        if (!value) { return 'Parent group ID is required'; }
-        const num = parseInt(value, 10);
-        if (isNaN(num) || num < 0) { return 'Must be a non-negative integer'; }
-        return null;
-      }
-    });
-    if (!parentGroupIdStr) { return; }
-
     const request: OrganizationTaskRequest = {
       organization: {
         path: orgPath,
         title: orgTitle,
         organization_type: 'organization'
       },
-      gitlab: { gitlab_url: gitlabUrl, gitlab_token: gitlabToken },
-      parent_group_id: parseInt(parentGroupIdStr, 10)
+      git_provider: { type: 'gitlab', url: gitlabUrl, token: gitlabToken }
     };
 
     try {
@@ -1355,7 +1341,6 @@ export class LecturerCommands {
       const family = item.member.user?.family_name;
       const fullName = [given, family].filter(Boolean).join(' ').trim();
       const displayName = fullName
-        || item.member.user?.username
         || item.member.user?.email
         || `Member ${item.member.id.slice(0, 8)}`;
       const title = `${displayName} — ${item.course.title || item.course.path}`;
@@ -1373,7 +1358,6 @@ export class LecturerCommands {
       const family = item.member.user?.family_name;
       const fullName = [given, family].filter(Boolean).join(' ').trim();
       const displayName = fullName
-        || item.member.user?.username
         || item.member.user?.email
         || `Member ${item.member.id.slice(0, 8)}`;
 
@@ -2368,7 +2352,7 @@ export class LecturerCommands {
     const role = availableRoles.find(r => r.id === freshMember.course_role_id);
 
     await this.courseMemberWebviewProvider.show(
-      `Member: ${freshMember.user?.username || freshMember.user?.email || 'Unknown'}`,
+      `Member: ${freshMember.user?.email || 'Unknown'}`,
       {
         member: freshMember,
         course: item.course,
@@ -2567,7 +2551,7 @@ export class LecturerCommands {
 
   private async showCourseMemberProgress(item: CourseMemberTreeItem): Promise<void> {
     const memberName = item.member.user
-      ? [item.member.user.given_name, item.member.user.family_name].filter(Boolean).join(' ') || item.member.user.username || undefined
+      ? [item.member.user.given_name, item.member.user.family_name].filter(Boolean).join(' ') || undefined
       : undefined;
     await this.showCourseMemberProgressById(item.member.id, memberName);
   }

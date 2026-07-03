@@ -232,8 +232,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     const picked = await vscode.window.showQuickPick(
       candidates.map(u => ({
         label: formatUserLabel(u),
-        description: u.email || u.username || '',
-        detail: u.username && u.email ? `@${u.username}` : undefined,
+        description: u.email || '',
         userId: u.id
       })),
       {
@@ -248,9 +247,9 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
   }
 
   private async resolveUserIdentifier(identifier: string): Promise<string | undefined> {
-    // Try exact email then exact username via the standard /users filter
-    // params. Both calls fail-soft — the Add Member flow surfaces a
-    // friendly "no user found" notice if both come back empty.
+    // Resolve by exact email via the standard /users filter param. Fails
+    // soft — the Add Member flow surfaces a friendly "no user found" notice
+    // if nothing matches.
     try {
       const matches = await this.apiService.findUsers({ email: identifier });
       if (matches.length > 0 && matches[0]?.id) {
@@ -258,14 +257,6 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       }
     } catch (err) {
       console.warn('[ScopeMembershipWebview] email lookup failed:', err);
-    }
-    try {
-      const matches = await this.apiService.findUsers({ username: identifier });
-      if (matches.length > 0 && matches[0]?.id) {
-        return matches[0].id;
-      }
-    } catch (err) {
-      console.warn('[ScopeMembershipWebview] username lookup failed:', err);
     }
     return undefined;
   }
@@ -353,5 +344,5 @@ function formatUserLabel(user: UserList): string {
   const family = user.family_name || '';
   const given = user.given_name || '';
   if (family && given) { return `${family}, ${given}`; }
-  return family || given || user.username || user.email || user.id;
+  return family || given || user.email || user.id;
 }

@@ -20,7 +20,7 @@ export class UserTreeItem extends vscode.TreeItem {
     const givenName = user.given_name || '';
     const displayName = familyName && givenName
       ? `${familyName}, ${givenName}`
-      : familyName || givenName || user.username || user.email || user.id;
+      : familyName || givenName || user.email || user.id;
 
     super(displayName, collapsibleState);
 
@@ -28,7 +28,7 @@ export class UserTreeItem extends vscode.TreeItem {
       ? (user.is_service ? 'user.service.banned' : 'user.banned')
       : (user.is_service ? 'user.service' : 'user');
     this.tooltip = this.buildTooltip();
-    this.description = user.email || user.username || '';
+    this.description = user.email || '';
     // Banned users get a red "blocked" icon; otherwise a robot for service
     // accounts and a human icon for real users.
     this.iconPath = user.banned_at
@@ -50,10 +50,6 @@ export class UserTreeItem extends vscode.TreeItem {
 
     if (this.user.email) {
       parts.push(`Email: ${this.user.email}`);
-    }
-
-    if (this.user.username) {
-      parts.push(`Username: ${this.user.username}`);
     }
 
     if (this.user.banned_at) {
@@ -281,8 +277,7 @@ export class UserManagerTreeProvider extends BaseTreeDataProvider<TreeItem> {
       result = result.filter(u =>
         (u.family_name || '').toLowerCase().includes(q) ||
         (u.given_name || '').toLowerCase().includes(q) ||
-        (u.email || '').toLowerCase().includes(q) ||
-        (u.username || '').toLowerCase().includes(q)
+        (u.email || '').toLowerCase().includes(q)
       );
     }
     return { matched: result, scopeTotal };

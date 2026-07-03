@@ -52,6 +52,8 @@ export interface AccountGet {
   provider_account_id: string;
   /** Associated user ID */
   user_id: string;
+  /** Built-in identity account (SSO / Git server) that the user cannot unlink */
+  builtin?: boolean;
   /** Provider-specific properties */
   properties?: any | null;
 }
@@ -71,6 +73,8 @@ export interface AccountList {
   provider_account_id: string;
   /** Associated user ID */
   user_id: string;
+  /** Built-in identity account (SSO / Git server) that the user cannot unlink */
+  builtin?: boolean;
 }
 
 export interface AccountUpdate {
@@ -95,14 +99,38 @@ export interface AccountQuery {
 }
 
 /**
+ * A supported external provider that can be linked to a user account.
+ * 
+ * Returned by GET /accounts/providers so the UI can render the correct linking
+ * form. Currently backed by a static list in the backend; the shape is stable
+ * if that becomes a DB query later.
+ */
+export interface AccountProvider {
+  /** Short provider key, e.g. 'gitlab' */
+  id: string;
+  /** Human-readable provider name */
+  display_name: string;
+  /** What linking this provider is used for */
+  description: string;
+  /** Value written to account.provider, e.g. 'gitlab.com' */
+  provider: string;
+  /** Value written to account.type, e.g. 'gitlab' */
+  type: string;
+  /** Label for the provider_account_id input */
+  field_label: string;
+  /** Placeholder for the provider_account_id input */
+  placeholder: string;
+}
+
+/**
  * A user with their workspace roles.
  */
 export interface WorkspaceRoleUser {
   user_id: string;
-  email: any;
-  username: any;
-  given_name: any;
-  family_name: any;
+  email: string | null;
+  username: string | null;
+  given_name: string | null;
+  family_name: string | null;
   roles?: string[];
 }
 
@@ -178,8 +206,6 @@ export interface UserCreate {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** Unique username */
-  username?: string | null;
   /** Additional user properties */
   properties?: any | null;
 }
@@ -199,8 +225,6 @@ export interface UserGet {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** Unique username */
-  username?: string | null;
   /** Additional user properties */
   properties?: any | null;
   /** Timestamp when user was archived */
@@ -234,8 +258,6 @@ export interface UserList {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** Unique username */
-  username?: string | null;
   /** Archive timestamp */
   archived_at?: string | null;
   /** Whether this is a service account */
@@ -253,8 +275,6 @@ export interface UserUpdate {
   family_name?: string | null;
   /** User's email address */
   email?: string | null;
-  /** Unique username */
-  username?: string | null;
   /** Additional user properties */
   properties?: any | null;
 }
@@ -267,17 +287,23 @@ export interface UserQuery {
   family_name?: string | null;
   email?: string | null;
   archived?: boolean | null;
-  username?: string | null;
   is_service?: boolean | null;
   banned?: boolean | null;
+  search?: string | null;
+}
+
+/**
+ * Optional payload for the ban endpoint.
+ */
+export interface UserBanRequest {
+  /** Reason for the ban (stored for audit, shown to administrators) */
+  reason?: string | null;
 }
 
 /**
  * Password update request for user endpoints.
  */
 export interface UserPassword {
-  /** Target username (admin only, otherwise current user) */
-  username?: string | null;
   /** New password */
   password: string;
   /** Old password (required for non-admin password changes) */
