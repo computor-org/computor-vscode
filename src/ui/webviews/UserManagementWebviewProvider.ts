@@ -285,7 +285,7 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     // non-admins never see editable inputs, but defend here too.
     const scopes = await this.apiService.getUserScopes().catch(() => undefined);
     if (!scopes?.is_admin) {
-      this.postNotice({ type: 'error', message: 'Only administrators can edit name and username.' });
+      this.postNotice({ type: 'error', message: 'Only administrators can edit name.' });
       return;
     }
 
@@ -299,15 +299,6 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     if (typeof raw.family_name === 'string') {
       const value = raw.family_name.trim();
       updates.family_name = value || null;
-      touched = true;
-    }
-    if (typeof raw.username === 'string') {
-      const value = raw.username.trim();
-      if (!value) {
-        this.postNotice({ type: 'warning', message: 'Username cannot be empty.' });
-        return;
-      }
-      updates.username = value;
       touched = true;
     }
 
@@ -332,7 +323,7 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       return `${user.given_name || ''} ${user.family_name || ''}`.trim();
     }
 
-    return user.email || user.username || user.id;
+    return user.email || user.id;
   }
 
   private handleError(prefix: string, error: any): void {

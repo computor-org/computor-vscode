@@ -469,9 +469,6 @@ export class CourseMemberTreeItem extends vscode.TreeItem {
     if (member.user?.email) {
       tooltipParts.push(`Email: ${member.user.email}`);
     }
-    if (member.user?.username) {
-      tooltipParts.push(`Username: ${member.user.username}`);
-    }
     if (roleTitle) {
       tooltipParts.push(`Role: ${roleTitle}`);
     }
@@ -495,7 +492,7 @@ export function formatMemberDisplayName(member: CourseMemberList): string {
   if (user?.given_name) {
     return user.given_name;
   }
-  return user?.username || user?.email || `User ${member.user_id.slice(0, 8)}`;
+  return user?.email || `User ${member.user_id.slice(0, 8)}`;
 }
 
 export function compareMembersByName(a: CourseMemberList, b: CourseMemberList): number {

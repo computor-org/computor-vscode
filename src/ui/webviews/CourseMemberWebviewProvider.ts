@@ -29,7 +29,7 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
 
     const { member, course, group, role, availableGroups, availableRoles } = data;
     const user = member.user;
-    const displayName = user ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || user.username : member.user_id;
+    const displayName = user ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || user.email : member.user_id;
 
     const headerHtml = `
       <h1>${escapeHtml(displayName)}</h1>
@@ -37,7 +37,6 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
 
     const infoHtml = section('Member Information', `
       ${infoRowCode('ID', member.id)}
-      ${user ? infoRowText('Username', user.username) : ''}
       ${user ? infoRowText('Email', user.email) : ''}
       ${infoRowText('Role', role?.title || member.course_role_id)}
       ${infoRowText('Group', group?.title || (member.course_group_id ? member.course_group_id : 'No Group'))}

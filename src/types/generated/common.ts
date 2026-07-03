@@ -155,31 +155,92 @@ export interface GroupQuery {
   type?: GroupType | null;
 }
 
+export interface InviteLinkCreate {
+  /** If set, only this email may accept the invite */
+  email?: string | null;
+  /** Maximum number of times this invite can be used */
+  max_uses?: number;
+  /** Number of days until the invite expires */
+  expires_in_days?: number;
+  /** Role IDs to assign to the user on acceptance */
+  roles?: string[];
+  /** Admin label for this invite */
+  note?: string | null;
+}
+
+export interface InviteLinkGet {
+  id: string;
+  token: string;
+  created_by?: string | null;
+  email?: string | null;
+  max_uses: number;
+  use_count: number;
+  expires_at: string;
+  roles?: string[];
+  note?: string | null;
+  revoked_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface InviteLinkList {
+  id: string;
+  token: string;
+  email?: string | null;
+  max_uses: number;
+  use_count: number;
+  expires_at: string;
+  roles?: string[];
+  note?: string | null;
+  revoked_at?: string | null;
+  created_at?: string | null;
+}
+
+/**
+ * Invite info visible to unauthenticated users (no token, no creator details).
+ */
+export interface InviteLinkPublic {
+  id: string;
+  email?: string | null;
+  roles?: string[];
+  expires_at: string;
+  note?: string | null;
+}
+
+export interface InviteAccept {
+  given_name: string;
+  family_name: string;
+  /** Required; must match invite restriction if set */
+  email: string;
+  /** Password to set for Keycloak login (complexity enforced by Keycloak realm policy) */
+  password: string;
+}
+
 export interface FilterBase {
 }
 
 export interface EqualsFilter {
-  eq: any;
+  eq: unknown;
 }
 
 export interface GreaterFilter {
-  gt: any;
+  gt: unknown;
 }
 
 export interface LowerFilter {
-  lt: any;
+  lt: unknown;
 }
 
 export interface NotEqualsFilter {
-  ne: any;
+  ne: unknown;
 }
 
 export interface InFilter {
-  in_: any[];
+  in_: unknown[];
 }
 
 export interface NotInFilter {
-  not_in: any[];
+  not_in: unknown[];
 }
 
 export interface LikeFilter {
@@ -191,7 +252,7 @@ export interface ILikeFilter {
 }
 
 export interface BetweenFilter {
-  between: any[];
+  between: unknown[];
 }
 
 export interface IsNullFilter {
@@ -234,17 +295,15 @@ export interface UserDeployment {
   email?: string | null;
   /** User number/identifier (student ID) */
   number?: string | null;
-  /** Unique username */
-  username?: string | null;
   /** Type of user account (user or token) */
   user_type?: string;
   /** Additional user properties */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
   /** Initial password for the user */
   password?: string | null;
   /** System roles to assign to the user */
   roles?: string[] | null;
-  /** GitLab username (if different from username) */
+  /** GitLab username (if different from the login handle) */
   gitlab_username?: string | null;
   /** GitLab email (if different from email) */
   gitlab_email?: string | null;
@@ -261,7 +320,7 @@ export interface AccountDeployment {
   /** Account ID in the provider system */
   provider_account_id: string;
   /** Provider-specific account properties */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
   /** Access token for API access */
   access_token?: string | null;
   /** Refresh token for token renewal */
@@ -337,7 +396,7 @@ export interface ExecutionBackendConfig {
   /** Type of execution backend (e.g., temporal, prefect) */
   type: string;
   /** Backend-specific properties (e.g., task_queue, namespace, timeout settings) */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -347,24 +406,7 @@ export interface ExecutionBackendReference {
   /** Slug of the execution backend to link */
   slug: string;
   /** Course-specific overrides for this backend (optional) */
-  properties?: Record<string, any> | null;
-}
-
-/**
- * User configuration for a service.
- * 
- * DEPRECATED: Use UserDeployment directly in ServiceConfig instead.
- * Kept for backwards compatibility.
- */
-export interface ServiceUserConfig {
-  /** Username for the service user */
-  username: string;
-  /** Email for the service user */
-  email?: string | null;
-  /** Given name */
-  given_name?: string | null;
-  /** Family name */
-  family_name?: string | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -401,7 +443,7 @@ export interface ServiceConfig {
   /** API token configuration */
   api_token: ServiceApiTokenConfig;
   /** Service-specific configuration (task_queue, timeouts, etc.) */
-  config?: Record<string, any> | null;
+  config?: Record<string, unknown> | null;
   /** Service description */
   description?: string | null;
   /** Course memberships for this service's user (e.g., _tutor role for testing services) */
@@ -417,6 +459,27 @@ export interface ServiceReference {
 }
 
 /**
+ * Bootstrap configuration for an Example Repository.
+ * 
+ * Applied idempotently at API startup (keyed on ``source_url``, which is
+ * unique) so a fresh install has a default repository to upload examples into.
+ * Mirrors ``ExampleRepositoryCreate`` but is deployment-file friendly (no
+ * ``organization_id`` UUID required — global if omitted).
+ */
+export interface ExampleRepositoryConfig {
+  /** Human-readable name of the repository */
+  name: string;
+  /** Description of the repository and its contents */
+  description?: string | null;
+  /** Source type: minio, s3, git, github, gitlab. Use 'minio' for an uploadable repository. */
+  source_type?: string;
+  /** Repository URL. For minio/s3 the first path segment is the bucket name (e.g. 'computor-storage'). Must be unique across repositories. */
+  source_url: string;
+  /** Optional owning organization id. Global (organization-less) if omitted. */
+  organization_id?: string | null;
+}
+
+/**
  * Course content type configuration for deployment.
  */
 export interface CourseContentTypeConfig {
@@ -429,7 +492,7 @@ export interface CourseContentTypeConfig {
   /** Display color (hex, rgb, hsl, or named color) */
   color?: string | null;
   /** Additional properties */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
   /** ID of the course content kind (e.g., 'assignment', 'unit') */
   kind: string;
 }
@@ -461,7 +524,7 @@ export interface OrganizationConfig {
   /** Organization description */
   description?: string | null;
   /** Organization-specific settings */
-  settings?: Record<string, any> | null;
+  settings?: Record<string, unknown> | null;
   /** GitLab configuration */
   gitlab?: GitLabConfig | null;
   /** GitHub configuration (future) */
@@ -479,7 +542,7 @@ export interface CourseFamilyConfig {
   /** Course family description */
   description?: string | null;
   /** Course family-specific settings */
-  settings?: Record<string, any> | null;
+  settings?: Record<string, unknown> | null;
 }
 
 /**
@@ -511,7 +574,7 @@ export interface CourseContentConfig {
   /** Nested course contents (for units containing assignments) */
   contents?: CourseContentConfig[] | null;
   /** Additional properties for the content */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -535,7 +598,7 @@ export interface CourseConfig {
   /** Course contents hierarchy (assignments, units, etc.) */
   contents?: CourseContentConfig[] | null;
   /** Course-specific settings */
-  settings?: Record<string, any> | null;
+  settings?: Record<string, unknown> | null;
 }
 
 /**
@@ -559,7 +622,7 @@ export interface HierarchicalCourseConfig {
   /** Course contents hierarchy (assignments, units, etc.) */
   contents?: CourseContentConfig[] | null;
   /** Course-specific settings */
-  settings?: Record<string, any> | null;
+  settings?: Record<string, unknown> | null;
 }
 
 /**
@@ -573,7 +636,7 @@ export interface HierarchicalCourseFamilyConfig {
   /** Course family description */
   description?: string | null;
   /** Course family-specific settings */
-  settings?: Record<string, any> | null;
+  settings?: Record<string, unknown> | null;
   /** List of courses in this course family */
   courses?: HierarchicalCourseConfig[];
 }
@@ -589,7 +652,7 @@ export interface HierarchicalOrganizationConfig {
   /** Organization description */
   description?: string | null;
   /** Organization-specific settings */
-  settings?: Record<string, any> | null;
+  settings?: Record<string, unknown> | null;
   /** GitLab configuration */
   gitlab?: GitLabConfig | null;
   /** GitHub configuration (future) */
@@ -606,6 +669,8 @@ export interface HierarchicalOrganizationConfig {
 export interface ComputorDeploymentConfig {
   /** List of services to create or ensure exist in the system (deployed in Phase 1) */
   services?: ServiceConfig[] | null;
+  /** List of example repositories to create or ensure exist in the system (deployed in Phase 1) */
+  example_repositories?: ExampleRepositoryConfig[] | null;
   /** DEPRECATED: Use 'services' instead. List of execution backends to create or ensure exist in the system */
   execution_backends?: ExecutionBackendConfig[] | null;
   /** List of organizations with nested course families and courses */
@@ -613,7 +678,7 @@ export interface ComputorDeploymentConfig {
   /** List of users with their accounts and course memberships */
   users?: UserAccountDeployment[];
   /** Global deployment settings */
-  settings?: Record<string, any> | null;
+  settings?: Record<string, unknown> | null;
   /** Optional list of VSIX packages to upload before deployment */
   extensions_upload?: ExtensionUploadConfig[] | null;
   /** If provided, uploads examples before hierarchy deployment */
@@ -1134,6 +1199,35 @@ export interface BaseEntityGet {
 }
 
 /**
+ * Self-service migration: set a Keycloak password, gated by a GitLab PAT.
+ * 
+ * The PAT proves the caller controls a GitLab account whose email matches an
+ * existing computor user (by User.email or the org-scoped StudentProfile email).
+ * No password is read from our database (local auth is gone); the PAT is only
+ * used for verification and is never stored.
+ */
+export interface GitLabRegisterRequest {
+  /** GitLab instance URL the PAT was issued on */
+  gitlab_url: string;
+  /** GitLab Personal Access Token (verification only, not stored) */
+  gitlab_pat: string;
+  /** Password to set for Keycloak login */
+  new_password: string;
+}
+
+/**
+ * Response after provisioning/resetting a Keycloak login via GitLab PAT.
+ */
+export interface GitLabRegisterResponse {
+  /** User ID in Computor */
+  user_id: string;
+  /** Email address (Keycloak username) */
+  email: string;
+  /** True if the Keycloak user was created, False if its password was reset */
+  created: boolean;
+}
+
+/**
  * Base fields shared across all service type DTOs.
  */
 export interface ServiceTypeBase {
@@ -1351,7 +1445,7 @@ export interface ComputorTest {
   ignoreClass?: boolean | null;
   verbosity?: number | null;
   name: string;
-  value?: any | null;
+  value?: unknown | null;
   evalString?: string | null;
   pattern?: string | null;
   countRequirement?: number | null;
@@ -1389,7 +1483,7 @@ export interface ComputorTestCollection {
   type?: TypeEnum | null;
   name: string;
   description?: string | null;
-  successDependency?: (string | number | any[]) | null;
+  successDependency?: (string | number | string | number[]) | null;
   setUpCodeDependency?: string | null;
   entryPoint?: string | null;
   inputAnswers?: (string | string[]) | null;
@@ -1478,7 +1572,7 @@ export interface SemanticVersion {
   /** Patch version number */
   patch: number;
   /** Optional prerelease identifier */
-  prerelease?: any;
+  prerelease?: string | null;
 }
 
 /**
@@ -1537,7 +1631,7 @@ export interface TutorTestGet {
   created_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
-  result_dict?: any | null;
+  result_dict?: unknown | null;
   passed?: number | null;
   failed?: number | null;
   total?: number | null;
@@ -1815,6 +1909,14 @@ export interface StorageUsageStats {
   last_updated: string;
 }
 
+export interface StudentRepoResult {
+  http_url: string;
+  ssh_url: string;
+  web_url: string;
+  provider_project_id: string;
+  properties: any;
+}
+
 /**
  * DTO for creating a new service account.
  */
@@ -1827,8 +1929,6 @@ export interface ServiceCreate {
   description?: string | null;
   /** Service type (e.g., 'temporal_worker', 'grading', 'notification') */
   service_type: string;
-  /** Username for service user (defaults to slug) */
-  username?: string | null;
   /** Email for service user */
   email?: string | null;
   /** Given name for service user (defaults to first word of name) */
@@ -1838,7 +1938,7 @@ export interface ServiceCreate {
   /** Password for service user (optional - use API tokens instead) */
   password?: string | null;
   /** Service-specific configuration */
-  config?: Record<string, any> | null;
+  config?: Record<string, unknown> | null;
   /** Whether the service is enabled */
   enabled?: boolean | null;
 }
@@ -1849,11 +1949,11 @@ export interface ServiceCreate {
 export interface ServiceUpdate {
   name?: string | null;
   description?: string | null;
-  config?: Record<string, any> | null;
+  config?: Record<string, unknown> | null;
   enabled?: boolean | null;
   /** Last heartbeat timestamp */
   last_seen_at?: string | null;
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -1876,11 +1976,11 @@ export interface ServiceGet {
   /** ServiceType path (e.g., 'testing.python') */
   service_type_path?: string | null;
   user_id: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
   enabled: boolean;
   last_seen_at?: string | null;
   /** Additional properties */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -2038,8 +2138,8 @@ export interface SubmissionListItem {
   reference_version_identifier?: string | null;
   status: TaskStatus;
   result: number;
-  result_json?: Record<string, any> | null;
-  properties?: Record<string, any> | null;
+  result_json?: Record<string, unknown> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -2239,113 +2339,6 @@ export interface GroupClaimQuery {
 }
 
 /**
- * Information about a team member (for display in team lists).
- */
-export interface TeamMemberInfo {
-  course_member_id: string;
-  user_id: string;
-  given_name?: string | null;
-  family_name?: string | null;
-  email?: string | null;
-}
-
-/**
- * Team formation rules resolved from Course and CourseContent.
- */
-export interface TeamFormationRules {
-  mode?: string;
-  max_group_size: number;
-  min_group_size?: number;
-  formation_deadline?: string | null;
-  allow_student_group_creation?: boolean;
-  allow_student_join_groups?: boolean;
-  allow_student_leave_groups?: boolean;
-  auto_assign_unmatched?: boolean;
-  lock_teams_at_deadline?: boolean;
-  require_approval?: boolean;
-}
-
-/**
- * Request to create a new team.
- */
-export interface TeamCreate {
-  /** Optional team name (default: generated from members) */
-  team_name?: string | null;
-}
-
-/**
- * Response when team is created or retrieved.
- */
-export interface TeamResponse {
-  id: string;
-  course_content_id: string;
-  course_id: string;
-  max_group_size: number;
-  status?: string;
-  created_by?: string;
-  join_code?: string | null;
-  members: TeamMemberInfo[];
-  member_count: number;
-  can_join: boolean;
-  locked_at?: string | null;
-}
-
-/**
- * Team available for joining (limited info for privacy).
- */
-export interface AvailableTeam {
-  id: string;
-  member_count: number;
-  max_group_size: number;
-  join_code?: string | null;
-  requires_approval: boolean;
-  status: string;
-  members: TeamMemberInfo[];
-}
-
-/**
- * Request to join a team.
- */
-export interface JoinTeamRequest {
-  /** Optional join code for direct access */
-  join_code?: string | null;
-}
-
-/**
- * Response when joining a team.
- */
-export interface JoinTeamResponse {
-  id: string;
-  status: string;
-  message: string;
-}
-
-/**
- * Response when leaving a team.
- */
-export interface LeaveTeamResponse {
-  success: boolean;
-  message: string;
-}
-
-/**
- * Request to lock a team (instructor only).
- */
-export interface TeamLockRequest {
-  /** Optional reason for locking */
-  reason?: string | null;
-}
-
-/**
- * Response when team is locked.
- */
-export interface TeamLockResponse {
-  id: string;
-  locked_at: string;
-  message: string;
-}
-
-/**
  * Current maintenance status.
  */
 export interface MaintenanceStatusGet {
@@ -2399,7 +2392,7 @@ export interface SubmissionArtifactCreate {
  */
 export interface SubmissionArtifactUpdate {
   submit?: boolean | null;
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -2423,7 +2416,7 @@ export interface SubmissionArtifactList {
   uploaded_at: string;
   version_identifier?: string | null;
   submit?: boolean;
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
   latest_result?: ResultList | null;
 }
 
@@ -2445,7 +2438,7 @@ export interface SubmissionArtifactGet {
   uploaded_at: string;
   version_identifier?: string | null;
   submit?: boolean;
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
   latest_result?: ResultList | null;
   test_results_count?: number | null;
   grades_count?: number | null;
@@ -2605,7 +2598,7 @@ export interface ResultArtifactCreate {
   file_size: number;
   bucket_name: string;
   object_key: string;
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -2621,7 +2614,7 @@ export interface ResultArtifactListItem {
   file_size: number;
   bucket_name: string;
   object_key: string;
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -2737,7 +2730,7 @@ export interface CourseContentDeploymentGet {
   last_attempt_at?: string | null;
   deployment_path?: string | null;
   version_identifier?: string | null;
-  deployment_metadata?: Record<string, any> | null;
+  deployment_metadata?: Record<string, unknown> | null;
   workflow_id?: string | null;
   example_version?: any | null;
 }
@@ -2807,7 +2800,7 @@ export interface DeploymentSummary {
 }
 
 /**
- * GitLab connection credentials.
+ * GitLab connection credentials (kept for backwards compatibility).
  */
 export interface GitLabCredentials {
   gitlab_url: string;
@@ -2921,7 +2914,7 @@ export interface ErrorResponse {
   /** Human-readable error message */
   message: string;
   /** Additional error details */
-  details?: any | null;
+  details?: unknown | null;
   /** Error severity */
   severity: ErrorSeverity;
   /** Error category */
@@ -2951,7 +2944,7 @@ export interface ErrorDebugInfo {
   /** User ID if authenticated */
   user_id?: string | null;
   /** Additional context */
-  additional_context?: Record<string, any> | null;
+  additional_context?: Record<string, unknown> | null;
 }
 
 /**
@@ -2965,7 +2958,7 @@ export interface ErrorMetadata {
   /** Function raising the error */
   function_name?: string | null;
   /** Additional context */
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
   /** User ID if available */
   user_id?: string | null;
   /** Request ID for tracing */
@@ -2973,7 +2966,7 @@ export interface ErrorMetadata {
   /** Override default message */
   override_message?: string | null;
   /** Override default details */
-  override_details?: any | null;
+  override_details?: unknown | null;
 }
 
 export interface ResultCreate {
@@ -3305,6 +3298,68 @@ export interface PasswordOperationResponse {
 export interface BaseDeployment {
 }
 
+/**
+ * Upload payload for the course-deployment endpoint.
+ * 
+ * The raw YAML text is sent as-is and parsed server-side into a
+ * ``HierarchicalCourseConfig`` — the client never needs to model the schema.
+ */
+export interface CourseDeployRequest {
+  /** Raw contents of the course_deployment.yaml file */
+  yaml: string;
+  /** When true, parse and check the config (examples resolve, content types exist, path free) without creating anything. */
+  validate_only?: boolean;
+}
+
+/**
+ * A non-fatal issue found while validating/applying the config.
+ * 
+ * Warnings never block a deploy; the affected content is still created (just
+ * without an example, typically).
+ */
+export interface CourseDeployWarning {
+  /** Dotted course-content path the warning relates to */
+  path?: string | null;
+  /** Example identifier the warning relates to */
+  example_identifier?: string | null;
+  /** Human-readable explanation */
+  reason: string;
+}
+
+/**
+ * Counts of what was (or would be) created.
+ */
+export interface CourseDeploySummary {
+  /** Number of content types */
+  content_types?: number;
+  /** Number of non-submittable contents (units) */
+  units?: number;
+  /** Number of submittable contents (assignments) */
+  assignments?: number;
+  /** Number of examples assigned to assignments */
+  examples_assigned?: number;
+}
+
+/**
+ * Outcome of a validate or apply run.
+ */
+export interface CourseDeployResult {
+  /** Whether the config parsed and the checks ran */
+  validated: boolean;
+  /** Whether the course was actually created */
+  applied: boolean;
+  /** ID of the created course (apply only) */
+  course_id?: string | null;
+  /** Course path/slug from the file */
+  course_path: string;
+  /** Course title/name from the file */
+  course_title?: string | null;
+  summary?: CourseDeploySummary;
+  warnings?: CourseDeployWarning[];
+  /** Fatal problems that block an apply (e.g. unknown content type, path taken) */
+  errors?: string[];
+}
+
 export interface ProfileCreate {
   /** Associated user ID */
   user_id: string;
@@ -3571,7 +3626,7 @@ export interface GradedArtifactInfo {
   /** When the artifact was created (ISO format) */
   created_at?: string | null;
   /** Additional artifact properties (e.g., GitLab info) */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -4097,6 +4152,42 @@ export interface SubmissionGroupMemberQuery {
   submission_group_id?: string | null;
   grading?: number | null;
   status?: string | null;
+}
+
+export interface GitServerCreate {
+  type: "forgejo" | "gitlab";
+  /** Base URL of the git server instance */
+  base_url: string;
+  /** Human-readable label */
+  name?: string | null;
+  /** True if Computor operates this instance and holds a service token */
+  managed?: boolean;
+  /** Service token; stored encrypted, never returned */
+  token?: string | null;
+  /** GitLab parent group id/path the group token is scoped to; managed courses are provisioned flat under it (GitLab only) */
+  parent_group_id?: string | null;
+}
+
+export interface GitServerUpdate {
+  name?: string | null;
+  managed?: boolean | null;
+  /** Replacement service token ("" clears, omit keeps) */
+  token?: string | null;
+  /** Replacement GitLab parent group id/path (GitLab only) */
+  parent_group_id?: string | null;
+}
+
+export interface GitServerGet {
+  id: string;
+  type: string;
+  base_url: string;
+  name?: string | null;
+  managed: boolean;
+  /** Whether a service token is stored (the token itself is never returned) */
+  has_token: boolean;
+  /** GitLab parent group id/path for managed provisioning (GitLab only) */
+  parent_group_id?: string | null;
+  created_at?: string | null;
 }
 
 

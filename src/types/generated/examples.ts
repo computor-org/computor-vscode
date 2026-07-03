@@ -160,7 +160,7 @@ export interface ExampleVersionCreate {
   version_number: number;
   storage_path: string;
   /** Parsed meta.yaml — used to populate promoted columns */
-  meta: Record<string, any>;
+  meta: Record<string, unknown>;
 }
 
 /**
@@ -185,7 +185,7 @@ export interface ExampleVersionGet {
   language?: string | null;
   license?: string | null;
   /** Full meta.yaml properties.executionBackend (slug + version + settings) */
-  execution_backend?: Record<string, any> | null;
+  execution_backend?: Record<string, unknown> | null;
   student_submission_files?: string[];
   additional_files?: string[];
   student_templates?: string[];
@@ -293,7 +293,7 @@ export interface ExampleUploadRequest {
 export interface ExampleBatchUploadRequest {
   repository_id: string;
   /** List of examples with directory and files */
-  examples: Record<string, any>[];
+  examples: Record<string, unknown>[];
 }
 
 /**
@@ -309,9 +309,9 @@ export interface ExampleFileSet {
   /** Map of filename to content (meta.yaml and test.yaml ride inside this dict) */
   files: Record<string, string>;
   /** Parsed meta.yaml (fetched from MinIO with Redis cache) */
-  meta: Record<string, any>;
+  meta: Record<string, unknown>;
   /** Parsed test.yaml (fetched from MinIO with Redis cache); None if absent */
-  test?: Record<string, any> | null;
+  test?: Record<string, unknown> | null;
 }
 
 /**
@@ -328,9 +328,9 @@ export interface ExampleDownloadResponse {
   /** Map of filename to content (includes meta.yaml and test.yaml) */
   files: Record<string, string>;
   /** Parsed meta.yaml (fetched from MinIO with Redis cache) */
-  meta: Record<string, any>;
+  meta: Record<string, unknown>;
   /** Parsed test.yaml (fetched from MinIO with Redis cache); None if absent */
-  test?: Record<string, any> | null;
+  test?: Record<string, unknown> | null;
   /** Dependency examples when with_dependencies=True */
   dependencies?: ExampleFileSet[] | null;
 }
@@ -365,6 +365,38 @@ export interface ExampleBulkDeleteRequest {
   dry_run?: boolean;
   /** Force level: 'none' blocks if active deployments, 'old' allows archived/failed, 'all' deletes active (requires confirmation) */
   force_level?: ForceLevel;
+}
+
+/**
+ * A single course_content_deployment row that references an example_version.
+ */
+export interface ExampleVersionReference {
+  deployment_id: string;
+  course_id: string;
+  course_path?: string | null;
+  course_content_id: string;
+  course_content_path?: string | null;
+  /** Which FK references the version: 'current' (example_version_id) or 'previous' (previous_example_version_id) */
+  relation: string;
+}
+
+/**
+ * Result of a single example-version deletion.
+ */
+export interface ExampleVersionDeleteResult {
+  /** Whether this was a preview only */
+  dry_run: boolean;
+  /** True if the version row was deleted (or would be, on dry run with no references) */
+  deleted: boolean;
+  version_id: string;
+  example_identifier?: string | null;
+  version_tag?: string | null;
+  storage_path?: string | null;
+  /** MinIO objects removed */
+  storage_objects_deleted?: number;
+  /** Deployment rows blocking the delete; non-empty means deletion was refused */
+  references?: ExampleVersionReference[];
+  errors?: string[];
 }
 
 /**

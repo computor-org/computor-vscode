@@ -110,9 +110,9 @@
             </select>
           </div>
           <div class="form-field">
-            <label for="add-identifier">Email or username</label>
-            <input id="add-identifier" name="identifier" type="text" placeholder="user@example.com or alice42" autocomplete="off" />
-            <p class="field-hint">Looks up the user by exact email, then by exact username.</p>
+            <label for="add-identifier">Email</label>
+            <input id="add-identifier" name="identifier" type="text" placeholder="user@example.com" autocomplete="off" />
+            <p class="field-hint">Looks up the user by exact email.</p>
           </div>
           <div class="form-actions">
             <button type="button" id="browse-users-btn" class="btn-secondary">Browse users…</button>

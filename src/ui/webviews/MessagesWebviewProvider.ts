@@ -33,7 +33,7 @@ export interface MessageTargetContext {
 interface MessagesWebviewData {
   target: MessageTargetContext;
   messages: EnrichedMessage[];
-  identity?: { id: string; username: string; full_name?: string };
+  identity?: { id: string; full_name?: string };
   activeFilters?: MessageFilters;
 }
 
@@ -401,7 +401,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     return data?.target;
   }
 
-  private getIdentity(): { id: string; username: string; full_name?: string } | undefined {
+  private getIdentity(): { id: string; full_name?: string } | undefined {
     const data = this.currentData as MessagesWebviewData | undefined;
     return data?.identity;
   }
@@ -603,11 +603,11 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     await this.refreshMessages();
   }
 
-  private enrichMessages(messages: MessageList[], identity?: { id: string; username: string; full_name?: string }): EnrichedMessage[] {
+  private enrichMessages(messages: MessageList[], identity?: { id: string; full_name?: string }): EnrichedMessage[] {
     return messages.map((message) => this.enrichSingleMessage(message, identity));
   }
 
-  private enrichSingleMessage(message: MessageList, identity?: { id: string; username: string; full_name?: string }): EnrichedMessage {
+  private enrichSingleMessage(message: MessageList, identity?: { id: string; full_name?: string }): EnrichedMessage {
     const currentUserId = identity?.id;
     const author = message.author;
     const trimmedParts = [author?.given_name, author?.family_name]

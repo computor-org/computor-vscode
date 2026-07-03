@@ -10,11 +10,9 @@
 
 import type { GradingAuthor } from './auth';
 
-import type { CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, GitLabCredentials, ResultArtifactInfo, SubmissionGroupGradingList } from './common';
+import type { CourseContentDeploymentGet, CourseContentDeploymentList, CourseMemberGitLabConfig, GitLabConfig, GitLabConfigGet, ResultArtifactInfo, SubmissionGroupGradingList } from './common';
 
 import type { OrganizationGet } from './organizations';
-
-import type { CourseGitBindingUpsert } from '../courseGit';
 
 import type { TaskStatus } from './tasks';
 
@@ -185,6 +183,59 @@ export interface CourseMemberImportResponse {
   workflow_id?: string | null;
 }
 
+/**
+ * A single member parsed from an uploaded file (preview before import).
+ */
+export interface CourseMemberImportRow {
+  /** Email address */
+  email: string;
+  /** First name */
+  given_name?: string | null;
+  /** Last name */
+  family_name?: string | null;
+  /** Matriculation / student number */
+  student_id?: string | null;
+  /** Course group name */
+  course_group_title?: string | null;
+  /** Course role ID (e.g., _student) */
+  course_role_id?: string | null;
+  /** Incoming/exchange marker */
+  incoming?: string | null;
+  /** Study programme id */
+  study_id?: string | null;
+  /** Study programme name */
+  study_name?: string | null;
+  /** Semester in study */
+  semester?: number | null;
+  /** Registration date */
+  registration_date?: string | null;
+  /** Free-text notes */
+  notes?: string | null;
+}
+
+/**
+ * Upload payload for the file parser: the file as base64 (handles binary
+ * xlsx as well as text csv/json/xml over plain JSON).
+ */
+export interface CourseMemberImportFileParseRequest {
+  /** Original filename — used to detect the format */
+  filename: string;
+  /** Base64-encoded file bytes */
+  content_base64: string;
+}
+
+/**
+ * Rows parsed from an uploaded member file. No database writes occur.
+ */
+export interface CourseMemberImportParseResponse {
+  /** Parsed members (rows without an email are dropped) */
+  rows?: CourseMemberImportRow[];
+  /** csv | json | xlsx | xml */
+  detected_format?: string | null;
+  /** Non-fatal parse warnings */
+  warnings?: string[];
+}
+
 export interface CourseContentKindCreate {
   title?: string | null;
   description?: string | null;
@@ -280,7 +331,7 @@ export interface CourseMemberCommentQuery {
 }
 
 export interface CommentCreate {
-  course_member_id: any;
+  course_member_id: string;
   message: string;
 }
 
@@ -428,7 +479,7 @@ export interface CourseTutorGet {
   course_family_id?: string | null;
   organization_id?: string | null;
   path: string;
-  repository: CourseTutorRepository;
+  repository?: CourseTutorRepository | null;
 }
 
 export interface CourseTutorList {
@@ -437,7 +488,7 @@ export interface CourseTutorList {
   course_family_id?: string | null;
   organization_id?: string | null;
   path: string;
-  repository: CourseTutorRepository;
+  repository?: CourseTutorRepository | null;
 }
 
 export interface CourseTutorQuery {
@@ -667,6 +718,11 @@ export interface CourseContentStudentQuery {
   nlevel?: number | null;
   descendants?: string | null;
   ascendants?: string | null;
+}
+
+export interface CourseProviderResult {
+  provider_entity_id: string;
+  properties: any;
 }
 
 export interface CourseFamilyMemberCreate {
@@ -920,11 +976,6 @@ export interface CourseFamilyQuery {
   organization_id?: string | null;
 }
 
-export interface CourseStudentRepository {
-  provider_url?: string | null;
-  full_path?: string | null;
-}
-
 export interface CourseStudentGet {
   id: string;
   title?: string | null;
@@ -932,7 +983,6 @@ export interface CourseStudentGet {
   organization_id?: string | null;
   course_content_types: CourseContentTypeGet[];
   path: string;
-  repository: CourseStudentRepository;
 }
 
 export interface CourseStudentList {
@@ -941,7 +991,6 @@ export interface CourseStudentList {
   course_family_id?: string | null;
   organization_id?: string | null;
   path: string;
-  repository: CourseStudentRepository;
 }
 
 export interface CourseStudentQuery {
@@ -953,9 +1002,140 @@ export interface CourseStudentQuery {
   path?: string | null;
   course_family_id?: string | null;
   organization_id?: string | null;
-  provider_url?: string | null;
-  full_path?: string | null;
-  full_path_student?: string | null;
+}
+
+/**
+ * Where the course's ``student-template`` lives, so a client can fork or
+ * clone it.
+ */
+export interface GitTemplateRef {
+  /** Git server type: 'forgejo' | 'gitlab' */
+  server_type: string;
+  /** Base URL of the git server instance */
+  base_url: string;
+  /** Repo/project reference of the template on the server */
+  repo?: string | null;
+  /** Clone/web URL of the template */
+  clone_url?: string | null;
+  /** Default branch of the template */
+  default_branch?: string;
+}
+
+/**
+ * How a student gets their repository for a course.
+ * 
+ * ``configured`` is False when the course has no git binding yet (the client
+ * should treat the course as not-yet-git-enabled rather than erroring).
+ */
+export interface CourseGitDescriptor {
+  course_id: string;
+  /** Whether the course has a git binding */
+  configured: boolean;
+  /** Assignment delivery: 'git' | 'download' */
+  delivery?: string | null;
+  /** Allowed student-repo hosting modes, e.g. ['managed', 'external', 'download'] */
+  student_repo_modes?: string[];
+  /** Template location (absent for pure download or unconfigured courses) */
+  template?: GitTemplateRef | null;
+}
+
+/**
+ * Lecturer-facing payload to set/replace a course's git binding.
+ */
+export interface CourseGitBindingUpsert {
+  delivery?: "git" | "download";
+  /** Registry server hosting the student-template */
+  git_server_id?: string | null;
+  /** Repo/project reference of the student-template */
+  template_repo?: string | null;
+  /** Clone/web URL of the student-template */
+  template_url?: string | null;
+  /** Default branch (defaults to 'main') */
+  default_branch?: string | null;
+  /** Allowed student-repo hosting modes: subset of ['managed', 'external', 'download'] */
+  student_repo_modes?: string[];
+}
+
+/**
+ * Lecturer-facing view of a course's git binding (full config).
+ */
+export interface CourseGitBindingGet {
+  id: string;
+  course_id: string;
+  delivery: string;
+  git_server_id?: string | null;
+  template_repo?: string | null;
+  template_url?: string | null;
+  default_branch?: string | null;
+  student_repo_modes?: string[];
+  /** True once the binding has materialized a template or student repos; its identity is then immutable (changing it would orphan student repositories). */
+  locked?: boolean;
+  /** Human-readable reason the binding is locked, when locked. */
+  lock_reason?: string | null;
+}
+
+/**
+ * A student's repository for a course (the result of provisioning, or the
+ * recorded BYO location). Tracking only — never read for grading.
+ */
+export interface CourseMemberRepositoryGet {
+  id: string;
+  course_member_id: string;
+  /** managed | external | download */
+  mode: string;
+  /** Git server type backing this repo: 'forgejo' | 'gitlab' (null for external/unknown) */
+  provider_type?: string | null;
+  server_url?: string | null;
+  repo_ref?: string | null;
+  http_url?: string | null;
+  ssh_url?: string | null;
+  web_url?: string | null;
+}
+
+/**
+ * Provisioning result — the repo plus a **one-time** clone credential.
+ * 
+ * Returned only by `provision-repository`. `clone_token` is a fresh repo-scoped
+ * Forgejo PAT minted (and rotated) on each call; it is NOT persisted and NOT
+ * returned by `GET .../repository`. Authenticate git as:
+ * `https://<clone_username>:<clone_token>@<host>/<owner>/<repo>.git`.
+ * `clone_token` is null until the student has logged into Forgejo once
+ * (re-call after their first login to obtain it).
+ */
+export interface StudentRepositoryProvisioned {
+  id: string;
+  course_member_id: string;
+  /** managed | external | download */
+  mode: string;
+  /** Git server type backing this repo: 'forgejo' | 'gitlab' (null for external/unknown) */
+  provider_type?: string | null;
+  server_url?: string | null;
+  repo_ref?: string | null;
+  http_url?: string | null;
+  ssh_url?: string | null;
+  web_url?: string | null;
+  /** One-time repo-scoped Forgejo PAT; store securely */
+  clone_token?: string | null;
+  /** Forgejo username to pair with clone_token */
+  clone_username?: string | null;
+}
+
+/**
+ * Client-supplied location of a student's external repository (e.g. a repo on
+ * any git provider that the VSCode extension seeded from the course template and
+ * linked back as ``upstream``).
+ * 
+ * Tracking only — the backend never reads this repo (grading is API upload).
+ */
+export interface CourseMemberRepositoryRegister {
+  mode?: "external" | "managed" | "download";
+  /** Base URL of the git instance hosting the repo */
+  server_url?: string | null;
+  /** Provider project/repo reference (e.g. group/path or id) */
+  repo_ref?: string | null;
+  http_url?: string | null;
+  ssh_url?: string | null;
+  web_url?: string | null;
 }
 
 export interface CourseMemberProperties {
@@ -1030,14 +1210,6 @@ export interface CourseCreate {
   course_family_id: string;
   language_code?: string | null;
   properties?: CourseProperties | null;
-  team_mode?: string | null;
-  team_min_group_size?: number | null;
-  team_allow_student_creation?: boolean | null;
-  team_allow_join?: boolean | null;
-  team_allow_leave?: boolean | null;
-  team_auto_assign_unmatched?: boolean | null;
-  team_lock_at_deadline?: boolean | null;
-  team_require_approval?: boolean | null;
 }
 
 export interface CourseGet {
@@ -1048,14 +1220,6 @@ export interface CourseGet {
   course_family_id: string;
   language_code?: string | null;
   properties?: CoursePropertiesGet | null;
-  team_mode?: string | null;
-  team_min_group_size?: number | null;
-  team_allow_student_creation?: boolean | null;
-  team_allow_join?: boolean | null;
-  team_allow_leave?: boolean | null;
-  team_auto_assign_unmatched?: boolean | null;
-  team_lock_at_deadline?: boolean | null;
-  team_require_approval?: boolean | null;
   /** Creation timestamp */
   created_at?: string | null;
   /** Update timestamp */
@@ -1074,22 +1238,12 @@ export interface CourseList {
   path: string;
   language_code?: string | null;
   properties?: CoursePropertiesGet | null;
-  team_mode?: string | null;
-  team_allow_student_creation?: boolean | null;
 }
 
 export interface CourseUpdate {
   title?: string | null;
   description?: string | null;
   language_code?: string | null;
-  team_mode?: string | null;
-  team_min_group_size?: number | null;
-  team_allow_student_creation?: boolean | null;
-  team_allow_join?: boolean | null;
-  team_allow_leave?: boolean | null;
-  team_auto_assign_unmatched?: boolean | null;
-  team_lock_at_deadline?: boolean | null;
-  team_require_approval?: boolean | null;
 }
 
 export interface CourseQuery {
@@ -1112,7 +1266,6 @@ export interface CourseQuery {
 export interface CourseFamilyTaskRequest {
   course_family: Record<string, any>;
   organization_id: string;
-  gitlab?: GitLabCredentials | null;
 }
 
 /**
@@ -1121,7 +1274,7 @@ export interface CourseFamilyTaskRequest {
 export interface CourseTaskRequest {
   course: Record<string, any>;
   course_family_id: string;
-  /** Course-level git binding applied at creation (registry git_server_id + student-repo modes); omit to create the course unbound and configure git later. */
+  /** Course-level git binding applied at creation: the registry git server (git_server_id) hosting the student-template, delivery mode, and allowed student-repo modes. Omit to create the course unbound and configure git later via the course's git binding. Git is per-course — not inherited from the organization or course family. */
   git?: CourseGitBindingUpsert | null;
 }
 

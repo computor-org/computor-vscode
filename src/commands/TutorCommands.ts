@@ -541,7 +541,7 @@ export class TutorCommands {
         if (user.given_name && user.family_name) {
           memberName = `${user.family_name}, ${user.given_name}`;
         } else {
-          memberName = (user as any).full_name || user.username || null;
+          memberName = (user as any).full_name || null;
         }
       }
 

@@ -62,20 +62,8 @@ export class UserManagerCommands {
   }
 
   private async handleCreateUser(): Promise<void> {
-    const username = await vscode.window.showInputBox({
-      title: 'New user (1/4): Username',
-      prompt: 'Required. Must be unique.',
-      validateInput: (value) => {
-        const trimmed = (value ?? '').trim();
-        if (!trimmed) { return 'Username is required.'; }
-        if (/\s/.test(trimmed)) { return 'Username cannot contain whitespace.'; }
-        return undefined;
-      }
-    });
-    if (username === undefined) { return; }
-
     const email = await vscode.window.showInputBox({
-      title: 'New user (2/4): Email',
+      title: 'New user (1/3): Email',
       prompt: 'Required. Must be a valid email.',
       validateInput: (value) => {
         const trimmed = (value ?? '').trim();
@@ -87,13 +75,13 @@ export class UserManagerCommands {
     if (email === undefined) { return; }
 
     const givenName = await vscode.window.showInputBox({
-      title: 'New user (3/4): Given name',
+      title: 'New user (2/3): Given name',
       prompt: 'Optional.'
     });
     if (givenName === undefined) { return; }
 
     const familyName = await vscode.window.showInputBox({
-      title: 'New user (4/4): Family name',
+      title: 'New user (3/3): Family name',
       prompt: 'Optional.'
     });
     if (familyName === undefined) { return; }
@@ -103,16 +91,15 @@ export class UserManagerCommands {
         {
           location: vscode.ProgressLocation.Notification,
           cancellable: false,
-          title: `Creating user ${username.trim()}…`
+          title: `Creating user ${email.trim()}…`
         },
         () => this.apiService.createUser({
-          username: username.trim(),
           email: email.trim(),
           given_name: givenName.trim() || null,
           family_name: familyName.trim() || null
         })
       );
-      vscode.window.showInformationMessage(`User ${created.username || created.email || created.id} created.`);
+      vscode.window.showInformationMessage(`User ${created.email || created.id} created.`);
       this.treeProvider.refresh();
       await this.userManagementWebviewProvider.open(created.id);
     } catch (error: any) {

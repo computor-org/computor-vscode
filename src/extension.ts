@@ -1066,7 +1066,7 @@ class UnifiedController {
       const memberGroupLabel = memberGroupId
         ? filterTree.resolveGroupLabel(item.courseId, memberGroupId)
         : null;
-      await selection.selectMember(item.member.id, name, memberGroupId, memberGroupLabel, item.member.user?.email, item.member.user?.username);
+      await selection.selectMember(item.member.id, name, memberGroupId, memberGroupLabel, item.member.user?.email);
       filterTree.refresh();
     }));
 

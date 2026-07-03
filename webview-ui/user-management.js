@@ -105,7 +105,7 @@
       <section class="user-section" aria-labelledby="section-identity">
         <div>
           <h2 id="section-identity">Identity</h2>
-          <p class="section-description">Core account fields.${state.isAdmin ? '' : ' Name and username edits are admin-only.'}</p>
+          <p class="section-description">Core account fields.${state.isAdmin ? '' : ' Name edits are admin-only.'}</p>
         </div>
         ${state.isAdmin ? `
         <form id="identity-form">
@@ -117,10 +117,6 @@
             <div class="form-field">
               <label for="user-family-name">Family Name</label>
               <input id="user-family-name" name="family_name" type="text" value="${escapeHtml(toInputValue(user.family_name))}" autocomplete="family-name">
-            </div>
-            <div class="form-field">
-              <label for="user-username">Username</label>
-              <input id="user-username" name="username" type="text" value="${escapeHtml(toInputValue(user.username))}" autocomplete="username">
             </div>
           </div>
           <div class="form-actions">
@@ -136,10 +132,6 @@
           <div class="info-field">
             <label>Family Name</label>
             <div class="info-value">${escapeHtml(user.family_name || 'Not set')}</div>
-          </div>
-          <div class="info-field">
-            <label>Username</label>
-            <div class="info-value">${escapeHtml(user.username || 'Not set')}</div>
           </div>
         </div>
         `}
@@ -341,17 +333,10 @@
     const formData = new FormData(event.target);
     const givenName = formData.get('given_name');
     const familyName = formData.get('family_name');
-    const username = formData.get('username');
-
-    if (typeof username === 'string' && !username.trim()) {
-      showNotice('warning', 'Username cannot be empty.');
-      return;
-    }
 
     post('updateIdentity', {
       given_name: typeof givenName === 'string' ? givenName : undefined,
-      family_name: typeof familyName === 'string' ? familyName : undefined,
-      username: typeof username === 'string' ? username : undefined
+      family_name: typeof familyName === 'string' ? familyName : undefined
     });
   }
 

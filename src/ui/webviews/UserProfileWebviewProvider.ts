@@ -127,7 +127,6 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       given_name: raw.given_name ?? raw.givenName ?? undefined,
       family_name: raw.family_name ?? raw.familyName ?? undefined,
       email: raw.email ?? undefined,
-      username: raw.username ?? undefined,
       properties: raw.properties ?? undefined
     };
 

@@ -362,7 +362,7 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
           const groupLabel = existing.course_group_id
             ? this.resolveGroupLabel(courseId, existing.course_group_id)
             : null;
-          await this.selection.selectMember(existing.id, formatMemberName(existing), existing.course_group_id, groupLabel, existing.user?.email, existing.user?.username);
+          await this.selection.selectMember(existing.id, formatMemberName(existing), existing.course_group_id, groupLabel, existing.user?.email);
         }
         return;
       }
@@ -372,7 +372,7 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
       const groupLabel = first.course_group_id
         ? this.resolveGroupLabel(courseId, first.course_group_id)
         : null;
-      await this.selection.selectMember(first.id, formatMemberName(first), first.course_group_id, groupLabel, first.user?.email, first.user?.username);
+      await this.selection.selectMember(first.id, formatMemberName(first), first.course_group_id, groupLabel, first.user?.email);
     }
   }
 }

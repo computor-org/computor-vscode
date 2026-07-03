@@ -39,42 +39,6 @@ export interface OrganizationUpdateTokenUpdate {
 export interface AuthConfig {
 }
 
-export interface GLPAuthConfig {
-  url: string;
-  token: string;
-}
-
-export interface BasicAuthConfig {
-  username: string;
-  password: string;
-}
-
-/**
- * Request model for local username/password login.
- */
-export interface LocalLoginRequest {
-  /** Username or email */
-  username: string;
-  /** Password */
-  password: string;
-}
-
-/**
- * Response model after successful local login.
- */
-export interface LocalLoginResponse {
-  /** Bearer access token for API requests */
-  access_token: string;
-  /** Refresh token to obtain new access token */
-  refresh_token: string;
-  /** Access token expiration time in seconds */
-  expires_in: number;
-  /** User ID */
-  user_id: string;
-  /** Token type */
-  token_type?: string;
-}
-
 /**
  * Request model for logout.
  */
@@ -181,8 +145,8 @@ export interface UserRegistrationResponse {
  * Token refresh request for SSO.
  */
 export interface TokenRefreshRequest {
-  /** Refresh token from initial authentication */
-  refresh_token: string;
+  /** Refresh token from initial authentication; falls back to the ct_refresh_token cookie */
+  refresh_token?: string | null;
   /** Authentication provider */
   provider?: string;
 }
@@ -258,7 +222,7 @@ export interface ApiTokenCreate {
   /** Token expiration date (null = never expires) */
   expires_at?: string | null;
   /** Additional properties */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -281,7 +245,7 @@ export interface ApiTokenAdminCreate {
   /** Token expiration date (null = never expires) */
   expires_at?: string | null;
   /** Additional properties */
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
@@ -313,7 +277,7 @@ export interface ApiTokenUpdate {
   description?: string | null;
   scopes?: string[] | null;
   expires_at?: string | null;
-  properties?: Record<string, any> | null;
+  properties?: Record<string, unknown> | null;
 }
 
 /**
