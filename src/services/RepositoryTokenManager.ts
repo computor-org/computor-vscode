@@ -243,6 +243,18 @@ export class RepositoryTokenManager {
   }
 
   /**
+   * Read the rotated clone token that {@link StudentRepositoryProvisioningService}
+   * stored for a backend-managed Forgejo server (`forgejo-token-<origin>`).
+   *
+   * Present only for backend-hosted Forgejo repos, whose credentials the backend
+   * issues and embeds in the git remote — never prompts. Returns undefined for
+   * self-hosted GitLab (BYO), which is the only case that needs a manual token.
+   */
+  async getManagedForgejoToken(serverUrl: string): Promise<string | undefined> {
+    return this.context.secrets.get(`forgejo-token-${serverUrl}`);
+  }
+
+  /**
    * Store token securely for a GitLab URL
    */
   async storeToken(gitlabUrl: string, token: string): Promise<void> {

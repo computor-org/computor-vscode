@@ -182,6 +182,30 @@ export class StudentRepositoryManager {
   }
 
   /**
+   * Whether the course's student repository is a backend-managed Forgejo repo.
+   * These are provisioned and cloned by {@link StudentRepositoryProvisioningService}
+   * with a backend-issued, repo-scoped clone token embedded directly in the git
+   * remote, so this flow must not prompt for a token or rewrite the remote for them.
+   *
+   * Only Forgejo is treated this way: GitLab managed still needs the student's own
+   * PAT (already stored, so `ensureTokenForUrl` returns it silently) and GitLab BYO
+   * needs the student to paste one — neither is hosted by us.
+   */
+  private async isManagedForgejoRepo(courseId: string, origin: string): Promise<boolean> {
+    try {
+      const repo = await this.apiService.getCourseRepository(courseId);
+      if (repo?.mode === 'managed' && repo?.provider_type === 'forgejo') {
+        return true;
+      }
+    } catch (error) {
+      console.warn('[StudentRepositoryManager] Could not determine course repository mode:', error);
+    }
+    // Fallback: a stored Forgejo clone token proves the server is a backend-hosted
+    // Forgejo even if the repository record is momentarily unavailable.
+    return !!(await this.gitLabTokenManager.getManagedForgejoToken(origin));
+  }
+
+  /**
    * Process repositories for a specific course
    */
   private async processRepositoriesForCourse(
@@ -194,37 +218,56 @@ export class StudentRepositoryManager {
     const report = onProgress || (() => {});
     if (repositories.length === 0) return;
     
-    // Get GitLab token
+    // Work out how to authenticate git for this course's repositories.
     const firstRepo = repositories[0];
     if (!firstRepo) return;
-    
-    const gitlabUrl = new URL(firstRepo.cloneUrl).origin;
-    let token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
 
-    if (!token) {
-      console.warn('[StudentRepositoryManager] No GitLab token available, skipping clone');
-      return;
+    const gitlabUrl = new URL(firstRepo.cloneUrl).origin;
+
+    // Backend-managed Forgejo repos are provisioned and cloned by
+    // StudentRepositoryProvisioningService, which embeds a backend-issued,
+    // repo-scoped clone token directly in the git remote. They must NEVER trigger a
+    // manual token prompt here, and we must not rewrite their remotes. GitLab
+    // (managed or BYO) still authenticates with the student's own token, so it
+    // keeps going through ensureTokenForUrl (which returns a stored token silently).
+    const forgejoManaged = await this.isManagedForgejoRepo(courseId, gitlabUrl);
+
+    let token: string | undefined;
+    if (forgejoManaged) {
+      // Reuse the stored Forgejo clone token for downstream bookkeeping if we have
+      // one, but the embedded remote credentials are what actually authenticate.
+      token = await this.gitLabTokenManager.getManagedForgejoToken(gitlabUrl);
+    } else {
+      token = await this.gitLabTokenManager.ensureTokenForUrl(gitlabUrl);
+      if (!token) {
+        console.warn('[StudentRepositoryManager] No GitLab token available, skipping clone');
+        return;
+      }
+      void this.gitLabTokenManager.refreshWorkspaceGitCredentials(gitlabUrl);
     }
 
-    void this.gitLabTokenManager.refreshWorkspaceGitCredentials(gitlabUrl);
-
-    // Get course information to find upstream repository
+    // Get course information to find upstream repository. Managed Forgejo repos are
+    // kept in sync with the course template by the backend, so we skip the
+    // client-side fork-sync (the student's repo-scoped credentials can't reach the
+    // template anyway).
     let upstreamUrl: string | undefined;
-    try {
-      const course = await this.apiService.getStudentCourse(courseId);
-      console.log('[StudentRepositoryManager] Course data:', JSON.stringify(course, null, 2));
-      if (course?.repository) {
-        // Construct upstream URL from provider_url and full_path
-        // The upstream is always the student-template repository in the course namespace
-        const providerUrl = course.repository.provider_url.replace(/\/$/, ''); // Remove trailing slash if present
-        const fullPath = course.repository.full_path.replace(/^\//, ''); // Remove leading slash if present
-        upstreamUrl = `${providerUrl}/${fullPath}/student-template.git`;
-        console.log(`[StudentRepositoryManager] Upstream repository: ${upstreamUrl}`);
-      } else {
-        console.log('[StudentRepositoryManager] No repository field in course data');
+    if (!forgejoManaged) {
+      try {
+        const course = await this.apiService.getStudentCourse(courseId);
+        console.log('[StudentRepositoryManager] Course data:', JSON.stringify(course, null, 2));
+        if (course?.repository) {
+          // Construct upstream URL from provider_url and full_path
+          // The upstream is always the student-template repository in the course namespace
+          const providerUrl = course.repository.provider_url.replace(/\/$/, ''); // Remove trailing slash if present
+          const fullPath = course.repository.full_path.replace(/^\//, ''); // Remove leading slash if present
+          upstreamUrl = `${providerUrl}/${fullPath}/student-template.git`;
+          console.log(`[StudentRepositoryManager] Upstream repository: ${upstreamUrl}`);
+        } else {
+          console.log('[StudentRepositoryManager] No repository field in course data');
+        }
+      } catch (error) {
+        console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
       }
-    } catch (error) {
-      console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
     }
     
       // Group repositories by (url, full_path) to get unique repositories
@@ -255,7 +298,7 @@ export class StudentRepositoryManager {
         const fullPath = (firstRepo as any).fullPath;
         const repoName = firstRepo.assignmentTitle || fullPath;
         report(`Setting up ${repoName}...`);
-        token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, onProgress, cancellationToken);
+        token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, forgejoManaged, onProgress, cancellationToken);
       }
     }
     
@@ -272,12 +315,13 @@ export class StudentRepositoryManager {
     fullPath: string, // Repository full_path (e.g., "course/student-123")
     cloneUrl: string,
     repoInfos: RepositoryInfo[],
-    token: string,
+    token: string | undefined,
     courseContents: any[],
-    upstreamUrl?: string,
+    upstreamUrl: string | undefined,
+    forgejoManaged: boolean,
     onProgress?: (message: string) => void,
     cancellationToken?: vscode.CancellationToken
-  ): Promise<string> {
+  ): Promise<string | undefined> {
     void courseId; // Only used for logging
     const report = onProgress || (() => {});
     let effectiveToken = token;
@@ -287,15 +331,24 @@ export class StudentRepositoryManager {
     const repoName = repoInfos[0]?.assignmentTitle || fullPath;
 
     const repoExists = await this.directoryExists(repoPath);
-    
+
     if (!repoExists) {
+      if (forgejoManaged) {
+        // The first clone of a managed Forgejo repo is owned by the provisioning
+        // service, which holds the backend-issued credentials. Nothing to clone
+        // here — it appears once the student runs "Set up repository".
+        console.log(`[StudentRepositoryManager] Managed Forgejo repo ${fullPath} not present locally; deferring first clone to provisioning`);
+        return effectiveToken;
+      }
       console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
       report(`Cloning ${repoName}...`);
-      effectiveToken = await this.cloneRepository(repoPath, cloneUrl, effectiveToken, cancellationToken);
+      effectiveToken = await this.cloneRepository(repoPath, cloneUrl, effectiveToken as string, cancellationToken);
     } else {
       console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
       report(`Updating ${repoName}...`);
-      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken, repoName, report, cancellationToken);
+      // Managed Forgejo repos authenticate via the credentials already embedded in
+      // their remote, so the (possibly absent) token here is only bookkeeping.
+      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken as string, repoName, report, cancellationToken);
     }
 
     // Sync fork with upstream if available

@@ -75,7 +75,7 @@ export class BackendConnectionService {
       } else if (error.code === 'ECONNREFUSED') {
         // Connection refused - backend not running
         errorType = 'NOT_RUNNING';
-        message = 'Backend is not running. Please start the backend server.';
+        message = 'Cannot connect to Computor.';
       } else if (error.code === 'ENOTFOUND' || error.code === 'ENETUNREACH') {
         // Network unreachable - possible VPN issue
         errorType = 'VPN_REQUIRED';

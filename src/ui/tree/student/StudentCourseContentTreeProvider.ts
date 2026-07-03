@@ -802,7 +802,15 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
 
         let repoRoot = model.repoRoot;
         const setupKey = `${courseId}:${element.courseContent.id}`;
-        const dirMissing = !repoRoot || !directory || !fs.existsSync(path.join(repoRoot, directory));
+        // `directory` may already be absolute — annotateCourseGit rewrites it to
+        // {repoRoot}/{dir}. Joining an absolute path onto repoRoot again would yield
+        // a doubled, non-existent path and wrongly re-trigger provisioning (e.g. on
+        // the tree refresh that follows a test run). Resolve it the same way the
+        // file-listing below (absDir) does.
+        const absAssignmentDir = directory
+            ? (path.isAbsolute(directory) ? directory : (repoRoot ? path.join(repoRoot, directory) : undefined))
+            : undefined;
+        const dirMissing = !repoRoot || !absAssignmentDir || !fs.existsSync(absAssignmentDir);
         if (dirMissing && !this.assignmentsSetupAttempted.has(setupKey)) {
             this.assignmentsSetupAttempted.add(setupKey);
             const setupRoot = await this.setupCourseGitWithProgress(courseId, model, element.courseContent.title || 'assignment');
