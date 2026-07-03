@@ -370,32 +370,14 @@ export class LecturerCommands {
     });
     if (!orgTitle) { return; }
 
-    const gitlabUrl = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab instance URL',
-      placeHolder: 'e.g., https://gitlab.example.com',
-      validateInput: (value) => {
-        if (!value) { return 'GitLab URL is required'; }
-        try { new URL(value); return null; }
-        catch { return 'Must be a valid URL'; }
-      }
-    });
-    if (!gitlabUrl) { return; }
-
-    const gitlabToken = await vscode.window.showInputBox({
-      prompt: 'Enter GitLab Personal Access Token (scopes: api, read_repository, write_repository)',
-      placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
-      password: true,
-      validateInput: (value) => !value ? 'GitLab token is required' : null
-    });
-    if (!gitlabToken) { return; }
-
+    // Organizations no longer carry a git connection — git is configured
+    // per-course via the course's git binding (GitServer registry).
     const request: OrganizationTaskRequest = {
       organization: {
         path: orgPath,
         title: orgTitle,
         organization_type: 'organization'
-      },
-      git_provider: { type: 'gitlab', url: gitlabUrl, token: gitlabToken }
+      }
     };
 
     try {
