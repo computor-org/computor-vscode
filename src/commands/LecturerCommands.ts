@@ -27,8 +27,8 @@ import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../http/errors/HttpError';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
-import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
-import type { OrganizationList, OrganizationTaskRequest } from '../types/generated/organizations';
+import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseTaskRequest } from '../types/generated/courses';
+import type { OrganizationList } from '../types/generated/organizations';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
@@ -370,31 +370,16 @@ export class LecturerCommands {
     });
     if (!orgTitle) { return; }
 
-    // Organizations no longer carry a git connection — git is configured
-    // per-course via the course's git binding (GitServer registry).
-    const request: OrganizationTaskRequest = {
-      organization: {
+    // Organizations no longer carry a git connection (git is per-course), so
+    // creation is a plain CRUD insert — no workflow, no task polling.
+    try {
+      await this.apiService.createOrganization({
         path: orgPath,
         title: orgTitle,
         organization_type: 'organization'
-      }
-    };
-
-    try {
-      const taskResponse = await this.apiService.deployOrganization(request);
-
-      const result = await pollTaskUntilComplete(this.apiService, taskResponse.task_id, {
-        title: `Creating organization "${orgTitle}"...`
       });
-
-      if (result.status === 'SUCCESS') {
-        vscode.window.showInformationMessage(`Organization "${orgTitle}" created successfully!`);
-        this.treeDataProvider.refresh();
-      } else if (result.status === 'FAILED') {
-        vscode.window.showErrorMessage(`Failed to create organization: ${result.error || 'Unknown error'}`);
-      } else if (result.status === 'TIMEOUT') {
-        vscode.window.showWarningMessage(`Organization creation for "${orgTitle}" is still in progress. Check back later.`);
-      }
+      vscode.window.showInformationMessage(`Organization "${orgTitle}" created successfully!`);
+      this.treeDataProvider.refresh();
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to create organization: ${error.message || error}`);
     }
@@ -424,27 +409,15 @@ export class LecturerCommands {
     if (!familyTitle) { return; }
 
     // Course families carry no git config in the course-level model (git is
-    // per-course), so there is nothing to inherit from the organization.
-    const request: CourseFamilyTaskRequest = {
-      course_family: { path: familyPath, title: familyTitle },
-      organization_id: organization.id,
-    };
-
+    // per-course), so creation is a plain CRUD insert — no workflow.
     try {
-      const taskResponse = await this.apiService.deployCourseFamily(request);
-
-      const result = await pollTaskUntilComplete(this.apiService, taskResponse.task_id, {
-        title: `Creating course family "${familyTitle}"...`
+      await this.apiService.createCourseFamily({
+        path: familyPath,
+        title: familyTitle,
+        organization_id: organization.id
       });
-
-      if (result.status === 'SUCCESS') {
-        vscode.window.showInformationMessage(`Course family "${familyTitle}" created successfully!`);
-        this.treeDataProvider.refresh();
-      } else if (result.status === 'FAILED') {
-        vscode.window.showErrorMessage(`Failed to create course family: ${result.error || 'Unknown error'}`);
-      } else if (result.status === 'TIMEOUT') {
-        vscode.window.showWarningMessage(`Course family creation for "${familyTitle}" is still in progress. Check back later.`);
-      }
+      vscode.window.showInformationMessage(`Course family "${familyTitle}" created successfully!`);
+      this.treeDataProvider.refresh();
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to create course family: ${error.message || error}`);
     }

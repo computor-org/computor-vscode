@@ -7,8 +7,7 @@ import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
 import type { CourseDeploymentGet, VersionUpgradeGet } from '../types/generated';
-import type { OrganizationTaskRequest } from '../types/generated/organizations';
-import type { CourseFamilyTaskRequest, CourseTaskRequest } from '../types/generated/courses';
+import type { CourseTaskRequest } from '../types/generated/courses';
 import type { TaskInfo } from '../types/generated/tasks';
 import type {
   CourseGitDescriptor,
@@ -1147,15 +1146,15 @@ export class ComputorApiService {
     return response.data;
   }
 
-  async deployOrganization(request: OrganizationTaskRequest): Promise<TaskResponse> {
+  async createOrganization(payload: import('../types/generated/organizations').OrganizationCreate): Promise<import('../types/generated/organizations').OrganizationGet> {
     const client = await this.getHttpClient();
-    const response = await client.post<TaskResponse>('/system/deploy/organizations', request);
+    const response = await client.post<import('../types/generated/organizations').OrganizationGet>('/organizations', payload);
     return response.data;
   }
 
-  async deployCourseFamily(request: CourseFamilyTaskRequest): Promise<TaskResponse> {
+  async createCourseFamily(payload: import('../types/generated/courses').CourseFamilyCreate): Promise<import('../types/generated/courses').CourseFamilyGet> {
     const client = await this.getHttpClient();
-    const response = await client.post<TaskResponse>('/system/deploy/course-families', request);
+    const response = await client.post<import('../types/generated/courses').CourseFamilyGet>('/course-families', payload);
     return response.data;
   }
 
