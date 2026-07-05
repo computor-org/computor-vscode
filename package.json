@@ -1373,7 +1373,7 @@
         },
         {
           "command": "computor.lecturer.createExampleRepository",
-          "when": "view == computor.lecturer.examples",
+          "when": "view == computor.lecturer.examples && computor.examples.canAuthor",
           "group": "navigation@0"
         },
         {
@@ -1398,12 +1398,12 @@
         },
         {
           "command": "computor.lecturer.importExamples",
-          "when": "view == computor.lecturer.examples",
+          "when": "view == computor.lecturer.examples && computor.examples.canAuthor",
           "group": "1_upload@1"
         },
         {
           "command": "computor.lecturer.uploadAllExamples",
-          "when": "view == computor.lecturer.examples",
+          "when": "view == computor.lecturer.examples && computor.examples.canAuthor",
           "group": "1_upload@2"
         },
         {
@@ -1520,22 +1520,22 @@
         },
         {
           "command": "computor.lecturer.createExampleRepository",
-          "when": "view == computor.lecturer.examples && viewItem == rootSection_repositories",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_repositories && computor.examples.canAuthor",
           "group": "1_actions@1"
         },
         {
           "command": "computor.lecturer.createNewExample",
-          "when": "view == computor.lecturer.examples && viewItem == exampleRepository",
+          "when": "view == computor.lecturer.examples && viewItem == exampleRepository && computor.examples.canAuthor",
           "group": "1_actions@1"
         },
         {
           "command": "computor.lecturer.createNewExample",
-          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples && computor.examples.canAuthor",
           "group": "1_actions@1"
         },
         {
           "command": "computor.lecturer.uploadExamplesFromZip",
-          "when": "view == computor.lecturer.examples && viewItem == exampleRepository",
+          "when": "view == computor.lecturer.examples && viewItem == exampleRepository && computor.examples.canAuthor",
           "group": "1_actions@2"
         },
         {
@@ -1875,7 +1875,7 @@
         },
         {
           "command": "computor.lecturer.uploadExample",
-          "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking",
+          "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking && computor.examples.canAuthor",
           "group": "3_upload@1"
         },
         {

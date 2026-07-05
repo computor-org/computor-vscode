@@ -33,7 +33,7 @@ import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
 import { runLockedWithProgress } from '../utils/progressLock';
-import { canManageAnyCourseFamilyMembers, canManageAnyOrganizationMembers } from '../services/ScopePermissions';
+import { canAuthorExamples, canManageAnyCourseFamilyMembers, canManageAnyOrganizationMembers } from '../services/ScopePermissions';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -2655,8 +2655,8 @@ export class LecturerCommands {
     );
   }
 
-  // Sets the per-scope-kind "Manage Members" context keys. See
-  // `services/ScopePermissions.ts` for the rules.
+  // Sets the role-derived context keys: per-scope-kind "Manage Members" and
+  // example-authoring. See `services/ScopePermissions.ts` for the rules.
   private async applyScopeMembershipContextKey(): Promise<void> {
     try {
       const [scopes, currentUser] = await Promise.all([
@@ -2671,10 +2671,14 @@ export class LecturerCommands {
       const ctx = { scopes, globalRoles };
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', canManageAnyOrganizationMembers(ctx));
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', canManageAnyCourseFamilyMembers(ctx));
+      // Gates the example upload / create-repository buttons — backend reserves
+      // those writes to `_example_manager` (admins bypass).
+      await vscode.commands.executeCommand('setContext', 'computor.examples.canAuthor', canAuthorExamples(ctx));
     } catch (err) {
       console.warn('[LecturerCommands] Failed to compute scope-membership context keys:', err);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', false);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', false);
+      await vscode.commands.executeCommand('setContext', 'computor.examples.canAuthor', false);
     }
   }
 }
