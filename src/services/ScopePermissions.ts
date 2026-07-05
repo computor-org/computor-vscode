@@ -2,6 +2,7 @@ import type { UserScopes } from '../types/generated/users';
 
 const GLOBAL_ORG_MANAGER_ROLE = '_organization_manager';
 const GLOBAL_FAMILY_MANAGER_ROLE = '_course_family_manager';
+const GLOBAL_EXAMPLE_MANAGER_ROLE = '_example_manager';
 const POSTING_ROLES: ReadonlySet<string> = new Set(['_owner', '_manager']);
 
 export type ScopeKind = 'organization' | 'course_family';
@@ -54,6 +55,15 @@ export function canManageAnyCourseFamilyMembers(ctx: ScopePermissionContext): bo
     || hasGlobalRole(ctx, GLOBAL_ORG_MANAGER_ROLE)
     || hasGlobalRole(ctx, GLOBAL_FAMILY_MANAGER_ROLE)
     || hasScopeManagerClaim(ctx.scopes?.course_family);
+}
+
+/** True when the user may AUTHOR the example library — upload examples and
+ *  versions, and create/edit example repositories. The backend reserves these
+ *  writes to the global `_example_manager` role (admins bypass); course
+ *  lecturers and organization managers keep read/assign access only, so this
+ *  is deliberately NOT true for them. Mirrors the backend claim split. */
+export function canAuthorExamples(ctx: ScopePermissionContext): boolean {
+  return isAdmin(ctx) || hasGlobalRole(ctx, GLOBAL_EXAMPLE_MANAGER_ROLE);
 }
 
 /** True when the user can manage members on this specific scope. */

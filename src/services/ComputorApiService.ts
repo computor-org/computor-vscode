@@ -713,6 +713,11 @@ export class ComputorApiService {
       return response.data;
     } catch (error) {
       console.error('Failed to upload example:', error);
+      if (error instanceof HttpError && error.status === 403) {
+        throw new Error(
+          'You do not have permission to author examples. Uploading examples and versions requires the Example Manager role (_example_manager).'
+        );
+      }
       // Re-throw the error so the caller can handle it with details
       throw error;
     }
@@ -2121,9 +2126,18 @@ export class ComputorApiService {
   }
 
   async createExampleRepository(payload: ExampleRepositoryCreate): Promise<ExampleRepositoryGet> {
-    const client = await this.getHttpClient();
-    const response = await client.post<ExampleRepositoryGet>('/example-repositories', payload);
-    return response.data;
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.post<ExampleRepositoryGet>('/example-repositories', payload);
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 403) {
+        throw new Error(
+          'You do not have permission to create example repositories. This requires the Example Manager role (_example_manager).'
+        );
+      }
+      throw error;
+    }
   }
 
   async getExamples(repositoryId?: string): Promise<ExampleList[]> {
