@@ -602,6 +602,43 @@ export interface CourseContentConfig {
 }
 
 /**
+ * Portable per-course git configuration for a deployment file.
+ * 
+ * Resolved server-side into a ``CourseGitBinding`` when the course is deployed
+ * (CLI, web upload, or VSCode). A git server is referenced by ``provider``
+ * (+ ``base_url`` for external instances) instead of a machine-specific
+ * ``git_server_id`` UUID, so the file stays portable across systems.
+ * 
+ * - In-system managed **Forgejo**: ``provider: forgejo`` (no ``base_url``);
+ * credentials are the system server's — nothing lives here.
+ * - External **GitLab**: ``provider: gitlab`` + ``base_url``; the course brings
+ * its own ``parent_group_id`` (its GitLab group is created under it) and
+ * ``token`` (a group access token, stored encrypted ON THE BINDING).
+ * - Pure **download**: ``delivery: download`` (with a ``provider`` to host the
+ * template archive, or none for an unbound course).
+ */
+export interface CourseGitConfig {
+  /** Assignment delivery: 'git' (fork/clone) or 'download' (archive) */
+  delivery?: "git" | "download";
+  /** Git provider. 'forgejo' with no base_url = the in-system managed Forgejo. */
+  provider?: "forgejo" | "gitlab" | null;
+  /** Git server base URL. Required for external GitLab; omit for the in-system managed Forgejo. */
+  base_url?: string | null;
+  /** GitLab parent group id/path the course group is created under (GitLab only). */
+  parent_group_id?: string | null;
+  /** GitLab group access token bound to this course (GitLab only; stored encrypted). Supports ${ENV_VAR} interpolation at deploy time. */
+  token?: string | null;
+  /** Explicit template repo/project ref (optional; auto-derived for managed servers). */
+  template_repo?: string | null;
+  /** Explicit template clone/web URL (optional). */
+  template_url?: string | null;
+  /** Default branch of the template (defaults to 'main'). */
+  default_branch?: string | null;
+  /** Allowed student-repo hosting modes: subset of ['managed', 'external', 'download']. */
+  student_repo_modes?: string[];
+}
+
+/**
  * Course configuration.
  */
 export interface CourseConfig {
@@ -621,6 +658,8 @@ export interface CourseConfig {
   content_types?: CourseContentTypeConfig[] | null;
   /** Course contents hierarchy (assignments, units, etc.) */
   contents?: CourseContentConfig[] | null;
+  /** Optional git configuration, bound to the course at deploy time. Omit to create an unbound course (configure git later in the UI). */
+  git?: CourseGitConfig | null;
   /** Course-specific settings */
   settings?: Record<string, unknown> | null;
 }
@@ -645,6 +684,8 @@ export interface HierarchicalCourseConfig {
   content_types?: CourseContentTypeConfig[] | null;
   /** Course contents hierarchy (assignments, units, etc.) */
   contents?: CourseContentConfig[] | null;
+  /** Optional git configuration, bound to the course at deploy time. Omit to create an unbound course (configure git later in the UI). */
+  git?: CourseGitConfig | null;
   /** Course-specific settings */
   settings?: Record<string, unknown> | null;
 }
@@ -1085,6 +1126,55 @@ export interface ComputorMeta {
 }
 
 /**
+ * Answer to 'may this user pass the consent gate right now?'.
+ */
+export interface ConsentStatusGet {
+  /** Current policy version; null if no policy is configured (gate inactive) */
+  required_version?: string | null;
+  has_consented: boolean;
+  granted_at?: string | null;
+}
+
+export interface ConsentCreate {
+  /** Must match the current policy version */
+  policy_version: string;
+  /** Granular opt-in purposes, if the policy defines any */
+  purposes?: Record<string, boolean> | null;
+}
+
+export interface PolicyTextGet {
+  version: string;
+  /** Language actually served (after fallback) */
+  lang: string;
+  /** Languages available for this version */
+  languages?: string[];
+  effective_from?: string | null;
+  /** Markdown text of the privacy notice */
+  content: string;
+}
+
+/**
+ * Admin: publish a new policy version (append-only; texts are write-once).
+ */
+export interface PolicyVersionCreate {
+  /** e.g. 2026-07-04 */
+  version: string;
+  /** When this version becomes current; defaults to now. May be in the future (scheduled). */
+  effective_from?: string | null;
+  /** Mapping of language code -> Markdown notice text, e.g. {'de': ..., 'en': ...} */
+  texts: Record<string, string>;
+}
+
+export interface PolicyVersionGet {
+  id: string;
+  version: string;
+  languages?: string[];
+  effective_from: string;
+  content_hashes?: Record<string, string> | null;
+  created_at?: string | null;
+}
+
+/**
  * Test count statistics.
  */
 export interface ComputorReportSummary {
@@ -1220,35 +1310,6 @@ export interface BaseEntityGet {
   updated_at?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
-}
-
-/**
- * Self-service migration: set a Keycloak password, gated by a GitLab PAT.
- * 
- * The PAT proves the caller controls a GitLab account whose email matches an
- * existing computor user (by User.email or the org-scoped StudentProfile email).
- * No password is read from our database (local auth is gone); the PAT is only
- * used for verification and is never stored.
- */
-export interface GitLabRegisterRequest {
-  /** GitLab instance URL the PAT was issued on */
-  gitlab_url: string;
-  /** GitLab Personal Access Token (verification only, not stored) */
-  gitlab_pat: string;
-  /** Password to set for Keycloak login */
-  new_password: string;
-}
-
-/**
- * Response after provisioning/resetting a Keycloak login via GitLab PAT.
- */
-export interface GitLabRegisterResponse {
-  /** User ID in Computor */
-  user_id: string;
-  /** Email address (Keycloak username) */
-  email: string;
-  /** True if the Keycloak user was created, False if its password was reset */
-  created: boolean;
 }
 
 /**
@@ -2109,6 +2170,16 @@ export interface TestCreate {
   project?: string | null;
   provider_url?: string | null;
   submit?: boolean | null;
+}
+
+/**
+ * Public navigation URLs for this Computor instance.
+ */
+export interface InstanceInfoGet {
+  /** Public base URL of the Computor web app (e.g. https://computor.example.org); null if not configured. */
+  web_url?: string | null;
+  /** Public base URL of the managed Forgejo git server; null if no managed Forgejo is configured. */
+  forgejo_url?: string | null;
 }
 
 /**
@@ -4228,4 +4299,4 @@ export type ErrorCategory = "authentication" | "authorization" | "validation" | 
 
 export type GradingStatus = 0 | 1 | 2 | 3;
 
-export type ErrorCode = "AUTH_001" | "AUTH_002" | "AUTH_003" | "AUTH_004" | "AUTH_005" | "AUTHZ_001" | "AUTHZ_002" | "AUTHZ_003" | "AUTHZ_004" | "AUTHZ_005" | "AUTHZ_010" | "VAL_001" | "VAL_002" | "VAL_003" | "VAL_004" | "NF_001" | "NF_002" | "NF_003" | "NF_004" | "NF_010" | "CONFLICT_001" | "CONFLICT_002" | "RATE_001" | "RATE_002" | "RATE_003" | "CONTENT_001" | "CONTENT_002" | "CONTENT_003" | "CONTENT_004" | "CONTENT_005" | "CONTENT_006" | "CONTENT_007" | "VERSION_001" | "DEPLOY_001" | "DEPLOY_002" | "DEPLOY_003" | "DEPLOY_004" | "DEPLOY_005" | "SUBMIT_001" | "SUBMIT_002" | "SUBMIT_003" | "SUBMIT_004" | "SUBMIT_005" | "SUBMIT_006" | "SUBMIT_007" | "SUBMIT_008" | "TASK_001" | "TASK_002" | "TASK_003" | "TASK_004" | "GITLAB_001" | "GITLAB_002" | "GITLAB_003" | "GITLAB_004" | "GITLAB_005" | "GITLAB_006" | "GITLAB_007" | "GITLAB_008" | "EXT_001" | "EXT_002" | "EXT_003" | "EXT_004" | "EXT_005" | "EXT_006" | "DB_001" | "DB_002" | "DB_003" | "INT_001" | "INT_002" | "NIMPL_001";
+export type ErrorCode = "AUTH_001" | "AUTH_002" | "AUTH_003" | "AUTH_004" | "AUTH_005" | "AUTHZ_001" | "AUTHZ_002" | "AUTHZ_003" | "AUTHZ_004" | "AUTHZ_005" | "AUTHZ_006" | "AUTHZ_010" | "VAL_001" | "VAL_002" | "VAL_003" | "VAL_004" | "NF_001" | "NF_002" | "NF_003" | "NF_004" | "NF_010" | "CONFLICT_001" | "CONFLICT_002" | "RATE_001" | "RATE_002" | "RATE_003" | "CONTENT_001" | "CONTENT_002" | "CONTENT_003" | "CONTENT_004" | "CONTENT_005" | "CONTENT_006" | "CONTENT_007" | "VERSION_001" | "DEPLOY_001" | "DEPLOY_002" | "DEPLOY_003" | "DEPLOY_004" | "DEPLOY_005" | "SUBMIT_001" | "SUBMIT_002" | "SUBMIT_003" | "SUBMIT_004" | "SUBMIT_005" | "SUBMIT_006" | "SUBMIT_007" | "SUBMIT_008" | "TASK_001" | "TASK_002" | "TASK_003" | "TASK_004" | "GITLAB_001" | "GITLAB_002" | "GITLAB_003" | "GITLAB_004" | "GITLAB_005" | "GITLAB_006" | "GITLAB_007" | "GITLAB_008" | "EXT_001" | "EXT_002" | "EXT_003" | "EXT_004" | "EXT_005" | "EXT_006" | "DB_001" | "DB_002" | "DB_003" | "INT_001" | "INT_002" | "NIMPL_001";

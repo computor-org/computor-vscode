@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { UserList } from '../../../types/generated/users';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import { isConsentRequiredError, handleConsentError } from '../../../utils/consentGate';
 
 const STATE_KEY = 'computor.userManager.filterState';
 
@@ -118,6 +119,7 @@ export class UserManagerTreeProvider extends BaseTreeDataProvider<TreeItem> {
   private filterState: FilterState;
   private loading = false;
   private loadError: string | undefined;
+  private loadErrorIsConsent = false;
   private hasLoaded = false;
 
   constructor(
@@ -173,6 +175,7 @@ export class UserManagerTreeProvider extends BaseTreeDataProvider<TreeItem> {
     this.users = [];
     this.hasLoaded = false;
     this.loadError = undefined;
+    this.loadErrorIsConsent = false;
     super.refresh();
   }
 
@@ -195,8 +198,17 @@ export class UserManagerTreeProvider extends BaseTreeDataProvider<TreeItem> {
 
     if (this.loadError) {
       const errorItem = new vscode.TreeItem(this.loadError, vscode.TreeItemCollapsibleState.None);
-      errorItem.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground'));
-      errorItem.contextValue = 'userManagerError';
+      if (this.loadErrorIsConsent) {
+        errorItem.iconPath = new vscode.ThemeIcon('warning');
+        errorItem.contextValue = 'userManagerConsentRequired';
+        errorItem.command = {
+          command: 'computor.acceptPrivacyPolicy',
+          title: 'Open Web App to accept the privacy policy',
+        };
+      } else {
+        errorItem.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground'));
+        errorItem.contextValue = 'userManagerError';
+      }
       return [errorItem];
     }
 
@@ -236,6 +248,7 @@ export class UserManagerTreeProvider extends BaseTreeDataProvider<TreeItem> {
   private async loadUsers(): Promise<void> {
     this.loading = true;
     this.loadError = undefined;
+    this.loadErrorIsConsent = false;
     this.fireChange();
     try {
       const all = await this.apiService.getUsers({ force: true });
@@ -249,12 +262,24 @@ export class UserManagerTreeProvider extends BaseTreeDataProvider<TreeItem> {
         const bGiven = (b.given_name || '').toLowerCase();
         return aGiven.localeCompare(bGiven);
       });
-      this.hasLoaded = true;
     } catch (error: any) {
       console.error('[UserManagerTreeProvider] Failed to load users:', error);
-      this.loadError = `Failed to load users: ${error?.message || error}`;
       this.users = [];
+      // Consent gate: surface the actionable prompt (throttled) + a clickable
+      // node instead of a raw 403.
+      if (isConsentRequiredError(error)) {
+        this.loadErrorIsConsent = true;
+        this.loadError = 'Accept the privacy policy to continue, then refresh.';
+        void handleConsentError(error);
+      } else {
+        this.loadError = `Failed to load users: ${error?.message || error}`;
+      }
     } finally {
+      // Mark loaded even on failure so the fireChange() below does not make
+      // getChildren() re-trigger loadUsers() — that guard (!hasLoaded) caused an
+      // API-hammering retry loop while consent-blocked. refresh() resets
+      // hasLoaded to false so an explicit refresh retries.
+      this.hasLoaded = true;
       this.loading = false;
       this.fireChange();
     }

@@ -8,6 +8,7 @@ import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManag
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
+import { isConsentRequiredError, handleConsentError } from '../../../utils/consentGate';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
 import { DragDropManager } from '../../../services/DragDropManager';
@@ -648,6 +649,17 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       return [];
     } catch (error) {
+      // Consent gate: show a clear, clickable node (and one throttled prompt)
+      // instead of dumping an opaque "HTTP 403: Forbidden".
+      if (isConsentRequiredError(error)) {
+        void handleConsentError(error);
+        const item = new InfoItem('Accept the privacy policy to continue', 'warning');
+        item.command = {
+          command: 'computor.acceptPrivacyPolicy',
+          title: 'Open Web App to accept the privacy policy',
+        };
+        return [item];
+      }
       vscode.window.showErrorMessage(`Failed to load tree data: ${error}`);
       return [];
     }
