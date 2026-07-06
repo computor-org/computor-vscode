@@ -128,6 +128,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.acceptPrivacyPolicy",
+        "title": "Accept Privacy Policy",
+        "category": "Computor"
+      },
+      {
         "command": "computor.loginOffline",
         "title": "Login (Offline Mode)",
         "category": "Computor"

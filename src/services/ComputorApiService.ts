@@ -6,7 +6,7 @@ import { errorRecoveryService, RetryOptions } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
-import type { CourseDeploymentGet, VersionUpgradeGet, CourseDeployRequest, CourseDeployResult } from '../types/generated';
+import type { CourseDeploymentGet, VersionUpgradeGet, CourseDeployRequest, CourseDeployResult, InstanceInfoGet } from '../types/generated';
 import type { CourseTaskRequest } from '../types/generated/courses';
 import type { TaskInfo } from '../types/generated/tasks';
 import type {
@@ -298,6 +298,29 @@ export class ComputorApiService {
       });
     } catch (error) {
       console.error('Failed to get course:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Instance navigation URLs (web app + managed Forgejo). The backend endpoint
+   * is consent-gate-exempt, so this succeeds even when the user is otherwise
+   * consent-blocked — which is exactly when we need web_url to point them at the
+   * consent page. Cached: instance URLs are effectively static per deployment.
+   */
+  async getInstanceInfo(): Promise<InstanceInfoGet | undefined> {
+    try {
+      return await this.cachedRequest({
+        cacheKey: 'instance-info',
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<InstanceInfoGet>('/instance-info')).data;
+        },
+        retry: { maxRetries: 1 }
+      });
+    } catch (error) {
+      console.error('Failed to get instance info:', error);
       return undefined;
     }
   }

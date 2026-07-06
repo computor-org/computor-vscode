@@ -1606,6 +1606,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Advanced: sign in with a Computor API token (non-SSO escape hatch)
   context.subscriptions.push(vscode.commands.registerCommand('computor.loginWithApiToken', async () => apiTokenLoginFlow(context)));
 
+  // Privacy-policy consent: open the web app's consent page. Shared by the
+  // consent-gate notification button and the "accept the privacy policy" tree
+  // node (see utils/consentGate.ts).
+  context.subscriptions.push(vscode.commands.registerCommand('computor.acceptPrivacyPolicy', async () => {
+    const { openConsentPage } = await import('./utils/consentGate');
+    await openConsentPage();
+  }));
+
   // Logout / clear-data commands — registered for ALL roles (not just lecturers),
   // and available even when signed out. SSO sessions expire, so every role needs
   // to be able to sign out and back in.

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { HttpError } from '../http/errors/HttpError';
+import { isConsentRequiredError, handleConsentError } from './consentGate';
 
 /**
  * Display an error message with appropriate severity level
@@ -7,6 +8,14 @@ import { HttpError } from '../http/errors/HttpError';
  * Uses title and message from the error catalog when available
  */
 export function showErrorWithSeverity(error: Error | HttpError, fallbackMessage?: string): void {
+  // Consent gate: the same 403 blocks every action until the user accepts the
+  // privacy policy. Surface one actionable, throttled prompt (with a deep-link
+  // to the web app) instead of an opaque "HTTP 403: Forbidden".
+  if (isConsentRequiredError(error)) {
+    void handleConsentError(error);
+    return;
+  }
+
   let message = fallbackMessage || error.message;
   let severity: string | undefined;
 
