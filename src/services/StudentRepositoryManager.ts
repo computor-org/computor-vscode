@@ -8,8 +8,10 @@ import { execGitClone } from '../git/gitCloneHelpers';
 import { CTGit } from '../git/CTGit';
 import { GitErrorHandler } from '../git/GitErrorHandler';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
-import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
+import { addBasicCredentialsToGitUrl, addTokenToGitUrl, extractOriginFromGitUrl, redactGitCredentials, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
+import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
+import type { CourseMemberRepositoryGet } from '../types/courseGit';
 
 interface RepositoryInfo {
   cloneUrl: string;
@@ -182,27 +184,33 @@ export class StudentRepositoryManager {
   }
 
   /**
-   * Whether the course's student repository is a backend-managed Forgejo repo.
-   * These are provisioned and cloned by {@link StudentRepositoryProvisioningService}
-   * with a backend-issued, repo-scoped clone token embedded directly in the git
-   * remote, so this flow must not prompt for a token or rewrite the remote for them.
+   * The course-level repository record plus how this flow must treat it.
    *
-   * Only Forgejo is treated this way: GitLab managed still needs the student's own
-   * PAT (already stored, so `ensureTokenForUrl` returns it silently) and GitLab BYO
-   * needs the student to paste one — neither is hosted by us.
+   * Managed Forgejo repos are provisioned and cloned by
+   * {@link StudentRepositoryProvisioningService} with a backend-issued,
+   * repo-scoped clone token embedded directly in the git remote, so this flow
+   * must not prompt for a token or rewrite the remote for them. GitLab
+   * (managed or legacy org-scoped) authenticates with the student's own PAT
+   * (already stored, so `ensureTokenForUrl` returns it silently); external
+   * repos with the token the student registered for their host.
    */
-  private async isManagedForgejoRepo(courseId: string, origin: string): Promise<boolean> {
+  private async resolveCourseRepoContext(
+    courseId: string,
+    origin: string
+  ): Promise<{ repo: CourseMemberRepositoryGet | null; forgejoManaged: boolean }> {
+    let repo: CourseMemberRepositoryGet | null = null;
     try {
-      const repo = await this.apiService.getCourseRepository(courseId);
-      if (repo?.mode === 'managed' && repo?.provider_type === 'forgejo') {
-        return true;
-      }
+      repo = await this.apiService.getCourseRepository(courseId);
     } catch (error) {
       console.warn('[StudentRepositoryManager] Could not determine course repository mode:', error);
     }
-    // Fallback: a stored Forgejo clone token proves the server is a backend-hosted
-    // Forgejo even if the repository record is momentarily unavailable.
-    return !!(await this.gitLabTokenManager.getManagedForgejoToken(origin));
+    let forgejoManaged = repo?.mode === 'managed' && repo?.provider_type === 'forgejo';
+    if (!repo) {
+      // Fallback: a stored Forgejo clone token proves the server is a
+      // backend-hosted Forgejo even if the record is momentarily unavailable.
+      forgejoManaged = !!(await this.gitLabTokenManager.getManagedForgejoToken(origin));
+    }
+    return { repo, forgejoManaged };
   }
 
   /**
@@ -230,7 +238,7 @@ export class StudentRepositoryManager {
     // manual token prompt here, and we must not rewrite their remotes. GitLab
     // (managed or BYO) still authenticates with the student's own token, so it
     // keeps going through ensureTokenForUrl (which returns a stored token silently).
-    const forgejoManaged = await this.isManagedForgejoRepo(courseId, gitlabUrl);
+    const { repo: courseRepo, forgejoManaged } = await this.resolveCourseRepoContext(courseId, gitlabUrl);
 
     let token: string | undefined;
     if (forgejoManaged) {
@@ -246,28 +254,45 @@ export class StudentRepositoryManager {
       void this.gitLabTokenManager.refreshWorkspaceGitCredentials(gitlabUrl);
     }
 
-    // Get course information to find upstream repository. Managed Forgejo repos are
-    // kept in sync with the course template by the backend, so we skip the
-    // client-side fork-sync (the student's repo-scoped credentials can't reach the
-    // template anyway).
+    // Find the upstream (student-template) location so new template commits can
+    // be merged into the student's repo. The course git descriptor covers every
+    // model: managed Forgejo/GitLab bindings AND legacy org-GitLab courses (the
+    // backend synthesizes their template ref — the old `course.repository`
+    // field this flow used to read no longer exists).
     let upstreamUrl: string | undefined;
-    if (!forgejoManaged) {
-      try {
-        const course = await this.apiService.getStudentCourse(courseId);
-        console.log('[StudentRepositoryManager] Course data:', JSON.stringify(course, null, 2));
-        if (course?.repository) {
-          // Construct upstream URL from provider_url and full_path
-          // The upstream is always the student-template repository in the course namespace
-          const providerUrl = course.repository.provider_url.replace(/\/$/, ''); // Remove trailing slash if present
-          const fullPath = course.repository.full_path.replace(/^\//, ''); // Remove leading slash if present
-          upstreamUrl = `${providerUrl}/${fullPath}/student-template.git`;
-          console.log(`[StudentRepositoryManager] Upstream repository: ${upstreamUrl}`);
+    let upstreamAuth: { username: string; password: string } | undefined;
+    try {
+      const descriptor = await this.apiService.getCourseGitDescriptor(courseId);
+      const template = descriptor?.template;
+      if (!template?.clone_url) {
+        console.log('[StudentRepositoryManager] No template location for course; skipping template sync');
+      } else if (forgejoManaged) {
+        // Auth: the clone credentials embedded in the origin remote (or the
+        // stored clone token) — provisioning grants read on the template.
+        upstreamUrl = template.clone_url;
+      } else if (courseRepo?.mode === 'external') {
+        if (template.server_type === 'forgejo') {
+          // One-time read-only template credential, minted fresh per sync.
+          const access = await this.apiService.getTemplateAccess(courseId);
+          if (access?.token && access.username) {
+            upstreamUrl = access.clone_url || template.clone_url;
+            upstreamAuth = { username: access.username, password: access.token };
+          } else {
+            console.log('[StudentRepositoryManager] Template access pending first git-server login; skipping template sync');
+          }
         } else {
-          console.log('[StudentRepositoryManager] No repository field in course data');
+          console.log('[StudentRepositoryManager] External repo on a non-Forgejo course; template sync not supported yet');
         }
-      } catch (error) {
-        console.warn('[StudentRepositoryManager] Could not get course information for upstream:', error);
+      } else {
+        // Managed GitLab and legacy org-GitLab: the student's PAT (the course
+        // token resolved above) has read access on the template.
+        upstreamUrl = template.clone_url;
       }
+      if (upstreamUrl) {
+        console.log(`[StudentRepositoryManager] Template upstream: ${upstreamUrl}`);
+      }
+    } catch (error) {
+      console.warn('[StudentRepositoryManager] Could not resolve template upstream:', error);
     }
     
       // Group repositories by (url, full_path) to get unique repositories
@@ -298,7 +323,7 @@ export class StudentRepositoryManager {
         const fullPath = (firstRepo as any).fullPath;
         const repoName = firstRepo.assignmentTitle || fullPath;
         report(`Setting up ${repoName}...`);
-        token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, forgejoManaged, onProgress, cancellationToken);
+        token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, upstreamAuth, courseRepo, forgejoManaged, onProgress, cancellationToken);
       }
     }
     
@@ -318,6 +343,8 @@ export class StudentRepositoryManager {
     token: string | undefined,
     courseContents: any[],
     upstreamUrl: string | undefined,
+    upstreamAuth: { username: string; password: string } | undefined,
+    courseRepo: CourseMemberRepositoryGet | null,
     forgejoManaged: boolean,
     onProgress?: (message: string) => void,
     cancellationToken?: vscode.CancellationToken
@@ -325,9 +352,21 @@ export class StudentRepositoryManager {
     void courseId; // Only used for logging
     const report = onProgress || (() => {});
     let effectiveToken = token;
-    // Use full_path with dots instead of slashes as the directory name
-    const dirName = fullPath.replace(/\//g, '.');
-    const repoPath = this.workspaceStructure.getStudentRepositoryPath(dirName);
+    // Directory scheme: when this IS the course-level repo, use the same
+    // repo_ref-based folder as the provisioning service and the tree, so both
+    // stacks agree on ONE clone location (a divergent name silently disabled
+    // the template sync). An already-cloned legacy dot-dir keeps working; the
+    // dot scheme also remains the fallback for legacy per-assignment repos.
+    const dotDir = this.workspaceStructure.getStudentRepositoryPath(fullPath.replace(/\//g, '.'));
+    let repoPath = dotDir;
+    if (courseRepo?.repo_ref && fullPath === courseRepo.repo_ref) {
+      const unified = this.workspaceStructure.getStudentRepositoryPath(
+        studentRepoFolderFromRef(courseRepo.repo_ref, courseRepo.course_member_id || courseRepo.id)
+      );
+      if (unified !== dotDir && !((await this.directoryExists(dotDir)) && !(await this.directoryExists(unified)))) {
+        repoPath = unified;
+      }
+    }
     const repoName = repoInfos[0]?.assignmentTitle || fullPath;
 
     const repoExists = await this.directoryExists(repoPath);
@@ -351,31 +390,15 @@ export class StudentRepositoryManager {
       effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken as string, repoName, report, cancellationToken);
     }
 
-    // Sync fork with upstream if available
+    // Merge new template commits if we resolved an upstream. CTGit.forkUpdate
+    // owns the whole cycle including the push back to origin.
     if (upstreamUrl) {
-      console.log('[StudentRepositoryManager] Checking if fork needs update from upstream');
-      report('Checking for upstream updates...');
-      // Automatically update fork without prompting
-      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, effectiveToken);
-      
+      console.log('[StudentRepositoryManager] Checking for template updates');
+      report('Checking for template updates...');
+      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, effectiveToken, upstreamAuth);
       if (updated) {
-        console.log('[StudentRepositoryManager] Fork was updated');
-        report('Upstream updates merged; pushing to origin...');
-        // Push the update to origin
-        try {
-          await execAsyncWithTimeout('git push origin', {
-            cwd: repoPath,
-            env: {
-              ...process.env,
-              GIT_TERMINAL_PROMPT: '0'
-            },
-            timeout: 30_000,
-            cancellationToken
-          });
-          console.log('[StudentRepositoryManager] Pushed fork update to origin');
-        } catch (error) {
-          console.error('[StudentRepositoryManager] Failed to push fork update:', error);
-        }
+        console.log('[StudentRepositoryManager] Repository updated from template');
+        report('Template updates merged.');
       }
     }
     
@@ -486,64 +509,48 @@ export class StudentRepositoryManager {
   }
 
   /**
-   * Sync fork with upstream repository
-   * Automatically updates the fork without prompting the user
+   * Merge new template commits into the student's repo (the GitLab
+   * "update fork" behavior). {@link CTGit.forkUpdate} owns the whole
+   * operation — upstream remote, stash (incl. untracked), branch detection,
+   * merge + conflict handling, push to origin, cleanup — this wrapper only
+   * resolves authentication for the upstream URL and maps failures to the
+   * user-facing UX.
    */
   private async syncForkWithUpstream(
     repoPath: string,
     upstreamUrl: string,
-    token?: string
+    token?: string,
+    upstreamAuth?: { username: string; password: string }
   ): Promise<boolean> {
-    const authenticatedUpstreamUrl = token ? addTokenToGitUrl(upstreamUrl, token) : upstreamUrl;
-    console.log('[StudentRepositoryManager] Authenticated upstream URL:', authenticatedUpstreamUrl);
-
-    let upstreamAddedByUs = false;
-    let stashRef: string | undefined;
+    let authenticatedUpstreamUrl: string;
+    if (upstreamAuth) {
+      // Pre-resolved credential (external repos: one-time template token).
+      authenticatedUpstreamUrl = addBasicCredentialsToGitUrl(upstreamUrl, upstreamAuth.username, upstreamAuth.password);
+    } else if (token) {
+      // GitLab PAT / stored Forgejo clone token.
+      authenticatedUpstreamUrl = addTokenToGitUrl(upstreamUrl, token);
+    } else {
+      // Managed Forgejo repos often have no separately stored token — their
+      // clone credentials live embedded in the origin remote URL (set by the
+      // provisioning service). Reuse them for the upstream (template) fetch;
+      // the backend grants the student read access there.
+      const originCreds = await this.getOriginRemoteCredentials(repoPath);
+      authenticatedUpstreamUrl = originCreds
+        ? addBasicCredentialsToGitUrl(upstreamUrl, originCreds.username, originCreds.password)
+        : upstreamUrl;
+    }
+    console.log('[StudentRepositoryManager] Syncing from template:', redactGitCredentials(authenticatedUpstreamUrl));
 
     try {
-      await this.ensureMergeNotInProgress(repoPath);
-
-      const cleanResult = await this.ensureWorkingTreeClean(repoPath);
-      stashRef = cleanResult.stashRef;
-      if (!cleanResult.proceed) {
-        return false;
-      }
-
-      const remoteExisted = await this.ensureUpstreamRemote(repoPath, authenticatedUpstreamUrl);
-      upstreamAddedByUs = !remoteExisted;
-
-      const defaultBranch = await this.getUpstreamDefaultBranch(repoPath);
-      if (!defaultBranch) {
-        vscode.window.showWarningMessage('Unable to detect the upstream default branch. Contact your lecturer.');
-        return false;
-      }
-
-      const behindCount = await this.getUpstreamBehindCount(repoPath, defaultBranch);
-      console.log('[StudentRepositoryManager] Fork behind upstream commits:', behindCount);
-
-      if (behindCount <= 0) {
-        return false;
-      }
-
-      // Automatically update fork without prompting user
-      console.log(`[StudentRepositoryManager] Automatically updating fork (${behindCount} commit(s) behind upstream)`);
-
-      const gitHelper = new CTGit(repoPath);
-      const updateResult = await gitHelper.forkUpdate(authenticatedUpstreamUrl, {
-        defaultBranch,
-        removeRemote: !remoteExisted,
+      const result = await new CTGit(repoPath).forkUpdate(authenticatedUpstreamUrl, {
         autoResolveConflicts: true  // Automatically resolve conflicts without user prompts
       });
-
-      if (updateResult.updated) {
-        console.log(`[StudentRepositoryManager] Fork updated from upstream/${defaultBranch}`);
-      } else {
-        console.log('[StudentRepositoryManager] Fork update finished without changes');
+      if (result.updated) {
+        console.log(`[StudentRepositoryManager] Updated from template (${result.behindCount} commit(s) behind upstream/${result.defaultBranch})`);
       }
-      return updateResult.updated;
+      return result.updated;
     } catch (error) {
-      console.error('[StudentRepositoryManager] Failed to sync fork:', error);
-      await this.abortMergeIfPossible(repoPath);
+      console.error('[StudentRepositoryManager] Failed to sync from template:', error);
 
       if (this.isCorruptIndexError(error) && this.corruptIndexHandler) {
         this.corruptIndexHandler(repoPath);
@@ -552,7 +559,7 @@ export class StudentRepositoryManager {
 
       const errorMessage = error instanceof Error ? error.message : String(error);
       await vscode.window.showWarningMessage(
-        `Failed to automatically update your repository from upstream. You may be working with an older version. Error: ${errorMessage}`,
+        `Failed to automatically update your repository from the course template. You may be working with an older version. Error: ${redactGitCredentials(errorMessage)}`,
         'View Git Output',
         'Dismiss'
       ).then(choice => {
@@ -562,172 +569,27 @@ export class StudentRepositoryManager {
       });
 
       return false;
-    } finally {
-      if (stashRef) {
-        await this.restoreStash(repoPath, stashRef);
-      }
-      if (upstreamAddedByUs) {
-        await this.removeUpstreamRemote(repoPath);
-      }
     }
   }
 
-  private async ensureWorkingTreeClean(repoPath: string): Promise<{ proceed: boolean; stashRef?: string }> {
-    const status = await execAsync('git status --porcelain', { cwd: repoPath });
-    const output = status.stdout.trim();
-    if (!output) {
-      return { proceed: true };
-    }
-
-    const hasConflicts = output.split('\n').some(line => line.startsWith('U') || line.includes('AA') || line.includes('DD'));
-    if (hasConflicts) {
-      const choice = await vscode.window.showWarningMessage(
-        'Your repository has unresolved merge conflicts. Resolve them manually and try again.',
-        'View Git Output',
-        'Cancel'
-      );
-      if (choice === 'View Git Output') {
-        await vscode.commands.executeCommand('git.showOutput');
-      }
-      return { proceed: false };
-    }
-
+  /**
+   * Credentials embedded in the origin remote URL — managed Forgejo repos are
+   * cloned with `clone_username:clone_token@` baked into the remote by the
+   * provisioning service, and there is no other reliable local copy of them.
+   */
+  private async getOriginRemoteCredentials(repoPath: string): Promise<{ username: string; password: string } | undefined> {
     try {
-      const stashMessage = `computor-auto-sync-${Date.now()}`;
-      await execAsync(`git stash push --include-untracked --message ${JSON.stringify(stashMessage)}`, { cwd: repoPath });
-      const stashRef = await this.findStashReference(repoPath, stashMessage);
-      if (stashRef) {
-        console.log(`[StudentRepositoryManager] Stashed local changes as ${stashRef} before syncing.`);
-      }
-      return { proceed: true, stashRef };
-    } catch (error) {
-      console.error('[StudentRepositoryManager] Failed to stash local changes automatically:', error);
-      vscode.window.showWarningMessage('Could not stash local changes before syncing repositories. Please resolve your changes manually and try again.');
-      return { proceed: false };
-    }
-  }
-
-  private async ensureMergeNotInProgress(repoPath: string): Promise<void> {
-    try {
-      await fs.promises.access(path.join(repoPath, '.git', 'MERGE_HEAD'));
-      console.warn('[StudentRepositoryManager] Detected unfinished merge. Aborting before continuing.');
-      await this.abortMergeIfPossible(repoPath);
-    } catch {
-      // No merge in progress
-    }
-  }
-
-  private async ensureUpstreamRemote(repoPath: string, remoteUrl: string): Promise<boolean> {
-    const { stdout } = await execAsync('git remote', { cwd: repoPath });
-    const remotes = stdout.split('\n').map(line => line.trim()).filter(Boolean);
-
-    const upstreamExists = remotes.includes('upstream');
-
-    if (!upstreamExists) {
-      await execAsync(`git remote add upstream "${remoteUrl}"`, { cwd: repoPath });
-    } else {
-      await execAsync(`git remote set-url upstream "${remoteUrl}"`, { cwd: repoPath });
-    }
-
-    await execAsyncWithTimeout('git fetch upstream', {
-      cwd: repoPath,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0'
-      },
-      timeout: 30_000
-    });
-
-    return upstreamExists;
-  }
-
-  private async removeUpstreamRemote(repoPath: string): Promise<void> {
-    try {
-      await execAsync('git remote remove upstream', { cwd: repoPath });
-    } catch {
-      // Ignore removal errors
-    }
-  }
-
-  private async findStashReference(repoPath: string, marker: string): Promise<string | undefined> {
-    try {
-      const { stdout } = await execAsync('git stash list --pretty=format:%gd::%gs', { cwd: repoPath });
-      const lines = stdout.split('\n').map(line => line.trim()).filter(Boolean);
-      for (const line of lines) {
-        const [ref, message] = line.split('::');
-        if (message && message.includes(marker)) {
-          return ref?.trim();
-        }
+      const { stdout } = await execAsync('git remote get-url origin', { cwd: repoPath });
+      const url = new URL(stdout.trim());
+      if (url.username && url.password) {
+        return { username: decodeURIComponent(url.username), password: decodeURIComponent(url.password) };
       }
     } catch (error) {
-      console.warn('[StudentRepositoryManager] Unable to read stash list:', error);
+      console.warn('[StudentRepositoryManager] Could not read origin remote credentials:', error);
     }
     return undefined;
   }
 
-  private async restoreStash(repoPath: string, stashRef: string): Promise<void> {
-    try {
-      await execAsync(`git stash pop ${stashRef}`, { cwd: repoPath });
-      console.log(`[StudentRepositoryManager] Restored stashed changes from ${stashRef}.`);
-    } catch (error) {
-      console.error(`[StudentRepositoryManager] Failed to restore stashed changes from ${stashRef}:`, error);
-      vscode.window.showWarningMessage('Automatic restoration of stashed changes failed. Please run "git stash pop" manually to recover your work.');
-    }
-  }
-
-  private async getUpstreamDefaultBranch(repoPath: string): Promise<string | undefined> {
-    try {
-      const { stdout } = await execAsyncWithTimeout('git remote show upstream', {
-        cwd: repoPath,
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: '0'
-        },
-        timeout: 30_000
-      });
-
-      const match = stdout.match(/HEAD branch:\s*(.+)/);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    } catch (error) {
-      console.warn('[StudentRepositoryManager] Failed to detect upstream default branch via remote show:', error);
-    }
-
-    for (const candidate of ['main', 'master']) {
-      try {
-        await execAsync(`git rev-parse --verify upstream/${candidate}`, { cwd: repoPath });
-        return candidate;
-      } catch {
-        // Continue searching
-      }
-    }
-
-    return undefined;
-  }
-
-  private async getUpstreamBehindCount(repoPath: string, branch: string): Promise<number> {
-    try {
-      const { stdout } = await execAsync(`git rev-list --count HEAD..upstream/${branch}`, { cwd: repoPath });
-      const parsed = parseInt(stdout.trim(), 10);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    } catch (error) {
-      console.warn('[StudentRepositoryManager] Failed to compute upstream divergence:', error);
-    }
-
-    return 0;
-  }
-
-  private async abortMergeIfPossible(repoPath: string): Promise<void> {
-    try {
-      await execAsync('git merge --abort', { cwd: repoPath });
-    } catch {
-      // Ignore when there is nothing to abort
-    }
-  }
-  
   private async cloneRepository(repoPath: string, cloneUrl: string, token: string, cancellationToken?: vscode.CancellationToken): Promise<string> {
     const attemptClone = async (activeToken: string): Promise<void> => {
       const authenticatedUrl = addTokenToGitUrl(cloneUrl, activeToken);

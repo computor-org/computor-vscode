@@ -71,6 +71,29 @@ export interface StudentRepositoryProvisioned extends CourseMemberRepositoryGet 
   clone_username?: string | null;
 }
 
+/**
+ * `POST /user/courses/{course_id}/template-access` — a **one-time, read-only**
+ * credential for the course's student-template.
+ *
+ * Lets a course member fetch the template over git: seed an external repo with
+ * full history, or merge new template commits into their repo. `token` is a
+ * fresh READ-ONLY PAT minted (rotated) on each call under its own token name —
+ * it never invalidates the provisioning `clone_token` — and must not be
+ * persisted. Null until the student's first git-server SSO login (re-call
+ * afterwards). Managed-Forgejo courses only.
+ */
+export interface TemplateAccessGet {
+  /** Git server type hosting the template: 'forgejo'. */
+  server_type: string;
+  /** Public clone URL of the template. */
+  clone_url?: string | null;
+  default_branch: string;
+  /** Git username to pair with `token`. */
+  username?: string | null;
+  /** One-time READ-ONLY PAT for the template; do not persist. */
+  token?: string | null;
+}
+
 /** Body for `POST /user/courses/{course_id}/register-repository` (BYO record). */
 export interface CourseMemberRepositoryRegister {
   mode: StudentRepoMode;

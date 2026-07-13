@@ -15,7 +15,8 @@ import type {
   StudentRepositoryProvisioned,
   CourseMemberRepositoryRegister,
   GitServerGet,
-  CourseGitBindingUpsert
+  CourseGitBindingUpsert,
+  TemplateAccessGet
 } from '../types/courseGit';
 import {
   OrganizationList,
@@ -1510,6 +1511,19 @@ export class ComputorApiService {
       `/user/courses/${courseId}/register-gitlab`,
       { provider_access_token: providerAccessToken }
     );
+    return response.data;
+  }
+
+  /**
+   * Mint a one-time READ-ONLY git credential for the course's student-template
+   * (managed-Forgejo courses). Used to seed external repos with full history and
+   * to authenticate the template-update fetch. `token` is null until the
+   * student's first git-server SSO login; never persist it — it rotates on each
+   * call under its own token name (separate from the provisioning clone token).
+   */
+  async getTemplateAccess(courseId: string): Promise<TemplateAccessGet> {
+    const client = await this.getHttpClient();
+    const response = await client.post<TemplateAccessGet>(`/user/courses/${courseId}/template-access`, {});
     return response.data;
   }
 
