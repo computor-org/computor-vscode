@@ -161,6 +161,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.updateFromTemplate",
+        "title": "Update Repository from Template",
+        "icon": "$(sync)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.commitAssignment",
         "title": "Commit Assignment",
         "icon": "$(git-commit)",
@@ -2012,6 +2018,11 @@
           "command": "computor.student.downloadTemplate",
           "when": "view == computor.student.courses && viewItem == studentCourseRoot",
           "group": "1_setup@2"
+        },
+        {
+          "command": "computor.student.updateFromTemplate",
+          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "group": "1_setup@3"
         },
         {
           "command": "computor.student.showMessages",

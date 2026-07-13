@@ -286,6 +286,57 @@ export class StudentCommands {
     });
   }
 
+  /**
+   * Merge new course-template commits into the student's repository for one
+   * course — the same sync that runs on refresh (clone/pull + template merge),
+   * but targeted and explicitly user-triggered.
+   */
+  private async updateFromTemplate(arg?: any): Promise<void> {
+    let courseId: string | undefined =
+      (typeof arg === 'string' ? arg : undefined) ||
+      arg?.courseId || arg?.course?.id || arg?.course_id;
+
+    if (!courseId) {
+      const courses = await this.apiService.getStudentCourses();
+      if (!courses.length) {
+        vscode.window.showInformationMessage('No student courses found.');
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(
+        courses.map((c: any) => ({
+          label: c.title || c.path || c.id,
+          description: (c.title && c.path) ? c.path : undefined,
+          courseId: c.id as string
+        })),
+        { title: 'Update repository from template — pick a course', ignoreFocusOut: true }
+      );
+      if (!picked) { return; }
+      courseId = picked.courseId;
+    }
+
+    const manager = this.repositoryManager;
+    if (!manager) {
+      vscode.window.showWarningMessage('Repository manager is not available.');
+      return;
+    }
+    const cid = courseId;
+
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Updating repository from course template...',
+      cancellable: true
+    }, async (progress, token) => {
+      try {
+        await manager.autoSetupRepositories(cid, (m) => progress.report({ message: m }), undefined, token);
+        this.treeDataProvider.refresh();
+      } catch (error: any) {
+        const message = redactGitCredentials(error?.message || String(error));
+        console.error('[StudentCommands] Template update failed:', message);
+        vscode.window.showErrorMessage(`Template update failed: ${message}`);
+      }
+    });
+  }
+
   private async reportSetupOutcome(outcome: SetUpOutcome): Promise<void> {
     switch (outcome.status) {
       case 'cloned':
@@ -434,6 +485,11 @@ export class StudentCommands {
     // Download the course template as a ZIP (download mode / offline work).
     register('computor.student.downloadTemplate', async (arg?: any) => {
       await this.downloadCourseTemplate(arg);
+    });
+
+    // Merge new course-template commits into the student's repository.
+    register('computor.student.updateFromTemplate', async (arg?: any) => {
+      await this.updateFromTemplate(arg);
     });
 
     // Refresh student view

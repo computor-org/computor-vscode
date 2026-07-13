@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
 import { SimpleGit } from 'simple-git';
 import { createSimpleGit } from './simpleGitFactory';
@@ -276,6 +277,15 @@ export class CTGit {
     options?: { defaultBranch?: string; removeRemote?: boolean; autoResolveConflicts?: boolean }
   ): Promise<{ updated: boolean; defaultBranch?: string; behindCount?: number }> {
     const remoteName = 'upstream';
+
+    // An unfinished merge (leftover MERGE_HEAD) would fail every git operation
+    // below — abort it before starting.
+    try {
+      await fs.promises.access(path.join(this.repoPath, '.git', 'MERGE_HEAD'));
+      console.warn('[CTGit] Unfinished merge detected. Aborting it before fork update.');
+      try { await this.simpleGit.raw(['merge', '--abort']); } catch { /* best effort */ }
+    } catch { /* no merge in progress */ }
+
     await this.ensureRemote(remoteName, remoteUrl);
     await this.simpleGit.fetch(remoteName);
 
@@ -317,7 +327,9 @@ export class CTGit {
 
     try {
       try {
-        const stashResult = await this.simpleGit.stash();
+        // Include untracked files: a merge bringing in a file that exists
+        // untracked locally would otherwise abort with "would be overwritten".
+        const stashResult = await this.simpleGit.stash(['push', '--include-untracked']);
         stashCreated = !/No local changes to save/i.test(stashResult);
       } catch (stashError) {
         console.warn('[CTGit] Failed to stash local changes before fork update:', stashError);

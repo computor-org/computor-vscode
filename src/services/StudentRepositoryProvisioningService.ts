@@ -232,7 +232,33 @@ export class StudentRepositoryProvisioningService {
       return { status: 'already-cloned', path: targetPath, repo };
     }
 
-    // Seed: download the course template, push it into the empty repo, link upstream.
+    if (descriptor.template?.server_type === 'forgejo') {
+      // History-preserving seed: clone the template (read-only one-time
+      // credential) and push it into the student's empty repo. The shared
+      // ancestry is what makes later template updates plain git merges.
+      report('Requesting template access…');
+      const access = await this.api.getTemplateAccess(courseId);
+      if (!access.clone_url) {
+        throw new Error('The course template has no clone URL.');
+      }
+      if (!access.token || !access.username) {
+        // Account appears on first SSO login — caller prompts, then re-runs.
+        return { status: 'forgejo-login-required', repo };
+      }
+      report('Seeding your repository from the course template…');
+      await this.seedFromTemplateClone(
+        targetPath,
+        addBasicCredentialsToGitUrl(access.clone_url, access.username, access.token),
+        access.clone_url,
+        authUrl,
+        access.default_branch || 'main',
+        opts?.cancellationToken
+      );
+      return { status: 'cloned', path: targetPath, repo };
+    }
+
+    // Non-Forgejo template (deferred): seed from the snapshot ZIP — the repo
+    // starts without shared history, so template updates won't merge cleanly.
     report('Downloading the course template…');
     const buffer = await this.api.downloadTemplateArchive(courseId);
     await fs.promises.mkdir(targetPath, { recursive: true });
@@ -267,6 +293,26 @@ export class StudentRepositoryProvisioningService {
       await this.context.secrets.store(key, token.trim());
     }
     return token.trim();
+  }
+
+  /** Clone the course template WITH history and push it into the student's
+   * empty origin. The template stays linked as `upstream` (credential-free —
+   * template tokens rotate, the sync flow re-mints and injects one per fetch). */
+  private async seedFromTemplateClone(
+    repoPath: string,
+    authTemplateUrl: string,
+    plainTemplateUrl: string,
+    authOriginUrl: string,
+    defaultBranch: string,
+    cancellationToken?: vscode.CancellationToken
+  ): Promise<void> {
+    await fs.promises.mkdir(path.dirname(repoPath), { recursive: true });
+    await execGitClone(authTemplateUrl, repoPath, { cancellationToken });
+    const run = (cmd: string) => execAsyncWithTimeout(cmd, { cwd: repoPath, timeout: 60_000 });
+    await run('git remote rename origin upstream');
+    await run(`git remote set-url upstream "${plainTemplateUrl}"`);
+    await run(`git remote add origin "${authOriginUrl}"`);
+    await run(`git push -u origin "${defaultBranch}"`);
   }
 
   /** Initialise the extracted template as a git repo, push it to the student's
