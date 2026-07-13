@@ -8,7 +8,7 @@ import { execGitClone } from '../git/gitCloneHelpers';
 import { CTGit } from '../git/CTGit';
 import { GitErrorHandler } from '../git/GitErrorHandler';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
-import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
+import { addBasicCredentialsToGitUrl, addTokenToGitUrl, extractOriginFromGitUrl, redactGitCredentials, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 
 interface RepositoryInfo {
@@ -246,12 +246,26 @@ export class StudentRepositoryManager {
       void this.gitLabTokenManager.refreshWorkspaceGitCredentials(gitlabUrl);
     }
 
-    // Get course information to find upstream repository. Managed Forgejo repos are
-    // kept in sync with the course template by the backend, so we skip the
-    // client-side fork-sync (the student's repo-scoped credentials can't reach the
-    // template anyway).
+    // Find the upstream (student-template) repository so new template commits
+    // can be merged into the student's repo.
     let upstreamUrl: string | undefined;
-    if (!forgejoManaged) {
+    if (forgejoManaged) {
+      // Managed Forgejo: the course git descriptor carries the template's clone
+      // URL, and provisioning grants the student read access on the template —
+      // so the clone credentials embedded in the origin remote authenticate the
+      // upstream fetch too.
+      try {
+        const descriptor = await this.apiService.getCourseGitDescriptor(courseId);
+        upstreamUrl = descriptor?.template?.clone_url || undefined;
+        if (upstreamUrl) {
+          console.log(`[StudentRepositoryManager] Template upstream: ${upstreamUrl}`);
+        } else {
+          console.log('[StudentRepositoryManager] Descriptor has no template clone_url; skipping template sync');
+        }
+      } catch (error) {
+        console.warn('[StudentRepositoryManager] Could not get course git descriptor for template sync:', error);
+      }
+    } else {
       try {
         const course = await this.apiService.getStudentCourse(courseId);
         console.log('[StudentRepositoryManager] Course data:', JSON.stringify(course, null, 2));
@@ -494,8 +508,18 @@ export class StudentRepositoryManager {
     upstreamUrl: string,
     token?: string
   ): Promise<boolean> {
-    const authenticatedUpstreamUrl = token ? addTokenToGitUrl(upstreamUrl, token) : upstreamUrl;
-    console.log('[StudentRepositoryManager] Authenticated upstream URL:', authenticatedUpstreamUrl);
+    let authenticatedUpstreamUrl = token ? addTokenToGitUrl(upstreamUrl, token) : upstreamUrl;
+    if (!token) {
+      // Managed Forgejo repos often have no separately stored token — their
+      // clone credentials live embedded in the origin remote URL (set by the
+      // provisioning service). Reuse them for the upstream (template) fetch;
+      // the backend grants the student read access there.
+      const originCreds = await this.getOriginRemoteCredentials(repoPath);
+      if (originCreds) {
+        authenticatedUpstreamUrl = addBasicCredentialsToGitUrl(upstreamUrl, originCreds.username, originCreds.password);
+      }
+    }
+    console.log('[StudentRepositoryManager] Authenticated upstream URL:', redactGitCredentials(authenticatedUpstreamUrl));
 
     let upstreamAddedByUs = false;
     let stashRef: string | undefined;
@@ -570,6 +594,24 @@ export class StudentRepositoryManager {
         await this.removeUpstreamRemote(repoPath);
       }
     }
+  }
+
+  /**
+   * Credentials embedded in the origin remote URL — managed Forgejo repos are
+   * cloned with `clone_username:clone_token@` baked into the remote by the
+   * provisioning service, and there is no other reliable local copy of them.
+   */
+  private async getOriginRemoteCredentials(repoPath: string): Promise<{ username: string; password: string } | undefined> {
+    try {
+      const { stdout } = await execAsync('git remote get-url origin', { cwd: repoPath });
+      const url = new URL(stdout.trim());
+      if (url.username && url.password) {
+        return { username: decodeURIComponent(url.username), password: decodeURIComponent(url.password) };
+      }
+    } catch (error) {
+      console.warn('[StudentRepositoryManager] Could not read origin remote credentials:', error);
+    }
+    return undefined;
   }
 
   private async ensureWorkingTreeClean(repoPath: string): Promise<{ proceed: boolean; stashRef?: string }> {
