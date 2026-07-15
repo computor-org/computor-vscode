@@ -64,8 +64,18 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 ? this.findNodeById(nodes, this.selectedNodeId)
                 : undefined;
 
+            const hasResults = this.testResults
+                && typeof this.testResults === 'object'
+                && Object.keys(this.testResults).length > 0;
+
             if (selectedNode) {
                 this.panelProvider.updateTestResults(selectedNode);
+            } else if (hasResults) {
+                // Results were just loaded (e.g. after a workspace restart via
+                // "Show Test Result") but the user hasn't clicked a tree node
+                // yet. Show the full result summary instead of blanking the
+                // panel to "No test results available" (issue #273).
+                this.panelProvider.updateTestResults({ result_json: this.testResults });
             } else {
                 this.panelProvider.clearResults();
             }

@@ -809,6 +809,9 @@ class UnifiedController {
     // Initialize tree view
     const tree = new StudentCourseContentTreeProvider(api, courseSelectionService, this.context);
     if (this.wsService) tree.setWebSocketService(this.wsService);
+    // Last assignment selected in the tree, so the results view can be
+    // rehydrated (rather than cleared) when it becomes visible again (#273).
+    let lastSelectedAssignment: any | undefined;
     registerTreeView('computor.student.courses', {
       provider: tree,
       options: { showCollapseAll: true },
@@ -822,15 +825,22 @@ class UnifiedController {
         const selected = event.selection[0];
         if (!selected) return;
         if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
-          if ((selected as any).courseContent?.result) {
-            void vscode.commands.executeCommand('computor.showTestResults', selected);
-          } else {
-            void vscode.commands.executeCommand('computor.results.clear');
-          }
+          lastSelectedAssignment = selected;
+          // Always load the latest result from the backend rather than gating on
+          // the possibly-stale in-memory tree item — after a workspace restart
+          // the item may not carry `.result` yet even though a prior result
+          // exists server-side (issue #273). Silent: a plain selection should
+          // update the panel without popups or hijacking the sidebar.
+          void vscode.commands.executeCommand('computor.showTestResults', selected, { silent: true });
         }
       },
       onVisibility: (event) => {
-        if (event.visible) void vscode.commands.executeCommand('computor.results.clear');
+        // Re-show the last selected assignment's results when the view becomes
+        // visible again, instead of wiping the panel to "No test results
+        // available" every time (issue #273).
+        if (event.visible && lastSelectedAssignment) {
+          void vscode.commands.executeCommand('computor.showTestResults', lastSelectedAssignment, { silent: true });
+        }
       }
     }, this.disposables);
 
