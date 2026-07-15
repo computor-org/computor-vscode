@@ -925,6 +925,23 @@ export class StudentCommands {
         // Check if current commit has been tested
         const currentCommitTested = latestTestedArtifact?.version_identifier === currentCommitHash;
 
+        // Resolve testing_service_id authoritatively from the backend before
+        // deciding whether to test. The tree item / list DTO can be stale or
+        // partial on a fresh load and omit it, which previously made the very
+        // first submit skip testing entirely — tests only started running after
+        // the student had manually tested once (which refreshed the item)
+        // (issue #271). Fall back to the tree item's value if the fetch fails.
+        if (courseContentId) {
+          try {
+            const freshContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
+            if (freshContent && freshContent.testing_service_id !== undefined) {
+              testingServiceId = freshContent.testing_service_id;
+            }
+          } catch (resolveError) {
+            console.warn('[submitAssignment] Failed to resolve testing_service_id from backend; using tree item value:', resolveError);
+          }
+        }
+
         // If testing is required and current commit hasn't been tested, run test first
         if (testingServiceId && !currentCommitTested) {
           console.log(`[submitAssignment] Testing required (testing_service_id: ${testingServiceId}), running test first...`);
