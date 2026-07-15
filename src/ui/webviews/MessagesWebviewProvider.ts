@@ -88,9 +88,31 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     this.wsService = wsService;
   }
 
+  /**
+   * Cached id of the signed-in user, used to suppress our own typing echoes.
+   * The backend fans typing events back to the sender, so without a reliable
+   * self-match the user sees their own "is typing" indicator (issue #268).
+   * getCurrentUserId() reads the (already-decoded) JWT synchronously and is
+   * usually enough; fall back to an async /user fetch when it isn't ready yet.
+   */
+  private currentUserId?: string;
+
+  private ensureCurrentUserId(): void {
+    if (this.currentUserId) return;
+    const sync = this.apiService.getCurrentUserId();
+    if (sync) {
+      this.currentUserId = sync;
+      return;
+    }
+    void this.apiService.getCurrentUser()
+      .then(user => { if (user?.id) this.currentUserId = user.id; })
+      .catch(() => undefined);
+  }
+
   async showMessages(target: MessageTargetContext): Promise<void> {
     target = this.withReplyPolicy(target);
     const currentUserId = this.apiService.getCurrentUserId();
+    if (currentUserId) this.currentUserId = currentUserId;
     const [identity, rawMessages] = await Promise.all([
       currentUserId ? this.apiService.getCurrentUser().catch(() => undefined) : Promise.resolve(undefined),
       this.apiService.listMessages(target.query)
@@ -262,8 +284,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     console.log('[MessagesWebviewProvider] handleWsTypingUpdate', { userId, userName, isTyping });
 
     // Don't show typing indicator for the current user
-    const currentUserId = this.apiService.getCurrentUserId();
-    console.log('[MessagesWebviewProvider] currentUserId:', currentUserId, 'received userId:', userId);
+    this.ensureCurrentUserId();
+    const currentUserId = this.currentUserId;
     if (currentUserId && userId === currentUserId) {
       console.log('[MessagesWebviewProvider] Ignoring own typing update (same user)');
       return;
