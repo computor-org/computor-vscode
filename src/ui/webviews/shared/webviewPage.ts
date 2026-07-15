@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { escapeHtml } from './webviewHelpers';
 
@@ -54,12 +55,42 @@ export function renderWebviewPage(
   const assetUri = (file: string): vscode.Uri =>
     webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'webview-ui', ...file.split('/')));
 
+  // Inline CSS/JS directly into the document instead of linking them via
+  // asWebviewUri. In code-server (VS Code in the browser) those URIs are served
+  // through a service worker, which Firefox blocks under its stricter
+  // cross-origin/service-worker rules — so every stylesheet and script silently
+  // failed to load and the page rendered blank (issue #267). Inlining removes
+  // the fetch entirely and is allowed by the CSP ('unsafe-inline' styles,
+  // nonce'd scripts). If a file can't be read we fall back to the linked form.
+  const readAsset = (file: string): string | undefined => {
+    try {
+      return fs.readFileSync(
+        vscode.Uri.joinPath(extensionUri, 'webview-ui', ...file.split('/')).fsPath,
+        'utf8'
+      );
+    } catch {
+      return undefined;
+    }
+  };
+
   const cssLinks = ['base.css', ...(options.cssFiles ?? [])]
-    .map((file) => `<link rel="stylesheet" href="${assetUri(file)}">`)
+    .map((file) => {
+      const css = readAsset(file);
+      return css !== undefined
+        ? `<style>\n${css}\n</style>`
+        : `<link rel="stylesheet" href="${assetUri(file)}">`;
+    })
     .join('\n  ');
 
   const scriptTags = ['base.js', ...(options.scriptFiles ?? [])]
-    .map((file) => `<script nonce="${nonce}" src="${assetUri(file)}"></script>`)
+    .map((file) => {
+      const js = readAsset(file);
+      // Break any literal </script in the source so it can't terminate the
+      // inline <script> element early; <\/script parses identically in JS.
+      return js !== undefined
+        ? `<script nonce="${nonce}">\n${js.replace(/<\/(script)/gi, '<\\/$1')}\n</script>`
+        : `<script nonce="${nonce}" src="${assetUri(file)}"></script>`;
+    })
     .join('\n  ');
 
   const initialStateScript =
