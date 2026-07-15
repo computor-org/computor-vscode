@@ -536,7 +536,11 @@ export class StudentCommands {
       await this.exportCourseExamples(item);
     });
 
-    register('computor.showTestResults', async (item?: any) => {
+    register('computor.showTestResults', async (item?: any, opts?: { silent?: boolean }) => {
+      // `silent` is used when the panel is refreshed from a plain tree selection
+      // or view-visibility change: no popups, and no yanking the whole sidebar
+      // to the test-results container.
+      const silent = opts?.silent === true;
       try {
         let resultPayload: any | undefined;
         let resultId: string | undefined;
@@ -544,21 +548,19 @@ export class StudentCommands {
 
         // Get course content ID from the item (student tree uses courseContent, tutor tree uses content)
         const courseContentId = item?.courseContent?.id || item?.content?.id;
+        const cacheKey = courseContentId ? `testResults:${courseContentId}` : undefined;
 
         if (courseContentId) {
-          // Fetch fresh data from API to get latest test results
+          // Fetch fresh data from API to get latest test results. The backend
+          // returns the latest *finished* result across all commits, so a prior
+          // run survives a workspace restart even though the in-memory tree item
+          // may no longer carry it (issue #273).
           const freshCourseContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
-          console.log('[showTestResults] Fresh course content:', JSON.stringify(freshCourseContent, null, 2));
           const result = freshCourseContent?.result;
-          console.log('[showTestResults] Result object:', JSON.stringify(result, null, 2));
-          console.log('[showTestResults] Result keys:', result ? Object.keys(result) : 'no result');
           if (result) {
-            resultPayload = result.result_json ?? result;
+            resultPayload = (result as any).result_json ?? result;
             resultId = result.id;
-            resultArtifacts = result.result_artifacts;
-            console.log('[showTestResults] Result payload:', JSON.stringify(resultPayload, null, 2));
-            console.log('[showTestResults] Has result_json?', !!result.result_json);
-            console.log('[showTestResults] Result artifacts count:', resultArtifacts?.length ?? 0);
+            resultArtifacts = (result as any).result_artifacts;
           }
         } else {
           // Fallback to item data if no ID available
@@ -571,14 +573,36 @@ export class StudentCommands {
           }
         }
 
-        if (resultPayload) {
-          await vscode.commands.executeCommand('computor.results.open', resultPayload, resultId, resultArtifacts);
+        // Persist the latest result per course content so it survives a
+        // workspace restart, and fall back to it when the backend has nothing to
+        // return (e.g. the most recent run crashed and left no finished result).
+        if (cacheKey) {
+          if (resultPayload) {
+            void this.context.workspaceState.update(cacheKey, { resultPayload, resultId, resultArtifacts });
+          } else {
+            const cached = this.context.workspaceState.get<any>(cacheKey);
+            if (cached?.resultPayload) {
+              resultPayload = cached.resultPayload;
+              resultId = cached.resultId;
+              resultArtifacts = cached.resultArtifacts;
+            }
+          }
         }
 
-        try {
-          await vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
-        } catch (focusError) {
-          console.warn('[StudentCommands] Failed to focus test results view container:', focusError);
+        if (resultPayload) {
+          await vscode.commands.executeCommand('computor.results.open', resultPayload, resultId, resultArtifacts);
+        } else {
+          // Nothing to show — reflect the empty state rather than leaving a
+          // previous assignment's results on screen.
+          await vscode.commands.executeCommand('computor.results.clear');
+        }
+
+        if (!silent) {
+          try {
+            await vscode.commands.executeCommand('workbench.view.extension.computor-test-results');
+          } catch (focusError) {
+            console.warn('[StudentCommands] Failed to focus test results view container:', focusError);
+          }
         }
 
         try {
@@ -587,12 +611,14 @@ export class StudentCommands {
           console.warn('[StudentCommands] Failed to focus test results panel:', panelError);
         }
 
-        if (!resultPayload) {
+        if (!resultPayload && !silent) {
           vscode.window.showInformationMessage('No stored test results yet. Run tests to generate new results.');
         }
       } catch (error) {
         console.error('[StudentCommands] Failed to show test results:', error);
-        vscode.window.showErrorMessage('Failed to open test results. Please run tests again.');
+        if (!silent) {
+          vscode.window.showErrorMessage('Failed to open test results. Please run tests again.');
+        }
       }
     });
 
