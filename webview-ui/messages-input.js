@@ -301,6 +301,25 @@
     return container;
   }
 
+  // Patch only the footer (typing indicator vs. markdown hint) in place.
+  // A full render() rebuilds the whole form and recreates the contenteditable
+  // #message-body, which destroys focus and the caret — so typing updates must
+  // never go through setState()/render() or the user gets locked out of the
+  // input after every keystroke (issue #268).
+  function updateTypingIndicator() {
+    const footer = root()?.querySelector('.actions-bar');
+    if (!footer) return;
+    footer.innerHTML = '';
+    if (state.typingUsers && state.typingUsers.length > 0) {
+      footer.appendChild(renderTypingIndicator(state.typingUsers));
+    } else {
+      footer.appendChild(createElement('span', {
+        className: 'markdown-hint',
+        textContent: 'Markdown supported'
+      }));
+    }
+  }
+
   function render() {
     const mount = root();
     if (!mount) {
@@ -688,8 +707,10 @@
         setState({ loading: Boolean(message.data?.loading) });
         break;
       case 'typingUpdate':
-        console.log('[messages-input] Received typingUpdate:', message.data?.typingUsers);
-        setState({ typingUsers: message.data?.typingUsers || [] });
+        // Patch the footer in place — do NOT setState()/render(), which would
+        // recreate the editor and steal focus mid-typing (issue #268).
+        state.typingUsers = message.data?.typingUsers || [];
+        updateTypingIndicator();
         break;
       case 'mentionableUsers':
         mention.users = (message.data && message.data.users) || [];
