@@ -12,6 +12,7 @@ import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/StudentRepositoryProvisioningService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
+import { renderWebviewPage } from '../ui/webviews/shared/webviewPage';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
@@ -90,6 +91,71 @@ export class StudentCommands {
     this.courseContentTreeProvider = provider;
   }
 
+  private readmePreviewPanel?: vscode.WebviewPanel;
+
+  /**
+   * Render a README markdown file in our own webview using the bundled marked.
+   * Preferred over the built-in markdown preview because our webview inlines its
+   * assets and therefore renders under code-server on Firefox, where the
+   * built-in preview stays blank (issue #267). Images referenced with relative
+   * paths are resolved against the README's directory via the webview resource
+   * origin (works in Chrome; in Firefox text still renders even if an image is
+   * blocked).
+   */
+  private async previewReadmeInWebview(readmePath: string): Promise<void> {
+    const dir = path.dirname(readmePath);
+    const markdown = fs.readFileSync(readmePath, 'utf8');
+    const title = path.basename(readmePath);
+    const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
+
+    if (!this.readmePreviewPanel) {
+      this.readmePreviewPanel = vscode.window.createWebviewPanel(
+        'computor.readmePreview',
+        title,
+        column,
+        { enableScripts: true, localResourceRoots: [vscode.Uri.file(dir)] }
+      );
+      this.readmePreviewPanel.onDidDispose(() => { this.readmePreviewPanel = undefined; });
+    } else {
+      this.readmePreviewPanel.reveal(column);
+    }
+
+    const panel = this.readmePreviewPanel;
+    panel.title = title;
+    const baseUri = panel.webview.asWebviewUri(vscode.Uri.file(dir)).toString();
+    panel.webview.html = renderWebviewPage(panel.webview, this.context.extensionUri, {
+      title,
+      bodyHtml: '<div class="markdown-body" id="readme"></div>',
+      scriptFiles: ['lib/marked.min.js'],
+      initialState: { markdown, baseUri },
+      container: true,
+      inlineScript: `
+        const state = window.__INITIAL_STATE__ || {};
+        const el = document.getElementById('readme');
+        try {
+          el.innerHTML = (window.marked && window.marked.parse)
+            ? window.marked.parse(state.markdown || '')
+            : '';
+          const base = (state.baseUri || '').replace(/\\/+$/, '');
+          el.querySelectorAll('img[src]').forEach(function (img) {
+            const src = img.getAttribute('src') || '';
+            const lower = src.toLowerCase();
+            const absolute = lower.indexOf('http:') === 0 || lower.indexOf('https:') === 0
+              || lower.indexOf('data:') === 0 || src.indexOf('//') === 0 || src.indexOf('vscode-') === 0;
+            if (!absolute) {
+              let clean = src;
+              if (clean.indexOf('./') === 0) clean = clean.slice(2);
+              while (clean.indexOf('/') === 0) clean = clean.slice(1);
+              img.setAttribute('src', base + '/' + clean);
+            }
+          });
+        } catch (e) {
+          el.textContent = state.markdown || '';
+        }
+      `
+    });
+  }
+
   private async openReadmeIfExists(dir: string, silent: boolean = false): Promise<boolean> {
     try {
       let readmePath: string | undefined;
@@ -132,12 +198,20 @@ export class StudentCommands {
       }
 
       if (readmePath && fs.existsSync(readmePath)) {
-        const readmeUri = vscode.Uri.file(readmePath);
-        // Open beside active editor if one exists
-        if (vscode.window.activeTextEditor) {
-          await vscode.commands.executeCommand('markdown.showPreviewToSide', readmeUri);
-        } else {
-          await vscode.commands.executeCommand('markdown.showPreview', readmeUri);
+        try {
+          // Render through our own webview (marked) rather than the built-in
+          // markdown preview: in code-server on Firefox the built-in preview's
+          // service-worker-served assets are blocked and the tab renders blank
+          // (issue #267). Our webview inlines its assets, so it works there.
+          await this.previewReadmeInWebview(readmePath);
+        } catch (previewError) {
+          console.warn('[openReadmeIfExists] Custom README preview failed, falling back to built-in:', previewError);
+          const readmeUri = vscode.Uri.file(readmePath);
+          if (vscode.window.activeTextEditor) {
+            await vscode.commands.executeCommand('markdown.showPreviewToSide', readmeUri);
+          } else {
+            await vscode.commands.executeCommand('markdown.showPreview', readmeUri);
+          }
         }
         return true;
       }
