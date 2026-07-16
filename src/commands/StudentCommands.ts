@@ -619,6 +619,7 @@ export class StudentCommands {
         let resultPayload: any | undefined;
         let resultId: string | undefined;
         let resultArtifacts: any[] | undefined;
+        let rawResult: any | undefined;
 
         // Get course content ID from the item (student tree uses courseContent, tutor tree uses content)
         const courseContentId = item?.courseContent?.id || item?.content?.id;
@@ -630,21 +631,33 @@ export class StudentCommands {
           // run survives a workspace restart even though the in-memory tree item
           // may no longer carry it (issue #273).
           const freshCourseContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
-          const result = freshCourseContent?.result;
-          if (result) {
-            resultPayload = (result as any).result_json ?? result;
-            resultId = result.id;
-            resultArtifacts = (result as any).result_artifacts;
-          }
+          rawResult = freshCourseContent?.result;
         } else {
           // Fallback to item data if no ID available
           const courseContent = (item?.courseContent || item?.content) as any;
-          const result = courseContent?.result;
-          if (result) {
-            resultPayload = result.result_json ?? result;
-            resultId = result.id;
-            resultArtifacts = result.result_artifacts;
+          rawResult = courseContent?.result;
+        }
+
+        if (rawResult) {
+          resultId = rawResult.id;
+          let resultJson = rawResult.result_json;
+          resultArtifacts = rawResult.result_artifacts;
+
+          // The course-content endpoints serialize `result` through the
+          // lighter list DTO, so result_json/result_artifacts come back
+          // empty even when a finished result exists. GET /results/{id}
+          // always carries both — hydrate before falling back to the bare
+          // DTO, which the panel can't render as test results.
+          if (!resultJson && resultId) {
+            const fullResult = await this.apiService.getResult(resultId);
+            if (fullResult) {
+              resultJson = fullResult.result_json;
+              if (!resultArtifacts?.length) {
+                resultArtifacts = fullResult.result_artifacts;
+              }
+            }
           }
+          resultPayload = resultJson ?? rawResult;
         }
 
         // Persist the latest result per course content so it survives a
