@@ -92,31 +92,48 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
    * Cached id of the signed-in user, used to suppress our own typing echoes.
    * The backend fans typing events back to the sender, so without a reliable
    * self-match the user sees their own "is typing" indicator (issue #268).
-   * getCurrentUserId() reads the (already-decoded) JWT synchronously and is
-   * usually enough; fall back to an async /user fetch when it isn't ready yet.
+   * SSO/Bearer sessions expose the id synchronously via the decoded JWT, but
+   * API-token sessions (code-server/Coder workspaces) only learn it from
+   * GET /user — so resolution is a promise and typing events await it.
    */
   private currentUserId?: string;
+  private currentUserIdPromise?: Promise<string | undefined>;
 
-  private ensureCurrentUserId(): void {
-    if (this.currentUserId) return;
+  private ensureCurrentUserId(): Promise<string | undefined> {
+    if (this.currentUserId) {
+      return Promise.resolve(this.currentUserId);
+    }
     const sync = this.apiService.getCurrentUserId();
     if (sync) {
       this.currentUserId = sync;
-      return;
+      return Promise.resolve(sync);
     }
-    void this.apiService.getCurrentUser()
-      .then(user => { if (user?.id) this.currentUserId = user.id; })
-      .catch(() => undefined);
+    if (!this.currentUserIdPromise) {
+      this.currentUserIdPromise = this.apiService.getCurrentUser()
+        .then(user => {
+          if (user?.id) this.currentUserId = user.id;
+          return this.currentUserId;
+        })
+        .catch(() => undefined)
+        .finally(() => { this.currentUserIdPromise = undefined; });
+    }
+    return this.currentUserIdPromise;
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
     target = this.withReplyPolicy(target);
-    const currentUserId = this.apiService.getCurrentUserId();
-    if (currentUserId) this.currentUserId = currentUserId;
+    // Resolve identity unconditionally, and before subscribing to the WS
+    // channel below: API-token sessions can't read the user id from the
+    // token, so GET /user is the only way to learn it. Skipping it left the
+    // own-typing filter inert in Coder workspaces (issue #268).
     const [identity, rawMessages] = await Promise.all([
-      currentUserId ? this.apiService.getCurrentUser().catch(() => undefined) : Promise.resolve(undefined),
+      this.apiService.getCurrentUser().catch(() => undefined),
       this.apiService.listMessages(target.query)
     ]);
+    if (identity?.id) {
+      this.currentUserId = identity.id;
+    }
+    const currentUserId = this.currentUserId ?? this.apiService.getCurrentUserId();
 
     const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
     void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
@@ -211,7 +228,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       },
       onTypingUpdate: (channel, userId, userName, isTyping) => {
         if (channel === this.currentWsChannel) {
-          this.handleWsTypingUpdate(userId, userName, isTyping);
+          void this.handleWsTypingUpdate(userId, userName, isTyping);
         }
       }
     });
@@ -239,8 +256,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       data: enrichedMessage
     });
 
-    // Handle read marking if message is not from current user
-    if (!messageData.is_author && messageData.id) {
+    // Handle read marking if message is not from current user. Use the
+    // enriched is_author — the raw WS payload has it stripped (see above).
+    if (!enrichedMessage.is_author && messageData.id) {
       console.log('[MessagesWebviewProvider] Message is not from current user, will mark as read');
       if (this.isPanelVisible) {
         // Panel is visible - mark as read immediately
@@ -280,12 +298,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     });
   }
 
-  private handleWsTypingUpdate(userId: string, userName: string, isTyping: boolean): void {
+  private async handleWsTypingUpdate(userId: string, userName: string, isTyping: boolean): Promise<void> {
     console.log('[MessagesWebviewProvider] handleWsTypingUpdate', { userId, userName, isTyping });
 
-    // Don't show typing indicator for the current user
-    this.ensureCurrentUserId();
-    const currentUserId = this.currentUserId;
+    // Don't show typing indicator for the current user. Awaiting the id may
+    // take a GET /user round-trip on API-token sessions; events awaiting the
+    // same promise are released in arrival order, so start/stop stay ordered.
+    const currentUserId = this.currentUserId ?? await this.ensureCurrentUserId();
     if (currentUserId && userId === currentUserId) {
       console.log('[MessagesWebviewProvider] Ignoring own typing update (same user)');
       return;
@@ -585,8 +604,11 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     try {
       this.postLoadingState(true);
-      const currentUserId = this.apiService.getCurrentUserId();
       const identity = (await this.apiService.getCurrentUser().catch(() => this.getIdentity())) || this.getIdentity();
+      if (identity?.id) {
+        this.currentUserId = identity.id;
+      }
+      const currentUserId = this.currentUserId ?? this.apiService.getCurrentUserId();
       const activeFilters = this.getActiveFilters();
 
       const query: MessageQuery = {
@@ -659,7 +681,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     // The backend strips `is_author` from WS broadcasts (it's per-recipient),
     // so we recompute it client-side. Without this, edit/delete buttons never
     // appear on freshly arrived own messages until the user hits Refresh.
-    const currentUserId = this.apiService.getCurrentUserId();
+    const currentUserId = this.currentUserId ?? this.apiService.getCurrentUserId();
     const isAuthor = currentUserId ? message.author_id === currentUserId : (message.is_author ?? false);
 
     return {
