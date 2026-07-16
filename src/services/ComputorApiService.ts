@@ -1616,15 +1616,21 @@ export class ComputorApiService {
   /**
    * Get the current user's ID directly from the authentication token.
    * This method does NOT make an API call and returns immediately.
+   * API-token clients (code-server/Coder workspaces) carry no user id in the
+   * token, so we fall back to the cached GET /user response — callers that
+   * need a guaranteed id must await getCurrentUser() at least once first.
    */
   getCurrentUserId(): string | undefined {
     try {
       const client = this.httpClient;
       if (client && typeof (client as any).getUserId === 'function') {
         const userId = (client as any).getUserId();
-        return userId || undefined;
+        if (userId) {
+          return userId;
+        }
       }
-      return undefined;
+      const cachedUser = multiTierCache.get<{ id?: string }>('currentUser');
+      return cachedUser?.id || undefined;
     } catch (error) {
       console.error('Failed to get current user ID:', error);
       return undefined;
