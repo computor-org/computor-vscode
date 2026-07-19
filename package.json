@@ -2163,6 +2163,7 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile:fast && npm run lint",
     "lint": "eslint src --ext ts",
+    "vendor:katex": "node scripts/vendor-katex.js",
     "test": "mocha",
     "test:unit": "mocha --config .mocharc.unit.json",
     "test:coverage": "c8 --config .c8rc.json mocha --config .mocharc.unit.json",

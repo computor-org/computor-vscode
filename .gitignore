@@ -5,6 +5,7 @@ coverage/
 .nyc_output/
 *.js
 !webpack.config.js
+!scripts/*.js
 *.js.map
 *.d.ts
 *.d.ts.map
