@@ -4,6 +4,7 @@ import { StudentOfflineTreeProvider } from '../ui/tree/student/StudentOfflineTre
 import { GitService } from '../services/GitService';
 import { OfflineRepositoryManager } from '../services/OfflineRepositoryManager';
 import { commandRegistrar } from './commandHelpers';
+import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 
 /**
  * Commands for the student offline mode
@@ -327,15 +328,9 @@ export class StudentOfflineCommands {
                 return;
             }
 
-            // Open README in preview mode beside active editor
-            const readmeUri = vscode.Uri.file(readmePath);
-            if (vscode.window.activeTextEditor) {
-                // Open beside the active editor
-                await vscode.commands.executeCommand('markdown.showPreviewToSide', readmeUri);
-            } else {
-                // No active editor, open in current column
-                await vscode.commands.executeCommand('markdown.showPreview', readmeUri);
-            }
+            // Self-contained preview webview (renders under code-server on
+            // Firefox/Safari where the built-in preview stays blank, #267)
+            await showMarkdownPreview(this.context, readmePath);
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to show README preview:', error);
             vscode.window.showErrorMessage(`Failed to show README preview: ${error.message}`);

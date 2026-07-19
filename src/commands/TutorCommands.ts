@@ -10,6 +10,7 @@ import { deriveRepositoryDirectoryName } from '../utils/repositoryNaming';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 // Import interfaces from generated types (interfaces removed to avoid duplication)
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
+import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMemberCommentsInputPanel';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
@@ -1153,13 +1154,9 @@ export class TutorCommands {
     }
 
     if (descriptionPath && fs.existsSync(descriptionPath)) {
-      const descriptionUri = vscode.Uri.file(descriptionPath);
-      // Open beside active editor if one exists
-      if (vscode.window.activeTextEditor) {
-        await vscode.commands.executeCommand('markdown.showPreviewToSide', descriptionUri);
-      } else {
-        await vscode.commands.executeCommand('markdown.showPreview', descriptionUri);
-      }
+      // Self-contained preview webview (renders under code-server on
+      // Firefox/Safari where the built-in preview stays blank, #267)
+      await showMarkdownPreview(this.context, descriptionPath);
     } else {
       vscode.window.showInformationMessage('No description found for this assignment');
     }
