@@ -1,0 +1,92 @@
+/*
+ * Markdown preview panel (README / help / description previews).
+ * Loaded after base.css (and lib/katex-inline.css). Standalone twin of the
+ * .markdown-body rules in chat-shared.css plus document-level extras the
+ * chat views don't need (headings, tables, images, math blocks).
+ */
+
+.markdown-body {
+  line-height: 1.6;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.markdown-body p {
+  margin: 0 0 var(--sp-2);
+}
+
+.markdown-body h1,
+.markdown-body h2 {
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  padding-bottom: var(--sp-1);
+}
+
+.markdown-body pre {
+  background: var(--vscode-textCodeBlock-background);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: var(--sp-2) 0;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: var(--sp-2) 0;
+  padding-left: 24px;
+}
+
+.markdown-body blockquote {
+  margin: var(--sp-2) 0;
+  padding-left: var(--sp-3);
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  color: var(--vscode-textBlockQuote-foreground);
+}
+
+.markdown-body a {
+  color: var(--c-link);
+}
+
+.markdown-body a:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  margin: var(--sp-2) 0;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.markdown-body th {
+  background: var(--vscode-textCodeBlock-background);
+}
+
+.markdown-body img {
+  max-width: 100%;
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  margin: var(--sp-3) 0;
+}
+
+/* Wide equations scroll instead of overflowing the page. */
+.markdown-body .katex-display {
+  margin: var(--sp-2) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--sp-1) 0;
+}
