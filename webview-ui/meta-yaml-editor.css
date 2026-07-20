@@ -129,10 +129,18 @@
   box-shadow: none !important;
   outline: none !important;
   padding: 3px 4px !important;
+  /* focus indicator restored in the :focus-visible rule below */
   font-size: var(--font-size-sm);
   flex: 1;
   min-width: 100px;
   color: var(--vscode-input-foreground);
+}
+
+/* Keyboard focus must stay visible even though the borderless design strips
+   the default outline/border/shadow above. */
+.chip-text-input:focus-visible {
+  outline: 1px solid var(--c-focus) !important;
+  outline-offset: 1px;
 }
 
 /* Remove button */

@@ -380,7 +380,10 @@
         const statusColor = gradingStatus === 'corrected' ? '#57cc5d'
           : gradingStatus === 'correction_necessary' ? '#fc4a4a'
           : '#fdba4d';
-        cornerBadgeHtml = `<span class="content-tree-node__icon-badge" style="background-color: ${statusColor};"></span>`;
+        const badgeText = gradingStatus === 'corrected' ? 'Corrected'
+          : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
+          : 'Improvement Possible';
+        cornerBadgeHtml = `<span class="content-tree-node__icon-badge" style="background-color: ${statusColor};" role="img" aria-label="${escapeHtml(badgeText)}" title="${escapeHtml(badgeText)}"></span>`;
       }
 
       // Build tooltip text
@@ -434,7 +437,7 @@
         const statusText = gradingStatus === 'corrected' ? 'Corrected'
           : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
           : 'Improvement Possible';
-        return `<span class="content-tree-node__status-indicator" style="background-color: ${statusColor};" title="${statusText}"></span>`;
+        return `<span class="content-tree-node__status-indicator" style="background-color: ${statusColor};" role="img" aria-label="${escapeHtml(statusText)}" title="${statusText}"></span>`;
       })();
 
       // Build tests column display (only for submittable items)

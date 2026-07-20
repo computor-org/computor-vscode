@@ -70,11 +70,11 @@
   function getStatusIcon(status) {
     if (!status) { return ''; }
     switch (status) {
-      case 'pending': return '<span class="status-icon pending">&#x23F3;</span>';
-      case 'uploading': return '<span class="status-icon uploading">&#x21BB;</span>';
-      case 'success': return '<span class="status-icon success">&#x2714;</span>';
-      case 'error': return '<span class="status-icon error">&#x2716;</span>';
-      case 'skipped': return '<span class="status-icon skipped">&#x2014;</span>';
+      case 'pending': return '<span class="status-icon pending" role="img" aria-label="Pending">&#x23F3;</span>';
+      case 'uploading': return '<span class="status-icon uploading" role="img" aria-label="Uploading">&#x21BB;</span>';
+      case 'success': return '<span class="status-icon success" role="img" aria-label="Uploaded">&#x2714;</span>';
+      case 'error': return '<span class="status-icon error" role="img" aria-label="Failed">&#x2716;</span>';
+      case 'skipped': return '<span class="status-icon skipped" role="img" aria-label="Skipped">&#x2014;</span>';
       default: return '';
     }
   }
