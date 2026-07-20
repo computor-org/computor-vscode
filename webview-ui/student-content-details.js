@@ -285,7 +285,7 @@
       : '';
 
     const chips = statusChips.length > 0
-      ? `<div class="chip-row">${statusChips.map(text => `<span class="chip">${text}</span>`).join('')}</div>`
+      ? `<div class="chip-row">${statusChips.map(text => `<span class="chip">${escapeHtml(text)}</span>`).join('')}</div>`
       : '';
 
     const gradedAt = formatDate(metrics.gradedAt);
