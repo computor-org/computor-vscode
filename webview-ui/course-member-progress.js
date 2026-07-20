@@ -614,6 +614,13 @@
       segments.push({ kind: 'remaining', remaining });
     }
 
+    // Guard against Chart.js "canvas already in use" across re-renders.
+    if (donutChart) { donutChart.destroy(); donutChart = null; }
+    if (window.Chart && typeof Chart.getChart === 'function') {
+      const donutCanvas = document.getElementById('donutChart');
+      if (donutCanvas) { const existing = Chart.getChart(donutCanvas); if (existing) { existing.destroy(); } }
+    }
+
     donutChart = ComputorCharts.createDonutChart('donutChart', {
       labels,
       values,
