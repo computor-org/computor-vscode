@@ -157,6 +157,7 @@
 
   window.addEventListener('message', (event) => {
     const message = event.data;
+    if (!message) { return; }
     switch (message.command) {
       case 'update':
         state = message.data;

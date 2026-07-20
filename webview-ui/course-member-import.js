@@ -902,6 +902,7 @@
   // Handle messages from extension
   window.addEventListener('message', event => {
     const message = event.data;
+    if (!message) { return; }
 
     switch (message.command) {
       case 'updateMembers':

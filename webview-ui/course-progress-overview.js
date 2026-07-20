@@ -22,6 +22,7 @@
   function setupMessageHandler() {
     window.addEventListener('message', event => {
       const message = event.data;
+      if (!message) { return; }
       switch (message.command) {
         case 'updateData':
           if (message.data?.students) {

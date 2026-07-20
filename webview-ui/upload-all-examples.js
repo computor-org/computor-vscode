@@ -127,6 +127,7 @@
   // Messages from extension
   window.addEventListener('message', function (event) {
     var message = event.data;
+    if (!message) { return; }
     switch (message.command) {
       case 'update':
         examples = message.data;
