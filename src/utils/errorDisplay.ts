@@ -19,40 +19,17 @@ export function showErrorWithSeverity(error: Error | HttpError, fallbackMessage?
   let message = fallbackMessage || error.message;
   let severity: string | undefined;
 
-  console.log('[errorDisplay] Processing error:', error);
-  console.log('[errorDisplay] Error type:', error?.constructor?.name);
-  console.log('[errorDisplay] Is HttpError?', error instanceof HttpError);
-  console.log('[errorDisplay] Error prototype chain:', Object.getPrototypeOf(error)?.constructor?.name);
+  if (error instanceof HttpError && error.hasBackendError()) {
+    severity = error.getSeverity();
 
-  if (error instanceof HttpError) {
-    console.log('[errorDisplay] HttpError details:', {
-      hasBackendError: error.hasBackendError(),
-      errorCode: error.errorCode,
-      backendError: error.backendError,
-      severity: error.getSeverity(),
-      status: error.status,
-      response: error.response
-    });
-
-    if (error.hasBackendError()) {
-      severity = error.getSeverity();
-
-      const backendError = error.backendError;
-      if (backendError) {
-        const title = backendError.title;
-        // Use plain message to avoid redundancy (markdown often includes the title again)
-        const body = backendError.message.plain;
-        message = `${title}: ${body}`;
-        console.log('[errorDisplay] Using backend error message:', message);
-      }
-    } else {
-      console.warn('[errorDisplay] HttpError does not have backend error. Response:', error.response);
+    const backendError = error.backendError;
+    if (backendError) {
+      const title = backendError.title;
+      // Use plain message to avoid redundancy (markdown often includes the title again)
+      const body = backendError.message.plain;
+      message = `${title}: ${body}`;
     }
-  } else {
-    console.warn('[errorDisplay] Error is not an HttpError instance');
   }
-
-  console.log(`[errorDisplay] Showing notification - severity: ${severity}, message: ${message}`);
 
   switch (severity) {
     case 'info':
@@ -66,7 +43,6 @@ export function showErrorWithSeverity(error: Error | HttpError, fallbackMessage?
       vscode.window.showErrorMessage(message);
       break;
     default:
-      console.log('[errorDisplay] Using default (error) notification');
       vscode.window.showErrorMessage(message);
       break;
   }
