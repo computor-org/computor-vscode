@@ -32,7 +32,7 @@
   function renderMarkdown(text) {
     if (typeof window.marked !== 'undefined' && window.marked.parse) {
       try {
-        return window.marked.parse(text || '');
+        return window.ComputorWebview.sanitizeHtml(window.marked.parse(text || ''));
       } catch (e) {
         return escapeHtml(text);
       }
