@@ -193,11 +193,7 @@
     switch (message.command) {
       case 'updateState':
         state = Object.assign(state || {}, message.data || {});
-        if (message.notice) { localState.notice = message.notice; }
         renderRoot();
-        break;
-      case 'notice':
-        if (message.notice) { showNotice(message.notice.type, message.notice.message); }
         break;
       default:
         break;

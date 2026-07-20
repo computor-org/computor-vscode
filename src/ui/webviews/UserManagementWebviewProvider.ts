@@ -133,7 +133,8 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     try {
       const state = await this.loadState(this.currentUserId, { force: options?.force });
       this.currentData = state;
-      this.panel.webview.postMessage({ command: 'updateState', data: state, notice: options?.notice });
+      this.panel.webview.postMessage({ command: 'updateState', data: state });
+      if (options?.notice) { this.postNotice(options.notice); }
 
       this.treeProvider.refresh();
     } catch (error: any) {
@@ -331,9 +332,12 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     this.postNotice({ type: 'error', message: `${prefix}: ${detail}` });
   }
 
+  // Route in-page feedback through the unified native-notification helper
+  // instead of an in-webview banner. Page-state banners (archived/banned) and
+  // client-side inline validation remain in the webview.
   private postNotice(notice: NoticeMessage): void {
-    if (this.panel) {
-      this.panel.webview.postMessage({ command: 'notice', notice });
-    }
+    if (notice.type === 'error') { notify.error(notice.message); }
+    else if (notice.type === 'warning') { notify.warning(notice.message); }
+    else { notify.info(notice.message); }
   }
 }

@@ -399,16 +399,7 @@
     switch (message.command) {
       case 'updateState':
         Object.assign(state, message.data || {});
-        if (message.notice) {
-          currentNotice = message.notice;
-        }
         render();
-        break;
-
-      case 'notice':
-        if (message.notice) {
-          showNotice(message.notice.type, message.notice.message);
-        }
         break;
 
       default:

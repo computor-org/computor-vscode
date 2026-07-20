@@ -283,11 +283,6 @@
         state.organizations = message.data.organizations ?? state.organizations;
       }
       render();
-      if (message.notice) {
-        updateNotice(message.notice);
-      }
-    } else if (message.command === 'notice') {
-      updateNotice(message.notice);
     }
   });
 
