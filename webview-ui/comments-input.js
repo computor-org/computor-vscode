@@ -175,12 +175,9 @@
     }
   });
 
-  document.addEventListener('DOMContentLoaded', () => {
-    render();
-    vscode.postMessage({ command: 'ready' });
-  });
-
-  // Render once immediately so first paint isn't blank
+  // Render immediately: the script is injected at the end of <body>, so the
+  // DOM already exists. A DOMContentLoaded handler would fire a second time,
+  // double-rendering and posting 'ready' twice.
   render();
   vscode.postMessage({ command: 'ready' });
 })();
