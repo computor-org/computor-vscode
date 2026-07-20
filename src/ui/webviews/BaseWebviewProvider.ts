@@ -14,7 +14,6 @@ export abstract class BaseWebviewProvider {
     this.context = context;
     this.viewType = viewType;
     this.resourceRoots = [
-      vscode.Uri.file(path.join(this.context.extensionPath, 'media')),
       vscode.Uri.file(path.join(this.context.extensionPath, 'webview-ui')),
       ...extraResourceRoots
     ];
