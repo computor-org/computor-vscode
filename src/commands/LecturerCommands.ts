@@ -37,6 +37,7 @@ import { canAuthorExamples, canManageAnyCourseFamilyMembers, canManageAnyOrganiz
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
+import { notify } from '../utils/notify';
 
 interface ReleaseScope {
   label?: string;
@@ -118,9 +119,9 @@ export class LecturerCommands {
         await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Syncing assignments repositories...', cancellable: false }, async (progress) => {
           await mgr.syncAllAssignments((m) => progress.report({ message: m }));
         });
-        vscode.window.showInformationMessage('Assignments repositories synced.');
+        notify.info('Assignments repositories synced.');
       } catch (e) {
-        vscode.window.showErrorMessage(`Failed to sync assignments: ${e}`);
+        notify.error(`Failed to sync assignments: ${e}`);
       }
     });
 
@@ -324,23 +325,23 @@ export class LecturerCommands {
 
     // Open local assignment folder for a content
     register('computor.lecturer.openAssignmentFolder', async (item: CourseContentTreeItem) => {
-      if (!item || !item.courseContent?.id || !item.course?.id) { vscode.window.showWarningMessage('Select an assignment'); return; }
+      if (!item || !item.courseContent?.id || !item.course?.id) { notify.warning('Select an assignment'); return; }
       try {
         const course = await this.apiService.getCourse(item.course.id);
         const content = await this.apiService.getCourseContent(item.courseContent.id, true);
         const deploymentPath = (content as any)?.deployment?.deployment_path || (content as any)?.deployment?.example_identifier || '';
-        if (!course || !deploymentPath) { vscode.window.showWarningMessage('Assignment not initialized in assignments repo yet.'); return; }
+        if (!course || !deploymentPath) { notify.warning('Assignment not initialized in assignments repo yet.'); return; }
         const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
         const mgr = new LecturerRepositoryManager(this.context, this.apiService);
         const folder = mgr.getAssignmentFolderPath(course, deploymentPath);
         if (!folder || !fs.existsSync(folder)) {
-          const choice = await vscode.window.showWarningMessage('Assignment folder missing locally. Sync assignments now?', 'Sync', 'Cancel');
+          const choice = await notify.warning('Assignment folder missing locally. Sync assignments now?', 'Sync', 'Cancel');
           if (choice === 'Sync') { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
           return;
         }
         await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
       } catch (e) {
-        vscode.window.showErrorMessage(`Failed to open assignment folder: ${e}`);
+        notify.error(`Failed to open assignment folder: ${e}`);
       }
     });
 
@@ -382,10 +383,10 @@ export class LecturerCommands {
         title: orgTitle,
         organization_type: 'organization'
       });
-      vscode.window.showInformationMessage(`Organization "${orgTitle}" created successfully!`);
+      notify.info(`Organization "${orgTitle}" created successfully!`);
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create organization: ${error.message || error}`);
+      notify.error(`Failed to create organization: ${error.message || error}`);
     }
   }
 
@@ -420,10 +421,10 @@ export class LecturerCommands {
         title: familyTitle,
         organization_id: organization.id
       });
-      vscode.window.showInformationMessage(`Course family "${familyTitle}" created successfully!`);
+      notify.info(`Course family "${familyTitle}" created successfully!`);
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create course family: ${error.message || error}`);
+      notify.error(`Failed to create course family: ${error.message || error}`);
     }
   }
 
@@ -437,7 +438,7 @@ export class LecturerCommands {
     } else {
       const organizations = await this.apiService.getOrganizations();
       if (!organizations || organizations.length === 0) {
-        vscode.window.showErrorMessage('No organizations available');
+        notify.error('No organizations available');
         return;
       }
 
@@ -453,7 +454,7 @@ export class LecturerCommands {
 
       const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
       if (!families || families.length === 0) {
-        vscode.window.showErrorMessage('No course families available in this organization');
+        notify.error('No course families available in this organization');
         return;
       }
 
@@ -510,15 +511,15 @@ export class LecturerCommands {
       });
 
       if (result.status === 'SUCCESS') {
-        vscode.window.showInformationMessage(`Course "${courseTitle}" created successfully in ${familyLabel}!`);
+        notify.info(`Course "${courseTitle}" created successfully in ${familyLabel}!`);
         this.treeDataProvider.refresh();
       } else if (result.status === 'FAILED') {
-        vscode.window.showErrorMessage(`Failed to create course: ${result.error || 'Unknown error'}`);
+        notify.error(`Failed to create course: ${result.error || 'Unknown error'}`);
       } else if (result.status === 'TIMEOUT') {
-        vscode.window.showWarningMessage(`Course creation for "${courseTitle}" is still in progress. Check back later.`);
+        notify.warning(`Course creation for "${courseTitle}" is still in progress. Check back later.`);
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create course: ${error.message || error}`);
+      notify.error(`Failed to create course: ${error.message || error}`);
     }
   }
 
@@ -536,7 +537,7 @@ export class LecturerCommands {
     } else {
       const organizations = await this.apiService.getOrganizations();
       if (!organizations || organizations.length === 0) {
-        vscode.window.showErrorMessage('No organizations available');
+        notify.error('No organizations available');
         return;
       }
 
@@ -552,7 +553,7 @@ export class LecturerCommands {
 
       const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
       if (!families || families.length === 0) {
-        vscode.window.showErrorMessage('No course families available in this organization');
+        notify.error('No course families available in this organization');
         return;
       }
 
@@ -587,7 +588,7 @@ export class LecturerCommands {
     try {
       text = await fs.promises.readFile(firstFile.fsPath, 'utf8');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to read file: ${error.message || error}`);
+      notify.error(`Failed to read file: ${error.message || error}`);
       return;
     }
 
@@ -595,12 +596,12 @@ export class LecturerCommands {
       // Validate first — surface fatal errors and abort before applying.
       const validation = await this.apiService.deployCourseFromFile(courseFamilyId, text, true);
       if (!validation) {
-        vscode.window.showErrorMessage('Course deployment validation returned no result.');
+        notify.error('Course deployment validation returned no result.');
         return;
       }
 
       if (validation.errors && validation.errors.length > 0) {
-        vscode.window.showErrorMessage(`Course deployment cannot proceed: ${validation.errors.join('; ')}`);
+        notify.error(`Course deployment cannot proceed: ${validation.errors.join('; ')}`);
         return;
       }
 
@@ -611,12 +612,12 @@ export class LecturerCommands {
           const loc = w.path || w.example_identifier;
           return loc ? `• ${loc}: ${w.reason}` : `• ${w.reason}`;
         }).join('\n');
-        const proceed = await vscode.window.showWarningMessage(
+        const proceed = await notify.confirm(
           `Deploying "${courseLabel}" produced ${validation.warnings.length} warning(s). Deploy anyway?`,
-          { modal: true, detail: warningLines },
-          'Deploy anyway'
+          'Deploy anyway',
+          warningLines
         );
-        if (proceed !== 'Deploy anyway') { return; }
+        if (!proceed) { return; }
       }
 
       // Apply.
@@ -628,7 +629,7 @@ export class LecturerCommands {
 
       if (!result || !result.applied) {
         const errs = result?.errors?.join('; ');
-        vscode.window.showErrorMessage(`Course deployment failed${errs ? `: ${errs}` : '.'}`);
+        notify.error(`Course deployment failed${errs ? `: ${errs}` : '.'}`);
         return;
       }
 
@@ -636,12 +637,12 @@ export class LecturerCommands {
       const summaryText = s
         ? ` — ${s.content_types ?? 0} content type(s), ${s.units ?? 0} unit(s), ${s.assignments ?? 0} assignment(s), ${s.examples_assigned ?? 0} example(s) assigned`
         : '';
-      vscode.window.showInformationMessage(
+      notify.info(
         `Course "${result.course_title || result.course_path}" deployed to ${familyLabel}${summaryText}.`
       );
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to deploy course: ${error.message || error}`);
+      notify.error(`Failed to deploy course: ${error.message || error}`);
     }
   }
 
@@ -658,16 +659,16 @@ export class LecturerCommands {
     try {
       servers = await this.apiService.getGitServers();
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Could not load git servers: ${err?.message || String(err)}`);
+      notify.error(`Could not load git servers: ${err?.message || String(err)}`);
       return null;
     }
     const managed = servers.filter(s => s.managed && s.has_token);
     if (managed.length === 0) {
       if (opts.allowSkip) {
-        vscode.window.showWarningMessage('No managed git server is registered — creating the course unbound. An administrator can register one, then configure the course git later.');
+        notify.warning('No managed git server is registered — creating the course unbound. An administrator can register one, then configure the course git later.');
         return undefined;
       }
-      vscode.window.showWarningMessage('No managed git server is registered. Ask an administrator to register one first.');
+      notify.warning('No managed git server is registered. Ask an administrator to register one first.');
       return null;
     }
 
@@ -721,7 +722,7 @@ export class LecturerCommands {
     const course = item?.course;
     const courseId = course?.id;
     if (!courseId) {
-      vscode.window.showWarningMessage('Open "Configure Course Git" from a course in the lecturer tree.');
+      notify.warning('Open "Configure Course Git" from a course in the lecturer tree.');
       return;
     }
 
@@ -733,10 +734,10 @@ export class LecturerCommands {
       async () => {
         try {
           await this.apiService.setCourseGitBinding(courseId, binding);
-          vscode.window.showInformationMessage(`Course git configured (${(binding.student_repo_modes || []).join(', ')}).`);
+          notify.info(`Course git configured (${(binding.student_repo_modes || []).join(', ')}).`);
         } catch (err: any) {
           const detail = err?.response?.data?.detail || err?.message || String(err);
-          vscode.window.showErrorMessage(`Could not configure course git: ${detail}`);
+          notify.error(`Could not configure course git: ${detail}`);
         }
       }
     );
@@ -751,7 +752,7 @@ export class LecturerCommands {
       // If no item provided, ask user to select a course
       const courses = await this.getAllCourses();
       if (!courses || courses.length === 0) {
-        vscode.window.showInformationMessage('No courses available');
+        notify.info('No courses available');
         return;
       }
 
@@ -827,10 +828,10 @@ export class LecturerCommands {
 
     try {
       await this.apiService.updateCourse(course.id, { title: newTitle });
-      vscode.window.showInformationMessage('Course updated successfully');
+      notify.info('Course updated successfully');
       this.treeDataProvider.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to update course: ${error}`);
+      notify.error(`Failed to update course: ${error}`);
     }
   }
 
@@ -850,27 +851,25 @@ export class LecturerCommands {
   }
 
   private async deleteCourse(course: any): Promise<void> {
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.confirm(
       `Are you sure you want to delete the course "${course.title || course.path}"? This action cannot be undone.`,
-      { modal: true },
-      'Delete',
-      'Cancel'
+      'Delete'
     );
 
-    if (confirmation === 'Delete') {
+    if (confirmation) {
       try {
         // TODO: Implement deleteCourse in ComputorApiService
         // For now, show a message that this feature is coming soon
-        vscode.window.showInformationMessage(
+        notify.info(
           `Course deletion feature is coming soon! Would delete: "${course.title || course.path}"`
         );
         
         // When API is ready, uncomment:
         // await this.apiService.deleteCourse(course.id);
-        // vscode.window.showInformationMessage('Course deleted successfully');
+        // notify.info('Course deleted successfully');
         // this.treeDataProvider.refresh();
       } catch (error) {
-        vscode.window.showErrorMessage(`Failed to delete course: ${error}`);
+        notify.error(`Failed to delete course: ${error}`);
       }
     }
   }
@@ -890,7 +889,7 @@ export class LecturerCommands {
         parentPath: item.courseContent.path
       };
     }
-    vscode.window.showErrorMessage('Course contents can only be created under the Contents folder or another content item.');
+    notify.error('Course contents can only be created under the Contents folder or another content item.');
     return undefined;
   }
 
@@ -900,7 +899,7 @@ export class LecturerCommands {
   ): Promise<CourseContentTypeList | undefined> {
     const types = await this.apiService.getCourseContentTypes(courseId);
     if (types.length === 0) {
-      vscode.window.showWarningMessage('No content types available. Please create a content type first.');
+      notify.warning('No content types available. Please create a content type first.');
       return undefined;
     }
 
@@ -918,7 +917,7 @@ export class LecturerCommands {
       .sort((a, b) => (a.title || a.slug || '').localeCompare(b.title || b.slug || ''));
 
     if (matching.length === 0) {
-      vscode.window.showWarningMessage(opts.noneMessage);
+      notify.warning(opts.noneMessage);
       return undefined;
     }
 
@@ -983,7 +982,7 @@ export class LecturerCommands {
       () => this.apiService.getAvailableExamples()
     );
     if (!examples || examples.length === 0) {
-      vscode.window.showWarningMessage('No examples available. Upload examples in the Examples view first.');
+      notify.warning('No examples available. Upload examples in the Examples view first.');
       return;
     }
 
@@ -1009,7 +1008,7 @@ export class LecturerCommands {
       () => this.apiService.getExampleVersions(selectedExample.id)
     );
     if (!versions || versions.length === 0) {
-      vscode.window.showWarningMessage('No versions available for this example.');
+      notify.warning('No versions available for this example.');
       return;
     }
 
@@ -1052,7 +1051,7 @@ export class LecturerCommands {
         });
       } catch (assignError: any) {
         const assignMessage = assignError?.response?.data?.detail || assignError.message || 'Unknown error';
-        const action = await vscode.window.showWarningMessage(
+        const action = await notify.warning(
           `Assignment "${title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`,
           'Keep', 'Delete'
         );
@@ -1065,18 +1064,18 @@ export class LecturerCommands {
       }
 
       await this.treeDataProvider.forceRefreshCourse(target.course.id);
-      vscode.window.showInformationMessage(
+      notify.info(
         `Created assignment "${title}" with example "${selectedExample.label}" ${selectedVersion.versionTag}`
       );
     } catch (error: any) {
       const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
+      notify.error(`Failed to create assignment: ${errorMessage}`);
     }
   }
 
   private async changeCourseContentType(item: CourseContentTreeItem): Promise<void> {
     if (!item || !item.courseContent) {
-      vscode.window.showErrorMessage('Invalid course content item');
+      notify.error('Invalid course content item');
       return;
     }
 
@@ -1085,7 +1084,7 @@ export class LecturerCommands {
       const contentTypes = await this.apiService.getCourseContentTypes(item.course.id);
       
       if (contentTypes.length === 0) {
-        vscode.window.showWarningMessage('No content types available in this course.');
+        notify.warning('No content types available in this course.');
         return;
       }
 
@@ -1100,7 +1099,7 @@ export class LecturerCommands {
         }));
 
       if (availableTypes.length === 0) {
-        vscode.window.showInformationMessage('No other content types available to switch to.');
+        notify.info('No other content types available to switch to.');
         return;
       }
 
@@ -1128,7 +1127,7 @@ export class LecturerCommands {
         updateData
       );
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `Changed content type from "${currentTypeLabel}" to "${selectedType.label}"`
       );
 
@@ -1138,7 +1137,7 @@ export class LecturerCommands {
 
     } catch (error) {
       console.error('Failed to change course content type:', error);
-      vscode.window.showErrorMessage(`Failed to change content type: ${error}`);
+      notify.error(`Failed to change content type: ${error}`);
     }
   }
 
@@ -1161,26 +1160,26 @@ export class LecturerCommands {
 
       const relativePath = this.normalizeRelativePath(folderInput);
       if (!relativePath) {
-        vscode.window.showErrorMessage('Invalid folder name. Use relative paths without . or .. segments.');
+        notify.error('Invalid folder name. Use relative paths without . or .. segments.');
         return;
       }
 
       const targetPath = path.join(context.assignmentRoot, relativePath);
       if (!this.isWithinAssignmentRoot(context.assignmentRoot, targetPath)) {
-        vscode.window.showErrorMessage('Target folder must remain inside the assignment directory.');
+        notify.error('Target folder must remain inside the assignment directory.');
         return;
       }
 
       if (fs.existsSync(targetPath)) {
-        vscode.window.showInformationMessage(`Folder already exists: ${relativePath}`);
+        notify.info(`Folder already exists: ${relativePath}`);
         return;
       }
 
       await fs.promises.mkdir(targetPath, { recursive: true });
       this.treeDataProvider.refreshNode(item);
-      vscode.window.showInformationMessage(`Created folder: ${relativePath}`);
+      notify.info(`Created folder: ${relativePath}`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create folder: ${error?.message || error}`);
+      notify.error(`Failed to create folder: ${error?.message || error}`);
     }
   }
 
@@ -1203,13 +1202,13 @@ export class LecturerCommands {
 
       const relativePath = this.normalizeRelativePath(fileInput);
       if (!relativePath) {
-        vscode.window.showErrorMessage('Invalid file name. Use relative paths without . or .. segments.');
+        notify.error('Invalid file name. Use relative paths without . or .. segments.');
         return;
       }
 
       const targetPath = path.join(context.assignmentRoot, relativePath);
       if (!this.isWithinAssignmentRoot(context.assignmentRoot, targetPath)) {
-        vscode.window.showErrorMessage('Target file must remain inside the assignment directory.');
+        notify.error('Target file must remain inside the assignment directory.');
         return;
       }
 
@@ -1231,34 +1230,34 @@ export class LecturerCommands {
       this.treeDataProvider.refreshNode(item);
       const document = await vscode.workspace.openTextDocument(targetPath);
       await vscode.window.showTextDocument(document, { preview: false });
-      vscode.window.showInformationMessage(`Created file: ${relativePath}`);
+      notify.info(`Created file: ${relativePath}`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create file: ${error?.message || error}`);
+      notify.error(`Failed to create file: ${error?.message || error}`);
     }
   }
 
   private async resolveAssignmentEditingContext(item: CourseContentTreeItem): Promise<{ course: CourseList; content: CourseContentGet; directoryName: string; assignmentRoot: string } | undefined> {
     if (!item?.course?.id || !item.courseContent?.id) {
-      vscode.window.showWarningMessage('Select an assignment first.');
+      notify.warning('Select an assignment first.');
       return undefined;
     }
 
     const kindId = item.courseContent.course_content_kind_id || item.contentType?.course_content_kind_id;
     if (kindId !== 'assignment') {
-      vscode.window.showWarningMessage('This action is only available for assignments.');
+      notify.warning('This action is only available for assignments.');
       return undefined;
     }
 
     const course = await this.apiService.getCourse(item.course.id);
     const content = await this.apiService.getCourseContent(item.courseContent.id, true) as CourseContentGet | undefined;
     if (!course || !content) {
-      vscode.window.showErrorMessage('Failed to load assignment details.');
+      notify.error('Failed to load assignment details.');
       return undefined;
     }
 
     const directoryName = this.getAssignmentDirectoryName(content);
     if (!directoryName) {
-      vscode.window.showWarningMessage('Assignment deployment path is not configured yet.');
+      notify.warning('Assignment deployment path is not configured yet.');
       return undefined;
     }
 
@@ -1267,14 +1266,14 @@ export class LecturerCommands {
 
     const assignmentRoot = repoManager.getAssignmentFolderPath(course, directoryName);
     if (!assignmentRoot) {
-      vscode.window.showWarningMessage('Assignments repository is not configured for this course.');
+      notify.warning('Assignments repository is not configured for this course.');
       return undefined;
     }
 
     try {
       await fs.promises.mkdir(assignmentRoot, { recursive: true });
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to prepare assignment directory: ${error?.message || error}`);
+      notify.error(`Failed to prepare assignment directory: ${error?.message || error}`);
       return undefined;
     }
 
@@ -1407,13 +1406,13 @@ export class LecturerCommands {
       }
 
       if (!target) {
-        vscode.window.showWarningMessage('Messages are not available for this item.');
+        notify.warning('Messages are not available for this item.');
         return;
       }
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
+      notify.error(`Failed to open messages: ${error?.message || error}`);
     }
   }
 
@@ -1428,7 +1427,7 @@ export class LecturerCommands {
       const title = `${displayName} — ${item.course.title || item.course.path}`;
       await this.commentsWebviewProvider.showComments(item.member.id, title);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
+      notify.error(`Failed to open comments: ${error?.message || error}`);
     }
   }
 
@@ -1447,7 +1446,7 @@ export class LecturerCommands {
       const gitlabToken = await this.treeDataProvider.getGitLabTokenForCourse(item.course);
 
       if (!gitlabToken) {
-        vscode.window.showErrorMessage(
+        notify.error(
           'No GitLab token configured for this course. Please configure the GitLab token first.'
         );
         return;
@@ -1475,17 +1474,17 @@ export class LecturerCommands {
           const status = result.sync_status || 'completed';
 
           if (status === 'success' || status === 'completed') {
-            vscode.window.showInformationMessage(`✅ ${displayName}: ${message}`);
+            notify.info(`✅ ${displayName}: ${message}`);
           } else if (status === 'warning') {
-            vscode.window.showWarningMessage(`⚠️ ${displayName}: ${message}`);
+            notify.warning(`⚠️ ${displayName}: ${message}`);
           } else {
-            vscode.window.showErrorMessage(`❌ ${displayName}: ${message}`);
+            notify.error(`❌ ${displayName}: ${message}`);
           }
         }
       );
     } catch (error: any) {
       const errorMessage = error?.message || String(error);
-      vscode.window.showErrorMessage(`Failed to sync GitLab permissions: ${errorMessage}`);
+      notify.error(`Failed to sync GitLab permissions: ${errorMessage}`);
       console.error('Error syncing GitLab permissions:', error);
     }
   }
@@ -1510,12 +1509,12 @@ export class LecturerCommands {
 
     try {
       await this.treeDataProvider.updateCourseContent(item, { title: newTitle });
-      vscode.window.showInformationMessage(`Content renamed to "${newTitle}"`);
+      notify.info(`Content renamed to "${newTitle}"`);
       
       // Force a full refresh to ensure the tree updates
       await this.treeDataProvider.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to rename content: ${error}`);
+      notify.error(`Failed to rename content: ${error}`);
     }
   }
 
@@ -1532,21 +1531,21 @@ export class LecturerCommands {
 
     try {
       await this.apiService.updateCourseContentType(item.contentType.id, { title: newTitle });
-      vscode.window.showInformationMessage(`Content type renamed to "${newTitle}"`);
+      notify.info(`Content type renamed to "${newTitle}"`);
       await this.treeDataProvider.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to rename content type: ${error}`);
+      notify.error(`Failed to rename content type: ${error}`);
     }
   }
 
   private async deleteCourseContent(item: CourseContentTreeItem): Promise<void> {
     if (!item.courseContent || !item.courseContent.id) {
-      vscode.window.showErrorMessage('Invalid course content item - missing required data');
+      notify.error('Invalid course content item - missing required data');
       return;
     }
 
     const title = item.courseContent.title || item.courseContent.path;
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.warning(
       `Are you sure you want to delete "${title}"?`,
       'Yes',
       'No'
@@ -1558,10 +1557,10 @@ export class LecturerCommands {
       await this.apiService.deleteCourseContent(item.course.id, item.courseContent.id);
       this.apiService.clearCourseCache(item.course.id);
       this.treeDataProvider.refresh();
-      vscode.window.showInformationMessage(`Deleted "${title}" successfully`);
+      notify.info(`Deleted "${title}" successfully`);
     } catch (error: any) {
       if (error instanceof HttpError && (error.errorCode === 'CONTENT_006' || error.errorCode === 'CONTENT_007')) {
-        const archiveChoice = await vscode.window.showWarningMessage(
+        const archiveChoice = await notify.warning(
           `Cannot delete "${title}" because it has student submissions. Would you like to archive it instead?`,
           'Archive',
           'Cancel'
@@ -1570,14 +1569,14 @@ export class LecturerCommands {
           await this.archiveCourseContent(item);
         }
       } else {
-        vscode.window.showErrorMessage(`Failed to delete "${title}": ${error.message || error}`);
+        notify.error(`Failed to delete "${title}": ${error.message || error}`);
       }
     }
   }
 
   private async archiveCourseContent(item: CourseContentTreeItem): Promise<void> {
     if (!item.courseContent?.id || !item.course?.id) {
-      vscode.window.showErrorMessage('Invalid course content item');
+      notify.error('Invalid course content item');
       return;
     }
 
@@ -1587,15 +1586,15 @@ export class LecturerCommands {
       await this.apiService.archiveCourseContent(item.course.id, item.courseContent.id);
       this.apiService.clearCourseCache(item.course.id);
       this.treeDataProvider.refresh();
-      vscode.window.showInformationMessage(`Archived "${title}" successfully`);
+      notify.info(`Archived "${title}" successfully`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to archive "${title}": ${error.message || error}`);
+      notify.error(`Failed to archive "${title}": ${error.message || error}`);
     }
   }
 
   private async unarchiveCourseContent(item: CourseContentTreeItem): Promise<void> {
     if (!item.courseContent?.id || !item.course?.id) {
-      vscode.window.showErrorMessage('Invalid course content item');
+      notify.error('Invalid course content item');
       return;
     }
 
@@ -1605,9 +1604,9 @@ export class LecturerCommands {
       await this.apiService.unarchiveCourseContent(item.course.id, item.courseContent.id);
       this.apiService.clearCourseCache(item.course.id);
       this.treeDataProvider.refresh();
-      vscode.window.showInformationMessage(`Unarchived "${title}" successfully`);
+      notify.info(`Unarchived "${title}" successfully`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to unarchive "${title}": ${error.message || error}`);
+      notify.error(`Failed to unarchive "${title}": ${error.message || error}`);
     }
   }
 
@@ -1631,12 +1630,12 @@ export class LecturerCommands {
       if (!exampleInfo?.id) {
         const deployment = await this.apiService.lecturerGetDeployment(contentId);
         if (!deployment?.example_id) {
-          vscode.window.showWarningMessage('No example assigned to this assignment');
+          notify.warning('No example assigned to this assignment');
           return;
         }
         const example = await this.apiService.getExample(deployment.example_id);
         if (!example) {
-          vscode.window.showWarningMessage('Could not load example information');
+          notify.warning('Could not load example information');
           return;
         }
         exampleInfo = { id: example.id, title: example.title, identifier: example.identifier };
@@ -1652,7 +1651,7 @@ export class LecturerCommands {
       });
 
       if (!versions || versions.length === 0) {
-        vscode.window.showWarningMessage('No versions available for this example');
+        notify.warning('No versions available for this example');
         return;
       }
 
@@ -1672,11 +1671,11 @@ export class LecturerCommands {
       }
 
       if (selectedVersion.versionTag === currentVersionTag) {
-        vscode.window.showInformationMessage('Already on this version');
+        notify.info('Already on this version');
         return;
       }
 
-      const confirm = await vscode.window.showInformationMessage(
+      const confirm = await notify.info(
         `Update "${exampleInfo.title}" from v${currentVersionTag} to v${selectedVersion.versionTag}?`,
         'Update',
         'Cancel'
@@ -1700,7 +1699,7 @@ export class LecturerCommands {
         );
       });
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `Example version updated to v${selectedVersion.versionTag}`
       );
 
@@ -1710,7 +1709,7 @@ export class LecturerCommands {
     } catch (error: any) {
       console.error('Failed to update example version:', error);
       const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-      vscode.window.showErrorMessage(`Failed to update example version: ${errorMessage}`);
+      notify.error(`Failed to update example version: ${errorMessage}`);
     }
   }
 
@@ -1761,7 +1760,7 @@ export class LecturerCommands {
 
       if (updatableItems.length === 0) {
         const scopeText = scope?.label ? ` under "${scope.label}"` : '';
-        vscode.window.showInformationMessage(`All assignments${scopeText} are already on their latest example versions.`);
+        notify.info(`All assignments${scopeText} are already on their latest example versions.`);
         return;
       }
 
@@ -1795,9 +1794,9 @@ export class LecturerCommands {
         const result = await this.apiService.lecturerBatchUpgradeVersions(courseId, contentIds);
 
         if (result.total_failed === 0) {
-          vscode.window.showInformationMessage(`Updated ${result.total_upgraded} assignment(s) to latest example versions.`);
+          notify.info(`Updated ${result.total_upgraded} assignment(s) to latest example versions.`);
         } else {
-          vscode.window.showWarningMessage(`Updated ${result.total_upgraded} assignment(s), ${result.total_failed} failed.`);
+          notify.warning(`Updated ${result.total_upgraded} assignment(s), ${result.total_failed} failed.`);
         }
       });
 
@@ -1807,7 +1806,7 @@ export class LecturerCommands {
     } catch (error: any) {
       console.error('Failed to batch update example versions:', error);
       const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-      vscode.window.showErrorMessage(`Failed to update example versions: ${errorMessage}`);
+      notify.error(`Failed to update example versions: ${errorMessage}`);
     }
   }
 
@@ -1819,7 +1818,7 @@ export class LecturerCommands {
       );
     } catch (error: any) {
       console.error('Failed to view deployment info:', error);
-      vscode.window.showErrorMessage(`Failed to view deployment info: ${error.message}`);
+      notify.error(`Failed to view deployment info: ${error.message}`);
     }
   }
 
@@ -1839,7 +1838,7 @@ export class LecturerCommands {
           const projectPath = memberData.properties.gitlab.full_path;
           webUrl = `${gitlabHost}/${projectPath}`;
         } else {
-          vscode.window.showWarningMessage('No repository found for this course member');
+          notify.warning('No repository found for this course member');
           return;
         }
       } else {
@@ -1853,7 +1852,7 @@ export class LecturerCommands {
           const groupPath = courseGitlab.full_path;
           webUrl = `${gitlabHost}/${groupPath}`;
         } else {
-          vscode.window.showWarningMessage('No repository found for this course');
+          notify.warning('No repository found for this course');
           return;
         }
       }
@@ -1866,10 +1865,10 @@ export class LecturerCommands {
         
         // Open the URL in the default browser
         await vscode.env.openExternal(vscode.Uri.parse(webUrl));
-        vscode.window.showInformationMessage(`Opening ${itemType} in browser`);
+        notify.info(`Opening ${itemType} in browser`);
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to open repository: ${error}`);
+      notify.error(`Failed to open repository: ${error}`);
     }
   }
 
@@ -1881,7 +1880,7 @@ export class LecturerCommands {
     // Get available content kinds
     const contentKinds = await this.apiService.getCourseContentKinds();
     if (contentKinds.length === 0) {
-      vscode.window.showErrorMessage('No content kinds available in the system');
+      notify.error('No content kinds available in the system');
       return;
     }
 
@@ -1917,7 +1916,7 @@ export class LecturerCommands {
       .replace(/^_|_$/g, '');
 
     if (!slug) {
-      vscode.window.showErrorMessage('Invalid title: cannot generate slug');
+      notify.error('Invalid title: cannot generate slug');
       return;
     }
 
@@ -1938,9 +1937,9 @@ export class LecturerCommands {
 
       // Clear cache and refresh
       this.treeDataProvider.refreshNode(item);
-      vscode.window.showInformationMessage(`Content type "${title}" created successfully (slug: ${slug})`);
+      notify.info(`Content type "${title}" created successfully (slug: ${slug})`);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create content type: ${error}`);
+      notify.error(`Failed to create content type: ${error}`);
     }
   }
 
@@ -1968,14 +1967,14 @@ export class LecturerCommands {
       // Refresh parent folder
       const parent = new CourseFolderTreeItem('contentTypes', item.course, item.courseFamily, item.organization);
       this.treeDataProvider.refreshNode(parent);
-      vscode.window.showInformationMessage('Content type updated successfully');
+      notify.info('Content type updated successfully');
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to update content type: ${error}`);
+      notify.error(`Failed to update content type: ${error}`);
     }
   }
 
   private async deleteCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.warning(
       `Are you sure you want to delete content type "${item.contentType.title || item.contentType.slug}"?`,
       'Yes',
       'No'
@@ -1984,12 +1983,12 @@ export class LecturerCommands {
     if (confirmation === 'Yes') {
       try {
         await this.apiService.deleteCourseContentType(item.contentType.id);
-        vscode.window.showInformationMessage('Content type deleted successfully');
+        notify.info('Content type deleted successfully');
         
         // Refresh the tree to show the changes
         await this.treeDataProvider.refresh();
       } catch (error) {
-        vscode.window.showErrorMessage(`Failed to delete content type: ${error}`);
+        notify.error(`Failed to delete content type: ${error}`);
       }
     }
   }
@@ -2000,7 +1999,7 @@ export class LecturerCommands {
       if (!scopeInfo) { return; }
       await this.startReleaseWorkflow(scopeInfo.courseId, scopeInfo.scope);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
+      notify.error(`Failed to release course content: ${error}`);
     }
   }
 
@@ -2008,7 +2007,7 @@ export class LecturerCommands {
     try {
       const courseId = courseData?.id || courseData;
       if (!courseId) {
-        vscode.window.showErrorMessage('Invalid course data: missing course ID');
+        notify.error('Invalid course data: missing course ID');
         return;
       }
 
@@ -2018,7 +2017,7 @@ export class LecturerCommands {
 
       await this.startReleaseWorkflow(courseId, { all: true, label });
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to release course content: ${error}`);
+      notify.error(`Failed to release course content: ${error}`);
     }
   }
 
@@ -2035,7 +2034,7 @@ export class LecturerCommands {
 
     if (item instanceof CourseFolderTreeItem) {
       if (item.folderType !== 'contents') {
-        vscode.window.showWarningMessage('Release is only available from the course contents folder.');
+        notify.warning('Release is only available from the course contents folder.');
         return undefined;
       }
 
@@ -2163,9 +2162,9 @@ export class LecturerCommands {
     const scopeText = scope?.label ? ` under "${scope.label}"` : '';
 
     if (withExamples.length > 0) {
-      vscode.window.showInformationMessage(`No pending content to release${scopeText}. All ${withExamples.length} assigned item(s) are up to date.`);
+      notify.info(`No pending content to release${scopeText}. All ${withExamples.length} assigned item(s) are up to date.`);
     } else {
-      vscode.window.showInformationMessage(`No pending content to release${scopeText}. Assign examples to course contents first.`);
+      notify.info(`No pending content to release${scopeText}. Assign examples to course contents first.`);
     }
   }
   
@@ -2212,7 +2211,7 @@ export class LecturerCommands {
         const updateIds = updateCandidates.map(c => c.content.id);
         const upgradeResult = await this.apiService.lecturerBatchUpgradeVersions(courseId, updateIds);
         if (upgradeResult.total_failed > 0) {
-          vscode.window.showWarningMessage(
+          notify.warning(
             `${upgradeResult.total_failed} of ${updateIds.length} version upgrade(s) failed. The release will continue with the items that did upgrade.`
           );
         }
@@ -2229,12 +2228,11 @@ export class LecturerCommands {
         });
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
-        const choice = await vscode.window.showWarningMessage(
+        const choice = await notify.confirm(
           `Failed to sync assignments before release: ${detail}. Continue with student-template release anyway?`,
-          { modal: true },
-          'Continue', 'Cancel'
+          'Continue'
         );
-        if (choice !== 'Continue') {
+        if (!choice) {
           throw new Error('Release cancelled after assignments sync failure');
         }
       }
@@ -2249,7 +2247,7 @@ export class LecturerCommands {
       const msg = items && items > 0
         ? `Release started for ${items} item(s)${scopeSuffix}. This runs in background.`
         : `Release started${scopeSuffix}. This runs in background.`;
-      vscode.window.showInformationMessage(msg);
+      notify.info(msg);
 
       this.apiService.clearCourseCache(courseId);
       await this.treeDataProvider.forceRefreshCourse(courseId);
@@ -2303,7 +2301,7 @@ export class LecturerCommands {
     }
 
     if (!contentKind) {
-      vscode.window.showErrorMessage('Unable to determine content kind for this item');
+      notify.error('Unable to determine content kind for this item');
       return;
     }
 
@@ -2383,7 +2381,7 @@ export class LecturerCommands {
       // Get detailed group information
       const detailedGroup = await this.apiService.getCourseGroup(item.group.id);
       if (!detailedGroup) {
-        vscode.window.showErrorMessage('Failed to load group details');
+        notify.error('Failed to load group details');
         return;
       }
 
@@ -2400,7 +2398,7 @@ export class LecturerCommands {
         }
       );
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to show group details: ${error}`);
+      notify.error(`Failed to show group details: ${error}`);
     }
   }
 
@@ -2459,12 +2457,12 @@ export class LecturerCommands {
 
     try {
       await this.apiService.updateCourseGroup(item.group.id, { title: newTitle });
-      vscode.window.showInformationMessage(`Group renamed to "${newTitle}"`);
+      notify.info(`Group renamed to "${newTitle}"`);
 
       // Refresh the tree to show the changes
       await this.treeDataProvider.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to rename group: ${error}`);
+      notify.error(`Failed to rename group: ${error}`);
     }
   }
 
@@ -2472,24 +2470,23 @@ export class LecturerCommands {
     const groupTitle = item.group.title || item.group.id;
 
     // Confirm deletion
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.confirm(
       `Are you sure you want to delete the group "${groupTitle}"?\n\nMembers will be moved to "No Group".`,
-      { modal: true },
       'Delete'
     );
 
-    if (confirmation !== 'Delete') {
+    if (!confirmation) {
       return;
     }
 
     try {
       await this.apiService.deleteCourseGroup(item.group.id);
-      vscode.window.showInformationMessage(`Group "${groupTitle}" deleted`);
+      notify.info(`Group "${groupTitle}" deleted`);
 
       // Refresh the tree to show the changes
       await this.treeDataProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to delete group: ${error?.message || error}`);
+      notify.error(`Failed to delete group: ${error?.message || error}`);
     }
   }
 
@@ -2504,7 +2501,7 @@ export class LecturerCommands {
       }
 
       if (!courseId) {
-        vscode.window.showErrorMessage('Please select a course or groups folder to show members.');
+        notify.error('Please select a course or groups folder to show members.');
         return;
       }
 
@@ -2512,7 +2509,7 @@ export class LecturerCommands {
       await this.courseMemberImportWebviewProvider.showMembers(courseId);
     } catch (error: any) {
       console.error('Failed to show course members:', error);
-      vscode.window.showErrorMessage(
+      notify.error(
         `Failed to show course members: ${error?.message || error}`
       );
     }
@@ -2521,7 +2518,7 @@ export class LecturerCommands {
   async manageCourseMembers(item: CourseTreeItem): Promise<void> {
     try {
       if (!(item instanceof CourseTreeItem) || !item.course?.id) {
-        vscode.window.showErrorMessage('Please select a course to manage its members.');
+        notify.error('Please select a course to manage its members.');
         return;
       }
       await this.manageCourseMembersWebviewProvider.open(
@@ -2530,7 +2527,7 @@ export class LecturerCommands {
       );
     } catch (error: any) {
       console.error('Failed to open course member management:', error);
-      vscode.window.showErrorMessage(
+      notify.error(
         `Failed to open course member management: ${error?.message || error}`
       );
     }
@@ -2598,12 +2595,12 @@ export class LecturerCommands {
         try {
           const course = await this.apiService.getCourse(item.course.id);
           if (!course) {
-            vscode.window.showErrorMessage('Failed to load course details');
+            notify.error('Failed to load course details');
             return;
           }
           await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+          notify.error(`Failed to show course progress: ${error}`);
         }
       }
     );
@@ -2620,12 +2617,12 @@ export class LecturerCommands {
         try {
           const course = await this.apiService.getCourse(courseId);
           if (!course) {
-            vscode.window.showErrorMessage('Failed to load course details');
+            notify.error('Failed to load course details');
             return;
           }
           await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to show course progress: ${error}`);
+          notify.error(`Failed to show course progress: ${error}`);
         }
       }
     );
@@ -2649,7 +2646,7 @@ export class LecturerCommands {
         try {
           await this.courseMemberProgressWebviewProvider.showMemberProgress(memberId, memberName);
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to show member progress: ${error}`);
+          notify.error(`Failed to show member progress: ${error}`);
         }
       }
     );

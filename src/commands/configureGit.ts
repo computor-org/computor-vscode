@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GitEnvironmentService } from '../services/GitEnvironmentService';
+import { notify } from '../utils/notify';
 
 const execFileAsync = promisify(execFile);
 
@@ -10,7 +11,7 @@ export async function configureGit(): Promise<void> {
   const gitBinary = await gitEnvService.getGitBinaryPath();
 
   if (!gitBinary) {
-    void vscode.window.showErrorMessage('Git is required but was not found. Install Git and ensure it is available on your PATH.');
+    void notify.error('Git is required but was not found. Install Git and ensure it is available on your PATH.');
     return;
   }
 
@@ -70,9 +71,9 @@ export async function configureGit(): Promise<void> {
     await execFileAsync(gitBinary, ['config', '--global', 'user.name', name.trim()]);
     await execFileAsync(gitBinary, ['config', '--global', 'user.email', email.trim()]);
 
-    void vscode.window.showInformationMessage('Git configuration updated successfully!');
+    void notify.info('Git configuration updated successfully!');
   } catch (error: any) {
-    void vscode.window.showErrorMessage(`Failed to configure git: ${error.message}`);
+    void notify.error(`Failed to configure git: ${error.message}`);
   }
 }
 

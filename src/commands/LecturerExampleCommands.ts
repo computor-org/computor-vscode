@@ -18,6 +18,7 @@ import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
 import { computeExampleDiff } from '../utils/exampleDiffHelper';
 import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
+import { notify } from '../utils/notify';
 
 /**
  * Simplified example commands for the lecturer view
@@ -55,9 +56,9 @@ export class LecturerExampleCommands {
       if (query !== undefined) {
         this.treeProvider.setSearchQuery(query);
         if (query) {
-          vscode.window.showInformationMessage(`Searching for: ${query}`);
+          notify.info(`Searching for: ${query}`);
         } else {
-          vscode.window.showInformationMessage('Search cleared');
+          notify.info('Search cleared');
         }
       }
     });
@@ -65,13 +66,13 @@ export class LecturerExampleCommands {
     // Clear search
     register('computor.lecturer.clearExampleSearch', () => {
       this.treeProvider.clearSearch();
-      vscode.window.showInformationMessage('Search cleared');
+      notify.info('Search cleared');
     });
 
     // Also register clearSearch for the tree item click
     register('computor.lecturer.clearSearch', () => {
       this.treeProvider.clearSearch();
-      vscode.window.showInformationMessage('Search cleared');
+      notify.info('Search cleared');
     });
 
     // Filter by category
@@ -86,9 +87,9 @@ export class LecturerExampleCommands {
       if (category !== undefined) {
         this.treeProvider.setCategory(category || undefined);
         if (category) {
-          vscode.window.showInformationMessage(`Filtering by category: ${category}`);
+          notify.info(`Filtering by category: ${category}`);
         } else {
-          vscode.window.showInformationMessage('Category filter cleared');
+          notify.info('Category filter cleared');
         }
       }
     });
@@ -106,9 +107,9 @@ export class LecturerExampleCommands {
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
         this.treeProvider.setTags(tags);
         if (tags.length > 0) {
-          vscode.window.showInformationMessage(`Filtering by tags: ${tags.join(', ')}`);
+          notify.info(`Filtering by tags: ${tags.join(', ')}`);
         } else {
-          vscode.window.showInformationMessage('Tag filter cleared');
+          notify.info('Tag filter cleared');
         }
       }
     });
@@ -116,13 +117,13 @@ export class LecturerExampleCommands {
     // Clear category filter
     register('computor.lecturer.clearCategoryFilter', () => {
       this.treeProvider.clearCategoryFilter();
-      vscode.window.showInformationMessage('Category filter cleared');
+      notify.info('Category filter cleared');
     });
 
     // Clear tags filter
     register('computor.lecturer.clearTagsFilter', () => {
       this.treeProvider.clearTagsFilter();
-      vscode.window.showInformationMessage('Tags filter cleared');
+      notify.info('Tags filter cleared');
     });
 
     // Toggle a repository in the repository filter
@@ -134,7 +135,7 @@ export class LecturerExampleCommands {
     // Clear repository filter
     register('computor.lecturer.clearRepositoriesFilter', () => {
       this.treeProvider.clearRepositoriesFilter();
-      vscode.window.showInformationMessage('Repositories filter cleared');
+      notify.info('Repositories filter cleared');
     });
 
     // Checkout example (latest version)
@@ -182,7 +183,7 @@ export class LecturerExampleCommands {
         target = item.merged.local?.fullPath;
       }
       if (!target) {
-        vscode.window.showWarningMessage('No local copy to reveal.');
+        notify.warning('No local copy to reveal.');
         return;
       }
       await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(target));
@@ -192,7 +193,7 @@ export class LecturerExampleCommands {
     register('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem | ExampleTreeItem) => {
       const group = item instanceof ExampleTreeItem ? item.merged.local : item?.group;
       if (!group) {
-        vscode.window.showWarningMessage('No local copy to delete.');
+        notify.warning('No local copy to delete.');
         return;
       }
       await this.deleteCheckedOutGroup({ group } as CheckedOutGroupTreeItem);
@@ -255,7 +256,7 @@ export class LecturerExampleCommands {
 
     // Checkout multiple examples
     register('computor.lecturer.checkoutMultipleExamples', async () => {
-      vscode.window.showInformationMessage('Checkout multiple examples - not yet implemented');
+      notify.info('Checkout multiple examples - not yet implemented');
     });
 
     // Upload examples from ZIP
@@ -342,7 +343,7 @@ export class LecturerExampleCommands {
 
   private async checkoutExample(item: ExampleTreeItem, pickVersion: boolean = false): Promise<void> {
     if (!item?.example) {
-      vscode.window.showErrorMessage('Invalid example item');
+      notify.error('Invalid example item');
       return;
     }
 
@@ -359,7 +360,7 @@ export class LecturerExampleCommands {
       if (pickVersion) {
         const versions = await this.apiService.getExampleVersions(item.example.id);
         if (versions.length === 0) {
-          vscode.window.showErrorMessage('No versions available for this example');
+          notify.error('No versions available for this example');
           return;
         }
         const sorted = versions.slice().sort((a, b) => b.version_number - a.version_number);
@@ -384,7 +385,7 @@ export class LecturerExampleCommands {
         : await this.apiService.downloadExample(item.example.id, false);
 
       if (!exampleData) {
-        vscode.window.showErrorMessage('Failed to download example');
+        notify.error('Failed to download example');
         return;
       }
 
@@ -406,7 +407,7 @@ export class LecturerExampleCommands {
         const versionLabel = `example_versions/${item.example.directory}/${resolvedTag}`;
 
         if (fs.existsSync(versionDir)) {
-          const overwrite = await vscode.window.showWarningMessage(
+          const overwrite = await notify.warning(
             `'${versionLabel}' already exists. Overwrite?`, 'Yes', 'No'
           );
           if (overwrite !== 'Yes') { return; }
@@ -418,7 +419,7 @@ export class LecturerExampleCommands {
         writeCheckoutMetadata(versionDir, metadata);
 
         this.treeProvider.refresh();
-        vscode.window.showInformationMessage(
+        notify.info(
           `Checked out '${item.example.title}' [${resolvedTag}] to ${versionLabel}`
         );
       } else {
@@ -427,7 +428,7 @@ export class LecturerExampleCommands {
         const versionDir = getVersionPath(versionsPath, item.example.directory, resolvedTag);
 
         if (fs.existsSync(workingDir)) {
-          const overwrite = await vscode.window.showWarningMessage(
+          const overwrite = await notify.warning(
             `Working copy of '${item.example.directory}' already exists. Overwrite?`, 'Yes', 'No'
           );
           if (overwrite !== 'Yes') { return; }
@@ -447,19 +448,19 @@ export class LecturerExampleCommands {
         fs.cpSync(workingDir, versionDir, { recursive: true });
 
         this.treeProvider.refresh();
-        vscode.window.showInformationMessage(
+        notify.info(
           `Checked out '${item.example.title}' [${resolvedTag}]`
         );
       }
     } catch (error) {
       console.error('Failed to checkout example:', error);
-      vscode.window.showErrorMessage(`Failed to checkout example: ${error}`);
+      notify.error(`Failed to checkout example: ${error}`);
     }
   }
 
   private async checkoutAssignmentExample(item: any): Promise<void> {
     if (!item?.exampleVersionInfo?.id || !item?.exampleInfo) {
-      vscode.window.showWarningMessage('No example version assigned to this content.');
+      notify.warning('No example version assigned to this content.');
       return;
     }
 
@@ -467,7 +468,7 @@ export class LecturerExampleCommands {
       const dirs = WorkspaceStructureManager.getInstance().getDirectories();
       const exampleData = await this.apiService.downloadExampleVersion(item.exampleVersionInfo.id);
       if (!exampleData) {
-        vscode.window.showErrorMessage('Failed to download example version.');
+        notify.error('Failed to download example version.');
         return;
       }
 
@@ -494,7 +495,7 @@ export class LecturerExampleCommands {
       const versionDir = getVersionPath(dirs.exampleVersions, directory, versionTag);
 
       if (fs.existsSync(workingDir)) {
-        const overwrite = await vscode.window.showWarningMessage(
+        const overwrite = await notify.warning(
           `Working copy of '${directory}' already exists. Overwrite?`, 'Yes', 'No'
         );
         if (overwrite !== 'Yes') { return; }
@@ -512,7 +513,7 @@ export class LecturerExampleCommands {
       fs.cpSync(workingDir, versionDir, { recursive: true });
 
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(
+      notify.info(
         `Checked out '${item.exampleInfo.title || directory}' [${versionTag}]`
       );
 
@@ -521,13 +522,13 @@ export class LecturerExampleCommands {
       void this.treeProvider.revealExample({ identifier });
     } catch (error) {
       console.error('Failed to checkout assignment example:', error);
-      vscode.window.showErrorMessage(`Failed to checkout: ${error}`);
+      notify.error(`Failed to checkout: ${error}`);
     }
   }
 
   private async checkoutAllFilteredExamples(item: ExampleRepositoryTreeItem): Promise<void> {
     if (!item?.repository) {
-      vscode.window.showErrorMessage('Invalid repository item');
+      notify.error('Invalid repository item');
       return;
     }
 
@@ -539,7 +540,7 @@ export class LecturerExampleCommands {
     try {
       const filteredExamples = await this.treeProvider.getFilteredExamplesForRepository(item.repository);
       if (filteredExamples.length === 0) {
-        vscode.window.showInformationMessage('No examples match the current filters');
+        notify.info('No examples match the current filters');
         return;
       }
 
@@ -552,7 +553,7 @@ export class LecturerExampleCommands {
       if (selectedTags.length > 0) activeFilters.push(`tags: ${selectedTags.join(', ')}`);
       const filterInfo = activeFilters.length > 0 ? ` with filters: ${activeFilters.join(', ')}` : '';
 
-      const confirm = await vscode.window.showInformationMessage(
+      const confirm = await notify.info(
         `Checkout ${filteredExamples.length} example(s)${filterInfo} to examples/?`, 'Yes', 'No'
       );
       if (confirm !== 'Yes') { return; }
@@ -619,17 +620,17 @@ export class LecturerExampleCommands {
         this.treeProvider.refresh();
 
         if (successCount === filteredExamples.length) {
-          vscode.window.showInformationMessage(`Checked out ${successCount} example(s)`);
+          notify.info(`Checked out ${successCount} example(s)`);
         } else if (successCount > 0) {
           const errorMessage = errors.length > 3 ? errors.slice(0, 3).join('; ') + '...' : errors.join('; ');
-          vscode.window.showWarningMessage(`Checked out ${successCount} of ${filteredExamples.length}. Errors: ${errorMessage}`);
+          notify.warning(`Checked out ${successCount} of ${filteredExamples.length}. Errors: ${errorMessage}`);
         } else {
-          vscode.window.showErrorMessage(`Failed to checkout examples. ${errors[0]}`);
+          notify.error(`Failed to checkout examples. ${errors[0]}`);
         }
       });
     } catch (error) {
       console.error('Failed to checkout filtered examples:', error);
-      vscode.window.showErrorMessage(`Failed to checkout examples: ${error}`);
+      notify.error(`Failed to checkout examples: ${error}`);
     }
   }
 
@@ -640,7 +641,7 @@ export class LecturerExampleCommands {
       fs.mkdirSync(examplesPath, { recursive: true });
       return examplesPath;
     } catch {
-      vscode.window.showErrorMessage('No workspace folder open');
+      notify.error('No workspace folder open');
       return undefined;
     }
   }
@@ -652,14 +653,14 @@ export class LecturerExampleCommands {
       fs.mkdirSync(versionsPath, { recursive: true });
       return versionsPath;
     } catch {
-      vscode.window.showErrorMessage('No workspace folder open');
+      notify.error('No workspace folder open');
       return undefined;
     }
   }
 
   private async uploadExample(item: ExampleTreeItem): Promise<void> {
     if (!item?.example) {
-      vscode.window.showErrorMessage('Invalid example item');
+      notify.error('Invalid example item');
       return;
     }
 
@@ -668,7 +669,7 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesPath, item.example.directory);
     if (!fs.existsSync(workingDir)) {
-      vscode.window.showErrorMessage(`No working copy found. Check out the example first.`);
+      notify.error(`No working copy found. Check out the example first.`);
       return;
     }
 
@@ -681,7 +682,7 @@ export class LecturerExampleCommands {
 
   private async uploadCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
     if (!item?.version) {
-      vscode.window.showErrorMessage('Invalid checked-out version');
+      notify.error('Invalid checked-out version');
       return;
     }
 
@@ -696,7 +697,7 @@ export class LecturerExampleCommands {
     dirPath: string, directory: string, repositoryId: string, title: string, exampleId: string
   ): Promise<void> {
     if (!fs.existsSync(dirPath)) {
-      vscode.window.showErrorMessage(`Directory not found: ${dirPath}`);
+      notify.error(`Directory not found: ${dirPath}`);
       return;
     }
 
@@ -704,7 +705,7 @@ export class LecturerExampleCommands {
     if (!repositoryId) {
       const repos = await this.apiService.getExampleRepositories();
       if (!repos || repos.length === 0) {
-        vscode.window.showErrorMessage('No example repositories found. Please create one first.');
+        notify.error('No example repositories found. Please create one first.');
         return;
       }
 
@@ -777,7 +778,7 @@ export class LecturerExampleCommands {
       uploadVersion = normalizeSemVer(custom);
     }
 
-    const confirm = await vscode.window.showInformationMessage(
+    const confirm = await notify.info(
       `Upload "${title}" as version ${uploadVersion}?`, 'Upload', 'Cancel'
     );
     if (confirm !== 'Upload') { return; }
@@ -786,7 +787,7 @@ export class LecturerExampleCommands {
     try {
       updateMetaYamlVersion(dirPath, uploadVersion);
     } catch (e) {
-      vscode.window.showErrorMessage(`Failed to update meta.yaml version: ${e}`);
+      notify.error(`Failed to update meta.yaml version: ${e}`);
       return;
     }
 
@@ -903,13 +904,13 @@ export class LecturerExampleCommands {
         }
 
         progress.report({ increment: 20, message: 'Complete!' });
-        vscode.window.showInformationMessage(`Successfully uploaded: ${title} [${uploadVersion}]`);
+        notify.info(`Successfully uploaded: ${title} [${uploadVersion}]`);
         this.treeProvider.refresh();
         vscode.commands.executeCommand('computor.lecturer.refresh');
       });
     } catch (error) {
       console.error('Failed to upload example:', error);
-      vscode.window.showErrorMessage(`Failed to upload: ${error}`);
+      notify.error(`Failed to upload: ${error}`);
     }
   }
 
@@ -957,11 +958,11 @@ export class LecturerExampleCommands {
 
     try {
       const repo = await this.apiService.createExampleRepository(payload);
-      vscode.window.showInformationMessage(`Example repository "${repo.name}" created.`);
+      notify.info(`Example repository "${repo.name}" created.`);
       try { this.apiService.clearExamplesCache(); } catch {}
       this.treeProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create example repository: ${error?.message || error}`);
+      notify.error(`Failed to create example repository: ${error?.message || error}`);
     }
   }
 
@@ -991,11 +992,11 @@ export class LecturerExampleCommands {
     try {
       const existingExamples = await this.apiService.getExamples();
       if (existingExamples.some(e => e.identifier === identifier)) {
-        vscode.window.showErrorMessage(`Example identifier "${identifier}" is already in use.`);
+        notify.error(`Example identifier "${identifier}" is already in use.`);
         return;
       }
     } catch {
-      const proceed = await vscode.window.showWarningMessage(
+      const proceed = await notify.warning(
         'Could not verify identifier uniqueness. Continue anyway?',
         'Continue', 'Cancel'
       );
@@ -1041,7 +1042,7 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesPath, directory);
     if (fs.existsSync(workingDir)) {
-      vscode.window.showErrorMessage(`Local example "${directory}" already exists.`);
+      notify.error(`Local example "${directory}" already exists.`);
       return;
     }
 
@@ -1087,9 +1088,9 @@ export class LecturerExampleCommands {
 
       this.treeProvider.refreshAndExpand(directory);
 
-      vscode.window.showInformationMessage(`Created new example "${title}" — checked out locally.`);
+      notify.info(`Created new example "${title}" — checked out locally.`);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create example: ${error}`);
+      notify.error(`Failed to create example: ${error}`);
     }
   }
 
@@ -1101,7 +1102,7 @@ export class LecturerExampleCommands {
     const metaFiles = await vscode.workspace.findFiles('**/meta.yaml', '**/node_modules/**');
     
     if (metaFiles.length === 0) {
-      vscode.window.showErrorMessage('No meta.yaml files found in workspace');
+      notify.error('No meta.yaml files found in workspace');
       return;
     }
 
@@ -1135,7 +1136,7 @@ export class LecturerExampleCommands {
       return;
     }
     
-    vscode.window.showInformationMessage(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`);
+    notify.info(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`);
   }
 
   /**
@@ -1154,7 +1155,7 @@ export class LecturerExampleCommands {
         // Ask user to select a repository
         const repositories = await this.apiService.getExampleRepositories();
         if (repositories.length === 0) {
-          vscode.window.showErrorMessage('No example repositories available');
+          notify.error('No example repositories available');
           return;
         }
         
@@ -1382,7 +1383,7 @@ export class LecturerExampleCommands {
           if (missing.length) missingSummary.push(`${ex.slug}: ${missing.join(', ')}`);
         }
         if (missingSummary.length) {
-          vscode.window.showWarningMessage(`Some selected examples reference dependencies not in selection: ${missingSummary.slice(0,3).join('; ')}${missingSummary.length>3?' ...':''}`);
+          notify.warning(`Some selected examples reference dependencies not in selection: ${missingSummary.slice(0,3).join('; ')}${missingSummary.length>3?' ...':''}`);
         }
 
         progress.report({ increment: 40, message: `Uploading ${selectedItems.length} example(s) with dependency order...` });
@@ -1419,15 +1420,15 @@ export class LecturerExampleCommands {
 
         // Show results
         if (successCount === selectedItems.length) {
-          vscode.window.showInformationMessage(
+          notify.info(
             `Successfully uploaded ${successCount} example(s) to ${repositoryName}`
           );
         } else if (successCount > 0) {
-          vscode.window.showWarningMessage(
+          notify.warning(
             `Uploaded ${successCount} of ${selectedItems.length} examples. Errors: ${errors.join('; ')}`
           );
         } else {
-          vscode.window.showErrorMessage(
+          notify.error(
             `Failed to upload examples. Errors: ${errors.join('; ')}`
           );
         }
@@ -1445,7 +1446,7 @@ export class LecturerExampleCommands {
     } catch (error) {
       console.error('Failed to upload examples from ZIP:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to upload examples: ${errorMessage}`);
+      notify.error(`Failed to upload examples: ${errorMessage}`);
     }
   }
 
@@ -1454,7 +1455,7 @@ export class LecturerExampleCommands {
    */
   private async createCourseContentFromExample(item: ExampleTreeItem): Promise<void> {
     if (!item || !item.example) {
-      vscode.window.showErrorMessage('Invalid example item');
+      notify.error('Invalid example item');
       return;
     }
 
@@ -1478,7 +1479,7 @@ export class LecturerExampleCommands {
       }
       
       if (allCourses.length === 0) {
-        vscode.window.showErrorMessage('No courses available');
+        notify.error('No courses available');
         return;
       }
 
@@ -1520,7 +1521,7 @@ export class LecturerExampleCommands {
       }
 
       if (submittableTypes.length === 0) {
-        vscode.window.showErrorMessage('No submittable content types available in this course. Please create an assignment-type content type first.');
+        notify.error('No submittable content types available in this course. Please create an assignment-type content type first.');
         return;
       }
 
@@ -1604,7 +1605,7 @@ export class LecturerExampleCommands {
       
       // Check if path already exists
       if (courseContents.some(c => c.path === path)) {
-        vscode.window.showErrorMessage(`A content item with path '${path}' already exists.`);
+        notify.error(`A content item with path '${path}' already exists.`);
         return;
       }
 
@@ -1652,23 +1653,23 @@ export class LecturerExampleCommands {
             } catch (e) {
               console.warn('Failed to trigger assignments generation after creating content:', e);
             }
-            vscode.window.showInformationMessage(
+            notify.info(
               `Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}"`
             );
           } catch (assignError) {
             // Content was created but example assignment failed
-            vscode.window.showWarningMessage(
+            notify.warning(
               `Assignment "${item.example.title}" was created but example assignment failed: ${assignError}. You can assign it manually later.`
             );
           }
         } else {
           // Content created but no versions available
-          vscode.window.showWarningMessage(
+          notify.warning(
             `Assignment "${item.example.title}" was created but no example versions were found. Please assign a version manually.`
           );
         }
       } else {
-        vscode.window.showInformationMessage(
+        notify.info(
           `Successfully created assignment "${item.example.title}" in course "${courseSelection.label}"`
         );
       }
@@ -1678,7 +1679,7 @@ export class LecturerExampleCommands {
       
     } catch (error) {
       console.error('Failed to create content from example:', error);
-      vscode.window.showErrorMessage(`Failed to create assignment: ${error}`);
+      notify.error(`Failed to create assignment: ${error}`);
     }
   }
 
@@ -1688,7 +1689,7 @@ export class LecturerExampleCommands {
     if (!examplesPath) { return; }
     const workingPath = getWorkingPath(examplesPath, item.example.directory);
     if (!fs.existsSync(workingPath)) {
-      vscode.window.showErrorMessage('Example is not checked out');
+      notify.error('Example is not checked out');
       return;
     }
     await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(workingPath));
@@ -1702,7 +1703,7 @@ export class LecturerExampleCommands {
 
     const currentVersion = readMetaYamlVersion(item.version.fullPath);
     if (!currentVersion) {
-      vscode.window.showErrorMessage('No version field found in meta.yaml');
+      notify.error('No version field found in meta.yaml');
       return;
     }
 
@@ -1720,14 +1721,14 @@ export class LecturerExampleCommands {
     if (!picked) { return; }
 
     updateMetaYamlVersion(item.version.fullPath, picked.newVersion);
-    vscode.window.showInformationMessage(`Version bumped: ${normalized} -> ${picked.newVersion}`);
+    notify.info(`Version bumped: ${normalized} -> ${picked.newVersion}`);
     this.treeProvider.refresh();
   }
 
   private async deleteCheckedOutGroup(item: CheckedOutGroupTreeItem): Promise<void> {
     if (!item?.group) { return; }
 
-    const confirm = await vscode.window.showWarningMessage(
+    const confirm = await notify.warning(
       `Delete all local data of "${item.group.directory}"? This removes the working copy and all version snapshots.`,
       'Delete', 'Cancel'
     );
@@ -1747,9 +1748,9 @@ export class LecturerExampleCommands {
         }
       }
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(`Deleted: ${item.group.directory}`);
+      notify.info(`Deleted: ${item.group.directory}`);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+      notify.error(`Failed to delete: ${error}`);
     }
   }
 
@@ -1757,7 +1758,7 @@ export class LecturerExampleCommands {
     if (!item?.version) { return; }
 
     const label = item.version.isWorking ? 'working copy' : `version ${item.version.versionTag}`;
-    const confirm = await vscode.window.showWarningMessage(
+    const confirm = await notify.warning(
       `Delete ${label} of "${item.groupDirectory}"?`,
       'Delete', 'Cancel'
     );
@@ -1766,9 +1767,9 @@ export class LecturerExampleCommands {
     try {
       fs.rmSync(item.version.fullPath, { recursive: true, force: true });
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(`Deleted ${label}`);
+      notify.info(`Deleted ${label}`);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+      notify.error(`Failed to delete: ${error}`);
     }
   }
 
@@ -1780,7 +1781,7 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
 
-    const confirm = await vscode.window.showWarningMessage(
+    const confirm = await notify.warning(
       `Restore version ${item.version.versionTag} to working copy of "${item.groupDirectory}"? Any unsaved changes in the working directory will be lost.`,
       'Restore', 'Cancel'
     );
@@ -1793,9 +1794,9 @@ export class LecturerExampleCommands {
       fs.cpSync(item.version.fullPath, workingDir, { recursive: true });
 
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(`Restored ${item.version.versionTag} to working copy`);
+      notify.info(`Restored ${item.version.versionTag} to working copy`);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to restore: ${error}`);
+      notify.error(`Failed to restore: ${error}`);
     }
   }
 
@@ -1807,7 +1808,7 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
     if (!fs.existsSync(workingDir)) {
-      vscode.window.showWarningMessage('No working copy found to compare against.');
+      notify.warning('No working copy found to compare against.');
       return;
     }
 
@@ -1815,7 +1816,7 @@ export class LecturerExampleCommands {
     const versionFiles = this.collectFiles(versionDir, versionDir);
 
     if (versionFiles.length === 0 && !fs.existsSync(workingDir)) {
-      vscode.window.showInformationMessage('No files found in version snapshot.');
+      notify.info('No files found in version snapshot.');
       return;
     }
 
@@ -1882,7 +1883,7 @@ export class LecturerExampleCommands {
 
     if (item instanceof CheckedOutVersionTreeItem) {
       if (item.version.isWorking) {
-        vscode.window.showInformationMessage('Pick a non-working version snapshot to diff against the working copy.');
+        notify.info('Pick a non-working version snapshot to diff against the working copy.');
         return;
       }
       versionDir = item.version.fullPath;
@@ -1897,7 +1898,7 @@ export class LecturerExampleCommands {
     } else if (item instanceof ExampleTreeItem) {
       const group = item.merged.local;
       if (!group) {
-        vscode.window.showWarningMessage('This example is not checked out locally.');
+        notify.warning('This example is not checked out locally.');
         return;
       }
       const picked = this.pickSnapshotForGroup(group, versionsPath);
@@ -1913,14 +1914,14 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesPath, groupDirectory);
     if (!fs.existsSync(workingDir)) {
-      vscode.window.showWarningMessage('No working copy found to compare against.');
+      notify.warning('No working copy found to compare against.');
       return;
     }
 
     const diff = computeExampleDiff(versionDir, workingDir);
     const total = diff.modified.length + diff.added.length + diff.removed.length;
     if (total === 0) {
-      vscode.window.showInformationMessage(`No differences between ${versionTag} and the working copy.`);
+      notify.info(`No differences between ${versionTag} and the working copy.`);
       return;
     }
 
@@ -1950,7 +1951,7 @@ export class LecturerExampleCommands {
       await vscode.commands.executeCommand('vscode.changes', title, resources);
     } catch (err) {
       console.error('Failed to open multi-file diff editor:', err);
-      vscode.window.showErrorMessage(`Failed to open diff: ${err}`);
+      notify.error(`Failed to open diff: ${err}`);
     }
   }
 
@@ -1973,7 +1974,7 @@ export class LecturerExampleCommands {
     }
     const snapshots = group.versions.filter(v => !v.isWorking);
     if (snapshots.length === 0) {
-      vscode.window.showWarningMessage('No version snapshots available to diff against.');
+      notify.warning('No version snapshots available to diff against.');
       return undefined;
     }
     const latest = snapshots[0]!;
@@ -1998,7 +1999,7 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesDir, exampleDirectory);
     if (!fs.existsSync(workingDir)) {
-      vscode.window.showWarningMessage('No working copy found to compare against.');
+      notify.warning('No working copy found to compare against.');
       return;
     }
 
@@ -2006,7 +2007,7 @@ export class LecturerExampleCommands {
     const versionUri = vscode.Uri.file(item.filePath);
 
     if (!fs.existsSync(workingFilePath)) {
-      const action = await vscode.window.showWarningMessage(
+      const action = await notify.warning(
         `"${relativeFile}" does not exist in the working copy.`,
         'Open Version File'
       );
@@ -2057,7 +2058,7 @@ export class LecturerExampleCommands {
 
     const targetPath = path.join(targetDir, name);
     if (fs.existsSync(targetPath)) {
-      vscode.window.showErrorMessage(`"${name}" already exists.`);
+      notify.error(`"${name}" already exists.`);
       return;
     }
 
@@ -2072,7 +2073,7 @@ export class LecturerExampleCommands {
       }
       this.treeProvider.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create: ${error}`);
+      notify.error(`Failed to create: ${error}`);
     }
   }
 
@@ -2088,7 +2089,7 @@ export class LecturerExampleCommands {
 
     const newPath = path.join(path.dirname(item.filePath), newName);
     if (fs.existsSync(newPath)) {
-      vscode.window.showErrorMessage(`"${newName}" already exists.`);
+      notify.error(`"${newName}" already exists.`);
       return;
     }
 
@@ -2096,7 +2097,7 @@ export class LecturerExampleCommands {
       fs.renameSync(item.filePath, newPath);
       this.treeProvider.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to rename: ${error}`);
+      notify.error(`Failed to rename: ${error}`);
     }
   }
 
@@ -2105,7 +2106,7 @@ export class LecturerExampleCommands {
 
     const name = path.basename(item.filePath);
     const label = item.isDirectory ? `folder "${name}" and all its contents` : `file "${name}"`;
-    const confirm = await vscode.window.showWarningMessage(
+    const confirm = await notify.warning(
       `Delete ${label}?`, 'Delete', 'Cancel'
     );
     if (confirm !== 'Delete') { return; }
@@ -2114,7 +2115,7 @@ export class LecturerExampleCommands {
       fs.rmSync(item.filePath, { recursive: true, force: true });
       this.treeProvider.refresh();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to delete: ${error}`);
+      notify.error(`Failed to delete: ${error}`);
     }
   }
 
@@ -2135,7 +2136,7 @@ export class LecturerExampleCommands {
 
   private async showExampleDetails(item: ExampleTreeItem): Promise<void> {
     if (!item?.example) {
-      vscode.window.showErrorMessage('Invalid example item');
+      notify.error('Invalid example item');
       return;
     }
 
@@ -2169,7 +2170,7 @@ export class LecturerExampleCommands {
 
     if (item instanceof CheckedOutVersionTreeItem) {
       if (!item?.version?.isWorking) {
-        vscode.window.showErrorMessage('Test configuration can only be edited on working copies');
+        notify.error('Test configuration can only be edited on working copies');
         return;
       }
       exampleDir = item.version.fullPath;
@@ -2180,13 +2181,13 @@ export class LecturerExampleCommands {
       }
     } else if (item instanceof FileSystemTreeItem) {
       if (!item?.filePath) {
-        vscode.window.showErrorMessage('Invalid file item');
+        notify.error('Invalid file item');
         return;
       }
       testYamlPath = item.filePath;
       exampleDir = path.dirname(testYamlPath);
     } else {
-      vscode.window.showErrorMessage('Invalid item');
+      notify.error('Invalid item');
       return;
     }
 
@@ -2215,7 +2216,7 @@ export class LecturerExampleCommands {
 
   private async addTests(item: CheckedOutVersionTreeItem): Promise<void> {
     if (!item?.version?.isWorking) {
-      vscode.window.showErrorMessage('Tests can only be added to working copies');
+      notify.error('Tests can only be added to working copies');
       return;
     }
 
@@ -2258,7 +2259,7 @@ export class LecturerExampleCommands {
 
     if (item instanceof CheckedOutVersionTreeItem) {
       if (!item?.version?.isWorking) {
-        vscode.window.showErrorMessage('Meta configuration can only be edited on working copies');
+        notify.error('Meta configuration can only be edited on working copies');
         return;
       }
       exampleDir = item.version.fullPath;
@@ -2267,12 +2268,12 @@ export class LecturerExampleCommands {
       metaYamlPath = item.filePath;
       exampleDir = path.dirname(metaYamlPath);
     } else {
-      vscode.window.showErrorMessage('Invalid item');
+      notify.error('Invalid item');
       return;
     }
 
     if (!fs.existsSync(metaYamlPath)) {
-      vscode.window.showErrorMessage('meta.yaml not found');
+      notify.error('meta.yaml not found');
       return;
     }
 
@@ -2305,7 +2306,7 @@ export class LecturerExampleCommands {
 
   private async createNewReadme(item: FileSystemTreeItem): Promise<void> {
     if (!item?.filePath || !item.isDirectory) {
-      vscode.window.showErrorMessage('Invalid content directory');
+      notify.error('Invalid content directory');
       return;
     }
 
@@ -2326,7 +2327,7 @@ export class LecturerExampleCommands {
 
     const availableLanguages = languages.filter(l => !existingLangs.has(l.code));
     if (availableLanguages.length === 0) {
-      vscode.window.showInformationMessage('Readmes for all available languages already exist');
+      notify.info('Readmes for all available languages already exist');
       return;
     }
 
@@ -2355,12 +2356,12 @@ export class LecturerExampleCommands {
 
   private async runExampleTests(item: CheckedOutVersionTreeItem): Promise<void> {
     if (!item?.version?.fullPath) {
-      vscode.window.showErrorMessage('Invalid example item');
+      notify.error('Invalid example item');
       return;
     }
 
     if (!fs.existsSync(item.version.fullPath)) {
-      vscode.window.showErrorMessage('Example directory not found.');
+      notify.error('Example directory not found.');
       return;
     }
 
@@ -2381,7 +2382,7 @@ export class LecturerExampleCommands {
     const exampleDirs = this.detectExampleDirectories(selectedDir);
 
     if (exampleDirs.length === 0) {
-      vscode.window.showWarningMessage('No examples found. A valid example directory must contain a meta.yaml with a slug.');
+      notify.warning('No examples found. A valid example directory must contain a meta.yaml with a slug.');
       return;
     }
 
@@ -2501,7 +2502,7 @@ export class LecturerExampleCommands {
               if (!fallbackRepositoryId) {
                 const repos = await this.apiService.getExampleRepositories();
                 if (!repos || repos.length === 0) {
-                  vscode.window.showErrorMessage('No example repositories found. Please create one first.');
+                  notify.error('No example repositories found. Please create one first.');
                   return;
                 }
 
@@ -2540,9 +2541,9 @@ export class LecturerExampleCommands {
         this.treeProvider.refresh();
 
         if (failed > 0) {
-          vscode.window.showWarningMessage(`Imported ${imported} example(s), ${failed} failed.`);
+          notify.warning(`Imported ${imported} example(s), ${failed} failed.`);
         } else {
-          vscode.window.showInformationMessage(`Imported ${imported} example(s) successfully.`);
+          notify.info(`Imported ${imported} example(s) successfully.`);
         }
       }
     );

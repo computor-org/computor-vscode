@@ -3,6 +3,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { UserManagerTreeProvider } from '../ui/tree/user-manager/UserManagerTreeProvider';
 import { UserManagementWebviewProvider } from '../ui/webviews/UserManagementWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
+import { notify } from '../utils/notify';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -99,12 +100,12 @@ export class UserManagerCommands {
           family_name: familyName.trim() || null
         })
       );
-      vscode.window.showInformationMessage(`User ${created.email || created.id} created.`);
+      notify.info(`User ${created.email || created.id} created.`);
       this.treeProvider.refresh();
       await this.userManagementWebviewProvider.open(created.id);
     } catch (error: any) {
       const detail = error?.message || error?.response?.data?.detail || String(error);
-      vscode.window.showErrorMessage(`Failed to create user: ${detail}`);
+      notify.error(`Failed to create user: ${detail}`);
     }
   }
 
@@ -112,9 +113,9 @@ export class UserManagerCommands {
     try {
       console.log('[UserManagerCommands] Refreshing user list...');
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage('User list refreshed');
+      notify.info('User list refreshed');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to refresh users: ${error?.message || error}`);
+      notify.error(`Failed to refresh users: ${error?.message || error}`);
     }
   }
 
@@ -129,13 +130,13 @@ export class UserManagerCommands {
       }
 
       if (!userId) {
-        vscode.window.showWarningMessage('No user selected');
+        notify.warning('No user selected');
         return;
       }
 
       await this.userManagementWebviewProvider.open(userId);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open user details: ${error?.message || error}`);
+      notify.error(`Failed to open user details: ${error?.message || error}`);
     }
   }
 }

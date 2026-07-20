@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ComputorApiService } from '../services/ComputorApiService';
 import type { DocumentsTreeProvider } from '../ui/tree/lecturer-documents/DocumentsTreeProvider';
+import { notify } from '../utils/notify';
 import {
   DocumentsFileItem,
   DocumentsDirectoryItem,
@@ -139,7 +140,7 @@ export class DocumentsCommands {
       }
       return undefined;
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to download document: ${err?.message || err}`);
+      notify.error(`Failed to download document: ${err?.message || err}`);
       return undefined;
     }
   }
@@ -148,7 +149,7 @@ export class DocumentsCommands {
     if (!(item instanceof DocumentsFileItem)) { return; }
     const { scope, entry } = item;
     if (!entry.local?.absPath) {
-      vscode.window.showWarningMessage('No local copy to upload.');
+      notify.warning('No local copy to upload.');
       return;
     }
     try {
@@ -164,7 +165,7 @@ export class DocumentsCommands {
       await this.tree.cache.writePulled(scope, entry.relativePath, bytes, remote?.last_modified);
       this.tree.invalidateDirectory(scope, parent);
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to upload document: ${err?.message || err}`);
+      notify.error(`Failed to upload document: ${err?.message || err}`);
     }
   }
 
@@ -262,7 +263,7 @@ export class DocumentsCommands {
     try {
       await this.api.uploadDocument(target.scope.scope, target.scope.scopeId ?? null, relativePath, emptyBytes);
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to create file on server: ${err?.message || err}`);
+      notify.error(`Failed to create file on server: ${err?.message || err}`);
       return;
     }
 
@@ -302,7 +303,7 @@ export class DocumentsCommands {
       }
       this.tree.invalidateDirectory(target.scope, target.parentPath);
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to create folder: ${err?.message || err}`);
+      notify.error(`Failed to create folder: ${err?.message || err}`);
     }
   }
 
@@ -335,7 +336,7 @@ export class DocumentsCommands {
       }
       this.tree.invalidateDirectory(scope, parent);
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to rename: ${err?.message || err}`);
+      notify.error(`Failed to rename: ${err?.message || err}`);
     }
   }
 
@@ -343,12 +344,11 @@ export class DocumentsCommands {
     if (!(item instanceof DocumentsFileItem || item instanceof DocumentsDirectoryItem)) { return; }
     const { scope, entry } = item;
     const kind = entry.type === 'directory' ? 'folder' : 'file';
-    const choice = await vscode.window.showWarningMessage(
+    const choice = await notify.confirm(
       `Delete ${kind} "${entry.relativePath}"?${entry.type === 'directory' ? ' This removes everything inside it.' : ''}`,
-      { modal: true },
       'Delete'
     );
-    if (choice !== 'Delete') { return; }
+    if (!choice) { return; }
     const idx = entry.relativePath.lastIndexOf('/');
     const parent = idx >= 0 ? entry.relativePath.slice(0, idx) : '';
     try {
@@ -362,22 +362,21 @@ export class DocumentsCommands {
       await this.tree.cache.removeLocal(scope, entry.relativePath);
       this.tree.invalidateDirectory(scope, parent);
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to delete: ${err?.message || err}`);
+      notify.error(`Failed to delete: ${err?.message || err}`);
     }
   }
 
   private async discardLocal(item: any): Promise<void> {
     if (!(item instanceof DocumentsFileItem)) { return; }
     if (item.entry.state !== 'modified' && item.entry.state !== 'remote-changed') {
-      vscode.window.showInformationMessage('Nothing to discard — file has no local changes.');
+      notify.info('Nothing to discard — file has no local changes.');
       return;
     }
-    const choice = await vscode.window.showWarningMessage(
+    const choice = await notify.confirm(
       `Discard local changes to "${item.entry.relativePath}"?`,
-      { modal: true },
       'Discard'
     );
-    if (choice !== 'Discard') { return; }
+    if (!choice) { return; }
     const idx = item.entry.relativePath.lastIndexOf('/');
     const parent = idx >= 0 ? item.entry.relativePath.slice(0, idx) : '';
     await this.tree.cache.removeLocal(item.scope, item.entry.relativePath);
@@ -398,14 +397,14 @@ export class DocumentsCommands {
     if (item) {
       const target = this.resolveTarget(item);
       if (!target) {
-        vscode.window.showWarningMessage('Right-click an organization, course family, course, or folder to upload its pending changes.');
+        notify.warning('Right-click an organization, course family, course, or folder to upload its pending changes.');
         return;
       }
       slices.push(target);
     } else {
       const scopes = await this.tree.cache.listScopesWithLocalFiles();
       if (scopes.length === 0) {
-        vscode.window.showInformationMessage('No local documents staged for upload.');
+        notify.info('No local documents staged for upload.');
         return;
       }
       for (const scope of scopes) { slices.push({ scope, parentPath: '' }); }
@@ -445,7 +444,7 @@ export class DocumentsCommands {
     }
 
     if (candidates.length === 0) {
-      vscode.window.showInformationMessage('Nothing to upload — all local files are already in sync.');
+      notify.info('Nothing to upload — all local files are already in sync.');
       return;
     }
 
@@ -483,9 +482,9 @@ export class DocumentsCommands {
 
     this.tree.refresh();
     if (failed === 0) {
-      vscode.window.showInformationMessage(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}.`);
+      notify.info(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}.`);
     } else {
-      vscode.window.showWarningMessage(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}, ${failed} failed.`);
+      notify.warning(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}, ${failed} failed.`);
     }
   }
 
@@ -495,7 +494,7 @@ export class DocumentsCommands {
   private async revealMirrorRoot(): Promise<void> {
     const root = this.tree.cache.resolveMirrorRoot();
     if (!root) {
-      vscode.window.showWarningMessage('No workspace is open.');
+      notify.warning('No workspace is open.');
       return;
     }
     await fs.promises.mkdir(root, { recursive: true }).catch(() => undefined);

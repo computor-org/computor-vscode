@@ -4,6 +4,7 @@ import * as fs from 'fs/promises';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { commandRegistrar } from './commandHelpers';
+import { notify } from '../utils/notify';
 
 export class LecturerFsCommands {
   private repositoryManager: LecturerRepositoryManager;
@@ -32,12 +33,12 @@ export class LecturerFsCommands {
     const absPath: string | undefined = item?.absPath;
 
     if (!course || !courseContent || !absPath) {
-      vscode.window.showErrorMessage('Unable to rename. Course context or path missing.');
+      notify.error('Unable to rename. Course context or path missing.');
       return;
     }
 
     if (!(await this.ensureWithinAssignments(course, absPath, item?.repositoryRoot))) {
-      vscode.window.showErrorMessage('This file is outside the assignments repository.');
+      notify.error('This file is outside the assignments repository.');
       return;
     }
 
@@ -67,22 +68,22 @@ export class LecturerFsCommands {
 
     const pathAllowed = await this.ensureWithinAssignments(course, target, item?.repositoryRoot);
     if (!pathAllowed) {
-      vscode.window.showErrorMessage('Target path would move the file outside the assignments repository.');
+      notify.error('Target path would move the file outside the assignments repository.');
       return;
     }
 
     try {
       await fs.access(target);
-      vscode.window.showErrorMessage('A file or folder with that name already exists.');
+      notify.error('A file or folder with that name already exists.');
       return;
     } catch {}
 
     try {
       await fs.rename(absPath, target);
-      vscode.window.showInformationMessage(`Renamed to ${newName}`);
+      notify.info(`Renamed to ${newName}`);
       await vscode.commands.executeCommand('computor.lecturer.refresh');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to rename: ${error?.message || error}`);
+      notify.error(`Failed to rename: ${error?.message || error}`);
     }
   }
 
@@ -93,39 +94,37 @@ export class LecturerFsCommands {
     const label: string = item?.label?.toString() || absPath;
 
     if (!course || !courseContent || !absPath) {
-      vscode.window.showErrorMessage('Unable to delete. Course context or path missing.');
+      notify.error('Unable to delete. Course context or path missing.');
       return;
     }
 
     if (!(await this.ensureWithinAssignments(course, absPath, item?.repositoryRoot))) {
-      vscode.window.showErrorMessage('This entry is outside the assignments repository.');
+      notify.error('This entry is outside the assignments repository.');
       return;
     }
 
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.confirm(
       `Delete '${label}'? This cannot be undone.`,
-      { modal: true },
-      'Delete',
-      'Cancel'
+      'Delete'
     );
 
-    if (confirmation !== 'Delete') {
+    if (!confirmation) {
       return;
     }
 
     try {
       await fs.rm(absPath, { recursive: true, force: true });
-      vscode.window.showInformationMessage(`Deleted ${label}`);
+      notify.info(`Deleted ${label}`);
       await vscode.commands.executeCommand('computor.lecturer.refresh');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to delete: ${error?.message || error}`);
+      notify.error(`Failed to delete: ${error?.message || error}`);
     }
   }
 
   private async ensureWithinAssignments(course: any, entryPath: string, explicitRoot?: string): Promise<boolean> {
     const repoRoot = explicitRoot || this.repositoryManager.getAssignmentsRepoRoot(course);
     if (!repoRoot) {
-      vscode.window.showErrorMessage('Assignments repository not found. Run "Sync Assignments" first.');
+      notify.error('Assignments repository not found. Run "Sync Assignments" first.');
       return false;
     }
 

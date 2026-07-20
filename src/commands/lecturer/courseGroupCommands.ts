@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../ui/tree/lecturer/LecturerTreeDataProvider';
 import { CourseFolderTreeItem } from '../../ui/tree/lecturer/LecturerTreeItems';
+import { notify } from '../../utils/notify';
 
 export class CourseGroupCommands {
   constructor(
@@ -12,7 +13,7 @@ export class CourseGroupCommands {
   async createCourseGroup(folderItem?: CourseFolderTreeItem): Promise<void> {
     try {
       if (!folderItem || folderItem.folderType !== 'groups') {
-        vscode.window.showErrorMessage('Please select a Groups folder to create a new group.');
+        notify.error('Please select a Groups folder to create a new group.');
         return;
       }
 
@@ -49,13 +50,13 @@ export class CourseGroupCommands {
       // Refresh the groups folder
       this.treeDataProvider.refreshNode(folderItem);
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `Course group "${newGroup.title || newGroup.id}" created successfully.`
       );
 
     } catch (error) {
       console.error('Failed to create course group:', error);
-      vscode.window.showErrorMessage(`Failed to create course group: ${error}`);
+      notify.error(`Failed to create course group: ${error}`);
     }
   }
 }

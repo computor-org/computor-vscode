@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { commandRegistrar } from './commandHelpers';
+import { notify } from '../utils/notify';
 
 /**
  * Commands for logging out and clearing credentials
@@ -35,15 +36,13 @@ export class LogoutCommands {
    */
   private async handleLogout(): Promise<void> {
     try {
-      const confirmation = await vscode.window.showWarningMessage(
+      const confirmation = await notify.confirm(
         'Sign out of Computor? This clears your stored session on this machine. ' +
         'You will sign in again through your browser (SSO).',
-        { modal: true },
-        'Sign Out',
-        'Cancel'
+        'Sign Out'
       );
 
-      if (confirmation !== 'Sign Out') {
+      if (!confirmation) {
         return;
       }
 
@@ -61,7 +60,7 @@ export class LogoutCommands {
         progress.report({ message: 'Sign-out complete.' });
       });
 
-      const choice = await vscode.window.showInformationMessage(
+      const choice = await notify.info(
         'Signed out. Reload the window to finish, or also end your browser SSO session.',
         'Reload Window',
         'End Browser Session'
@@ -74,7 +73,7 @@ export class LogoutCommands {
       }
     } catch (error: any) {
       console.error('Logout failed:', error);
-      vscode.window.showErrorMessage(`Failed to sign out: ${error.message || error}`);
+      notify.error(`Failed to sign out: ${error.message || error}`);
     }
   }
 
@@ -95,19 +94,17 @@ export class LogoutCommands {
    */
   private async handleClearAllData(): Promise<void> {
     try {
-      const confirmation = await vscode.window.showWarningMessage(
+      const confirmation = await notify.confirm(
         'Are you sure you want to clear ALL Computor data? This will remove:\n' +
         '• Authentication credentials\n' +
         '• All settings and preferences\n' +
         '• GitLab tokens\n' +
         '• Cached data\n\n' +
         'This action cannot be undone.',
-        { modal: true },
-        'Clear All Data',
-        'Cancel'
+        'Clear All Data'
       );
 
-      if (confirmation !== 'Clear All Data') {
+      if (!confirmation) {
         return;
       }
 
@@ -139,7 +136,7 @@ export class LogoutCommands {
         progress.report({ message: 'All data cleared.' });
       });
 
-      vscode.window.showInformationMessage(
+      notify.info(
         'All Computor data has been cleared successfully. Restart VS Code to start fresh.',
         'Reload Window'
       ).then(choice => {
@@ -149,7 +146,7 @@ export class LogoutCommands {
       });
     } catch (error: any) {
       console.error('Clear all data failed:', error);
-      vscode.window.showErrorMessage(`Failed to clear data: ${error.message || error}`);
+      notify.error(`Failed to clear data: ${error.message || error}`);
     }
   }
 

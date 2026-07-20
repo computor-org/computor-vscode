@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SettingsWebviewProvider } from '../ui/webviews/SettingsWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
+import { notify } from '../utils/notify';
 
 export class SettingsCommands {
   private settingsWebviewProvider: SettingsWebviewProvider;
@@ -19,7 +20,7 @@ export class SettingsCommands {
     try {
       await this.settingsWebviewProvider.open();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Settings failed: ${error?.message || error}`);
+      notify.error(`Settings failed: ${error?.message || error}`);
       console.error('[SettingsCommands] Settings error:', error);
     }
   }
