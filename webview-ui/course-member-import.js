@@ -30,6 +30,7 @@
     availableGroups = state.availableGroups || [];
 
     render();
+    attachDragAndDrop();
     attachEventListeners();
   }
 
@@ -381,8 +382,11 @@
     return options;
   }
 
-  function attachEventListeners() {
-    // Drag and drop on the whole app
+  // Drag-and-drop lives on the persistent #app element, so it must be bound
+  // exactly ONCE. attachEventListeners() runs after every render; binding the
+  // drag handlers there (as before) stacked another set each time, so a single
+  // file drop posted 'fileDropped' N times and imported the file repeatedly.
+  function attachDragAndDrop() {
     const app = document.getElementById('app');
     if (app) {
       app.addEventListener('dragenter', handleDragEnter);
@@ -390,7 +394,9 @@
       app.addEventListener('dragleave', handleDragLeave);
       app.addEventListener('drop', handleDrop);
     }
+  }
 
+  function attachEventListeners() {
     // Sortable column headers
     document.querySelectorAll('.sortable').forEach(header => {
       header.addEventListener('click', () => {
