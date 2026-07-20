@@ -131,24 +131,36 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
         checkedOutAt: new Date().toISOString()
       };
 
-      // Create working directory
+      // Resolve both destructive targets up front so a single confirmation can
+      // gate every fs.rmSync below.
       const workingDir = getWorkingPath(examplesPath, data.example.directory);
-      if (fs.existsSync(workingDir)) {
+      const versionsPath = this.getVersionsPath();
+      const versionDir = versionsPath
+        ? getVersionPath(versionsPath, data.example.directory, resolvedTag)
+        : undefined;
+
+      // A modal confirmation (Cancel is added automatically) so an existing
+      // local copy is never deleted by a dismissible, easily-missed popup.
+      const willOverwrite = fs.existsSync(workingDir) || (versionDir ? fs.existsSync(versionDir) : false);
+      if (willOverwrite) {
         const overwrite = await vscode.window.showWarningMessage(
-          `Working copy of '${data.example.directory}' already exists. Overwrite?`, 'Yes', 'No'
+          `A local copy of '${data.example.directory}' already exists and will be replaced.`,
+          { modal: true },
+          'Overwrite'
         );
-        if (overwrite !== 'Yes') { return; }
-        fs.rmSync(workingDir, { recursive: true, force: true });
+        if (overwrite !== 'Overwrite') { return; }
       }
 
+      // Create working directory
+      if (fs.existsSync(workingDir)) {
+        fs.rmSync(workingDir, { recursive: true, force: true });
+      }
       fs.mkdirSync(workingDir, { recursive: true });
       writeExampleFiles(exampleData.files, workingDir);
       writeCheckoutMetadata(workingDir, metadata);
 
       // Also create version snapshot in example_versions/
-      const versionsPath = this.getVersionsPath();
-      if (versionsPath) {
-        const versionDir = getVersionPath(versionsPath, data.example.directory, resolvedTag);
+      if (versionDir) {
         if (fs.existsSync(versionDir)) {
           fs.rmSync(versionDir, { recursive: true, force: true });
         }
@@ -201,9 +213,11 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
     }
 
     const confirm = await vscode.window.showInformationMessage(
-      `Upload example "${data.example.title}" from local directory?`, 'Yes', 'No'
+      `Upload example "${data.example.title}" from local directory?`,
+      { modal: true },
+      'Upload'
     );
-    if (confirm !== 'Yes') { return; }
+    if (confirm !== 'Upload') { return; }
 
     await vscode.commands.executeCommand('computor.lecturer.uploadExample', {
       example: data.example,
