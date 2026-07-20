@@ -4,6 +4,7 @@ import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageList } from '../../../types/generated';
+import { notify } from '../../../utils/notify';
 
 const GLOBAL_CHANNEL = 'global';
 import {
@@ -243,7 +244,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   async openThread(threadItem: ChatThreadItem): Promise<void> {
     const ctx = await this.buildTargetContext(threadItem.thread);
     if (!ctx) {
-      vscode.window.showWarningMessage('Cannot open this conversation: target context unavailable.');
+      notify.warning('Cannot open this conversation: target context unavailable.');
       return;
     }
 
@@ -392,7 +393,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       state.total = Math.max(state.total, next.total);
       await this.rebuildAssembled();
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
+      notify.error(`Failed to load more messages: ${err?.message || err}`);
     } finally {
       this.scopeLoadingMore.delete(scope);
       this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -428,7 +429,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       state.total = Math.max(state.total, next.total);
       await this.rebuildAssembled();
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to load more messages: ${err?.message || err}`);
+      notify.error(`Failed to load more messages: ${err?.message || err}`);
     } finally {
       this.courseScopeLoadingMore.delete(key);
       this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -1214,7 +1215,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       ? `${author} (${scopeText}): ${preview}`
       : `${scopeText}: ${preview}`;
 
-    const choice = await vscode.window.showInformationMessage(text, 'Open');
+    const choice = await notify.info(text, 'Open');
     if (choice !== 'Open') { return; }
     await this.openMessageInPanel(message, scope);
   }

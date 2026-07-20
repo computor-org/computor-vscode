@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
 import { RepositoryTokenManager } from './RepositoryTokenManager';
+import { notify } from '../utils/notify';
 
 interface CourseProviderInfo {
   courseId: string;
@@ -149,7 +150,7 @@ export class CourseProviderValidationService {
         this.validatedProviders.add(providerUrl);
       } catch (error) {
         console.error(`[CourseProviderValidationService] Failed to validate provider ${providerUrl}:`, error);
-        vscode.window.showWarningMessage(
+        notify.warning(
           `Failed to validate GitLab access for ${providerUrl}. You may need to configure this manually later.`
         );
       }
@@ -165,9 +166,8 @@ export class CourseProviderValidationService {
 
     const message = `Configure GitLab access for ${providerUrl}?\n\nRequired for courses: ${courseNames}${moreText}`;
 
-    const choice = await vscode.window.showInformationMessage(
+    const choice = await notify.info(
       message,
-      { modal: false },
       'Configure Now',
       'Skip'
     );
@@ -215,7 +215,7 @@ export class CourseProviderValidationService {
 
       // Show summary only if there were failures (success is implicit)
       if (failureCount > 0) {
-        vscode.window.showWarningMessage(
+        notify.warning(
           `Could not validate ${failureCount} course${failureCount > 1 ? 's' : ''} on ${providerUrl}. You may need to configure access manually.`
         );
       }

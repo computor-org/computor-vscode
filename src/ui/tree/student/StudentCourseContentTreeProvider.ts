@@ -17,6 +17,7 @@ import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../utils/exec';
 import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import { notify } from '../../../utils/notify';
 
 /** Resolved course-level-git state for one course (cached per session). */
 interface CourseGitModel {
@@ -865,11 +866,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     }
                     if (outcome.status === 'forgejo-login-required') {
                         const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
-                        void vscode.window.showInformationMessage(
+                        void notify.info(
                             `Sign in to the git server once${target ? ` (${target})` : ''}, then expand the assignment again.`,
                         );
                     } else if (outcome.status === 'unsupported-mode') {
-                        void vscode.window.showInformationMessage(
+                        void notify.info(
                             `This course offers: ${outcome.modes.join(', ') || 'no git modes'}.`,
                         );
                     }
@@ -885,11 +886,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 }
             } catch (e) {
                 if (e instanceof GitCancelledError) {
-                    void vscode.window.showInformationMessage('Setup cancelled. Expand the assignment again to retry.');
+                    void notify.info('Setup cancelled. Expand the assignment again to retry.');
                     return undefined;
                 }
                 console.error('[StudentTree] new-model setup failed:', e);
-                void vscode.window.showErrorMessage(`Repository setup failed: ${e instanceof Error ? e.message : String(e)}`);
+                void notify.error(`Repository setup failed: ${e instanceof Error ? e.message : String(e)}`);
             }
             return undefined;
         });

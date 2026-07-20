@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
 import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated } from '../types/generated/websocket';
+import { notify } from '../utils/notify';
 
 // WebSocket message types from server
 export interface WsMessageNew {
@@ -529,7 +530,7 @@ export class WebSocketService {
           console.log('[WebSocket] Maintenance activated:', activatedData.message);
           this.httpClient?.setMaintenanceMode(true, activatedData.message);
           this.updateMaintenanceStatusBar('active', activatedData.message);
-          vscode.window.showWarningMessage(`Maintenance Mode Active: ${activatedData.message}`);
+          notify.warning(`Maintenance Mode Active: ${activatedData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceActivated?.(activatedData.message, activatedData.activated_at);
           });
@@ -541,7 +542,7 @@ export class WebSocketService {
           console.log('[WebSocket] Maintenance deactivated');
           this.httpClient?.setMaintenanceMode(false);
           this.updateMaintenanceStatusBar('inactive');
-          vscode.window.showInformationMessage(`Maintenance Complete: ${deactivatedData.message}`);
+          notify.info(`Maintenance Complete: ${deactivatedData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceDeactivated?.(deactivatedData.message);
           });
@@ -552,7 +553,7 @@ export class WebSocketService {
           const scheduledData = (message as any).data || message;
           console.log('[WebSocket] Maintenance scheduled:', scheduledData.scheduled_at);
           this.updateMaintenanceStatusBar('scheduled', scheduledData.message, scheduledData.scheduled_at);
-          vscode.window.showInformationMessage(`Maintenance Scheduled for ${new Date(scheduledData.scheduled_at).toLocaleString()}: ${scheduledData.message}`);
+          notify.info(`Maintenance Scheduled for ${new Date(scheduledData.scheduled_at).toLocaleString()}: ${scheduledData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceScheduled?.(scheduledData.scheduled_at, scheduledData.message);
           });
@@ -563,7 +564,7 @@ export class WebSocketService {
           const cancelledData = (message as any).data || message;
           console.log('[WebSocket] Maintenance cancelled');
           this.updateMaintenanceStatusBar('inactive');
-          vscode.window.showInformationMessage('Scheduled maintenance has been cancelled.');
+          notify.info('Scheduled maintenance has been cancelled.');
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceCancelled?.(cancelledData.message);
           });
@@ -584,13 +585,13 @@ export class WebSocketService {
           // Escalate notification urgency based on time remaining
           if (minutesRemaining <= 5) {
             this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-            vscode.window.showErrorMessage(`Maintenance in ${minutesRemaining} minute(s): ${reminderMessage}`);
+            notify.error(`Maintenance in ${minutesRemaining} minute(s): ${reminderMessage}`);
           } else if (minutesRemaining <= 10) {
             this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-            vscode.window.showWarningMessage(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+            notify.warning(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
           } else {
             this.maintenanceStatusBarItem.backgroundColor = undefined;
-            vscode.window.showInformationMessage(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+            notify.info(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
           }
 
           this.maintenanceStatusBarItem.show();

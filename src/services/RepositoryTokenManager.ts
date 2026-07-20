@@ -5,6 +5,7 @@ import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { OrganizationList, CourseList } from '../types/generated';
 import { execAsync } from '../utils/exec';
 import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
+import { notify } from '../utils/notify';
 
 /**
  * GitLab Token Manager - Singleton service for managing GitLab tokens
@@ -146,7 +147,7 @@ export class RepositoryTokenManager {
           const validation = await this.validateToken(gitlabUrl, inputToken);
 
           if (validation.valid) {
-            vscode.window.showInformationMessage(
+            notify.info(
               `✅ GitLab token validated successfully\nAuthenticated as: ${validation.name} (${validation.username})`
             );
             validatedToken = inputToken;
@@ -157,7 +158,7 @@ export class RepositoryTokenManager {
               : `❌ Token validation failed: ${validation.error}\n\nMaximum attempts reached.`;
 
             if (retry) {
-              const choice = await vscode.window.showErrorMessage(
+              const choice = await notify.error(
                 message,
                 'Retry',
                 'Cancel'
@@ -166,7 +167,7 @@ export class RepositoryTokenManager {
                 return undefined;
               }
             } else {
-              vscode.window.showErrorMessage(message);
+              notify.error(message);
               return undefined;
             }
           }
@@ -267,7 +268,7 @@ export class RepositoryTokenManager {
     // Update cache
     this.tokenCache.set(gitlabUrl, token);
 
-    vscode.window.showInformationMessage(`GitLab token stored for ${gitlabUrl}`);
+    notify.info(`GitLab token stored for ${gitlabUrl}`);
 
     // Refresh any repositories that already use this origin
     void this.updateWorkspaceRemotes(gitlabUrl, token).catch((error) => {

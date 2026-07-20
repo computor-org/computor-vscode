@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { BackendConnectionService } from './BackendConnectionService';
 import { HttpError } from '../http/errors/HttpError';
 import { ErrorDisplayStrategyFactory } from '../exceptions/ErrorDisplayStrategy';
+import { notify } from '../utils/notify';
 
 export interface RetryOptions {
   maxRetries?: number;
@@ -49,7 +50,7 @@ export class NetworkErrorStrategy implements ErrorRecoveryStrategy {
       }
     } else {
       // Show simple retry message for quick retries
-      const retry = await vscode.window.showWarningMessage(
+      const retry = await notify.warning(
         'Network connection failed. The backend might not be running or there may be network issues.',
         'Retry',
         'Check Backend',
@@ -82,7 +83,7 @@ export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
   async recover(error: Error): Promise<void> {
     // Note: 401 errors are typically handled by BearerTokenHttpClient's token refresh mechanism.
     // This recovery strategy is a fallback for when token refresh fails.
-    const action = await vscode.window.showErrorMessage(
+    const action = await notify.error(
       'Authentication failed. Your session may have expired. Please reload the window to refresh your session.',
       'Reload Window',
       'Cancel'
@@ -364,23 +365,23 @@ export class ErrorRecoveryService {
 
     actions.push('Show Details');
 
-    const selection = await vscode.window.showErrorMessage(message, ...actions);
+    const selection = await notify.error(message, ...actions);
 
     if (selection === 'Retry' && recoveryOptions?.retry) {
       try {
         await recoveryOptions.retry();
       } catch (retryError) {
-        vscode.window.showErrorMessage(`Retry failed: ${retryError}`);
+        notify.error(`Retry failed: ${retryError}`);
       }
     } else if (selection === recoveryOptions?.alternativeLabel && recoveryOptions?.alternative) {
       try {
         await recoveryOptions.alternative();
       } catch (altError) {
-        vscode.window.showErrorMessage(`Alternative action failed: ${altError}`);
+        notify.error(`Alternative action failed: ${altError}`);
       }
     } else if (selection === 'Show Details') {
       const details = `Error: ${error.message}\n\nStack trace:\n${error.stack}`;
-      vscode.window.showErrorMessage(details, { modal: true });
+      notify.modal('error', details);
     }
   }
 
@@ -396,7 +397,7 @@ export class ErrorRecoveryService {
   ): void {
     if (!error.hasBackendError() || !error.backendError) {
       // Fallback to simple error message
-      vscode.window.showErrorMessage(error.message);
+      notify.error(error.message);
       return;
     }
 

@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import semver from 'semver';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { ExtensionVersionListItem, ExtensionVersionListResponse } from '../types/generated';
+import { notify } from '../utils/notify';
 
 /**
  * Handles backend-driven extension updates by polling the Computor backend for new versions.
@@ -67,7 +68,7 @@ export class ExtensionUpdateService {
         return;
       }
 
-      const choice = await vscode.window.showInformationMessage(
+      const choice = await notify.info(
         `Computor extension update available: ${currentVersion} → ${latest.version}`,
         'Update Now',
         'Later'
@@ -82,7 +83,7 @@ export class ExtensionUpdateService {
     } catch (error) {
       console.error('Failed to complete Computor auto-update check', error);
       if (attemptedInstall) {
-        void vscode.window.showWarningMessage('Computor auto-update failed. Check logs for details.');
+        void notify.warning('Computor auto-update failed. Check logs for details.');
       }
     } finally {
       this.checking = false;
@@ -237,7 +238,7 @@ export class ExtensionUpdateService {
       if (savedVsixPath) {
         await fs.promises.rm(savedVsixPath, { force: true }).catch(() => undefined);
       }
-      const choice = await vscode.window.showInformationMessage(
+      const choice = await notify.info(
         `Computor extension updated to ${versionLabel}. Reload VS Code to apply changes.`,
         'Reload Now',
         'Later'
@@ -253,10 +254,10 @@ export class ExtensionUpdateService {
     // manually by dragging into the Extensions view.
     console.warn('Computor auto-install rejected by VS Code:', installError);
     if (!savedVsixPath) {
-      void vscode.window.showWarningMessage('Computor auto-update failed. Check logs for details.');
+      void notify.warning('Computor auto-update failed. Check logs for details.');
       return;
     }
-    const choice = await vscode.window.showWarningMessage(
+    const choice = await notify.warning(
       `Computor auto-install was blocked, but the update was downloaded to ${savedVsixPath}. Reveal the file and drop it into the Extensions view to install manually.`,
       'Reveal VSIX',
       'Open Extensions View'

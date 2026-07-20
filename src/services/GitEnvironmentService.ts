@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { notify } from '../utils/notify';
 
 const execFileAsync = promisify(execFile);
 
@@ -61,7 +62,7 @@ export class GitEnvironmentService {
     if (missing.length > 0) {
       const missingText = missing.join(' and ');
       const exampleCommands = commands.join('\n');
-      const action = await vscode.window.showWarningMessage(
+      const action = await notify.warning(
         `Git ${missingText} ${missing.length === 1 ? 'is' : 'are'} not configured. Configure them so commits have correct author information.\n${exampleCommands}`,
         'Configure Now',
         'Cancel'
@@ -148,10 +149,10 @@ export class GitEnvironmentService {
         await execFileAsync(gitBinary, ['config', '--global', 'user.email', email]);
       }
 
-      void vscode.window.showInformationMessage('Git configuration updated successfully!');
+      void notify.info('Git configuration updated successfully!');
       return true;
     } catch (error: any) {
-      void vscode.window.showErrorMessage(`Failed to configure git: ${error.message}`);
+      void notify.error(`Failed to configure git: ${error.message}`);
       return false;
     }
   }
@@ -159,7 +160,7 @@ export class GitEnvironmentService {
   private async ensureGitBinary(): Promise<string | undefined> {
     const binary = await this.resolveGitBinary();
     if (!binary) {
-      void vscode.window.showErrorMessage('Git is required but was not found. Install Git and ensure it is available on your PATH.');
+      void notify.error('Git is required but was not found. Install Git and ensure it is available on your PATH.');
       return undefined;
     }
 

@@ -15,6 +15,7 @@ import { DragDropManager } from '../../../services/DragDropManager';
 import { GitWrapper } from '../../../git/GitWrapper';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import { notify } from '../../../utils/notify';
 import {
   OrganizationTreeItem,
   CourseFamilyTreeItem,
@@ -409,7 +410,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
           { 
             maxRetries: 3,
             onRetry: (attempt) => {
-              vscode.window.showInformationMessage(`Retrying connection... (attempt ${attempt})`);
+              notify.info(`Retrying connection... (attempt ${attempt})`);
             }
           }
         );
@@ -660,7 +661,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         };
         return [item];
       }
-      vscode.window.showErrorMessage(`Failed to load tree data: ${error}`);
+      notify.error(`Failed to load tree data: ${error}`);
       return [];
     }
   }
@@ -1209,7 +1210,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Check if path already exists
       const existingContents = await this.getCourseContents(folderItem.course.id);
       if (existingContents.some(c => c.path === path)) {
-        vscode.window.showErrorMessage(`A content item with path '${path}' already exists. Please use a different slug.`);
+        notify.error(`A content item with path '${path}' already exists. Please use a different slug.`);
         return;
       }
       
@@ -1240,7 +1241,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       }
       return created;
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create content: ${error}`);
+      notify.error(`Failed to create content: ${error}`);
       return undefined;
     }
   }
@@ -1259,7 +1260,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Refresh the specific item
       this.onDidChangeTreeDataEmitter.fire(contentItem);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to update course content: ${error}`);
+      notify.error(`Failed to update course content: ${error}`);
     }
   }
 
@@ -1288,10 +1289,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       this.refresh();
 
-      vscode.window.showInformationMessage(`Deleted "${title}" successfully`);
+      notify.info(`Deleted "${title}" successfully`);
     } catch (error) {
       console.error('Failed to delete course content:', error);
-      vscode.window.showErrorMessage(`Failed to delete course content: ${error}`);
+      notify.error(`Failed to delete course content: ${error}`);
     }
   }
 
@@ -1434,7 +1435,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       targetGroupId = null; // Moving to "No Group"
       courseId = target.course.id;
     } else {
-      vscode.window.showErrorMessage('Members can only be dropped on course groups or "No Group"');
+      notify.error('Members can only be dropped on course groups or "No Group"');
       return;
     }
 
@@ -1447,7 +1448,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Move all members to the target group
       for (const member of memberData) {
         if (member.courseId !== courseId) {
-          vscode.window.showWarningMessage(`Cannot move member to a different course`);
+          notify.warning(`Cannot move member to a different course`);
           continue;
         }
 
@@ -1464,14 +1465,14 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         ? target.group.title || 'the group'
         : 'No Group';
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `Moved ${memberData.length} member(s) to ${groupName}`
       );
 
       // Refresh the tree to show changes
       await this.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to move members: ${error?.message || error}`);
+      notify.error(`Failed to move members: ${error?.message || error}`);
     }
   }
 
@@ -1516,7 +1517,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
     // Prevent moving an item into its own descendant
     if (targetPath.startsWith(draggedPath + '.')) {
-      vscode.window.showWarningMessage('Cannot move an item into its own descendant');
+      notify.warning('Cannot move an item into its own descendant');
       return;
     }
 
@@ -1560,7 +1561,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       this.clearCourseCache(draggedData.courseId);
       this.onDidChangeTreeDataEmitter.fire(undefined);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to reorder: ${error?.message || error}`);
+      notify.error(`Failed to reorder: ${error?.message || error}`);
     }
   }
 
@@ -1576,7 +1577,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
     // Prevent moving into own descendant
     if (targetParentPath.startsWith(draggedData.path + '.')) {
-      vscode.window.showWarningMessage('Cannot move an item into its own descendant');
+      notify.warning('Cannot move an item into its own descendant');
       return;
     }
 
@@ -1602,7 +1603,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       this.clearCourseCache(courseId);
       this.onDidChangeTreeDataEmitter.fire(undefined);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to move: ${error?.message || error}`);
+      notify.error(`Failed to move: ${error?.message || error}`);
     }
   }
 
@@ -1675,7 +1676,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       
       // Check if target is submittable - if yes, we might want to replace
       if (target.isSubmittable && hasExampleAssigned(target.courseContent)) {
-        const choice = await vscode.window.showWarningMessage(
+        const choice = await notify.warning(
           `Assignment "${target.courseContent.title}" already has an example. Do you want to replace it or create a new assignment?`,
           'Replace', 'Create New', 'Cancel'
         );
@@ -1707,7 +1708,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         }
       }
     } else {
-      vscode.window.showErrorMessage('Examples can only be dropped on courses or course contents');
+      notify.error('Examples can only be dropped on courses or course contents');
       return;
     }
 
@@ -1733,7 +1734,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         }
         
         if (!rawValue || rawValue === '') {
-          vscode.window.showErrorMessage('No data received from drag operation. Please try again or use the context menu instead.');
+          notify.error('No data received from drag operation. Please try again or use the context menu instead.');
           return;
         }
         
@@ -1750,7 +1751,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       const example = draggedExamples[0];
 
       if (!example.exampleId) {
-        vscode.window.showErrorMessage('Invalid example data - missing exampleId');
+        notify.error('Invalid example data - missing exampleId');
         return;
       }
 
@@ -1767,7 +1768,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
+      notify.error(`Failed to create assignment: ${errorMessage}`);
     }
   }
 
@@ -1793,7 +1794,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         }
         
         if (!rawValue || rawValue === '') {
-          vscode.window.showErrorMessage('No data received from drag operation.');
+          notify.error('No data received from drag operation.');
           return;
         }
         
@@ -1808,7 +1809,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       const example = draggedExamples[0];
       if (!example.exampleId) {
-        vscode.window.showErrorMessage('Invalid example data');
+        notify.error('Invalid example data');
         return;
       }
 
@@ -1846,13 +1847,13 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Clear cache and force refresh to show the updated assignment
       await this.forceRefreshCourse(target.course.id);
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `✅ Example "${example.title}" assigned to "${target.courseContent.title}" successfully!`
       );
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      vscode.window.showErrorMessage(`Failed to assign example: ${errorMessage}`);
+      notify.error(`Failed to assign example: ${errorMessage}`);
     }
   }
 
@@ -1883,7 +1884,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       }
 
       if (submittableTypes.length === 0) {
-        vscode.window.showErrorMessage(
+        notify.error(
           'No submittable content types (assignments, exercises) are configured for this course. Please create one first.'
         );
         return;
@@ -1923,7 +1924,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Check if path already exists
       const existingContents = await this.getCourseContents(courseId);
       if (existingContents.some(c => c.path === path)) {
-        vscode.window.showErrorMessage(`A content item with path '${path}' already exists.`);
+        notify.error(`A content item with path '${path}' already exists.`);
         return;
       }
 
@@ -1932,7 +1933,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       // Ensure we have a content type (TypeScript safety)
       if (!contentType) {
-        vscode.window.showErrorMessage('No content type selected');
+        notify.error('No content type selected');
         return;
       }
 
@@ -1969,7 +1970,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
             );
           } catch (assignError: any) {
             const assignMessage = assignError?.response?.data?.detail || assignError.message || 'Unknown error';
-            const action = await vscode.window.showWarningMessage(
+            const action = await notify.warning(
               `Assignment "${example.title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`,
               'Keep', 'Delete'
             );
@@ -1986,13 +1987,13 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Refresh the tree
       await this.forceRefreshCourse(courseId);
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `Created assignment "${example.title}" ${targetDescription}`
       );
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      vscode.window.showErrorMessage(`Failed to create assignment: ${errorMessage}`);
+      notify.error(`Failed to create assignment: ${errorMessage}`);
     }
   }
 

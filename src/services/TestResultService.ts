@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
 import { showErrorWithSeverity } from '../utils/errorDisplay';
 //import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/panels/TestResultsPanel';
+import { notify } from '../utils/notify';
 
 /**
  * Service for managing test results polling and display
@@ -61,7 +62,7 @@ export class TestResultService {
     options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean; courseContentId?: string }
   ): Promise<{ status: 'SUCCESS' | 'FAILED' | 'ERROR' | 'CANCELLED' | 'TIMEOUT'; result?: number } | undefined> {
     if (!this.apiService) {
-      vscode.window.showErrorMessage('Test service not properly initialized');
+      notify.error('Test service not properly initialized');
       return;
     }
 
@@ -97,7 +98,7 @@ export class TestResultService {
 
             if (Date.now() - startTime > this.MAX_POLL_DURATION) {
               this.stopPolling(resultId);
-              vscode.window.showWarningMessage(`Test for ${assignmentTitle} timed out after 5 minutes`);
+              notify.warning(`Test for ${assignmentTitle} timed out after 5 minutes`);
               resolve({ status: 'TIMEOUT' });
               return;
             }
@@ -126,17 +127,17 @@ export class TestResultService {
                 const isCancelled = status === "cancelled" || status === 6;
 
                 if (isSuccess) {
-                  vscode.window.showInformationMessage(
+                  notify.info(
                     `✅ Tests completed for ${assignmentTitle}`
                   );
                   resolve({ status: 'SUCCESS', result: fullResult.result });
                 } else if (isCancelled) {
-                  vscode.window.showWarningMessage(
+                  notify.warning(
                     `⚠️ Tests cancelled for ${assignmentTitle}`
                   );
                   resolve({ status: 'CANCELLED' });
                 } else {
-                  vscode.window.showErrorMessage(
+                  notify.error(
                     `❌ Tests failed for ${assignmentTitle}`
                   );
                   resolve({ status: 'FAILED', result: fullResult.result });
@@ -195,18 +196,18 @@ export class TestResultService {
           if (isSuccess) {
             const score = typeof testResult.result === 'number' ? testResult.result : 0;
             const percentage = (score * 100).toFixed(1);
-            vscode.window.showInformationMessage(
+            notify.info(
               `✅ Tests completed for ${assignmentTitle}: ${percentage}% passed`
             );
             return { status: 'SUCCESS', result: testResult.result };
           } else if (isFailure) {
-            vscode.window.showErrorMessage(`❌ Test execution failed for ${assignmentTitle}`);
+            notify.error(`❌ Test execution failed for ${assignmentTitle}`);
             return { status: 'FAILED', result: testResult.result };
           } else if (isCancelled) {
-            vscode.window.showWarningMessage(`⚠️ Test execution cancelled for ${assignmentTitle}`);
+            notify.warning(`⚠️ Test execution cancelled for ${assignmentTitle}`);
             return { status: 'CANCELLED' };
           } else {
-            vscode.window.showInformationMessage(`ℹ️ Test results available for ${assignmentTitle} (status: ${statusValue})`);
+            notify.info(`ℹ️ Test results available for ${assignmentTitle} (status: ${statusValue})`);
             return { status: 'SUCCESS', result: testResult.result };
           }
         }
@@ -214,7 +215,7 @@ export class TestResultService {
 
       // Start polling if we have a result ID
       if (!testResult || !testResult.id) {
-        vscode.window.showErrorMessage('Test submitted but no result ID received');
+        notify.error('Test submitted but no result ID received');
         return { status: 'ERROR' };
       }
 

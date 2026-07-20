@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { GitWrapper } from '../git/GitWrapper';
 import { GitStashEntry } from '../types/GitTypes';
+import { notify } from '../utils/notify';
 
 export interface AssignmentBranchInfo {
   assignmentPath: string;
@@ -67,7 +68,7 @@ export class GitService {
     const branchInfo = await this.checkAssignmentBranch(repoPath, assignmentPath);
     
     if (branchInfo.isCurrent) {
-      vscode.window.showInformationMessage(`Already on branch ${branchInfo.branchName}`);
+      notify.info(`Already on branch ${branchInfo.branchName}`);
       return;
     }
     
@@ -75,7 +76,7 @@ export class GitService {
       // Check for uncommitted changes
       const status = await this.gitWrapper.status(repoPath);
       if (!status.isClean) {
-        const action = await vscode.window.showWarningMessage(
+        const action = await notify.warning(
           'You have uncommitted changes. What would you like to do?',
           'Stash Changes',
           'Commit Changes',
@@ -86,7 +87,7 @@ export class GitService {
           return;
         } else if (action === 'Stash Changes') {
           await this.gitWrapper.stash(repoPath, [`-m`, `Auto-stash for branch switch to ${branchInfo.branchName}`]);
-          vscode.window.showInformationMessage('Changes stashed');
+          notify.info('Changes stashed');
         } else if (action === 'Commit Changes') {
           await this.commitChanges(repoPath, `WIP: Switching to ${branchInfo.branchName}`);
         }
@@ -95,7 +96,7 @@ export class GitService {
       if (branchInfo.exists) {
         // Switch to existing branch
         await this.gitWrapper.checkoutBranch(repoPath, branchInfo.branchName);
-        vscode.window.showInformationMessage(`Switched to branch ${branchInfo.branchName}`);
+        notify.info(`Switched to branch ${branchInfo.branchName}`);
       } else {
         // Create new branch from main/master
         const mainBranch = await this.getMainBranch(repoPath);
@@ -112,7 +113,7 @@ export class GitService {
         // Create and checkout new branch
         await this.gitWrapper.createBranch(repoPath, branchInfo.branchName);
         await this.gitWrapper.checkoutBranch(repoPath, branchInfo.branchName);
-        vscode.window.showInformationMessage(`Created and switched to branch ${branchInfo.branchName}`);
+        notify.info(`Created and switched to branch ${branchInfo.branchName}`);
       }
       
       // Check for stashed changes to restore
@@ -121,13 +122,13 @@ export class GitService {
       if (relevantStash) {
         try {
           await this.gitWrapper.stashPop(repoPath);
-          vscode.window.showInformationMessage('Stashed changes restored');
+          notify.info('Stashed changes restored');
         } catch (error) {
           console.log('Could not restore stash:', error);
         }
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to switch branch: ${error}`);
+      notify.error(`Failed to switch branch: ${error}`);
       throw error;
     }
   }
@@ -177,15 +178,15 @@ export class GitService {
       // Push branch to remote
       // First try regular push, GitWrapper will handle upstream if needed
       await this.gitWrapper.push(repoPath, 'origin', branchName);
-      vscode.window.showInformationMessage(`Pushed branch ${branchName} to remote`);
+      notify.info(`Pushed branch ${branchName} to remote`);
     } catch (error) {
       // If push fails due to no upstream, try with set-upstream
       try {
         const git = await this.gitWrapper.getRepository(repoPath);
         await git.push('origin', branchName, ['--set-upstream']);
-        vscode.window.showInformationMessage(`Pushed branch ${branchName} to remote`);
+        notify.info(`Pushed branch ${branchName} to remote`);
       } catch (fallbackError) {
-        vscode.window.showErrorMessage(`Failed to push branch: ${error}`);
+        notify.error(`Failed to push branch: ${error}`);
         throw error;
       }
     }
@@ -343,7 +344,7 @@ export class GitService {
       const mrUrl = `${webUrl}/-/merge_requests/new?merge_request[source_branch]=${branchName}`;
       vscode.env.openExternal(vscode.Uri.parse(mrUrl));
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create merge request: ${error}`);
+      notify.error(`Failed to create merge request: ${error}`);
     }
   }
 
@@ -408,9 +409,9 @@ export class GitService {
       // Create assignment directory
       await this.ensureAssignmentDirectory(targetPath, assignmentPath);
       
-      vscode.window.showInformationMessage('Repository forked from template successfully');
+      notify.info('Repository forked from template successfully');
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to fork from template: ${error}`);
+      notify.error(`Failed to fork from template: ${error}`);
       throw error;
     }
   }

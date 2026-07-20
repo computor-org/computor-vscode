@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
 import { StatusBarService } from '../ui/StatusBarService';
+import { notify } from '../utils/notify';
 
 export interface CourseInfo {
     id: string;
@@ -89,7 +90,7 @@ export class CourseSelectionService {
             const courses = await this.apiService.getStudentCourses();
             
             if (!courses || courses.length === 0) {
-                vscode.window.showInformationMessage('No courses available');
+                notify.info('No courses available');
                 return undefined;
             }
 
@@ -119,7 +120,7 @@ export class CourseSelectionService {
                 return selected.courseInfo;
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to fetch courses: ${error}`);
+            notify.error(`Failed to fetch courses: ${error}`);
         }
 
         return undefined;
@@ -177,7 +178,7 @@ export class CourseSelectionService {
             return this.currentCourseInfo;
         }
 
-        const result = await vscode.window.showInformationMessage(
+        const result = await notify.info(
             'No course selected. Would you like to select one now?',
             'Select Course',
             'Cancel'

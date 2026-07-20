@@ -7,6 +7,7 @@ import { RepositoryTokenManager } from './RepositoryTokenManager';
 import { ComputorApiService } from './ComputorApiService';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
+import { notify } from '../utils/notify';
 
 export class LecturerRepositoryManager {
   private workspaceStructure: WorkspaceStructureManager;
@@ -97,7 +98,7 @@ export class LecturerRepositoryManager {
           await fs.promises.rm(target, { recursive: true, force: true });
         } catch (removeError) {
           console.error(`[LecturerRepo] Failed to remove course ${courseId} before re-clone:`, removeError);
-          vscode.window.showErrorMessage(`Computor could not reset the assignments repository. Please remove it manually and retry.`);
+          notify.error(`Computor could not reset the assignments repository. Please remove it manually and retry.`);
           throw removeError;
         }
 
@@ -106,7 +107,7 @@ export class LecturerRepositoryManager {
           await execGitClone(authUrl, target);
         } catch (cloneError) {
           console.error(`[LecturerRepo] Re-clone failed for course ${courseId}:`, cloneError);
-          vscode.window.showErrorMessage(`Computor could not recreate the assignments repository. Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
+          notify.error(`Computor could not recreate the assignments repository. Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
           throw cloneError;
         }
 
@@ -120,7 +121,7 @@ export class LecturerRepositoryManager {
           ? `The assignments repository was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This event is unusual—if it happens repeatedly, please inform the course coordination team.`
           : `The assignments repository was reset because the remote history changed. This event is unusual—if it happens repeatedly, please inform the course coordination team.`;
 
-        const choice = await vscode.window.showWarningMessage(message, ...actions);
+        const choice = await notify.warning(message, ...actions);
         if (choice === 'Open Backup Folder' && backupPath) {
           await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(backupPath));
         }

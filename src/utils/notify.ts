@@ -51,6 +51,31 @@ export const notify = {
     return picked === confirmLabel;
   },
 
+  /**
+   * Modal dialog with explicit action buttons (VS Code adds Cancel). Returns
+   * the picked label, or `undefined` if dismissed. `severity` selects the icon.
+   * Use {@link confirm} for the common single-action destructive case; use this
+   * when a modal needs multiple choices or a detail body.
+   */
+  modal(
+    severity: 'info' | 'warning' | 'error',
+    message: string,
+    options: { detail?: string; actions?: string[] } = {}
+  ): Thenable<string | undefined> {
+    const opts: vscode.MessageOptions = options.detail
+      ? { modal: true, detail: options.detail }
+      : { modal: true };
+    const actions = options.actions ?? [];
+    switch (severity) {
+      case 'info':
+        return vscode.window.showInformationMessage(message, opts, ...actions);
+      case 'warning':
+        return vscode.window.showWarningMessage(message, opts, ...actions);
+      case 'error':
+        return vscode.window.showErrorMessage(message, opts, ...actions);
+    }
+  },
+
   /** Run work under a titled progress notification in the notification area. */
   progress<T>(
     title: string,

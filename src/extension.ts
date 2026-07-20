@@ -20,6 +20,7 @@ import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
+import { notify } from './utils/notify';
 import {
   OrganizationTreeItem as LecturerOrganizationTreeItem,
   CourseFamilyTreeItem as LecturerCourseFamilyTreeItem,
@@ -172,7 +173,7 @@ async function activateSession(
  * client failing fast locally, so the backend isn't hammered with doomed calls.
  */
 async function handleSessionExpired(context: vscode.ExtensionContext): Promise<void> {
-  const choice = await vscode.window.showWarningMessage(
+  const choice = await notify.warning(
     'Your Computor session expired. Sign in again to continue.',
     'Sign in'
   );
@@ -308,9 +309,9 @@ async function writeMarker(file: string, data: { backendUrl: string }): Promise<
  * secret storage so it survives restarts; Logout clears it.
  */
 async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void> {
-  if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
+  if (isAuthenticating) { notify.info('Login already in progress.'); return; }
   if (activeSession) {
-    vscode.window.showInformationMessage('Already signed in. Log out first to switch accounts.');
+    notify.info('Already signed in. Log out first to switch accounts.');
     return;
   }
 
@@ -353,14 +354,14 @@ async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void
         await activateSession(context, baseUrl, client, (m) => progress.report({ message: m }));
       } catch (error: any) {
         console.error('API token login failed:', error);
-        vscode.window.showErrorMessage(`API token sign-in failed: ${error?.message || error}`);
+        notify.error(`API token sign-in failed: ${error?.message || error}`);
         return false;
       }
       await context.secrets.store(API_TOKEN_KEY, token);
       return true;
     });
 
-    if (ok) { vscode.window.showInformationMessage(`Signed in with API token: ${baseUrl}`); }
+    if (ok) { notify.info(`Signed in with API token: ${baseUrl}`); }
   } finally {
     isAuthenticating = false;
   }
@@ -440,7 +441,7 @@ async function restoreSession(
 }
 
 async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExistingFolders: boolean }> {
-  const action = await vscode.window.showErrorMessage('Login requires an open workspace.', 'Open Folder');
+  const action = await notify.error('Login requires an open workspace.', 'Open Folder');
   if (action !== 'Open Folder') return { opened: false, hadExistingFolders: false };
 
   const folderUri = await vscode.window.showOpenDialog({
@@ -516,7 +517,7 @@ async function handleComputorWorkspaceDetected(
       });
 
       if (ok) {
-        vscode.window.showInformationMessage(`Logged in (workspace token): ${baseUrl}`);
+        notify.info(`Logged in (workspace token): ${baseUrl}`);
         return;
       }
       console.warn('Workspace API token login failed, falling back to stored session');
@@ -538,7 +539,7 @@ async function handleComputorWorkspaceDetected(
       });
 
       if (restored) {
-        vscode.window.showInformationMessage(`Logged in: ${baseUrl}`);
+        notify.info(`Logged in: ${baseUrl}`);
         return;
       }
     }
@@ -547,7 +548,7 @@ async function handleComputorWorkspaceDetected(
   }
 
   // Priority 3: nothing stored (or session expired) — offer to sign in.
-  const action = await vscode.window.showInformationMessage(
+  const action = await notify.info(
     'Computor workspace detected. Sign in to continue.',
     'Sign in',
     'Use API Token',
@@ -784,14 +785,14 @@ class UnifiedController {
           await fs.promises.unlink(indexPath);
         }
         await execAsync('git reset', { cwd: ctx.repositoryPath });
-        vscode.window.showInformationMessage('Git index rebuilt successfully. Please reload the window.', 'Reload Window').then(choice => {
+        notify.info('Git index rebuilt successfully. Please reload the window.', 'Reload Window').then(choice => {
           if (choice === 'Reload Window') {
             void vscode.commands.executeCommand('workbench.action.reloadWindow');
           }
         });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        vscode.window.showErrorMessage(`Failed to rebuild git index: ${message}`);
+        notify.error(`Failed to rebuild git index: ${message}`);
       }
     });
     errorPageProvider.registerActionHandler('OPEN_TERMINAL', async (_errorCode, ctx) => {
@@ -871,7 +872,7 @@ class UnifiedController {
           await repositoryManager.autoSetupRepositories(undefined, progressReport, expandedCourseIds, cancellationToken);
         } catch (e) {
           if (e instanceof GitCancelledError) {
-            vscode.window.showInformationMessage('Repository setup was cancelled. Repositories will be set up when you expand a course.');
+            notify.info('Repository setup was cancelled. Repositories will be set up when you expand a course.');
           } else {
             console.error('[initializeStudentView] Repository auto-setup failed:', e);
           }
@@ -930,7 +931,7 @@ class UnifiedController {
         await this.openResultArtifact(api, resultId, artifactInfo);
       } catch (e) {
         console.error('Failed to open artifact:', e);
-        vscode.window.showErrorMessage(`Failed to open artifact: ${e instanceof Error ? e.message : String(e)}`);
+        notify.error(`Failed to open artifact: ${e instanceof Error ? e.message : String(e)}`);
       }
     }));
   }
@@ -946,7 +947,7 @@ class UnifiedController {
       if (fs.existsSync(filePath)) {
         await this.openArtifactFile(filePath);
       } else {
-        vscode.window.showErrorMessage(`Local artifact not found: ${artifactInfo.filename}`);
+        notify.error(`Local artifact not found: ${artifactInfo.filename}`);
       }
       return;
     }
@@ -998,7 +999,7 @@ class UnifiedController {
         const firstFile = path.join(artifactsDir, files[0]!);
         await this.openArtifactFile(firstFile);
       } else {
-        vscode.window.showInformationMessage('Artifacts downloaded but no files found to open');
+        notify.info('Artifacts downloaded but no files found to open');
       }
     }
   }
@@ -1014,7 +1015,7 @@ class UnifiedController {
       await vscode.commands.executeCommand('vscode.open', fileUri, { preview: false });
     } else if (binaryExtensions.includes(ext)) {
       await vscode.commands.executeCommand('revealFileInOS', fileUri);
-      vscode.window.showInformationMessage(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
+      notify.info(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
     } else {
       const doc = await vscode.workspace.openTextDocument(fileUri);
       await vscode.window.showTextDocument(doc, { preview: false });
@@ -1189,7 +1190,7 @@ class UnifiedController {
         const identifier = item?.exampleInfo?.identifier;
         const id = item?.exampleInfo?.id;
         if (!identifier && !id) {
-          vscode.window.showWarningMessage('No example assigned to this content.');
+          notify.warning('No example assigned to this content.');
           return;
         }
         const found = await exampleTree.revealExample({
@@ -1198,7 +1199,7 @@ class UnifiedController {
           repositoryId: item?.exampleInfo?.example_repository_id
         });
         if (!found) {
-          vscode.window.showWarningMessage('Example not found in the examples tree.');
+          notify.warning('Example not found in the examples tree.');
         }
       })
     );
@@ -1403,10 +1404,10 @@ class UnifiedController {
       if (status.active) {
         this.httpClient?.setMaintenanceMode(true, status.message);
         this.wsService.updateMaintenanceStatusBar('active', status.message);
-        vscode.window.showWarningMessage(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`);
+        notify.warning(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`);
       } else if (status.scheduled_at) {
         this.wsService.updateMaintenanceStatusBar('scheduled', status.message, status.scheduled_at);
-        vscode.window.showInformationMessage(`Maintenance Scheduled for ${new Date(status.scheduled_at).toLocaleString()}: ${status.message || 'Scheduled maintenance is planned'}`);
+        notify.info(`Maintenance Scheduled for ${new Date(status.scheduled_at).toLocaleString()}: ${status.message || 'Scheduled maintenance is planned'}`);
       }
     } catch (error) {
       // Non-critical — don't block startup
@@ -1442,13 +1443,13 @@ interface OfflineSession {
  */
 async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<void> {
   if (offlineSession) {
-    vscode.window.showInformationMessage('Offline mode is already active');
+    notify.info('Offline mode is already active');
     return;
   }
 
   const workspaceRoot = getWorkspaceRoot();
   if (!workspaceRoot) {
-    vscode.window.showErrorMessage('Please open a folder first');
+    notify.error('Please open a folder first');
     return;
   }
 
@@ -1459,7 +1460,7 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
       fs.mkdirSync(studentPath, { recursive: true });
       console.log('[initializeOfflineMode] Created student/ directory');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create student/ directory: ${error.message}`);
+      notify.error(`Failed to create student/ directory: ${error.message}`);
       return;
     }
   }
@@ -1493,15 +1494,15 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
       }
     };
 
-    vscode.window.showInformationMessage('✓ Offline mode activated');
+    notify.info('✓ Offline mode activated');
   } catch (error: any) {
     console.error('Failed to initialize offline mode:', error);
-    vscode.window.showErrorMessage(`Failed to initialize offline mode: ${error.message}`);
+    notify.error(`Failed to initialize offline mode: ${error.message}`);
   }
 }
 
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
-  if (isAuthenticating) { vscode.window.showInformationMessage('Login already in progress.'); return; }
+  if (isAuthenticating) { notify.info('Login already in progress.'); return; }
   // Claim the in-flight guard synchronously, before any await, so a second
   // trigger (e.g. the auto-login prompt) can't race us into a duplicate
   // controller.activate().
@@ -1522,7 +1523,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     // existing client's tokens rather than tearing down the session, so role
     // commands held on context.subscriptions aren't re-registered.
     if (activeSession) {
-      const answer = await vscode.window.showWarningMessage(
+      const answer = await notify.warning(
         `Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`,
         'Re-authenticate', 'Cancel'
       );
@@ -1530,7 +1531,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 
       const existing = activeSession.getHttpClient?.();
       if (!(existing instanceof BearerTokenHttpClient)) {
-        vscode.window.showInformationMessage('Already signed in with an API token; nothing to refresh.');
+        notify.info('Already signed in with an API token; nothing to refresh.');
         return;
       }
 
@@ -1545,9 +1546,9 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
           userId: sso.userId
         });
         await persistSession(context, sessionAuthFromClient(existing));
-        vscode.window.showInformationMessage(`Re-authenticated: ${baseUrl}`);
+        notify.info(`Re-authenticated: ${baseUrl}`);
       } catch (error: any) {
-        vscode.window.showErrorMessage(`Re-authentication failed: ${error?.message || error}`);
+        notify.error(`Re-authentication failed: ${error?.message || error}`);
       }
       return;
     }
@@ -1564,7 +1565,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       sso = await runSsoWithProgress(baseUrl);
     } catch (error: any) {
       // Cancelled, timed out, or the browser handshake failed.
-      vscode.window.showWarningMessage(`Sign-in not completed: ${error?.message || error}`);
+      notify.warning(`Sign-in not completed: ${error?.message || error}`);
       return;
     }
 
@@ -1581,12 +1582,12 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     } catch (error: any) {
       console.error('Login failed:', error);
       backendConnectionService.stopHealthCheck();
-      vscode.window.showErrorMessage(`Login failed: ${error?.message || error}`);
+      notify.error(`Login failed: ${error?.message || error}`);
       return;
     }
 
     await persistSession(context, sessionAuthFromClient(client));
-    vscode.window.showInformationMessage(
+    notify.info(
       sso.isNewUser ? 'Welcome to Computor! Your account has been set up.' : `Logged in: ${baseUrl}`
     );
   } finally {
@@ -1656,7 +1657,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const baseUrl = await settings.getBaseUrl();
 
       if (!baseUrl) {
-        const action = await vscode.window.showWarningMessage(
+        const action = await notify.warning(
           'No backend URL configured. Would you like to configure it now?',
           'Configure',
           'Cancel'
@@ -1678,7 +1679,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const status = await backendConnectionService.checkBackendConnection(baseUrl);
 
         if (status.isReachable) {
-          vscode.window.showInformationMessage(`✓ Backend is reachable at ${baseUrl}`);
+          notify.info(`✓ Backend is reachable at ${baseUrl}`);
         } else {
           await backendConnectionService.showConnectionError(status);
         }
@@ -1698,12 +1699,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const fullError = error?.stack ? `${errorMessage}\n\nStack trace:\n${error.stack}` : errorMessage;
       console.error('Full error details:', fullError);
 
-      vscode.window.showErrorMessage(
+      notify.error(
         `Backend connection check failed: ${errorMessage}`,
         'Show Details'
       ).then(selection => {
         if (selection === 'Show Details') {
-          vscode.window.showErrorMessage(fullError, { modal: true });
+          notify.modal('error', fullError);
         }
       });
     }
@@ -1735,7 +1736,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const status = await backendConnectionService.checkBackendConnection(url);
     if (status.isReachable) {
       backendConnectionService.startHealthCheck(url);
-      vscode.window.showInformationMessage('Computor backend URL updated.');
+      notify.info('Computor backend URL updated.');
     } else {
       backendConnectionService.stopHealthCheck();
       await backendConnectionService.showConnectionError(status);
@@ -1759,7 +1760,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const currentValue = await settings.isAutoLoginEnabled();
     const newValue = currentValue !== true;
     await settings.setAutoLoginEnabled(newValue);
-    vscode.window.showInformationMessage(
+    notify.info(
       `Auto-login ${newValue ? 'enabled' : 'disabled'}. ${newValue ? 'You will be automatically logged in when opening Computor workspaces.' : 'You will be prompted to login when opening Computor workspaces.'}`
     );
   }));
