@@ -716,7 +716,7 @@
       data: { rowNumber, workflowId }
     });
 
-    // Poll every 10 seconds
+    // Poll every 5 seconds
     workflowPollingIntervals[rowNumber] = setInterval(() => {
       vscode.postMessage({
         command: 'pollWorkflowStatus',

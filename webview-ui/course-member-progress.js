@@ -682,7 +682,7 @@
 
   function formatGrade(value) {
     if (typeof value !== 'number') return '-';
-    const pct = (value * 100).toFixed(1).replace(/\\.0$/, '');
+    const pct = (value * 100).toFixed(1).replace(/\.0$/, '');
     return `${pct}%`;
   }
 
@@ -725,12 +725,6 @@
     if (typeof node.graded_by_name === 'string' && node.graded_by_name.trim()) return node.graded_by_name.trim();
     return null;
   }
-
-  // Global handlers
-  window.copyWithFeedback = function(text, btnId) {
-    // Use VS Code's clipboard API via message passing (navigator.clipboard doesn't work in webviews)
-    vscode.postMessage({ command: 'copyToClipboard', data: { text, btnId } });
-  };
 
   function toggleNode(nodeId, toggleEl) {
     const childrenEl = document.getElementById(nodeId + '-children');
