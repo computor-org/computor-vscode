@@ -9,6 +9,7 @@ import { performanceMonitor } from './PerformanceMonitoringService';
 import type { CourseDeploymentGet, VersionUpgradeGet, CourseDeployRequest, CourseDeployResult, InstanceInfoGet } from '../types/generated';
 import type { CourseTaskRequest } from '../types/generated/courses';
 import type { TaskInfo } from '../types/generated/tasks';
+import { notify } from '../utils/notify';
 import type {
   CourseGitDescriptor,
   CourseMemberRepositoryGet,
@@ -1426,7 +1427,7 @@ export class ComputorApiService {
       const status = (error as any)?.response?.status;
       const message = (error as any)?.response?.data?.detail || (error as Error)?.message;
       if (message && status !== 401) {
-        vscode.window.showWarningMessage(`Course readiness check failed: ${message}`);
+        notify.warning(`Course readiness check failed: ${message}`);
       }
       throw error;
     }
@@ -2716,7 +2717,7 @@ export class ComputorApiService {
         try {
           const selectionService = TutorSelectionService.getInstance();
           await selectionService.clearMember();
-          vscode.window.showWarningMessage('The selected student is no longer available. Please select a student again.');
+          notify.warning('The selected student is no longer available. Please select a student again.');
         } catch (selectionError) {
           console.warn('[getTutorCourseContents] Could not clear stale member selection:', selectionError);
         }

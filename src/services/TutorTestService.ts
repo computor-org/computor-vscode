@@ -5,6 +5,7 @@ import { ComputorApiService } from './ComputorApiService';
 import { TutorTestGet, ResultArtifactInfo, TutorTestArtifactInfo } from '../types/generated';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { showErrorWithSeverity } from '../utils/errorDisplay';
+import { notify } from '../utils/notify';
 
 /**
  * Service for managing tutor test execution and results
@@ -74,7 +75,7 @@ export class TutorTestService {
     try {
       // Check if submission path exists
       if (!await this.workspaceStructure.directoryExists(submissionPath)) {
-        vscode.window.showErrorMessage('Submission directory not found. Please checkout the submission first.');
+        notify.error('Submission directory not found. Please checkout the submission first.');
         return undefined;
       }
 
@@ -181,7 +182,7 @@ export class TutorTestService {
         // Check for timeout
         if (Date.now() - startTime > this.MAX_POLL_DURATION) {
           this.stopPolling(testId);
-          vscode.window.showWarningMessage(`Test timed out after 5 minutes`);
+          notify.warning(`Test timed out after 5 minutes`);
           resolve({ status: 'TIMEOUT' });
           return;
         }
@@ -203,15 +204,15 @@ export class TutorTestService {
           // Check if test is complete
           if (testStatus.status === 'completed') {
             this.stopPolling(testId);
-            vscode.window.showInformationMessage('Test completed');
+            notify.info('Test completed');
             resolve({ status: 'SUCCESS' });
           } else if (testStatus.status === 'failed') {
             this.stopPolling(testId);
-            vscode.window.showWarningMessage('Test failed');
+            notify.warning('Test failed');
             resolve({ status: 'FAILED' });
           } else if (testStatus.status === 'timeout') {
             this.stopPolling(testId);
-            vscode.window.showWarningMessage('Test timed out on the server');
+            notify.warning('Test timed out on the server');
             resolve({ status: 'TIMEOUT' });
           }
           // Continue polling if status is 'pending' or 'running'
@@ -309,12 +310,12 @@ export class TutorTestService {
         const uri = vscode.Uri.file(artifactsPath);
         await vscode.commands.executeCommand('revealInExplorer', uri);
       } else {
-        vscode.window.showInformationMessage('No test results available');
+        notify.info('No test results available');
       }
 
     } catch (error: any) {
       console.error('[TutorTestService] Error opening test results:', error);
-      vscode.window.showErrorMessage('Failed to open test results');
+      notify.error('Failed to open test results');
     }
   }
 

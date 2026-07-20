@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ComputorApiService } from '../../../services/ComputorApiService';
 import { DocumentsCacheService, type DocumentScope } from '../../../services/DocumentsCacheService';
+import { notify } from '../../../utils/notify';
 import {
   DocumentsOrgItem,
   DocumentsCourseFamilyItem,
@@ -230,13 +231,13 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
    *  can review them before clicking Upload. */
   async handleDrop(target: DocumentsTreeItem | undefined, sources: vscode.DataTransfer): Promise<void> {
     if (!target) {
-      vscode.window.showWarningMessage('Drop into an organization, course family, course, or document folder.');
+      notify.warning('Drop into an organization, course family, course, or document folder.');
       return;
     }
 
     const dest = this.resolveDropTarget(target);
     if (!dest) {
-      vscode.window.showWarningMessage('Drop target is not a documents container.');
+      notify.warning('Drop target is not a documents container.');
       return;
     }
 
@@ -270,9 +271,9 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
 
     this.invalidateDirectory(dest.scope, dest.parentPath);
     if (failed > 0) {
-      vscode.window.showWarningMessage(`Added ${added} item(s), ${failed} failed.`);
+      notify.warning(`Added ${added} item(s), ${failed} failed.`);
     } else if (added > 0) {
-      vscode.window.showInformationMessage(`Added ${added} item(s) as local-only. Right-click the scope to Upload All Pending when ready.`);
+      notify.info(`Added ${added} item(s) as local-only. Right-click the scope to Upload All Pending when ready.`);
     }
   }
 

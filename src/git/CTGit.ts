@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SimpleGit } from 'simple-git';
 import { createSimpleGit } from './simpleGitFactory';
+import { notify } from '../utils/notify';
 
 function openFileInMergeEditor(filePath: string): void {
   void vscode.workspace.openTextDocument(filePath).then((document) => {
@@ -124,7 +125,7 @@ export class CTGit {
       for (const file of conflicts) {
         openFileInMergeEditor(path.join(this.repoPath, file));
       }
-      void vscode.window.showErrorMessage(`Your repository has unresolved conflicts in:\n${conflicts.join('\n')}`);
+      void notify.error(`Your repository has unresolved conflicts in:\n${conflicts.join('\n')}`);
     }
 
     return selection.value;
@@ -166,7 +167,7 @@ export class CTGit {
         return false;
       }
 
-      void vscode.window.showInformationMessage(
+      void notify.info(
         'Upstream removed assignment files you modified. Your local versions were kept to preserve your work.'
       );
       return true;
@@ -192,7 +193,7 @@ export class CTGit {
       await this.resolveConflictsUsingOurs(remaining);
       remaining = await this.hasUnmergedPaths();
       if (remaining.length === 0) {
-        void vscode.window.showInformationMessage('Merge conflicts were resolved by keeping your local changes.');
+        void notify.info('Merge conflicts were resolved by keeping your local changes.');
         return true;
       }
     } catch (error) {
@@ -209,7 +210,7 @@ export class CTGit {
       await this.resolveConflictsUsingTheirs(remaining);
       remaining = await this.hasUnmergedPaths();
       if (remaining.length === 0) {
-        void vscode.window.showWarningMessage(
+        void notify.warning(
           'Conflicting files were replaced with upstream versions to finish the merge.'
         );
         return true;
@@ -297,7 +298,7 @@ export class CTGit {
       if (shouldRemoveRemote) {
         await this.cleanupRemote(remoteName);
       }
-      vscode.window.showWarningMessage('Unable to determine upstream default branch. Skipping fork update.');
+      notify.warning('Unable to determine upstream default branch. Skipping fork update.');
       return { updated: false };  
     }
 
@@ -383,7 +384,7 @@ export class CTGit {
             const remainingAfterForce = await this.hasUnmergedPaths();
             if (remainingAfterForce.length === 0) {
               mergeCompleted = true;
-              void vscode.window.showInformationMessage(
+              void notify.info(
                 'Fork updated successfully. Some conflicts were automatically resolved by keeping your local changes where possible.'
               );
             } else {
@@ -439,7 +440,7 @@ export class CTGit {
         try {
           await this.simpleGit.push('origin', defaultBranch);
         } catch (pushError) {
-          vscode.window.showWarningMessage('Failed to push merged changes to origin. Please push manually.');
+          notify.warning('Failed to push merged changes to origin. Please push manually.');
           console.warn('[CTGit] Failed to push merge result:', pushError);
         }
       }

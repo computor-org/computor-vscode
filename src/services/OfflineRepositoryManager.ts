@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { execAsync } from '../utils/exec';
 import { execGitClone } from '../git/gitCloneHelpers';
 import { addTokenToGitUrl, extractOriginFromGitUrl } from '../utils/gitUrlHelpers';
+import { notify } from '../utils/notify';
 
 /**
  * Repository configuration for offline mode
@@ -47,7 +48,7 @@ export class OfflineRepositoryManager {
       // Extract GitLab origin from repository URL
       const gitlabOrigin = extractOriginFromGitUrl(repositoryUrl);
       if (!gitlabOrigin) {
-        vscode.window.showErrorMessage('Invalid repository URL. Must be a valid HTTPS GitLab URL.');
+        notify.error('Invalid repository URL. Must be a valid HTTPS GitLab URL.');
         return;
       }
 
@@ -67,10 +68,10 @@ export class OfflineRepositoryManager {
       // Clone the repository
       await this.cloneRepository(config);
 
-      vscode.window.showInformationMessage('✓ Course repository added successfully');
+      notify.info('✓ Course repository added successfully');
     } catch (error: any) {
       console.error('[OfflineRepositoryManager] Failed to add course:', error);
-      vscode.window.showErrorMessage(`Failed to add course: ${error.message}`);
+      notify.error(`Failed to add course: ${error.message}`);
     }
   }
 
@@ -238,7 +239,7 @@ export class OfflineRepositoryManager {
 
     // Check if directory already exists
     if (fs.existsSync(targetPath)) {
-      const action = await vscode.window.showWarningMessage(
+      const action = await notify.warning(
         `Directory "${repoName}" already exists. Do you want to overwrite it?`,
         'Overwrite',
         'Cancel'

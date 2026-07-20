@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import fetch from 'node-fetch';
+import { notify } from '../utils/notify';
 
 export interface BackendStatus {
   isReachable: boolean;
@@ -239,11 +240,7 @@ export class BackendConnectionService {
       detail += '\n\nMaximum retry attempts reached. Please resolve the issue and try again.';
     }
     
-    const selection = await vscode.window.showErrorMessage(
-      message,
-      { modal: true, detail },
-      ...actions
-    );
+    const selection = await notify.modal('error', message, { detail, actions });
     
     if (selection === 'Retry') {
       await this.checkBackendConnection(this.currentBaseUrl);

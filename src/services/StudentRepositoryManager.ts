@@ -12,6 +12,7 @@ import { addBasicCredentialsToGitUrl, addTokenToGitUrl, extractOriginFromGitUrl,
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
 import type { CourseMemberRepositoryGet } from '../types/courseGit';
+import { notify } from '../utils/notify';
 
 interface RepositoryInfo {
   cloneUrl: string;
@@ -558,7 +559,7 @@ export class StudentRepositoryManager {
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await vscode.window.showWarningMessage(
+      await notify.warning(
         `Failed to automatically update your repository from the course template. You may be working with an older version. Error: ${redactGitCredentials(errorMessage)}`,
         'View Git Output',
         'Dismiss'
@@ -695,7 +696,7 @@ export class StudentRepositoryManager {
         await fs.promises.rm(repoPath, { recursive: true, force: true });
       } catch (removeError) {
         console.error(`[StudentRepositoryManager] Failed to remove repository at ${repoPath}:`, removeError);
-        vscode.window.showErrorMessage(`Computor could not reset the repository "${repoName}". Please remove it manually and try again.`);
+        notify.error(`Computor could not reset the repository "${repoName}". Please remove it manually and try again.`);
         throw removeError;
       }
 
@@ -705,7 +706,7 @@ export class StudentRepositoryManager {
         refreshedToken = await this.cloneRepository(repoPath, cloneUrl, token);
       } catch (cloneError) {
         console.error(`[StudentRepositoryManager] Re-clone failed for ${repoPath}:`, cloneError);
-        vscode.window.showErrorMessage(`Computor could not recreate the repository "${repoName}". Your previous files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
+        notify.error(`Computor could not recreate the repository "${repoName}". Your previous files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
         throw cloneError;
       }
 
@@ -719,7 +720,7 @@ export class StudentRepositoryManager {
         ? `The repository "${repoName}" was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This is unusual—if it happens again, please inform your course instructor.`
         : `The repository "${repoName}" was reset because the remote history changed. This is unusual—if it happens again, please inform your course instructor.`;
 
-      const choice = await vscode.window.showWarningMessage(message, ...actions);
+      const choice = await notify.warning(message, ...actions);
       if (choice === 'Open Backup Folder' && backupPath) {
         await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(backupPath));
       }
@@ -748,19 +749,19 @@ export class StudentRepositoryManager {
       const { stdout } = await execAsync(`git remote get-url ${remoteName}`, { cwd: repoPath });
       const currentUrl = stdout.trim();
       if (!currentUrl) {
-        vscode.window.showErrorMessage(`Remote "${remoteName}" is not configured for this repository.`);
+        notify.error(`Remote "${remoteName}" is not configured for this repository.`);
         return false;
       }
 
       const sanitizedUrl = stripCredentialsFromGitUrl(currentUrl);
       if (!sanitizedUrl) {
-        vscode.window.showErrorMessage('Unsupported remote URL format. Update the remote manually and retry.');
+        notify.error('Unsupported remote URL format. Update the remote manually and retry.');
         return false;
       }
 
       const origin = extractOriginFromGitUrl(sanitizedUrl);
       if (!origin) {
-        vscode.window.showErrorMessage('Unable to determine GitLab host for this repository.');
+        notify.error('Unable to determine GitLab host for this repository.');
         return false;
       }
 
@@ -780,7 +781,7 @@ export class StudentRepositoryManager {
       return true;
     } catch (error) {
       console.error('[StudentRepositoryManager] Failed to refresh repository credentials:', error);
-      vscode.window.showErrorMessage('Could not update Git credentials. Please try again.');
+      notify.error('Could not update Git credentials. Please try again.');
       return false;
     }
   }

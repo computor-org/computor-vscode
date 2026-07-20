@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { execAsync } from '../utils/exec';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { ResultArtifactInfo } from '../types/generated/common';
+import { notify } from '../utils/notify';
 
 const REPO_URL = 'https://github.com/computor-org/computor-backend.git';
 const SPARSE_DIRS = ['computor-types', 'computor-testing'];
@@ -58,7 +59,7 @@ export class ComputorTestingInstaller {
 
   async install(): Promise<boolean> {
     if (this.isInstalled()) {
-      const action = await vscode.window.showInformationMessage(
+      const action = await notify.info(
         'Computor Testing is already installed. Reinstall?',
         'Reinstall', 'Cancel'
       );
@@ -67,7 +68,7 @@ export class ComputorTestingInstaller {
 
     const pythonPath = await this.findPython();
     if (!pythonPath) {
-      vscode.window.showErrorMessage('Python 3.10+ is required. Please install Python and try again.');
+      notify.error('Python 3.10+ is required. Please install Python and try again.');
       return false;
     }
 
@@ -146,11 +147,11 @@ export class ComputorTestingInstaller {
           this.log(`  Version: ${version.trim()}`);
 
           this.log('\n=== Installation complete! ===');
-          vscode.window.showInformationMessage('Computor Testing installed successfully.');
+          notify.info('Computor Testing installed successfully.');
           return true;
         } catch (error) {
           this.log(`\n=== Installation failed ===\n${error}`);
-          vscode.window.showErrorMessage(`Installation failed: ${error}`);
+          notify.error(`Installation failed: ${error}`);
           return false;
         }
       }
@@ -159,7 +160,7 @@ export class ComputorTestingInstaller {
 
   async update(): Promise<boolean> {
     if (!this.isInstalled()) {
-      vscode.window.showErrorMessage('Computor Testing is not installed. Install it first.');
+      notify.error('Computor Testing is not installed. Install it first.');
       return false;
     }
 
@@ -205,11 +206,11 @@ export class ComputorTestingInstaller {
           this.log(`  Version: ${version.trim()}`);
 
           this.log('\n=== Update complete! ===');
-          vscode.window.showInformationMessage('Computor Testing updated successfully.');
+          notify.info('Computor Testing updated successfully.');
           return true;
         } catch (error) {
           this.log(`\n=== Update failed ===\n${error}`);
-          vscode.window.showErrorMessage(`Update failed: ${error}`);
+          notify.error(`Update failed: ${error}`);
           return false;
         }
       }
@@ -218,7 +219,7 @@ export class ComputorTestingInstaller {
 
   async runTests(exampleDir: string): Promise<void> {
     if (!this.isInstalled()) {
-      const action = await vscode.window.showWarningMessage(
+      const action = await notify.warning(
         'Computor Testing is not installed. Install it now?',
         'Install', 'Cancel'
       );
@@ -229,7 +230,7 @@ export class ComputorTestingInstaller {
 
     const language = this.readTestYamlLanguage(exampleDir);
     if (!language) {
-      vscode.window.showErrorMessage('Could not determine language from test.yaml. Make sure test.yaml exists and has a "type" field.');
+      notify.error('Could not determine language from test.yaml. Make sure test.yaml exists and has a "type" field.');
       return;
     }
 
@@ -366,7 +367,7 @@ export class ComputorTestingInstaller {
 
       if (failed.length > 0) {
         const paths = failed.join('\n  ');
-        vscode.window.showWarningMessage(
+        notify.warning(
           `Could not remove ${failed.length} stale test run director${failed.length === 1 ? 'y' : 'ies'}. ` +
           `Please delete manually:\n  ${paths}`,
           'Open Folder'
@@ -491,18 +492,18 @@ export class ComputorTestingInstaller {
   async uninstall(): Promise<void> {
     const toolsDir = this.getToolsDir();
     if (!fs.existsSync(toolsDir)) {
-      vscode.window.showInformationMessage('Computor Testing is not installed.');
+      notify.info('Computor Testing is not installed.');
       return;
     }
 
-    const action = await vscode.window.showWarningMessage(
+    const action = await notify.warning(
       'Remove Computor Testing tools? This will delete the .computor-tools directory.',
       'Remove', 'Cancel'
     );
     if (action !== 'Remove') { return; }
 
     fs.rmSync(toolsDir, { recursive: true, force: true });
-    vscode.window.showInformationMessage('Computor Testing tools removed.');
+    notify.info('Computor Testing tools removed.');
   }
 
   private async ensurePip(pythonPath: string, repoDir: string): Promise<void> {

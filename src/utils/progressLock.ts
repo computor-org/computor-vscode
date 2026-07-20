@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { notify } from './notify';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const inFlightKeys = new Set<string>();
@@ -30,7 +31,7 @@ export async function runLockedWithProgress<T>(
 ): Promise<T | undefined> {
   if (inFlightKeys.has(options.key)) {
     if (options.duplicateMessage) {
-      void vscode.window.showInformationMessage(options.duplicateMessage);
+      void notify.info(options.duplicateMessage);
     }
     return undefined;
   }

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { DragDropManager } from '../../../services/DragDropManager';
+import { notify } from '../../../utils/notify';
 import {
   ExampleRepositoryList,
   ExampleList
@@ -454,7 +455,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
       return [];
     } catch (error) {
       console.error('Failed to load example tree data:', error);
-      vscode.window.showErrorMessage(`Failed to load examples: ${error}`);
+      notify.error(`Failed to load examples: ${error}`);
       return [];
     }
   }
@@ -910,28 +911,27 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
 
       if (sourcePath === dest) { continue; }
       if (dest.startsWith(sourcePath + path.sep)) {
-        vscode.window.showWarningMessage(`Cannot move "${name}" into itself.`);
+        notify.warning(`Cannot move "${name}" into itself.`);
         continue;
       }
       if (PROTECTED_NAMES.has(name)) {
-        vscode.window.showWarningMessage(`Cannot move protected item "${name}".`);
+        notify.warning(`Cannot move protected item "${name}".`);
         continue;
       }
 
       if (fs.existsSync(dest)) {
-        const overwrite = await vscode.window.showWarningMessage(
+        const overwrite = await notify.confirm(
           `"${name}" already exists in the target folder. Overwrite?`,
-          { modal: true },
           'Overwrite'
         );
-        if (overwrite !== 'Overwrite') { continue; }
+        if (!overwrite) { continue; }
       }
 
       try {
         fs.renameSync(sourcePath, dest);
         moved.push(name);
       } catch (error) {
-        vscode.window.showErrorMessage(`Failed to move "${name}": ${error}`);
+        notify.error(`Failed to move "${name}": ${error}`);
       }
     }
 
