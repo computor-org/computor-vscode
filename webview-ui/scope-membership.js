@@ -2,7 +2,7 @@
   const { escapeHtml } = window.ComputorWebview;
   const vscode = window.vscodeApi || acquireVsCodeApi();
 
-  const state = window.__INITIAL_STATE__ || null;
+  let state = window.__INITIAL_STATE__ || null;
   const localState = {
     addRoleId: '',
     pending: false,
@@ -36,7 +36,7 @@
     const root = document.getElementById('app');
     if (!root) { return; }
 
-    if (!state) {
+    if (!state || !state.target) {
       root.innerHTML = '<p>Loading…</p>';
       return;
     }
@@ -192,7 +192,7 @@
     if (!message) { return; }
     switch (message.command) {
       case 'updateState':
-        Object.assign(state || {}, message.data || {});
+        state = Object.assign(state || {}, message.data || {});
         if (message.notice) { localState.notice = message.notice; }
         renderRoot();
         break;
