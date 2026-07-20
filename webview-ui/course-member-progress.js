@@ -16,6 +16,22 @@
   function init() {
     render();
     setupMessageHandler();
+    setupTreeToggle();
+  }
+
+  // The tree is re-rendered into #app on every update, but #app itself persists,
+  // so a single delegated listener bound here survives re-renders and never
+  // stacks. Inline onclick can't be used: the webview CSP allows only nonce'd
+  // scripts, so onclick attributes are silently ignored.
+  function setupTreeToggle() {
+    const app = document.getElementById('app');
+    if (!app) return;
+    app.addEventListener('click', function(e) {
+      const toggle = e.target.closest && e.target.closest('.content-tree-node__toggle');
+      if (!toggle || !app.contains(toggle)) return;
+      const nodeId = toggle.getAttribute('data-node-id');
+      if (nodeId) toggleNode(nodeId, toggle);
+    });
   }
 
   function setupMessageHandler() {
@@ -486,7 +502,7 @@
         <div class="content-tree-node" id="${nodeId}">
           <div class="content-tree-node__row content-tree-node__row--depth-${Math.min(depth, 3)}" title="${tooltip}">
             <span class="content-tree-node__toggle ${hasChildren ? '' : 'content-tree-node__toggle--empty'}"
-                  onclick="toggleNode('${nodeId}')">${hasChildren ? (node.expanded !== false ? '▼' : '▶') : ''}</span>
+                  data-action="toggle-node" data-node-id="${nodeId}">${hasChildren ? (node.expanded !== false ? '▼' : '▶') : ''}</span>
             ${iconHtml}
             <span class="content-tree-node__title">${escapeHtml(node.title || node.path)}</span>
             ${progressHtml}
@@ -708,16 +724,13 @@
     vscode.postMessage({ command: 'copyToClipboard', data: { text, btnId } });
   };
 
-  window.toggleNode = function(nodeId) {
+  function toggleNode(nodeId, toggleEl) {
     const childrenEl = document.getElementById(nodeId + '-children');
-    const toggleEl = document.querySelector(`#${nodeId} .content-tree-node__toggle`);
-
-    if (childrenEl && toggleEl) {
-      const isCollapsed = childrenEl.classList.contains('content-tree-node__children--collapsed');
-      childrenEl.classList.toggle('content-tree-node__children--collapsed');
-      toggleEl.textContent = isCollapsed ? '▼' : '▶';
-    }
-  };
+    if (!childrenEl) return;
+    const isCollapsed = childrenEl.classList.contains('content-tree-node__children--collapsed');
+    childrenEl.classList.toggle('content-tree-node__children--collapsed');
+    if (toggleEl) { toggleEl.textContent = isCollapsed ? '▼' : '▶'; }
+  }
 
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
