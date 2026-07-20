@@ -197,6 +197,12 @@
   function initCharts() {
     const students = state.students || [];
 
+    // Destroy prior instances before re-creating — a full render() rebuilds the
+    // DOM and calls initCharts() again, so without this each render leaked a
+    // Chart.js instance (canvas, listeners, and a running animation loop).
+    if (histogramChart) { histogramChart.destroy(); histogramChart = null; }
+    if (contentTypeChart) { contentTypeChart.destroy(); contentTypeChart = null; }
+
     // Histogram
     const histogramData = buildHistogramData(students);
     histogramChart = ComputorCharts.createHistogram('histogramChart', histogramData, {
