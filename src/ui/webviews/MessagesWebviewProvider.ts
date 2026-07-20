@@ -5,6 +5,7 @@ import { canReplyInScope, deriveScopeFromCreatePayload } from '../../services/Me
 import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
+import { notify } from '../../utils/notify';
 
 export interface MessageFilters {
   unread?: boolean;
@@ -429,7 +430,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         break;
       case 'showWarning':
         if (message.data) {
-          vscode.window.showWarningMessage(String(message.data));
+          notify.warning(String(message.data));
         }
         break;
       default:
@@ -568,13 +569,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
 
     const title = data.title || 'this message';
-    const confirmed = await vscode.window.showWarningMessage(
+    const confirmed = await notify.confirm(
       `Delete "${title}"?`,
-      { modal: true },
       'Delete'
     );
 
-    if (confirmed === 'Delete') {
+    if (confirmed) {
       await this.handleDeleteMessage(data);
     }
   }
@@ -589,9 +589,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       await this.apiService.deleteMessage(data.messageId);
       // Skip indicator update - deleting a message doesn't change unread state
       await this.refreshMessages({ skipIndicatorUpdate: true });
-      vscode.window.showInformationMessage('Message deleted.');
+      notify.info('Message deleted.');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to delete message: ${error?.message || error}`);
+      notify.error(`Failed to delete message: ${error?.message || error}`);
       this.postLoadingState(false);
     }
   }
@@ -631,7 +631,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         this.inputPanel.updateMessages(rawMessages);
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to refresh messages: ${error?.message || error}`);
+      notify.error(`Failed to refresh messages: ${error?.message || error}`);
       this.postLoadingState(false);
     }
   }

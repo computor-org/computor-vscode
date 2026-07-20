@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { escapeHtml } from './shared/webviewHelpers';
 import { renderWebviewPage } from './shared/webviewPage';
+import { notify } from '../../utils/notify';
 
 interface ValidationError {
   course_content_id: string;
@@ -46,7 +47,7 @@ export class ReleaseValidationWebviewProvider {
       switch (message.command) {
         case 'viewContent':
           // Could navigate to the content in the tree
-          vscode.window.showInformationMessage(`Navigate to assignment: ${message.data?.courseContentId}`);
+          notify.info(`Navigate to assignment: ${message.data?.courseContentId}`);
           break;
         case 'close':
           panel.dispose();

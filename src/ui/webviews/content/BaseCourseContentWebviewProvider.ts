@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from '../BaseWebviewProvider';
 import { CourseContentGet, CourseList, CourseContentTypeList, CourseContentKindList, ExampleGet, ExampleVersionGet } from '../../../types/generated';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
+import { notify } from '../../../utils/notify';
 
 export interface CourseContentWebviewData {
   courseContent: CourseContentGet;
@@ -80,7 +81,7 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         data.contentId as string,
         data.updates as Record<string, unknown>
       );
-      vscode.window.showInformationMessage('Content updated successfully');
+      notify.info('Content updated successfully');
 
       if (this.treeDataProvider) {
         this.treeDataProvider.updateNode('courseContent', data.contentId as string, {
@@ -89,7 +90,7 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         });
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to update content: ${error}`);
+      notify.error(`Failed to update content: ${error}`);
     }
   }
 
@@ -106,10 +107,10 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         if (this.panel) {
           this.panel.webview.html = content;
         }
-        vscode.window.showInformationMessage('Content refreshed');
+        notify.info('Content refreshed');
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+      notify.error(`Failed to refresh: ${error}`);
     }
   }
 
@@ -129,7 +130,7 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         await this.apiService.updateCourseContent(courseId, contentId, updates);
       }
 
-      vscode.window.showInformationMessage('Content moved successfully');
+      notify.info('Content moved successfully');
 
       if (this.treeDataProvider) {
         this.treeDataProvider.updateNode('courseContent', contentId, {
@@ -141,7 +142,7 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
 
       await this.handleRefresh({ contentId });
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to move content: ${error?.message || error}`);
+      notify.error(`Failed to move content: ${error?.message || error}`);
     }
   }
 

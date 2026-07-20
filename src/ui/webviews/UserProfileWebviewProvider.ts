@@ -11,6 +11,7 @@ import {
   UserGet,
   UserUpdate
 } from '../../types/generated';
+import { notify } from '../../utils/notify';
 
 interface UserProfileViewState {
   user?: UserGet;
@@ -44,7 +45,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       const state = await this.loadState();
       await this.show('My Profile', state);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open profile: ${error?.message || error}`);
+      notify.error(`Failed to open profile: ${error?.message || error}`);
     }
   }
 
@@ -217,7 +218,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
   private handleError(prefix: string, error: any): void {
     const detail = error?.message || error?.response?.data?.detail || error?.response?.data?.message || String(error);
     console.error(`[UserProfileWebview] ${prefix}:`, error);
-    vscode.window.showErrorMessage(`${prefix}: ${detail}`);
+    notify.error(`${prefix}: ${detail}`);
     this.postNotice({ type: 'error', message: `${prefix}: ${detail}` });
   }
 

@@ -4,6 +4,7 @@ import { MessageCreate, MessageUpdate, MessageList, MessageMentionRef, Mentionab
 import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
 import { WebSocketService } from '../../services/WebSocketService';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
+import { notify } from '../../utils/notify';
 
 interface TypingUser {
   userId: string;
@@ -69,7 +70,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
           break;
         case 'showWarning':
           if (message.data) {
-            vscode.window.showWarningMessage(String(message.data));
+            notify.warning(String(message.data));
           }
           break;
         case 'ready':
@@ -322,11 +323,11 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   private async handleCreateMessage(data: { title: string; content: string; parent_id?: string }): Promise<void> {
     const target = this.state.target;
     if (!target) {
-      vscode.window.showWarningMessage('Unable to post message: target context missing.');
+      notify.warning('Unable to post message: target context missing.');
       return;
     }
     if (target.readOnly) {
-      vscode.window.showWarningMessage(target.readOnlyReason || 'You do not have permission to post messages here.');
+      notify.warning(target.readOnlyReason || 'You do not have permission to post messages here.');
       return;
     }
 
@@ -354,7 +355,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to send message: ${errorMessage}`);
+      notify.error(`Failed to send message: ${errorMessage}`);
     } finally {
       this.postLoading(false);
     }
@@ -380,7 +381,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to update message: ${errorMessage}`);
+      notify.error(`Failed to update message: ${errorMessage}`);
     } finally {
       this.postLoading(false);
     }

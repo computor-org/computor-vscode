@@ -4,6 +4,7 @@ import { CourseContentTypeGet, CourseList, CourseContentKindList } from '../../t
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { notify } from '../../utils/notify';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -117,7 +118,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       case 'updateContentType':
         try {
           await this.apiService.updateCourseContentType(message.data.typeId, message.data.updates);
-          vscode.window.showInformationMessage('Content type updated successfully');
+          notify.info('Content type updated successfully');
 
           if (this.treeDataProvider) {
             const courseData = this.currentData as { course: CourseList };
@@ -129,7 +130,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
             vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to update content type: ${error}`);
+          notify.error(`Failed to update content type: ${error}`);
         }
         break;
 
@@ -153,7 +154,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+            notify.error(`Failed to refresh: ${error}`);
           }
         }
         break;

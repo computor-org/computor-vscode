@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { escapeHtml } from './shared/webviewHelpers';
 import { ClientErrorDefinition } from '../../exceptions/client-error-types';
 import { clientErrorCatalog } from '../../exceptions/ClientErrorCatalog';
+import { notify } from '../../utils/notify';
 
 export interface ErrorPageContext {
   repositoryPath?: string;
@@ -32,7 +33,7 @@ export class ErrorPageWebviewProvider extends BaseWebviewProvider {
     this.errorContext = context;
     const errorDef = clientErrorCatalog.getError(errorCode);
     if (!errorDef) {
-      vscode.window.showErrorMessage(`Unknown error code: ${errorCode}`);
+      notify.error(`Unknown error code: ${errorCode}`);
       return;
     }
     await this.show(errorDef.title, { errorDef, context });

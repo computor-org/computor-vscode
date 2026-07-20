@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { canManageScopeMembership } from '../../services/ScopePermissions';
 import type { UserList } from '../../types/generated/users';
+import { notify } from '../../utils/notify';
 
 export type ScopeKind = 'organization' | 'course_family';
 
@@ -59,7 +60,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       const title = `${target.kind === 'organization' ? 'Organization' : 'Course Family'} members: ${target.scopeTitle}`;
       await this.show(title, state);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open members panel: ${error?.message || error}`);
+      notify.error(`Failed to open members panel: ${error?.message || error}`);
     }
   }
 
@@ -305,12 +306,11 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     const memberId = typeof raw.member_id === 'string' ? raw.member_id : '';
     if (!memberId) { return; }
 
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.confirm(
       'Remove this user from the scope?',
-      { modal: true },
       'Remove'
     );
-    if (confirmation !== 'Remove') { return; }
+    if (!confirmation) { return; }
 
     try {
       if (this.currentTarget.kind === 'organization') {
@@ -329,7 +329,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
   private handleError(prefix: string, error: any): void {
     const detail = error?.message || error?.response?.data?.detail || error?.response?.data?.message || String(error);
     console.error(`[ScopeMembershipWebview] ${prefix}:`, error);
-    vscode.window.showErrorMessage(`${prefix}: ${detail}`);
+    notify.error(`${prefix}: ${detail}`);
     this.postNotice({ type: 'error', message: `${prefix}: ${detail}` });
   }
 

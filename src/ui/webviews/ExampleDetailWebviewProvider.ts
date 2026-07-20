@@ -10,6 +10,7 @@ import { WorkspaceStructureManager } from '../../utils/workspaceStructure';
 import type { ExampleList, ExampleRepositoryList, ExampleVersionList } from '../../types/generated';
 import type { BumpPart } from '../../utils/versionHelpers';
 import * as fs from 'fs';
+import { notify } from '../../utils/notify';
 
 interface ExampleDetailData {
   example: ExampleList;
@@ -106,7 +107,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
 
     const examplesPath = this.getExamplesPath();
     if (!examplesPath) {
-      vscode.window.showErrorMessage('No workspace folder open.');
+      notify.error('No workspace folder open.');
       return;
     }
 
@@ -116,7 +117,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
         : await this.apiService.downloadExample(data.example.id, false);
 
       if (!exampleData) {
-        vscode.window.showErrorMessage('Failed to download example');
+        notify.error('Failed to download example');
         return;
       }
 
@@ -143,12 +144,11 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       // local copy is never deleted by a dismissible, easily-missed popup.
       const willOverwrite = fs.existsSync(workingDir) || (versionDir ? fs.existsSync(versionDir) : false);
       if (willOverwrite) {
-        const overwrite = await vscode.window.showWarningMessage(
+        const overwrite = await notify.confirm(
           `A local copy of '${data.example.directory}' already exists and will be replaced.`,
-          { modal: true },
           'Overwrite'
         );
-        if (overwrite !== 'Overwrite') { return; }
+        if (!overwrite) { return; }
       }
 
       // Create working directory
@@ -173,24 +173,24 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       data.currentVersion = resolvedTag;
 
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(`Checked out '${data.example.title}' [${resolvedTag}]`);
+      notify.info(`Checked out '${data.example.title}' [${resolvedTag}]`);
       await this.refreshData();
     } catch (error) {
-      vscode.window.showErrorMessage(`Checkout failed: ${error}`);
+      notify.error(`Checkout failed: ${error}`);
     }
   }
 
   private async handleBumpVersion(part: BumpPart): Promise<void> {
     const data = this.currentData as ExampleDetailData | undefined;
     if (!data?.downloadPath || !fs.existsSync(data.downloadPath)) {
-      vscode.window.showErrorMessage('Example not checked out locally');
+      notify.error('Example not checked out locally');
       return;
     }
 
     try {
       const currentVersion = readMetaYamlVersion(data.downloadPath);
       if (!currentVersion) {
-        vscode.window.showErrorMessage('No version field found in meta.yaml');
+        notify.error('No version field found in meta.yaml');
         return;
       }
 
@@ -198,26 +198,25 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       updateMetaYamlVersion(data.downloadPath, newVersion);
 
       this.treeProvider.refresh();
-      vscode.window.showInformationMessage(`Version bumped: ${normalizeSemVer(currentVersion)} -> ${newVersion}`);
+      notify.info(`Version bumped: ${normalizeSemVer(currentVersion)} -> ${newVersion}`);
       await this.refreshData();
     } catch (error) {
-      vscode.window.showErrorMessage(`Version bump failed: ${error}`);
+      notify.error(`Version bump failed: ${error}`);
     }
   }
 
   private async handleUpload(): Promise<void> {
     const data = this.currentData as ExampleDetailData | undefined;
     if (!data?.downloadPath || !fs.existsSync(data.downloadPath)) {
-      vscode.window.showErrorMessage('Example not checked out locally');
+      notify.error('Example not checked out locally');
       return;
     }
 
-    const confirm = await vscode.window.showInformationMessage(
+    const confirm = await notify.confirm(
       `Upload example "${data.example.title}" from local directory?`,
-      { modal: true },
       'Upload'
     );
-    if (confirm !== 'Upload') { return; }
+    if (!confirm) { return; }
 
     await vscode.commands.executeCommand('computor.lecturer.uploadExample', {
       example: data.example,

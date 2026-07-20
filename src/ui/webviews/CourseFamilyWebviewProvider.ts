@@ -4,6 +4,7 @@ import { CourseFamilyGet, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { notify } from '../../utils/notify';
 
 export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -90,7 +91,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
       case 'updateCourseFamily':
         try {
           await this.apiService.updateCourseFamily(message.data.familyId, message.data.updates);
-          vscode.window.showInformationMessage('Course family updated successfully');
+          notify.info('Course family updated successfully');
 
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('courseFamily', message.data.familyId, message.data.updates);
@@ -98,7 +99,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
             vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to update course family: ${error}`);
+          notify.error(`Failed to update course family: ${error}`);
         }
         break;
 
@@ -111,7 +112,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+            notify.error(`Failed to refresh: ${error}`);
           }
         }
         break;

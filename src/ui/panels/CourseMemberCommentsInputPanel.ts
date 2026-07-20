@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberCommentList } from '../../types/generated';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
+import { notify } from '../../utils/notify';
 
 interface InputPanelState {
   courseMemberId?: string;
@@ -51,7 +52,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
           break;
         case 'showWarning':
           if (message.data) {
-            vscode.window.showWarningMessage(String(message.data));
+            notify.warning(String(message.data));
           }
           break;
         case 'ready':
@@ -127,11 +128,11 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
 
   private async handleCreateComment(data: { message: string }): Promise<void> {
     if (!this.state.courseMemberId) {
-      vscode.window.showWarningMessage('Select a course member to comment on first.');
+      notify.warning('Select a course member to comment on first.');
       return;
     }
     if (!data?.message?.trim()) {
-      vscode.window.showWarningMessage('Comment text is required.');
+      notify.warning('Comment text is required.');
       return;
     }
     try {
@@ -142,7 +143,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
         await this.onCommentChangedCallback();
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to create comment: ${error?.message || error}`);
+      notify.error(`Failed to create comment: ${error?.message || error}`);
     } finally {
       this.postLoading(false);
     }
@@ -153,7 +154,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
       return;
     }
     if (!data?.message?.trim()) {
-      vscode.window.showWarningMessage('Comment text is required.');
+      notify.warning('Comment text is required.');
       return;
     }
     try {
@@ -164,7 +165,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
         await this.onCommentChangedCallback();
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to update comment: ${error?.message || error}`);
+      notify.error(`Failed to update comment: ${error?.message || error}`);
     } finally {
       this.postLoading(false);
     }

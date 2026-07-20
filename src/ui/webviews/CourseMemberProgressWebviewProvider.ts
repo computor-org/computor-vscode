@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberGradingsGet } from '../../types/generated';
+import { notify } from '../../utils/notify';
 
 interface CourseMemberProgressData {
   memberGradings: CourseMemberGradingsGet;
@@ -19,7 +20,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
   async showMemberProgress(courseMemberId: string, memberName?: string): Promise<void> {
     const memberGradings = await this.apiService.getCourseMemberGradingsDetail(courseMemberId);
     if (!memberGradings) {
-      vscode.window.showErrorMessage('Failed to load course member progress data.');
+      notify.error('Failed to load course member progress data.');
       return;
     }
 
@@ -54,7 +55,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
         break;
       case 'showError':
         if (message.data) {
-          vscode.window.showErrorMessage(String(message.data));
+          notify.error(String(message.data));
         }
         break;
       case 'copyToClipboard':
@@ -63,7 +64,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
             await vscode.env.clipboard.writeText(message.data.text);
             this.panel?.webview.postMessage({ command: 'copySuccess', data: { btnId: message.data.btnId } });
           } catch (err) {
-            vscode.window.showErrorMessage(`Failed to copy: ${err}`);
+            notify.error(`Failed to copy: ${err}`);
           }
         }
         break;
@@ -88,7 +89,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
         this.panel.webview.postMessage({ command: 'updateData', data: { memberGradings } });
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to refresh progress data: ${error?.message || error}`);
+      notify.error(`Failed to refresh progress data: ${error?.message || error}`);
     } finally {
       this.postLoadingState(false);
     }

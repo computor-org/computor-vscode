@@ -3,6 +3,7 @@ import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './Ba
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, statusBadge, deploymentStatusColor, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { notify } from '../../../utils/notify';
 
 export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -145,7 +146,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
             contentId: message.data?.contentId
           });
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to deploy assignment: ${error}`);
+          notify.error(`Failed to deploy assignment: ${error}`);
         }
         break;
 
@@ -157,7 +158,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
             courseContentTitle: contentData?.courseContent?.title || ''
           });
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to view deployment: ${error}`);
+          notify.error(`Failed to view deployment: ${error}`);
         }
         break;
 

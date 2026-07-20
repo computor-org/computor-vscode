@@ -4,6 +4,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { CourseGroupGet, CourseList } from '../../types/generated';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { notify } from '../../utils/notify';
 
 export class CourseGroupWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -82,13 +83,13 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
       case 'updateCourseGroup':
         try {
           await this.apiService.updateCourseGroup(message.data.groupId, message.data.updates);
-          vscode.window.showInformationMessage('Course group updated successfully');
+          notify.info('Course group updated successfully');
 
           if (this.treeDataProvider) {
             await this.treeDataProvider.refresh();
           }
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to update course group: ${error}`);
+          notify.error(`Failed to update course group: ${error}`);
         }
         break;
 
@@ -109,7 +110,7 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+            notify.error(`Failed to refresh: ${error}`);
           }
         }
         break;

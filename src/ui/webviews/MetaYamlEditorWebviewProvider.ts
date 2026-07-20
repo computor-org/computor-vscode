@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { escapeHtml } from './shared/webviewHelpers';
+import { notify } from '../../utils/notify';
 
 interface MetaYamlEditorData {
   filePath: string;
@@ -116,12 +117,12 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
   private async handleSave(data: { filePath: string; meta: Record<string, unknown> }): Promise<void> {
     try {
       this.saveMetaYaml(data.filePath, data.meta);
-      vscode.window.showInformationMessage('meta.yaml saved successfully');
+      notify.info('meta.yaml saved successfully');
       if (this.panel) {
         this.panel.webview.postMessage({ command: 'saved' });
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to save meta.yaml: ${error}`);
+      notify.error(`Failed to save meta.yaml: ${error}`);
     }
   }
 
@@ -157,7 +158,7 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
       const doc = await vscode.workspace.openTextDocument(filePath);
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to open file: ${error}`);
+      notify.error(`Failed to open file: ${error}`);
     }
   }
 }

@@ -9,6 +9,7 @@ import {
   StudentProfileGet
 } from '../../types/generated';
 import type { RoleList } from '../../types/generated/roles';
+import { notify } from '../../utils/notify';
 
 interface UserManagementViewState {
   user?: UserGet;
@@ -48,7 +49,7 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
       const userDisplayName = this.getUserDisplayName(state.user);
       await this.show(`User: ${userDisplayName}`, state);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open user details: ${error?.message || error}`);
+      notify.error(`Failed to open user details: ${error?.message || error}`);
     }
   }
 
@@ -194,12 +195,11 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     if (!roleId) {
       return;
     }
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.confirm(
       `Remove role "${roleId}" from this user?`,
-      { modal: true },
       'Remove'
     );
-    if (confirmation !== 'Remove') {
+    if (!confirmation) {
       return;
     }
     try {
@@ -216,11 +216,10 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     }
 
     const action = archive ? 'archive' : 'unarchive';
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.confirm(
       archive
         ? 'Archive this user? They will be hidden from default lists and unable to authenticate.'
         : 'Unarchive this user? They will reappear in lists and regain access.',
-      { modal: true },
       archive ? 'Archive' : 'Unarchive'
     );
 
@@ -249,11 +248,10 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
     }
 
     const action = ban ? 'ban' : 'unban';
-    const confirmation = await vscode.window.showWarningMessage(
+    const confirmation = await notify.confirm(
       ban
         ? 'Ban this user? They will be signed out and blocked from authenticating until unbanned.'
         : 'Unban this user? They will be able to sign in again.',
-      { modal: true },
       ban ? 'Ban' : 'Unban'
     );
 
@@ -329,7 +327,7 @@ export class UserManagementWebviewProvider extends BaseWebviewProvider {
   private handleError(prefix: string, error: any): void {
     const detail = error?.message || error?.response?.data?.detail || error?.response?.data?.message || String(error);
     console.error(`[UserManagementWebview] ${prefix}:`, error);
-    vscode.window.showErrorMessage(`${prefix}: ${detail}`);
+    notify.error(`${prefix}: ${detail}`);
     this.postNotice({ type: 'error', message: `${prefix}: ${detail}` });
   }
 
