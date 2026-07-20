@@ -753,6 +753,13 @@
     }
   });
 
+  // True when the scroll position is at (or within a small threshold of) the
+  // bottom of the list.
+  function isNearBottom(container, threshold) {
+    const gap = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return gap <= (threshold || 120);
+  }
+
   // WebSocket event handlers — patch DOM directly, no full re-render
   function handleWsMessageNew(data) {
     if (!data) return;
@@ -760,6 +767,11 @@
 
     const container = document.querySelector('.messages-container');
     if (!container) return;
+
+    // Capture this before mutating the DOM: only auto-scroll to the new message
+    // if the user was already at the bottom, otherwise leave their scroll
+    // position alone so reading history isn't interrupted.
+    const wasNearBottom = isNearBottom(container);
 
     // Remove empty state if present
     const emptyState = container.querySelector('.empty-state');
@@ -779,10 +791,12 @@
     const node = renderMessageNode(data, level);
     container.insertBefore(node, typingEl || null);
 
-    // Scroll to bottom for new messages
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-    });
+    // Follow the new message to the bottom only if the user was already there.
+    if (wasNearBottom) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
   }
 
   function handleWsMessageUpdate(data) {
