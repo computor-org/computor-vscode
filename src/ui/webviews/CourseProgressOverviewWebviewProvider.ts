@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseGet, CourseMemberGradingsList } from '../../types/generated';
+import { notify } from '../../utils/notify';
 
 interface CourseProgressOverviewData {
   course: CourseGet;
@@ -56,7 +57,7 @@ export class CourseProgressOverviewWebviewProvider extends BaseWebviewProvider {
         break;
       case 'showError':
         if (message.data) {
-          vscode.window.showErrorMessage(String(message.data));
+          notify.error(String(message.data));
         }
         break;
       case 'copyToClipboard':
@@ -65,7 +66,7 @@ export class CourseProgressOverviewWebviewProvider extends BaseWebviewProvider {
             await vscode.env.clipboard.writeText(message.data.text);
             this.panel?.webview.postMessage({ command: 'copySuccess', data: { btnId: message.data.btnId } });
           } catch (err) {
-            vscode.window.showErrorMessage(`Failed to copy: ${err}`);
+            notify.error(`Failed to copy: ${err}`);
           }
         }
         break;
@@ -86,7 +87,7 @@ export class CourseProgressOverviewWebviewProvider extends BaseWebviewProvider {
       this.currentData = { ...data, students };
       this.panel.webview.postMessage({ command: 'updateData', data: { students } });
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to refresh progress data: ${error?.message || error}`);
+      notify.error(`Failed to refresh progress data: ${error?.message || error}`);
     } finally {
       this.postLoadingState(false);
     }

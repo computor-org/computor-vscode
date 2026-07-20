@@ -6,6 +6,7 @@ import { RepositoryTokenManager } from '../../services/RepositoryTokenManager';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { GitEnvironmentService } from '../../services/GitEnvironmentService';
 import { BackendConnectionService } from '../../services/BackendConnectionService';
+import { notify } from '../../utils/notify';
 
 const execFileAsync = promisify(execFile);
 
@@ -36,7 +37,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       const initialState = await this.loadInitialState();
       await this.show('Computor Settings', initialState);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open settings: ${error?.message || error}`);
+      notify.error(`Failed to open settings: ${error?.message || error}`);
     }
   }
 

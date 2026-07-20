@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseMemberList, CourseGroupList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
+import { notify } from '../../utils/notify';
 
 // Course role hierarchy mirrored from the backend (permissions/roles.py +
 // principal.py). Used for UI gating only — the backend still enforces the
@@ -190,7 +191,7 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
       case 'refresh':
         return this.refreshAndPostMembers();
       case 'showError':
-        vscode.window.showErrorMessage(message.data?.message || 'Error');
+        notify.error(message.data?.message || 'Error');
         return;
       default:
         return;
@@ -254,7 +255,7 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
       await this.apiService.updateCourseMember(data.memberId, { course_role_id: data.roleId });
       await this.refreshAndPostMembers();
     } catch (e) {
-      vscode.window.showErrorMessage(`Failed to change role: ${errMessage(e)}`);
+      notify.error(`Failed to change role: ${errMessage(e)}`);
       // Re-sync the UI to the server's truth.
       await this.refreshAndPostMembers();
     }
@@ -262,17 +263,16 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
 
   private async handleRemoveMember(data: any): Promise<void> {
     if (!data?.memberId) return;
-    const confirm = await vscode.window.showWarningMessage(
+    const confirm = await notify.confirm(
       `Remove ${data.name || 'this member'} from the course? Their account is not affected.`,
-      { modal: true },
       'Remove'
     );
-    if (confirm !== 'Remove') return;
+    if (!confirm) return;
     try {
       await this.apiService.deleteCourseMember(data.memberId);
       await this.refreshAndPostMembers();
     } catch (e) {
-      vscode.window.showErrorMessage(`Failed to remove member: ${errMessage(e)}`);
+      notify.error(`Failed to remove member: ${errMessage(e)}`);
     }
   }
 

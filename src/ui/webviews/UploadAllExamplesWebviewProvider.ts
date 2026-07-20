@@ -14,6 +14,7 @@ import { shouldExcludeExampleEntry } from '../../utils/exampleExcludePatterns';
 import { hasExampleChanged } from '../../utils/exampleDiffHelper';
 import type { BumpPart } from '../../utils/versionHelpers';
 import type { ExampleUploadRequest } from '../../types/generated';
+import { notify } from '../../utils/notify';
 
 interface ExampleInfo {
   directory: string;
@@ -177,7 +178,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     if (needsRepo) {
       const repos = await this.apiService.getExampleRepositories();
       if (!repos || repos.length === 0) {
-        vscode.window.showErrorMessage('No example repositories found. Please create one first.');
+        notify.error('No example repositories found. Please create one first.');
         this.isUploading = false;
         return;
       }

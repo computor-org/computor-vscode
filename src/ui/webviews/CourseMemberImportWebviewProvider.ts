@@ -6,6 +6,7 @@ import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvi
 import { CourseMemberParserFactory } from '../../utils/parsers/CourseMemberParserFactory';
 import { CourseMemberImportRow } from '../../utils/parsers/ICourseMemberParser';
 import * as path from 'path';
+import { notify } from '../../utils/notify';
 
 interface ImportMemberRow extends CourseMemberImportRow {
   rowNumber: number;
@@ -77,7 +78,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       ]);
     } catch (error) {
       console.error('Failed to fetch course data:', error);
-      vscode.window.showErrorMessage(`Failed to fetch course data: ${error}`);
+      notify.error(`Failed to fetch course data: ${error}`);
       existingMembers = [];
       this.availableRoles = [
         { id: '_student', title: 'Student' },
@@ -140,7 +141,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
 
   async loadImportData(importMembers: CourseMemberImportRow[]): Promise<void> {
     if (!this.courseId) {
-      vscode.window.showErrorMessage('Course ID not set');
+      notify.error('Course ID not set');
       return;
     }
 
@@ -296,7 +297,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
 
       case 'showError':
         if (message.data?.message) {
-          vscode.window.showErrorMessage(message.data.message);
+          notify.error(message.data.message);
         }
         break;
     }
@@ -366,24 +367,24 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       const members = CourseMemberParserFactory.parse(fileContent, fileExtension);
 
       if (members.length === 0) {
-        vscode.window.showWarningMessage('No valid course members found in file');
+        notify.warning('No valid course members found in file');
         return;
       }
 
       await this.loadImportData(members);
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `Import file loaded successfully: ${members.length} member(s) found`
       );
     } catch (error: any) {
       console.error('Failed to load import file:', error);
-      vscode.window.showErrorMessage(`Failed to load import file: ${error?.message || error}`);
+      notify.error(`Failed to load import file: ${error?.message || error}`);
     }
   }
 
   private async handleFileDropped(data: { fileName: string; content: string }): Promise<void> {
     if (!this.courseId) {
-      vscode.window.showErrorMessage('Course ID not set');
+      notify.error('Course ID not set');
       return;
     }
 
@@ -392,7 +393,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
 
     const supportedExtensions = CourseMemberParserFactory.getSupportedExtensions();
     if (!supportedExtensions.includes(fileExtension)) {
-      vscode.window.showErrorMessage(
+      notify.error(
         `Unsupported file type: .${fileExtension}. Supported formats: ${supportedExtensions.map(ext => `.${ext}`).join(', ')}`
       );
       return;
@@ -402,18 +403,18 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       const members = CourseMemberParserFactory.parse(content, fileExtension);
 
       if (members.length === 0) {
-        vscode.window.showWarningMessage('No valid course members found in file. Make sure the file has an "email" column.');
+        notify.warning('No valid course members found in file. Make sure the file has an "email" column.');
         return;
       }
 
       await this.loadImportData(members);
 
-      vscode.window.showInformationMessage(
+      notify.info(
         `Import file loaded successfully: ${members.length} member(s) found`
       );
     } catch (error: any) {
       console.error('Failed to parse dropped file:', error);
-      vscode.window.showErrorMessage(`Failed to parse file: ${error?.message || error}`);
+      notify.error(`Failed to parse file: ${error?.message || error}`);
     }
   }
 
@@ -429,7 +430,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     };
   }): Promise<void> {
     if (!this.courseId) {
-      vscode.window.showErrorMessage('Course ID not set');
+      notify.error('Course ID not set');
       return;
     }
 
@@ -523,15 +524,15 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
         });
 
         if (token.isCancellationRequested) {
-          vscode.window.showWarningMessage(
+          notify.warning(
             `Import cancelled. Processed: ${successCount + errorCount}/${totalRows}`
           );
         } else if (errorCount > 0) {
-          vscode.window.showWarningMessage(
+          notify.warning(
             `Import completed with errors. Success: ${successCount}, Errors: ${errorCount}`
           );
         } else {
-          vscode.window.showInformationMessage(
+          notify.info(
             `Import successful! ${successCount} members imported.`
           );
         }

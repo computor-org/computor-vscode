@@ -4,6 +4,7 @@ import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { escapeHtml } from './shared/webviewHelpers';
 import blockRegistryJson from '../../data/block-registry.json';
+import { notify } from '../../utils/notify';
 
 interface TestYamlEditorData {
   filePath: string;
@@ -187,12 +188,12 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
   private async handleSave(data: { filePath: string; testSuite: Record<string, unknown> }): Promise<void> {
     try {
       this.saveTestYaml(data.filePath, data.testSuite);
-      vscode.window.showInformationMessage('test.yaml saved successfully');
+      notify.info('test.yaml saved successfully');
       if (this.panel) {
         this.panel.webview.postMessage({ command: 'saved' });
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to save test.yaml: ${error}`);
+      notify.error(`Failed to save test.yaml: ${error}`);
     }
   }
 
@@ -201,7 +202,7 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
       const doc = await vscode.workspace.openTextDocument(filePath);
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to open file: ${error}`);
+      notify.error(`Failed to open file: ${error}`);
     }
   }
 }

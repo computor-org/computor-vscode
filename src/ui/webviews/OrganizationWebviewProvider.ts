@@ -4,6 +4,7 @@ import { OrganizationGet } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { notify } from '../../utils/notify';
 
 export class OrganizationWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -88,7 +89,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       case 'updateOrganization':
         try {
           await this.apiService.updateOrganization(message.data.organizationId, message.data.updates);
-          vscode.window.showInformationMessage('Organization updated successfully');
+          notify.info('Organization updated successfully');
 
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('organization', message.data.organizationId, message.data.updates);
@@ -96,7 +97,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
             vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
-          vscode.window.showErrorMessage(`Failed to update organization: ${error}`);
+          notify.error(`Failed to update organization: ${error}`);
         }
         break;
 
@@ -109,7 +110,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            vscode.window.showErrorMessage(`Failed to refresh: ${error}`);
+            notify.error(`Failed to refresh: ${error}`);
           }
         }
         break;

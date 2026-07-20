@@ -3,6 +3,7 @@ import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './Ba
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { notify } from '../../../utils/notify';
 
 export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -127,7 +128,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
         this.panel.webview.postMessage({ command: 'childrenLoaded', data: { children } });
       }
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to load children: ${error}`);
+      notify.error(`Failed to load children: ${error}`);
     }
   }
 }

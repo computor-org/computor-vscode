@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberCommentList } from '../../types/generated';
 import { CourseMemberCommentsInputPanelProvider } from '../panels/CourseMemberCommentsInputPanel';
+import { notify } from '../../utils/notify';
 
 interface CommentsWebviewData {
   courseMemberId: string;
@@ -93,7 +94,7 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
         break;
       case 'showWarning':
         if (message.data) {
-          vscode.window.showWarningMessage(String(message.data));
+          notify.warning(String(message.data));
         }
         break;
       default:
@@ -134,7 +135,7 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     const comment = current?.comments.find(c => c.id === data.commentId);
     if (!comment) { return; }
     if (!this.inputPanel) {
-      vscode.window.showWarningMessage('Comment input panel is not available.');
+      notify.warning('Comment input panel is not available.');
       return;
     }
     this.inputPanel.setEditingComment(comment);
@@ -147,13 +148,12 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       return;
     }
 
-    const choice = await vscode.window.showWarningMessage(
+    const choice = await notify.confirm(
       'Delete this comment permanently?',
-      { modal: true },
       'Delete'
     );
 
-    if (choice === 'Delete') {
+    if (choice) {
       await this.deleteComment({ commentId: data.commentId, courseMemberId });
     }
   }
@@ -172,9 +172,9 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       this.postLoadingState(false);
       // If the input panel was editing this comment, clear that state.
       this.inputPanel?.clearEditing();
-      vscode.window.showInformationMessage('Comment deleted.');
+      notify.info('Comment deleted.');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to delete comment: ${error?.message || error}`);
+      notify.error(`Failed to delete comment: ${error?.message || error}`);
       this.postLoadingState(false);
     }
   }
@@ -192,7 +192,7 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       this.postComments(comments);
       this.postLoadingState(false);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to refresh comments: ${error?.message || error}`);
+      notify.error(`Failed to refresh comments: ${error?.message || error}`);
       this.postLoadingState(false);
     }
   }

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeList, SubmissionGroupStudentList, SubmissionGroupStudentGet } from '../../types/generated/courses';
+import { notify } from '../../utils/notify';
 
 export interface StudentContentDetailsViewState {
   course?: {
@@ -130,14 +131,14 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
 
   private async handleOpenFolder(folderPath?: string): Promise<void> {
     if (!folderPath) {
-      vscode.window.showWarningMessage('No local folder available for this content.');
+      notify.warning('No local folder available for this content.');
       return;
     }
 
     try {
       const exists = fs.existsSync(folderPath);
       if (!exists) {
-        vscode.window.showWarningMessage('The local folder for this assignment could not be found.');
+        notify.warning('The local folder for this assignment could not be found.');
         return;
       }
 
@@ -145,34 +146,34 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       const targetUri = vscode.Uri.file(stat.isDirectory() ? folderPath : path.dirname(folderPath));
       await vscode.commands.executeCommand('revealFileInOS', targetUri);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open folder: ${error?.message || error}`);
+      notify.error(`Failed to open folder: ${error?.message || error}`);
     }
   }
 
   private async handleOpenRepository(url?: string): Promise<void> {
     if (!url) {
-      vscode.window.showWarningMessage('No repository URL available for this content.');
+      notify.warning('No repository URL available for this content.');
       return;
     }
 
     try {
       await vscode.env.openExternal(vscode.Uri.parse(url));
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open repository: ${error?.message || error}`);
+      notify.error(`Failed to open repository: ${error?.message || error}`);
     }
   }
 
   private async handleCopyCloneUrl(url?: string): Promise<void> {
     if (!url) {
-      vscode.window.showWarningMessage('No clone URL available for this content.');
+      notify.warning('No clone URL available for this content.');
       return;
     }
 
     try {
       await vscode.env.clipboard.writeText(url);
-      vscode.window.showInformationMessage('Clone URL copied to clipboard.');
+      notify.info('Clone URL copied to clipboard.');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to copy clone URL: ${error?.message || error}`);
+      notify.error(`Failed to copy clone URL: ${error?.message || error}`);
     }
   }
 }

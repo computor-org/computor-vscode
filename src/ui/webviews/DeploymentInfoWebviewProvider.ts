@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { escapeHtml, statusBadge, deploymentStatusColor, section, infoRow } from './shared/webviewHelpers';
 import { renderWebviewPage } from './shared/webviewPage';
+import { notify } from '../../utils/notify';
 
 export class DeploymentInfoWebviewProvider {
   private readonly extensionUri: vscode.Uri;
@@ -37,7 +38,7 @@ export class DeploymentInfoWebviewProvider {
               const updatedDeployment = await this.apiService.lecturerGetDeployment(courseContentId);
               panel.webview.html = this.getHtmlContent(panel.webview, updatedDeployment, courseContentTitle);
             } catch (error: any) {
-              vscode.window.showErrorMessage(`Failed to refresh deployment: ${error.message}`);
+              notify.error(`Failed to refresh deployment: ${error.message}`);
             }
             break;
         }
