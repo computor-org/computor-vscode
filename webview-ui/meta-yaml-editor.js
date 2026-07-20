@@ -664,6 +664,7 @@
   // Listen for messages from extension
   window.addEventListener('message', function(e) {
     var msg = e.data;
+    if (!msg) { return; }
     if (msg.command === 'saved') {
       isDirty = false;
       var indicator = document.querySelector('.dirty-indicator');

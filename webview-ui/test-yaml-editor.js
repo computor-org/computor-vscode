@@ -758,6 +758,7 @@
   }
 
   window.addEventListener('message', function(event) {
+    if (!event.data) { return; }
     if (event.data.command === 'saved') {
       isDirty = false;
       var indicator = document.querySelector('.dirty-indicator');
