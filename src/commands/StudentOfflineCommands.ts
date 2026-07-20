@@ -5,6 +5,7 @@ import { GitService } from '../services/GitService';
 import { OfflineRepositoryManager } from '../services/OfflineRepositoryManager';
 import { commandRegistrar } from './commandHelpers';
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
+import { notify } from '../utils/notify';
 
 /**
  * Commands for the student offline mode
@@ -76,7 +77,7 @@ export class StudentOfflineCommands {
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to add course:', error);
-            vscode.window.showErrorMessage(`Failed to add course: ${error.message}`);
+            notify.error(`Failed to add course: ${error.message}`);
         }
     }
 
@@ -88,7 +89,7 @@ export class StudentOfflineCommands {
         console.log('[StudentOfflineCommands] Save assignment:', item);
 
         if (!item || !item.assignmentPath || !item.repoPath) {
-            vscode.window.showErrorMessage('No assignment selected');
+            notify.error('No assignment selected');
             return;
         }
 
@@ -103,7 +104,7 @@ export class StudentOfflineCommands {
             // Check if there are any changes to commit
             const hasChanges = await this.gitService.hasChanges(repoPath);
             if (!hasChanges) {
-                vscode.window.showInformationMessage('No changes to save in this assignment.');
+                notify.info('No changes to save in this assignment.');
                 return;
             }
 
@@ -141,13 +142,13 @@ export class StudentOfflineCommands {
                 progress.report({ increment: 100, message: 'Successfully saved!' });
             });
 
-            vscode.window.showInformationMessage(`✓ Successfully saved ${assignmentName}`);
+            notify.info(`✓ Successfully saved ${assignmentName}`);
 
             // Refresh tree to update git status
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to save assignment:', error);
-            vscode.window.showErrorMessage(`Failed to save assignment: ${error.message}`);
+            notify.error(`Failed to save assignment: ${error.message}`);
         }
     }
 
@@ -164,12 +165,12 @@ export class StudentOfflineCommands {
         if (item.repoPath) {
             repoPath = item.repoPath;
         } else {
-            vscode.window.showErrorMessage('No repository selected');
+            notify.error('No repository selected');
             return;
         }
 
         if (!repoPath) {
-            vscode.window.showErrorMessage('Repository path not found');
+            notify.error('Repository path not found');
             return;
         }
 
@@ -216,7 +217,7 @@ export class StudentOfflineCommands {
                                 console.log('[StudentOfflineCommands] Successfully pushed fork update to origin');
                             } catch (pushError) {
                                 console.warn('[StudentOfflineCommands] Failed to push fork update to origin:', pushError);
-                                vscode.window.showWarningMessage(
+                                notify.warning(
                                     'Fork updated locally, but failed to push to origin. You may need to push manually.'
                                 );
                             }
@@ -229,14 +230,14 @@ export class StudentOfflineCommands {
                         // Provide helpful error messages based on error type
                         const errorMessage = forkUpdateError.message || String(forkUpdateError);
                         if (errorMessage.includes('merge-unresolved')) {
-                            vscode.window.showErrorMessage(
+                            notify.error(
                                 'Fork update failed due to conflicts that could not be resolved automatically. ' +
                                 'Please resolve conflicts manually using your Git client.'
                             );
                         } else if (errorMessage.includes('merge-abort')) {
-                            vscode.window.showInformationMessage('Fork update was cancelled.');
+                            notify.info('Fork update was cancelled.');
                         } else if (errorMessage.includes('merge-editor')) {
-                            vscode.window.showInformationMessage(
+                            notify.info(
                                 'Please resolve conflicts in the merge editor, then commit and push manually.'
                             );
                         } else {
@@ -251,13 +252,13 @@ export class StudentOfflineCommands {
                 }
             });
 
-            vscode.window.showInformationMessage(`✓ Successfully updated ${repoName}`);
+            notify.info(`✓ Successfully updated ${repoName}`);
 
             // Refresh tree to update git status
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to pull changes:', error);
-            vscode.window.showErrorMessage(`Failed to update: ${error.message}`);
+            notify.error(`Failed to update: ${error.message}`);
         }
     }
 
@@ -266,7 +267,7 @@ export class StudentOfflineCommands {
      */
     private async openInTerminal(item: any): Promise<void> {
         if (!item || !item.assignmentPath) {
-            vscode.window.showErrorMessage('No assignment selected');
+            notify.error('No assignment selected');
             return;
         }
 
@@ -283,7 +284,7 @@ export class StudentOfflineCommands {
      */
     private async openRepoInTerminal(item: any): Promise<void> {
         if (!item || !item.repoPath) {
-            vscode.window.showErrorMessage('No repository selected');
+            notify.error('No repository selected');
             return;
         }
 
@@ -311,12 +312,12 @@ export class StudentOfflineCommands {
         } else if (item.repoPath) {
             directoryPath = item.repoPath;
         } else {
-            vscode.window.showErrorMessage('No directory selected');
+            notify.error('No directory selected');
             return;
         }
 
         if (!directoryPath) {
-            vscode.window.showErrorMessage('Directory path not found');
+            notify.error('Directory path not found');
             return;
         }
 
@@ -324,7 +325,7 @@ export class StudentOfflineCommands {
             const readmePath = await this.findReadmeFile(directoryPath);
 
             if (!readmePath) {
-                vscode.window.showInformationMessage('No README file found in this directory');
+                notify.info('No README file found in this directory');
                 return;
             }
 
@@ -333,7 +334,7 @@ export class StudentOfflineCommands {
             await showMarkdownPreview(this.context, readmePath);
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to show README preview:', error);
-            vscode.window.showErrorMessage(`Failed to show README preview: ${error.message}`);
+            notify.error(`Failed to show README preview: ${error.message}`);
         }
     }
 

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { RepositoryTokenManager } from '../services/RepositoryTokenManager';
 import { ComputorApiService } from '../services/ComputorApiService';
+import { notify } from '../utils/notify';
 
 export async function manageRepositoryTokens(context: vscode.ExtensionContext): Promise<void> {
   const settingsManager = new ComputorSettingsManager(context);
@@ -49,7 +50,7 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
         const gitlabTestResult = await validateGitLabToken(url, token, gitLabTokenManager);
 
         if (!gitlabTestResult.valid) {
-          vscode.window.showErrorMessage(
+          notify.error(
             `❌ GitLab token validation failed: ${gitlabTestResult.error}\nToken was not saved.`
           );
           return;
@@ -59,7 +60,7 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
         const backendResult = await validateTokenWithCourses(context, url, token);
 
         if (!backendResult.valid) {
-          vscode.window.showErrorMessage(
+          notify.error(
             `❌ Backend validation failed: ${backendResult.error}\nToken was not saved.`
           );
           return;
@@ -67,7 +68,7 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
 
         // Step 3: Both validations passed - store the token
         await gitLabTokenManager.storeToken(url, token);
-        vscode.window.showInformationMessage(
+        notify.info(
           `✅ Token added successfully for ${url}\nAuthenticated as: ${gitlabTestResult.name} (${gitlabTestResult.username})\nValidated ${backendResult.coursesValidated} course(s)`
         );
       }
@@ -95,7 +96,7 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
       const gitlabTestResult = await validateGitLabToken(selected.label, newToken, gitLabTokenManager);
 
       if (!gitlabTestResult.valid) {
-        vscode.window.showErrorMessage(
+        notify.error(
           `❌ GitLab token validation failed: ${gitlabTestResult.error}\nToken was not updated.`
         );
         return;
@@ -105,7 +106,7 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
       const backendResult = await validateTokenWithCourses(context, selected.label, newToken);
 
       if (!backendResult.valid) {
-        vscode.window.showErrorMessage(
+        notify.error(
           `❌ Backend validation failed: ${backendResult.error}\nToken was not updated.`
         );
         return;
@@ -113,18 +114,18 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
 
       // Step 3: Both validations passed - update the token
       await gitLabTokenManager.storeToken(selected.label, newToken);
-      vscode.window.showInformationMessage(
+      notify.info(
         `✅ Token updated successfully for ${selected.label}\nAuthenticated as: ${gitlabTestResult.name} (${gitlabTestResult.username})\nValidated ${backendResult.coursesValidated} course(s)`
       );
     }
   } else if (action === 'Remove Token') {
     await gitLabTokenManager.removeToken(selected.label);
-    vscode.window.showInformationMessage('Token removed successfully');
+    notify.info('Token removed successfully');
   } else if (action === 'Test Token') {
     const token = await gitLabTokenManager.getToken(selected.label);
 
     if (!token) {
-      vscode.window.showErrorMessage(`No token found for ${selected.label}`);
+      notify.error(`No token found for ${selected.label}`);
       return;
     }
 
@@ -132,7 +133,7 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
     const gitlabResult = await validateGitLabToken(selected.label, token, gitLabTokenManager);
 
     if (!gitlabResult.valid) {
-      vscode.window.showErrorMessage(`❌ GitLab validation failed: ${gitlabResult.error}`);
+      notify.error(`❌ GitLab validation failed: ${gitlabResult.error}`);
       return;
     }
 
@@ -140,11 +141,11 @@ export async function manageRepositoryTokens(context: vscode.ExtensionContext): 
     const backendResult = await validateTokenWithCourses(context, selected.label, token);
 
     if (backendResult.valid) {
-      vscode.window.showInformationMessage(
+      notify.info(
         `✅ Token valid for ${selected.label}\nAuthenticated as: ${gitlabResult.name} (${gitlabResult.username})\nValidated ${backendResult.coursesValidated} course(s)`
       );
     } else {
-      vscode.window.showWarningMessage(
+      notify.warning(
         `⚠️ GitLab token is valid but backend validation failed: ${backendResult.error}\nAuthenticated as: ${gitlabResult.name} (${gitlabResult.username})`
       );
     }

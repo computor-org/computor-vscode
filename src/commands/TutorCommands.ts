@@ -15,6 +15,7 @@ import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMembe
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
+import { notify } from '../utils/notify';
 interface TutorFilterRefreshable {
   refreshFilters(): void;
 }
@@ -122,13 +123,13 @@ export class TutorCommands {
     // Show Course Progress (uses current selected course from filters)
     register('computor.tutor.showCourseProgress', async () => {
       if (!(await this.hasLecturerView())) {
-        vscode.window.showInformationMessage('Grading and progress views are available to lecturers only.');
+        notify.info('Grading and progress views are available to lecturers only.');
         return;
       }
       const sel = TutorSelectionService.getInstance();
       const courseId = sel.getCurrentCourseId();
       if (!courseId) {
-        vscode.window.showWarningMessage('Please select a course first.');
+        notify.warning('Please select a course first.');
         return;
       }
       await vscode.commands.executeCommand('computor.lecturer.showCourseProgressOverview', courseId);
@@ -137,14 +138,14 @@ export class TutorCommands {
     // Show Member Progress (uses current selected member from filters)
     register('computor.tutor.showMemberProgress', async () => {
       if (!(await this.hasLecturerView())) {
-        vscode.window.showInformationMessage('Grading and progress views are available to lecturers only.');
+        notify.info('Grading and progress views are available to lecturers only.');
         return;
       }
       const sel = TutorSelectionService.getInstance();
       const memberId = sel.getCurrentMemberId();
       const memberName = sel.getCurrentMemberLabel();
       if (!memberId) {
-        vscode.window.showWarningMessage('Please select a member first.');
+        notify.warning('Please select a member first.');
         return;
       }
       await vscode.commands.executeCommand('computor.lecturer.showCourseMemberProgress', memberId, memberName);
@@ -195,7 +196,7 @@ export class TutorCommands {
           remoteUrl = repoMeta?.remote_url;
         }
         if (!remoteUrl) {
-          vscode.window.showErrorMessage('No repository URL found for this student assignment.');
+          notify.error('No repository URL found for this student assignment.');
           return;
         }
 
@@ -220,7 +221,7 @@ export class TutorCommands {
         // Git clone into the destination if empty
         const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
         if (exists) {
-          vscode.window.showWarningMessage(`Directory not empty: ${dir}. Skipping clone.`);
+          notify.warning(`Directory not empty: ${dir}. Skipping clone.`);
         } else {
           const origin = (() => { try { const u = new URL(remoteUrl!); return u.origin; } catch { return undefined; } })();
           const tokenManager = RepositoryTokenManager.getInstance(this.context);
@@ -235,7 +236,7 @@ export class TutorCommands {
             await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
               await createSimpleGit().clone(authUrl, dir);
             });
-            vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+            notify.info(`Student repository cloned to ${dir}`);
             this.treeDataProvider.refresh();
           } catch (e: any) {
             const msg = String(e?.message || e || '');
@@ -257,7 +258,7 @@ export class TutorCommands {
               await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
                 await createSimpleGit().clone(authUrl, dir);
               });
-              vscode.window.showInformationMessage(`Student repository cloned to ${dir}`);
+              notify.info(`Student repository cloned to ${dir}`);
               this.treeDataProvider.refresh();
             } else {
               throw e;
@@ -266,7 +267,7 @@ export class TutorCommands {
         }
         // Directory is already inside the current workspace; no need to add a new folder
       } catch (e: any) {
-        vscode.window.showErrorMessage(`Failed to clone student repository: ${e?.message || e}`);
+        notify.error(`Failed to clone student repository: ${e?.message || e}`);
       }
     });
 
@@ -315,7 +316,7 @@ export class TutorCommands {
 
         // Check if repository exists
         if (!fs.existsSync(gitDir)) {
-          vscode.window.showErrorMessage('Repository not found. Please clone it first.');
+          notify.error('Repository not found. Please clone it first.');
           return;
         }
 
@@ -329,10 +330,10 @@ export class TutorCommands {
           }
         );
 
-        vscode.window.showInformationMessage('Repository updated successfully.');
+        notify.info('Repository updated successfully.');
         this.treeDataProvider.refresh();
       } catch (e: any) {
-        vscode.window.showErrorMessage(`Failed to update repository: ${e?.message || e}`);
+        notify.error(`Failed to update repository: ${e?.message || e}`);
       }
     });
 
@@ -340,11 +341,11 @@ export class TutorCommands {
     register('computor.tutor.assignment.grading', async (item: { content?: CourseContentStudentList; courseContent?: CourseContentStudentList }) => {
       const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
       const contentId = content?.id;
-      if (!content || !contentId) { vscode.window.showErrorMessage('No course content selected.'); return; }
+      if (!content || !contentId) { notify.error('No course content selected.'); return; }
 
       const sel = TutorSelectionService.getInstance();
       const memberId = sel.getCurrentMemberId();
-      if (!memberId) { vscode.window.showErrorMessage('No course member selected.'); return; }
+      if (!memberId) { notify.error('No course member selected.'); return; }
 
       // Get the latest submitted artifact to ensure grade is applied correctly
       const submissionGroup: SubmissionGroupStudentList | undefined | null = content.submission_group;
@@ -416,9 +417,9 @@ export class TutorCommands {
         this.treeDataProvider.refresh();
         this.filterProvider?.refreshFilters();
 
-        vscode.window.showInformationMessage(`Updated: ${grade.toFixed(2)} • ${statusPick.label}`);
+        notify.info(`Updated: ${grade.toFixed(2)} • ${statusPick.label}`);
       } catch (e: any) {
-        vscode.window.showErrorMessage(`Failed to update grading: ${e?.message || e}`);
+        notify.error(`Failed to update grading: ${e?.message || e}`);
       }
     });
 
@@ -499,7 +500,7 @@ export class TutorCommands {
       const selection = TutorSelectionService.getInstance();
       const memberId = selection.getCurrentMemberId();
       if (!memberId) {
-        vscode.window.showWarningMessage('No course member selected.');
+        notify.warning('No course member selected.');
         return;
       }
 
@@ -515,7 +516,7 @@ export class TutorCommands {
       const title = segments.length > 0 ? segments.join(' — ') : memberId;
       await this.commentsWebviewProvider.showComments(memberId, title, opts);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open comments: ${error?.message || error}`);
+      notify.error(`Failed to open comments: ${error?.message || error}`);
     }
   }
 
@@ -524,13 +525,13 @@ export class TutorCommands {
       const selection = TutorSelectionService.getInstance();
       const courseId = selection.getCurrentCourseId();
       if (!courseId) {
-        vscode.window.showWarningMessage('Select a course before viewing messages.');
+        notify.warning('Select a course before viewing messages.');
         return;
       }
 
       const memberId = selection.getCurrentMemberId();
       if (!memberId) {
-        vscode.window.showWarningMessage('Select a course member before viewing messages.');
+        notify.warning('Select a course member before viewing messages.');
         return;
       }
 
@@ -621,7 +622,7 @@ export class TutorCommands {
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
+      notify.error(`Failed to open messages: ${error?.message || error}`);
     }
   }
 
@@ -630,13 +631,13 @@ export class TutorCommands {
       const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
 
       if (!content) {
-        vscode.window.showErrorMessage('No course content information available');
+        notify.error('No course content information available');
         return;
       }
 
       const deployment = content.deployment;
       if (!deployment || !deployment.example_version_id) {
-        vscode.window.showErrorMessage('No reference available for this assignment');
+        notify.error('No reference available for this assignment');
         return;
       }
 
@@ -646,7 +647,7 @@ export class TutorCommands {
       // Check if reference already exists
       const exists = await this.workspaceStructure.directoryExists(referencePath);
       if (exists) {
-        const choice = await vscode.window.showWarningMessage(
+        const choice = await notify.warning(
           `Reference for this assignment already exists. The example version may have been updated. Re-download?`,
           'Re-download',
           'Cancel'
@@ -688,10 +689,10 @@ export class TutorCommands {
         }
       );
 
-      vscode.window.showInformationMessage(`Reference downloaded to ${referencePath}`);
+      notify.info(`Reference downloaded to ${referencePath}`);
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to download reference: ${error?.message || error}`);
+      notify.error(`Failed to download reference: ${error?.message || error}`);
     }
   }
 
@@ -706,7 +707,7 @@ export class TutorCommands {
       if (!artifactId || !submissionGroupId) {
         const content: CourseContentStudentList = item?.content || item?.courseContent;
         if (!content || !content.submission_group?.id) {
-          vscode.window.showErrorMessage('No submission group available for this assignment');
+          notify.error('No submission group available for this assignment');
           return;
         }
 
@@ -715,7 +716,7 @@ export class TutorCommands {
         // Fetch available artifacts from API
         // TODO: Add API method to list artifacts for a submission group
         // For now, prompt user to select from tree instead
-        vscode.window.showInformationMessage(
+        notify.info(
           'Please expand the Submissions folder and right-click on a specific submission to download it.'
         );
         return;
@@ -726,7 +727,7 @@ export class TutorCommands {
       // Check if submission already exists
       const exists = await this.workspaceStructure.directoryExists(submissionPath);
       if (exists) {
-        const choice = await vscode.window.showWarningMessage(
+        const choice = await notify.warning(
           `Submission artifact already exists. Re-download?`,
           'Re-download',
           'Cancel'
@@ -768,10 +769,10 @@ export class TutorCommands {
         }
       );
 
-      vscode.window.showInformationMessage(`Submission artifact downloaded to ${submissionPath}`);
+      notify.info(`Submission artifact downloaded to ${submissionPath}`);
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to download submission artifact: ${error?.message || error}`);
+      notify.error(`Failed to download submission artifact: ${error?.message || error}`);
     }
   }
 
@@ -780,7 +781,7 @@ export class TutorCommands {
       // Get the file path from the submission
       const submissionFilePath = item?.fsPath || item?.resourceUri?.fsPath;
       if (!submissionFilePath) {
-        vscode.window.showErrorMessage('No file selected for comparison');
+        notify.error('No file selected for comparison');
         return;
       }
 
@@ -791,7 +792,7 @@ export class TutorCommands {
       const parts = relativePath.split(path.sep);
 
       if (parts.length < 3) {
-        vscode.window.showErrorMessage('Invalid submission file path');
+        notify.error('Invalid submission file path');
         return;
       }
 
@@ -800,7 +801,7 @@ export class TutorCommands {
       // Get course content to find example version
       const content = item?.content || item?.courseContent;
       if (!content || !content.deployment || !content.deployment.example_version_id) {
-        vscode.window.showErrorMessage('No reference available for comparison');
+        notify.error('No reference available for comparison');
         return;
       }
 
@@ -810,7 +811,7 @@ export class TutorCommands {
 
       // Check if reference exists
       if (!fs.existsSync(referenceFilePath)) {
-        const choice = await vscode.window.showWarningMessage(
+        const choice = await notify.warning(
           'Reference file not found. Download reference first?',
           'Download Reference',
           'Cancel'
@@ -819,7 +820,7 @@ export class TutorCommands {
           await this.downloadReference({ content });
           // Try again after download
           if (!fs.existsSync(referenceFilePath)) {
-            vscode.window.showErrorMessage('Reference file still not found after download');
+            notify.error('Reference file still not found after download');
             return;
           }
         } else {
@@ -834,7 +835,7 @@ export class TutorCommands {
 
       await vscode.commands.executeCommand('vscode.diff', referenceUri, submissionUri, title);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to compare with reference: ${error?.message || error}`);
+      notify.error(`Failed to compare with reference: ${error?.message || error}`);
     }
   }
 
@@ -846,7 +847,7 @@ export class TutorCommands {
       const artifactId = item?.artifactId;
       if (!artifactId) {
         console.log('[TutorCommands] No artifactId in item');
-        vscode.window.showWarningMessage('No submission artifact ID found.');
+        notify.warning('No submission artifact ID found.');
         return;
       }
 
@@ -857,7 +858,7 @@ export class TutorCommands {
       console.log('[TutorCommands] Test results fetched:', testResults.length, 'results');
 
       if (!testResults || testResults.length === 0) {
-        vscode.window.showWarningMessage('No test results available for this submission.');
+        notify.warning('No test results available for this submission.');
         return;
       }
 
@@ -871,7 +872,7 @@ export class TutorCommands {
 
       if (!resultJson) {
         console.log('[TutorCommands] No result_json in latest result');
-        vscode.window.showWarningMessage('No detailed test results available for this submission.');
+        notify.warning('No detailed test results available for this submission.');
         return;
       }
 
@@ -883,7 +884,7 @@ export class TutorCommands {
 
     } catch (error: any) {
       console.error('[TutorCommands] Error in showSubmissionTestResults:', error);
-      vscode.window.showErrorMessage(`Failed to show test results: ${error?.message || error}`);
+      notify.error(`Failed to show test results: ${error?.message || error}`);
     }
   }
 
@@ -893,13 +894,13 @@ export class TutorCommands {
       const content: CourseContentStudentList = itemAny?.content || itemAny?.courseContent || itemAny?.course_content;
 
       if (!content) {
-        vscode.window.showErrorMessage('No course content information available');
+        notify.error('No course content information available');
         return;
       }
 
       const deployment = content.deployment;
       if (!deployment || !deployment.example_version_id) {
-        vscode.window.showErrorMessage('No reference available for this assignment');
+        notify.error('No reference available for this assignment');
         return;
       }
 
@@ -938,7 +939,7 @@ export class TutorCommands {
       // Handle existing files based on confirmRedownload flag
       if (hasSubmission && referenceExists && submissionExists) {
         if (confirmRedownload) {
-          const choice = await vscode.window.showWarningMessage(
+          const choice = await notify.warning(
             'Reference and latest submission already exist locally. Re-download?',
             'Re-download',
             'Cancel'
@@ -954,7 +955,7 @@ export class TutorCommands {
         await fs.promises.rm(submissionPath, { recursive: true, force: true });
       } else if (!hasSubmission && referenceExists) {
         if (confirmRedownload) {
-          const choice = await vscode.window.showWarningMessage(
+          const choice = await notify.warning(
             'Reference already exists locally. Re-download?',
             'Re-download',
             'Cancel'
@@ -1027,13 +1028,13 @@ export class TutorCommands {
       const successMessage = hasSubmission
         ? 'Reference and latest submission checked out successfully'
         : 'Reference checked out successfully (no submission available)';
-      vscode.window.showInformationMessage(successMessage);
+      notify.info(successMessage);
 
       // Mark this content to be expanded when the tree refreshes
       this.treeDataProvider.markForVirtualFolderExpansion(content.id);
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to checkout: ${error?.message || error}`);
+      notify.error(`Failed to checkout: ${error?.message || error}`);
     }
   }
 
@@ -1045,7 +1046,7 @@ export class TutorCommands {
     try {
       const content: CourseContentStudentList | undefined = item?.content;
       if (!content) {
-        vscode.window.showErrorMessage('No course content found');
+        notify.error('No course content found');
         return;
       }
 
@@ -1090,7 +1091,7 @@ export class TutorCommands {
       // Find and open README file
       await this.openReadmeFromDirectory(descriptionPath);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to show README: ${error?.message || error}`);
+      notify.error(`Failed to show README: ${error?.message || error}`);
     }
   }
 
@@ -1158,7 +1159,7 @@ export class TutorCommands {
       // Firefox/Safari where the built-in preview stays blank, #267)
       await showMarkdownPreview(this.context, descriptionPath);
     } else {
-      vscode.window.showInformationMessage('No description found for this assignment');
+      notify.info('No description found for this assignment');
     }
   }
 
@@ -1170,7 +1171,7 @@ export class TutorCommands {
       // Get course content information
       const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
       if (!content) {
-        vscode.window.showErrorMessage('No course content information available');
+        notify.error('No course content information available');
         return;
       }
 
@@ -1178,7 +1179,7 @@ export class TutorCommands {
       const submissionGroupId = content.submission_group?.id;
 
       if (!courseContentId) {
-        vscode.window.showErrorMessage('No course content ID available');
+        notify.error('No course content ID available');
         return;
       }
 
@@ -1201,7 +1202,7 @@ export class TutorCommands {
 
       if (!submissionPath || !await this.workspaceStructure.directoryExists(submissionPath)) {
         // No submission found, offer to test the reference instead
-        const choice = await vscode.window.showWarningMessage(
+        const choice = await notify.warning(
           'No student submission found. Would you like to test the reference solution instead?',
           'Test Reference',
           'Cancel'
@@ -1214,14 +1215,14 @@ export class TutorCommands {
         // Use reference path
         const deployment = content.deployment;
         if (!deployment || !deployment.example_version_id) {
-          vscode.window.showErrorMessage('No reference available for this assignment');
+          notify.error('No reference available for this assignment');
           return;
         }
 
         submissionPath = this.workspaceStructure.getReviewReferencePath(deployment.example_version_id);
 
         if (!await this.workspaceStructure.directoryExists(submissionPath)) {
-          vscode.window.showErrorMessage('Reference not downloaded. Please checkout the assignment first.');
+          notify.error('Reference not downloaded. Please checkout the assignment first.');
           return;
         }
       }
@@ -1250,7 +1251,7 @@ export class TutorCommands {
 
     } catch (error: any) {
       console.error('[TutorCommands] Error running test:', error);
-      vscode.window.showErrorMessage(`Failed to run test: ${error?.message || error}`);
+      notify.error(`Failed to run test: ${error?.message || error}`);
     }
   }
 

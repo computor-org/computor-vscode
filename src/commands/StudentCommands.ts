@@ -22,6 +22,7 @@ import { commandRegistrar } from './commandHelpers';
 import { redactGitCredentials } from '../utils/gitUrlHelpers';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
+import { notify } from '../utils/notify';
 
 // (Deprecated legacy types removed)
 
@@ -150,12 +151,12 @@ export class StudentCommands {
       }
 
       if (!silent) {
-        vscode.window.showInformationMessage('No README.md found in this assignment');
+        notify.info('No README.md found in this assignment');
       }
       return false;
     } catch (e) {
       console.error('openReadmeIfExists failed:', e);
-      if (!silent) vscode.window.showErrorMessage('Failed to open README.md');
+      if (!silent) notify.error('Failed to open README.md');
       return false;
     }
   }
@@ -212,7 +213,7 @@ export class StudentCommands {
     if (!courseId) {
       const courses = await this.apiService.getStudentCourses();
       if (!courses.length) {
-        vscode.window.showInformationMessage('No student courses found.');
+        notify.info('No student courses found.');
         return;
       }
       const picked = await vscode.window.showQuickPick(
@@ -238,14 +239,14 @@ export class StudentCommands {
       if (!existing) {
         const descriptor = await this.provisioningService.getDescriptor(cid);
         if (!descriptor.configured) {
-          vscode.window.showInformationMessage('This course has no git repository configured yet.');
+          notify.info('This course has no git repository configured yet.');
           return;
         }
         const supported = descriptor.student_repo_modes.filter(
           m => m === 'managed' || m === 'external'
         );
         if (supported.length === 0) {
-          vscode.window.showInformationMessage(
+          notify.info(
             `This course offers: ${descriptor.student_repo_modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`
           );
           return;
@@ -288,7 +289,7 @@ export class StudentCommands {
         // credential-embedded clone URL — keep the token out of logs and the toast.
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Repository setup failed:', message);
-        vscode.window.showErrorMessage(`Repository setup failed: ${message}`);
+        notify.error(`Repository setup failed: ${message}`);
       }
     });
   }
@@ -306,7 +307,7 @@ export class StudentCommands {
     if (!courseId) {
       const courses = await this.apiService.getStudentCourses();
       if (!courses.length) {
-        vscode.window.showInformationMessage('No student courses found.');
+        notify.info('No student courses found.');
         return;
       }
       const picked = await vscode.window.showQuickPick(
@@ -323,7 +324,7 @@ export class StudentCommands {
 
     const manager = this.repositoryManager;
     if (!manager) {
-      vscode.window.showWarningMessage('Repository manager is not available.');
+      notify.warning('Repository manager is not available.');
       return;
     }
     const cid = courseId;
@@ -339,7 +340,7 @@ export class StudentCommands {
       } catch (error: any) {
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Template update failed:', message);
-        vscode.window.showErrorMessage(`Template update failed: ${message}`);
+        notify.error(`Template update failed: ${message}`);
       }
     });
   }
@@ -347,14 +348,14 @@ export class StudentCommands {
   private async reportSetupOutcome(outcome: SetUpOutcome): Promise<void> {
     switch (outcome.status) {
       case 'cloned':
-        vscode.window.showInformationMessage(`Repository ready at ${outcome.path}`);
+        notify.info(`Repository ready at ${outcome.path}`);
         break;
       case 'already-cloned':
-        vscode.window.showInformationMessage(`Repository already set up at ${outcome.path}`);
+        notify.info(`Repository already set up at ${outcome.path}`);
         break;
       case 'forgejo-login-required': {
         const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
-        const choice = await vscode.window.showWarningMessage(
+        const choice = await notify.warning(
           'Sign in to your repository provider once in your browser to finish setting up your repository, then run "Set up repository" again.',
           ...(target ? ['Open in Browser'] : [])
         );
@@ -364,7 +365,7 @@ export class StudentCommands {
         break;
       }
       case 'unsupported-mode':
-        vscode.window.showInformationMessage(
+        notify.info(
           `This course offers: ${outcome.modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`
         );
         break;
@@ -372,7 +373,7 @@ export class StudentCommands {
         // Student backed out of a prompt — nothing to report.
         break;
       case 'not-configured':
-        vscode.window.showInformationMessage('This course has no git repository configured yet.');
+        notify.info('This course has no git repository configured yet.');
         break;
     }
   }
@@ -403,7 +404,7 @@ export class StudentCommands {
     if (!courseId) {
       const courses = await this.apiService.getStudentCourses();
       if (!courses.length) {
-        vscode.window.showInformationMessage('No student courses found.');
+        notify.info('No student courses found.');
         return;
       }
       const picked = await vscode.window.showQuickPick(
@@ -437,7 +438,7 @@ export class StudentCommands {
         try {
           buffer = await this.apiService.downloadTemplateArchive(cid);
         } catch (err: any) {
-          vscode.window.showErrorMessage(`Could not download the template: ${err?.message || String(err)}`);
+          notify.error(`Could not download the template: ${err?.message || String(err)}`);
           return;
         }
 
@@ -450,7 +451,7 @@ export class StudentCommands {
           });
           if (!dest) { return; }
           await fs.promises.writeFile(dest.fsPath, buffer);
-          void vscode.window.showInformationMessage(`Template saved to ${dest.fsPath}`, 'Reveal').then(c => {
+          void notify.info(`Template saved to ${dest.fsPath}`, 'Reveal').then(c => {
             if (c === 'Reveal') { void vscode.commands.executeCommand('revealFileInOS', dest); }
           });
           return;
@@ -464,7 +465,7 @@ export class StudentCommands {
         const destDir = path.join(folder[0].fsPath, `${slug}-template`);
         progress.report({ message: 'Extracting…' });
         const count = await extractZipBuffer(buffer, destDir);
-        void vscode.window.showInformationMessage(
+        void notify.info(
           `Extracted ${count} file(s) to ${destDir}`, 'Open Folder', 'Reveal'
         ).then(c => {
           if (c === 'Open Folder') {
@@ -632,12 +633,12 @@ export class StudentCommands {
         }
 
         if (!resultPayload && !silent) {
-          vscode.window.showInformationMessage('No stored test results yet. Run tests to generate new results.');
+          notify.info('No stored test results yet. Run tests to generate new results.');
         }
       } catch (error) {
         console.error('[StudentCommands] Failed to show test results:', error);
         if (!silent) {
-          vscode.window.showErrorMessage('Failed to open test results. Please run tests again.');
+          notify.error('Failed to open test results. Please run tests again.');
         }
       }
     });
@@ -653,7 +654,7 @@ export class StudentCommands {
             return;
           } else {
             // Assignment directory not available (likely not released yet)
-            vscode.window.showWarningMessage('Assignment not available yet. README preview cannot be shown.');
+            notify.warning('Assignment not available yet. README preview cannot be shown.');
             return;
           }
         }
@@ -676,7 +677,7 @@ export class StudentCommands {
         // Fallback: let user pick an assignment directory from current course
         const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
         if (!courseId) {
-          vscode.window.showWarningMessage('No course selected. Select a course then try again.');
+          notify.warning('No course selected. Select a course then try again.');
           return;
         }
         const contents = await this.apiService.getStudentCourseContents(courseId);
@@ -688,7 +689,7 @@ export class StudentCommands {
           .filter(x => !!x.directory && fs.existsSync(x.directory!));
 
         if (assignables.length === 0) {
-          vscode.window.showInformationMessage('No cloned assignments found for this course. Clone an assignment first.');
+          notify.info('No cloned assignments found for this course. Clone an assignment first.');
           return;
         }
 
@@ -700,7 +701,7 @@ export class StudentCommands {
         await this.openReadmeIfExists(pick.a.directory!);
       } catch (error: any) {
         console.error('Failed to show README preview:', error);
-        vscode.window.showErrorMessage(`Failed to show README preview: ${error.message || error}`);
+        notify.error(`Failed to show README preview: ${error.message || error}`);
       }
     });
 
@@ -712,7 +713,7 @@ export class StudentCommands {
       
       // The item is a CourseContentItem from StudentCourseContentTreeProvider
       if (!item || !item.submissionGroup || !item.submissionGroup.repository) {
-        vscode.window.showErrorMessage('No repository available for this assignment');
+        notify.error('No repository available for this assignment');
         return;
       }
 
@@ -726,7 +727,7 @@ export class StudentCommands {
         
         if (!courseId) {
           console.error('[CloneRepo] Course ID is missing from submission group and no course selected:', submissionGroup);
-          vscode.window.showErrorMessage('No course selected. Please select a course first.');
+          notify.error('No course selected. Please select a course first.');
           return;
         }
         
@@ -735,7 +736,7 @@ export class StudentCommands {
       
       try {
         if (!this.repositoryManager) {
-          vscode.window.showErrorMessage('Repository manager not available');
+          notify.error('Repository manager not available');
           return;
         }
         await vscode.window.withProgress({
@@ -747,16 +748,16 @@ export class StudentCommands {
         });
 
         this.treeDataProvider.refresh();
-        vscode.window.showInformationMessage('Repository cloned/updated. Expand the assignment to see files.');
+        notify.info('Repository cloned/updated. Expand the assignment to see files.');
       } catch (error: any) {
-        vscode.window.showErrorMessage(`Failed to clone repository: ${error?.message || error}`);
+        notify.error(`Failed to clone repository: ${error?.message || error}`);
       }
     });
 
     // Open course in browser (if GitLab URL exists)
     register('computor.student.openInBrowser', async (item: any) => {
       if (!item || !item.course.repository) {
-        vscode.window.showErrorMessage('No repository URL available');
+        notify.error('No repository URL available');
         return;
       }
 
@@ -767,13 +768,13 @@ export class StudentCommands {
     // Clone submission group repository
     register('computor.student.cloneSubmissionGroupRepository', async (submissionGroup: SubmissionGroupStudentList, courseId: string) => {
       if (!submissionGroup || !submissionGroup.repository) {
-        vscode.window.showErrorMessage('No repository available for this submission group');
+        notify.error('No repository available for this submission group');
         return;
       }
 
       try {
         if (!this.repositoryManager) {
-          vscode.window.showErrorMessage('Repository manager not available');
+          notify.error('Repository manager not available');
           return;
         }
         await vscode.window.withProgress({
@@ -784,9 +785,9 @@ export class StudentCommands {
           await this.repositoryManager!.autoSetupRepositories(courseId);
         });
         this.treeDataProvider.refresh();
-        vscode.window.showInformationMessage('Repository cloned/updated for the submission group.');
+        notify.info('Repository cloned/updated for the submission group.');
       } catch (error: any) {
-        vscode.window.showErrorMessage(`Failed to clone repository: ${error?.message || error}`);
+        notify.error(`Failed to clone repository: ${error?.message || error}`);
       }
     });
 
@@ -856,16 +857,16 @@ export class StudentCommands {
         }
 
         if (!directory || !fs.existsSync(directory)) {
-          vscode.window.showErrorMessage('Assignment directory not found. Please clone the repository first.');
+          notify.error('Assignment directory not found. Please clone the repository first.');
           return;
         }
         if (!assignmentPath) {
-          vscode.window.showErrorMessage('Assignment path is missing.');
+          notify.error('Assignment path is missing.');
           return;
         }
 
         if (!submissionGroup?.id) {
-          vscode.window.showErrorMessage('Submission group information missing; cannot create submission.');
+          notify.error('Submission group information missing; cannot create submission.');
           return;
         }
 
@@ -874,7 +875,7 @@ export class StudentCommands {
 
         const repoPath = await this.findRepoRoot(submissionDirectory);
         if (!repoPath) {
-          vscode.window.showErrorMessage('Could not determine repository root.');
+          notify.error('Could not determine repository root.');
           return;
         }
 
@@ -1033,7 +1034,7 @@ export class StudentCommands {
             // Test is considered successful if status is SUCCESS (regardless of score)
             // We allow submission even with partial test scores
             if (!testResult || testResult.status === 'ERROR' || testResult.status === 'TIMEOUT') {
-              vscode.window.showErrorMessage('Test execution failed. Please try again.');
+              notify.error('Test execution failed. Please try again.');
               // Clear cache and refresh tree
               if (courseContentId) {
                 this.apiService.clearStudentCourseContentCache(courseContentId);
@@ -1043,7 +1044,7 @@ export class StudentCommands {
             }
 
             if (testResult.status === 'CANCELLED') {
-              vscode.window.showWarningMessage('Test was cancelled. Submission aborted.');
+              notify.warning('Test was cancelled. Submission aborted.');
               if (courseContentId) {
                 this.apiService.clearStudentCourseContentCache(courseContentId);
                 this.treeDataProvider.refresh();
@@ -1184,13 +1185,13 @@ export class StudentCommands {
           }
 
           if (reusedExistingSubmission) {
-            vscode.window.showWarningMessage('This artifact has already been submitted. No action taken.');
+            notify.warning('This artifact has already been submitted. No action taken.');
           } else if (submissionResponse) {
             const successMessage = 'Assignment submitted successfully.';
 
-            vscode.window.showInformationMessage(successMessage);
+            notify.info(successMessage);
           } else {
-            vscode.window.showWarningMessage('Submission completed without a response from the server.');
+            notify.warning('Submission completed without a response from the server.');
           }
         }
       } catch (error: any) {
@@ -1200,7 +1201,7 @@ export class StudentCommands {
           : typeof error === 'string'
             ? error
             : 'Failed to submit assignment.';
-        vscode.window.showErrorMessage(message);
+        notify.error(message);
       }
     });
 
@@ -1215,14 +1216,14 @@ export class StudentCommands {
       
       // The item is a CourseContentItem from StudentCourseContentTreeProvider
       if (!item || !item.courseContent) {
-        vscode.window.showErrorMessage('No assignment selected');
+        notify.error('No assignment selected');
         return;
       }
 
       // Get the assignment directory
       const directory = (item.courseContent as any).directory;
       if (!directory || !fs.existsSync(directory)) {
-        vscode.window.showErrorMessage('Assignment directory not found. Please clone the repository first.');
+        notify.error('Assignment directory not found. Please clone the repository first.');
         return;
       }
 
@@ -1236,7 +1237,7 @@ export class StudentCommands {
         // Check if there are any changes to commit
         const hasChanges = await this.gitService.hasChanges(directory);
         if (!hasChanges) {
-          vscode.window.showInformationMessage('No changes to commit in this assignment.');
+          notify.info('No changes to commit in this assignment.');
           return;
         }
 
@@ -1278,13 +1279,13 @@ export class StudentCommands {
           progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
         });
 
-        vscode.window.showInformationMessage(`Successfully committed and pushed ${assignmentTitle}`);
+        notify.info(`Successfully committed and pushed ${assignmentTitle}`);
 
         // Optionally refresh the tree to update any status indicators
         this.treeDataProvider.refreshNode(item);
       } catch (error: any) {
         console.error('Failed to commit assignment:', error);
-        vscode.window.showErrorMessage(`Failed to commit assignment: ${error.message}`);
+        notify.error(`Failed to commit assignment: ${error.message}`);
       }
     });
 
@@ -1294,7 +1295,7 @@ export class StudentCommands {
       
       // The item is a CourseContentItem from StudentCourseContentTreeProvider
       if (!item || !item.courseContent) {
-        vscode.window.showErrorMessage('No assignment selected');
+        notify.error('No assignment selected');
         return;
       }
 
@@ -1322,12 +1323,12 @@ export class StudentCommands {
       }
 
       if (!directory || !fs.existsSync(directory)) {
-        vscode.window.showErrorMessage('Assignment directory not found. Please clone the repository first.');
+        notify.error('Assignment directory not found. Please clone the repository first.');
         return;
       }
 
       if (!submissionGroup?.id) {
-        vscode.window.showErrorMessage('Submission group information missing; cannot upload for testing.');
+        notify.error('Submission group information missing; cannot upload for testing.');
         return;
       }
 
@@ -1448,7 +1449,7 @@ export class StudentCommands {
           console.error('[TestAssignment] No artifact ID available, cannot submit test');
           throw new Error('Failed to create or retrieve submission artifact');
         } else {
-          vscode.window.showWarningMessage('Could not determine commit hash or content ID for testing');
+          notify.warning('Could not determine commit hash or content ID for testing');
         }
 
         // Only refresh if test completed successfully
@@ -1465,7 +1466,7 @@ export class StudentCommands {
         // rejecting the upload because the content has no testing service) must
         // be shown here, or the command fails silently.
         if (!reachedTestSubmission) {
-          vscode.window.showErrorMessage(`Could not run the test: ${error?.message || String(error)}`);
+          notify.error(`Could not run the test: ${error?.message || String(error)}`);
         }
       }
     });
@@ -1497,7 +1498,7 @@ export class StudentCommands {
       const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
 
       if (!fs.existsSync(helpPath)) {
-        vscode.window.showWarningMessage(`Help file not found: ${helpFileName}`);
+        notify.warning(`Help file not found: ${helpFileName}`);
         return;
       }
 
@@ -1508,7 +1509,7 @@ export class StudentCommands {
 
     } catch (error) {
       console.error('[showHelp] Failed to show help:', error);
-      vscode.window.showErrorMessage('Failed to open help documentation');
+      notify.error('Failed to open help documentation');
     }
   }
 
@@ -1518,7 +1519,7 @@ export class StudentCommands {
       ? item.title
       : 'Course';
     if (!courseId) {
-      vscode.window.showWarningMessage('No course selected for export.');
+      notify.warning('No course selected for export.');
       return;
     }
 
@@ -1537,7 +1538,7 @@ export class StudentCommands {
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceRoot) {
-      vscode.window.showWarningMessage('Open a workspace folder before exporting.');
+      notify.warning('Open a workspace folder before exporting.');
       return;
     }
 
@@ -1559,7 +1560,7 @@ export class StudentCommands {
       async () => {
         const contents = (await this.apiService.getStudentCourseContents(courseId)) ?? [];
         if (contents.length === 0) {
-          vscode.window.showInformationMessage('No course contents found to export.');
+          notify.info('No course contents found to export.');
           return;
         }
 
@@ -1572,7 +1573,7 @@ export class StudentCommands {
         if (result.packaged === 0) {
           console.warn('[exportCourseExamples] Nothing packaged. Probed paths:', result.probedPaths);
           const sample = result.probedPaths.slice(0, 3).join('\n');
-          const choice = await vscode.window.showWarningMessage(
+          const choice = await notify.warning(
             `Nothing was exported. Probed ${result.probedPaths.length} path(s).${sample ? `\nFirst: ${sample}` : ''}`,
             'Open Console'
           );
@@ -1594,7 +1595,7 @@ export class StudentCommands {
           : `Exported ${result.packaged} assignment(s).`;
         // Fire-and-forget: awaiting this would keep the "Exporting…" progress
         // popup open until the user dismisses the success toast.
-        void vscode.window.showInformationMessage(summary, 'Reveal').then(choice => {
+        void notify.info(summary, 'Reveal').then(choice => {
           if (choice === 'Reveal') {
             void vscode.commands.executeCommand('revealFileInOS', dest);
           }
@@ -1632,7 +1633,7 @@ export class StudentCommands {
         courseId = content.course_id || courseId;
 
         if (!courseId) {
-          vscode.window.showWarningMessage('No course selected.');
+          notify.warning('No course selected.');
           return;
         }
 
@@ -1683,7 +1684,7 @@ export class StudentCommands {
 
       if (!target) {
         if (!courseId) {
-          vscode.window.showWarningMessage('No course selected.');
+          notify.warning('No course selected.');
           return;
         }
 
@@ -1705,7 +1706,7 @@ export class StudentCommands {
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open messages: ${error?.message || error}`);
+      notify.error(`Failed to open messages: ${error?.message || error}`);
     }
   }
 
@@ -1730,7 +1731,7 @@ export class StudentCommands {
     const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
     const submissionGroupId = submissionGroup?.id;
     if (!submissionGroupId) {
-      vscode.window.showWarningMessage('Open "Submit (without git)" from an assignment in the student tree.');
+      notify.warning('Open "Submit (without git)" from an assignment in the student tree.');
       return;
     }
 
@@ -1757,10 +1758,10 @@ export class StudentCommands {
             archive
           );
           if (res) {
-            void vscode.window.showInformationMessage('Submitted your work (no git).');
+            void notify.info('Submitted your work (no git).');
           }
         } catch (e: any) {
-          vscode.window.showErrorMessage(`Submit failed: ${e?.message || String(e)}`);
+          notify.error(`Submit failed: ${e?.message || String(e)}`);
         }
       }
     );
@@ -1845,7 +1846,7 @@ export class StudentCommands {
       }
 
       if (!courseContentSummary) {
-        vscode.window.showWarningMessage('No detailed information available for this content yet.');
+        notify.warning('No detailed information available for this content yet.');
         return;
       }
 
@@ -1972,7 +1973,7 @@ export class StudentCommands {
       await this.contentDetailsWebviewProvider.showDetails(viewState);
     } catch (error: any) {
       console.error('Failed to show course content details:', error);
-      vscode.window.showErrorMessage(`Failed to open details: ${error?.message || error}`);
+      notify.error(`Failed to open details: ${error?.message || error}`);
     }
   }
   
