@@ -698,8 +698,7 @@
   }
 
   function renderTestRow(test, colIndex, testIndex, qualifications, testType, totalTests, lang) {
-    var hasNameError = !test.name || !String(test.name).trim();
-    var html = '<div class="test-row' + (hasNameError && test.name === '' ? '' : '') + '" data-col="' + colIndex + '" data-test="' + testIndex + '">';
+    var html = '<div class="test-row" data-col="' + colIndex + '" data-test="' + testIndex + '">';
     html += '<div class="test-order-btns">';
     if (testIndex > 0) { html += '<button class="move-btn move-btn-sm" data-action="moveTestUp" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move up">&#9650;</button>'; }
     if (testIndex < totalTests - 1) { html += '<button class="move-btn move-btn-sm" data-action="moveTestDown" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move down">&#9660;</button>'; }

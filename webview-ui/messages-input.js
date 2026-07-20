@@ -323,15 +323,12 @@
   function render() {
     const mount = root();
     if (!mount) {
-      console.log('[messages-input] render: mount element not found');
       return;
     }
 
-    console.log('[messages-input] render called, state.target:', state.target);
     mount.innerHTML = '';
 
     if (!state.target) {
-      console.log('[messages-input] render: No target, showing placeholder');
       const placeholder = createElement('div', {
         className: 'placeholder-state'
       });
