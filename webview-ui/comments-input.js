@@ -13,6 +13,23 @@
 
   const root = () => document.getElementById('app');
 
+  // Persist unsent drafts in the webview's own state so they survive the view
+  // being hidden/collapsed — these input panels are WebviewViews and are not
+  // retained. Keyed by course member so a draft doesn't bleed across a context
+  // switch, and restored in the updateState handler once the member is known.
+  function readDraft(memberId) {
+    if (!memberId || !vscode.getState) { return ''; }
+    const drafts = (vscode.getState() || {}).drafts || {};
+    return drafts[memberId] || '';
+  }
+  function persistDraft(memberId, value) {
+    if (!memberId || !vscode.setState) { return; }
+    const prev = (vscode.getState && vscode.getState()) || {};
+    const drafts = Object.assign({}, prev.drafts);
+    if (value) { drafts[memberId] = value; } else { delete drafts[memberId]; }
+    vscode.setState(Object.assign({}, prev, { drafts: drafts }));
+  }
+
   // ComputorWebview.el with the legacy options shape: children live in the
   // options object and null/undefined attribute values mean "omit" (el would
   // stringify them via setAttribute).
@@ -39,6 +56,8 @@
       });
     } else {
       vscode.postMessage({ command: 'createComment', data: { message } });
+      state.draft = '';
+      persistDraft(state.courseMemberId, '');
     }
   }
 
@@ -87,6 +106,7 @@
 
     textarea.addEventListener('input', (e) => {
       state.draft = e.target.value;
+      persistDraft(state.courseMemberId, state.draft);
     });
 
     textarea.addEventListener('keydown', (e) => {
@@ -164,7 +184,7 @@
           title: message.data?.title,
           editingComment: message.data?.editingComment,
           loading: Boolean(message.data?.loading),
-          draft: message.data?.editingComment ? state.draft : ''
+          draft: message.data?.editingComment ? state.draft : readDraft(message.data?.courseMemberId)
         });
         break;
       case 'setLoading':
