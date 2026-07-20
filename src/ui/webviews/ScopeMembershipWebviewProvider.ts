@@ -133,7 +133,8 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     try {
       const state = await this.loadState(this.currentTarget);
       this.currentData = state;
-      this.panel.webview.postMessage({ command: 'updateState', data: state, notice });
+      this.panel.webview.postMessage({ command: 'updateState', data: state });
+      if (notice) { this.postNotice(notice); }
     } catch (error: any) {
       this.handleError('Failed to refresh members', error);
     }
@@ -333,10 +334,13 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     this.postNotice({ type: 'error', message: `${prefix}: ${detail}` });
   }
 
+  // Route in-page feedback through the unified native-notification helper
+  // instead of an in-webview banner. The read-only page-state notice and
+  // client-side inline validation remain in the webview.
   private postNotice(notice: NoticeMessage): void {
-    if (this.panel) {
-      this.panel.webview.postMessage({ command: 'notice', notice });
-    }
+    if (notice.type === 'error') { notify.error(notice.message); }
+    else if (notice.type === 'warning') { notify.warning(notice.message); }
+    else { notify.info(notice.message); }
   }
 }
 
