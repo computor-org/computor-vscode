@@ -552,7 +552,13 @@
         picker.value = '';
       });
     });
+  }
 
+  // Delegated listeners live on the persistent #app element and on document, so
+  // they must be bound exactly ONCE. Binding them from render() (as before) added
+  // a fresh copy on every re-render, so a single click/keystroke/Ctrl+S fired N
+  // times after N renders — duplicate adds, removes, and saves.
+  function bindDelegatedEvents() {
     // Mark dirty on any input change
     app.addEventListener('input', function() {
       markDirty();
@@ -677,5 +683,6 @@
     }
   });
 
+  bindDelegatedEvents();
   render();
 })();
