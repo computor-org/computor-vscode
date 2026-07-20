@@ -55,6 +55,68 @@
     return String(value).replace(/[&<>"']/g, (m) => HTML_ESCAPE_MAP[m]);
   }
 
+  // Allow-list sanitizer for HTML produced by a markdown renderer over
+  // untrusted text (chat/comment bodies). The webview CSP already blocks script
+  // execution and inline handlers, but raw HTML embedded in the source can still
+  // inject styled/phishing markup and image beacons, so drop anything outside
+  // this list. Tags not listed are removed entirely; unlisted attributes are
+  // stripped; javascript:/vbscript:/data: URLs are rejected.
+  const SANITIZE_ALLOWED_TAGS = {
+    A: 1, ABBR: 1, B: 1, BLOCKQUOTE: 1, BR: 1, CODE: 1, DD: 1, DEL: 1, DIV: 1,
+    DL: 1, DT: 1, EM: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, HR: 1, I: 1,
+    IMG: 1, LI: 1, OL: 1, P: 1, PRE: 1, S: 1, SPAN: 1, STRONG: 1, SUB: 1, SUP: 1,
+    TABLE: 1, TBODY: 1, TD: 1, TH: 1, THEAD: 1, TR: 1, UL: 1
+  };
+  const SANITIZE_GLOBAL_ATTRS = { class: 1, title: 1 };
+  const SANITIZE_TAG_ATTRS = {
+    A: { href: 1 },
+    IMG: { src: 1, alt: 1 },
+    OL: { start: 1 },
+    TD: { align: 1 },
+    TH: { align: 1 },
+    SPAN: { 'data-tooltip': 1 }
+  };
+
+  function isSafeUrl(value) {
+    // Strip control chars / whitespace before testing the scheme so tricks like
+    // "java\tscript:" can't slip through.
+    const v = String(value == null ? '' : value).replace(/[\u0000-\u0020]+/g, '').toLowerCase();
+    return !/^(javascript|vbscript|data):/.test(v);
+  }
+
+  function sanitizeHtml(html) {
+    // A <template>'s content is parsed into an inert document: scripts don't run
+    // and images don't load while we scrub it.
+    const tpl = document.createElement('template');
+    tpl.innerHTML = String(html == null ? '' : html);
+    const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_ELEMENT, null);
+    const doomed = [];
+    let node = walker.nextNode();
+    while (node) {
+      const tag = node.tagName;
+      if (!SANITIZE_ALLOWED_TAGS[tag]) {
+        doomed.push(node);
+      } else {
+        const tagAttrs = SANITIZE_TAG_ATTRS[tag] || {};
+        // Slice: removeAttribute mutates the live attributes collection.
+        Array.prototype.slice.call(node.attributes).forEach((attr) => {
+          const name = attr.name.toLowerCase();
+          const allowed = SANITIZE_GLOBAL_ATTRS[name] || tagAttrs[name];
+          if (!allowed) {
+            node.removeAttribute(attr.name);
+          } else if ((name === 'href' || name === 'src') && !isSafeUrl(attr.value)) {
+            node.removeAttribute(attr.name);
+          }
+        });
+      }
+      node = walker.nextNode();
+    }
+    // Parent precedes child in document order, so removing a parent first
+    // detaches its children; remove() on an already-detached node is a no-op.
+    doomed.forEach((el) => el.remove());
+    return tpl.innerHTML;
+  }
+
   /** Format an ISO date string as a local date, or '' if absent/invalid. */
   function formatDate(value, options) {
     if (!value) {
@@ -227,6 +289,7 @@
     onCommand: onCommand,
     registerActions: registerActions,
     escapeHtml: escapeHtml,
+    sanitizeHtml: sanitizeHtml,
     formatDate: formatDate,
     formatDateTime: formatDateTime,
     formatRelativeDate: formatRelativeDate,

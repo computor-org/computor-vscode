@@ -71,7 +71,9 @@
       return '';
     }
     if (typeof window.marked !== 'undefined') {
-      return window.marked.parse(text);
+      // Message bodies are other users' content: sanitize the rendered HTML so
+      // raw HTML in the source can't inject markup or image beacons.
+      return window.ComputorWebview.sanitizeHtml(window.marked.parse(text));
     }
     return escapeHtml(text).replace(/\n/g, '<br/>');
   }
