@@ -568,8 +568,7 @@
       const tagsInput = createElement('input', {
         className: 'vscode-input filter-input',
         attributes: {
-          type: 'text',
-          placeholder: 'e.g., ai::request, priority::high'
+          type: 'text'
         }
       });
       tagsInput.value = state.filters.tags ? state.filters.tags.join(', ') : '';
