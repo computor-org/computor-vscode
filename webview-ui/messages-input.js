@@ -2,6 +2,8 @@
   // Shared runtime (base.js).
   const { vscode, escapeHtml, el, createStore } = window.ComputorWebview;
   const { createButton, createInput } = window.UIComponents || {};
+  // Pure, Unicode-aware @-mention helpers (mention.js, loaded before this).
+  const mentionUtil = window.ComputorWebview.mention;
 
   const { state, setState } = createStore({
     target: undefined,
@@ -43,10 +45,8 @@
   // ---- @-mention support ----
   const MENTION_TOKEN_RE = /@\[([^\]]*)\]\(([0-9a-fA-F-]{36})\)/g;
 
-  function formatMentionName(u) {
-    const n = [u.given_name, u.family_name].filter(Boolean).join(' ').trim();
-    return n || 'user';
-  }
+  // Delegate to the shared, Unicode-aware helpers (mention.js).
+  const formatMentionName = mentionUtil.formatMentionName;
 
   // Render content to HTML with @[name](uuid) tokens shown as highlighted chips
   // (the bracketed name is markdown-link syntax, so swap it out around marked()).
@@ -76,17 +76,12 @@
     start: -1,     // index of the triggering '@' in the textarea value
     items: [],     // filtered candidates currently displayed
     active: 0,
+    loading: false, // a server audience fetch is in flight
     dropdown: null,
     debounce: null
   };
 
-  function mentionMatches(u, q) {
-    if (!q) return true;
-    const ql = q.toLowerCase();
-    return formatMentionName(u).toLowerCase().includes(ql) ||
-      String(u.given_name || '').toLowerCase().startsWith(ql) ||
-      String(u.family_name || '').toLowerCase().startsWith(ql);
-  }
+  const mentionMatches = mentionUtil.mentionMatches;
 
   function closeMentionDropdown() {
     mention.open = false;
@@ -94,6 +89,7 @@
     mention.start = -1;
     mention.items = [];
     mention.active = 0;
+    mention.loading = false;
     if (mention.dropdown) { mention.dropdown.style.display = 'none'; }
   }
 
@@ -163,17 +159,35 @@
     const node = range.startContainer;
     if (!node || node.nodeType !== 3) { return null; }
     const before = (node.nodeValue || '').slice(0, range.startOffset);
-    const m = /(^|\s)@([\w.\-]*)$/.exec(before);
-    if (!m) { return null; }
-    return { node: node, query: m[2], start: range.startOffset - m[2].length - 1, end: range.startOffset };
+    const trigger = mentionUtil.matchMentionTrigger(before);
+    if (!trigger) { return null; }
+    return {
+      node: node,
+      query: trigger.query,
+      start: range.startOffset - trigger.query.length - 1,
+      end: range.startOffset
+    };
   }
 
   function renderMentionDropdown() {
     const dd = mention.dropdown;
     if (!dd) { return; }
     dd.innerHTML = '';
-    if (!mention.open || mention.items.length === 0) {
+    if (!mention.open) {
       dd.style.display = 'none';
+      return;
+    }
+    // No candidates to offer: keep the dropdown open with a status row so the
+    // user knows the feature exists and is either searching or simply has no
+    // match in this conversation's audience — the old code hid it entirely,
+    // which read as "autocomplete is missing" (issue #278).
+    if (mention.items.length === 0) {
+      const status = createElement('div', {
+        className: 'mention-empty',
+        textContent: mention.loading ? 'Searching…' : 'No matching people'
+      });
+      dd.appendChild(status);
+      dd.style.display = 'block';
       return;
     }
     mention.items.forEach((u, i) => {
@@ -202,6 +216,10 @@
     if (!ctx) { closeMentionDropdown(); return; }
     mention.open = true;
     mention.query = ctx.query;
+    // A server refresh is coming; the empty state shows "Searching…" rather
+    // than a premature "No matching people" until it lands. Ignored once we
+    // have candidates to display.
+    mention.loading = true;
     updateMentionFilter();
     // Refresh candidates from the server for large audiences (debounced).
     if (mention.debounce) { clearTimeout(mention.debounce); }
@@ -251,12 +269,15 @@
   }
 
   function onEditorKeydown(e) {
-    // When the dropdown is open, arrows/enter/tab/escape drive it.
-    if (mention.open && mention.items.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); mention.active = (mention.active + 1) % mention.items.length; renderMentionDropdown(); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); mention.active = (mention.active - 1 + mention.items.length) % mention.items.length; renderMentionDropdown(); return; }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(mention.items[mention.active]); return; }
+    // When the dropdown is open, Escape dismisses it (even on an empty status
+    // row) and arrows/enter/tab drive the candidate list.
+    if (mention.open) {
       if (e.key === 'Escape') { e.preventDefault(); closeMentionDropdown(); return; }
+      if (mention.items.length > 0) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); mention.active = (mention.active + 1) % mention.items.length; renderMentionDropdown(); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); mention.active = (mention.active - 1 + mention.items.length) % mention.items.length; renderMentionDropdown(); return; }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(mention.items[mention.active]); return; }
+      }
     }
     // Enter sends (reuse the Send button); Shift+Enter inserts a newline.
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -711,6 +732,7 @@
         break;
       case 'mentionableUsers':
         mention.users = (message.data && message.data.users) || [];
+        mention.loading = false;
         if (mention.open) { updateMentionFilter(); }
         break;
     }
