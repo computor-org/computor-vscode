@@ -123,8 +123,19 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private async fetchAndPostMentionable(search?: string): Promise<void> {
+    if (!this.view) {
+      return;
+    }
     const query = this.buildMentionScope();
-    if (!query || !this.view) {
+    if (!query) {
+      // No mentionable scope (e.g. a global announcement). Still answer the
+      // webview so its autocomplete resolves to "No matching people" instead
+      // of hanging on "Searching…".
+      this.state.mentionableUsers = [];
+      this.view.webview.postMessage({
+        command: 'mentionableUsers',
+        data: { users: [], search: search ?? null }
+      });
       return;
     }
     query.limit = 200;
@@ -142,8 +153,15 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
         data: { users, search: search ?? null }
       });
     } catch (error) {
-      // Non-fatal — the autocomplete just won't have suggestions.
+      // Non-fatal — the autocomplete just won't have suggestions. Still answer
+      // the webview (empty) so it stops showing "Searching…".
       console.warn('[MessagesInputPanel] failed to fetch mentionable users', error);
+      if (this.view) {
+        this.view.webview.postMessage({
+          command: 'mentionableUsers',
+          data: { users: [], search: search ?? null }
+        });
+      }
     }
   }
 
@@ -409,7 +427,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       title: 'New Message',
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['components/components.css', 'chat-shared.css', 'messages-input.css'],
-      scriptFiles: ['lib/marked.min.js', 'components.js', 'messages-input.js']
+      scriptFiles: ['lib/marked.min.js', 'components.js', 'mention.js', 'messages-input.js']
     });
   }
 }

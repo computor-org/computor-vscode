@@ -410,6 +410,16 @@ textarea.vscode-input.chat-textarea:disabled {
   color: var(--vscode-list-activeSelectionForeground);
 }
 
+/* Status row shown when the audience has no candidate to offer (searching or
+   no match) — non-interactive, just feedback that autocomplete is active. */
+.mention-empty {
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
+  font-style: italic;
+  cursor: default;
+}
+
 /* Contenteditable message editor — chips with the uuid hidden in data-id.
    Base .mention-chip styling lives in chat-shared.css. */
 .mention-editor {
