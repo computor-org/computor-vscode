@@ -11,19 +11,39 @@ export function escapeHtml(text: string | undefined | null): string {
   return String(text).replace(/[&<>"']/g, (m) => HTML_ESCAPE_MAP[m] || m);
 }
 
-export function infoRow(label: string, value: string): string {
-  return `<div class="info-row">
-    <span class="label">${escapeHtml(label)}</span>
-    <span class="value">${value}</span>
+const emptyValue = '<em>—</em>';
+
+/**
+ * Wraps a run of infoRow()s so they flow into columns. Detail rows are grid
+ * items, so they need this parent — a bare run of them stacks one per line.
+ */
+export function detailGrid(content: string): string {
+  return `<div class="detail-grid">${content}</div>`;
+}
+
+/**
+ * One read-only fact: label above value, sized by .detail-grid. `wide` gives
+ * the item the full row, for values that don't fit a column (descriptions,
+ * URLs, ids).
+ */
+export function infoRow(label: string, value: string, options?: { wide?: boolean }): string {
+  return `<div class="detail-item${options?.wide ? ' wide' : ''}">
+    <span class="detail-label">${escapeHtml(label)}</span>
+    <span class="detail-value">${value}</span>
   </div>`;
 }
 
-export function infoRowText(label: string, value: string | undefined | null): string {
-  return infoRow(label, escapeHtml(value) || '<em style="opacity:0.5">—</em>');
+export function infoRowText(label: string, value: string | undefined | null, options?: { wide?: boolean }): string {
+  return infoRow(label, escapeHtml(value) || emptyValue, options);
 }
 
-export function infoRowCode(label: string, value: string | undefined | null): string {
-  return infoRow(label, value ? `<span class="code">${escapeHtml(value)}</span>` : '<em style="opacity:0.5">—</em>');
+/**
+ * Identifiers, paths and version tags. These stay in a normal column — long
+ * values wrap inside it (.detail-value sets overflow-wrap), which reads better
+ * than giving every id a full row and breaking the grid rhythm.
+ */
+export function infoRowCode(label: string, value: string | undefined | null, options?: { wide?: boolean }): string {
+  return infoRow(label, value ? `<span class="code">${escapeHtml(value)}</span>` : emptyValue, options);
 }
 
 export function section(title: string, content: string): string {
@@ -33,25 +53,32 @@ export function section(title: string, content: string): string {
   </div>`;
 }
 
-export function badge(text: string, variant: 'success' | 'warning' | 'error' | 'info' | 'muted' = 'info'): string {
+export type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'muted';
+
+export function badge(text: string, variant: BadgeVariant = 'info'): string {
   return `<span class="badge badge-${variant}">${escapeHtml(text)}</span>`;
 }
 
-/** Colors for course-content deployment statuses (badges, icons). */
-export const DEPLOYMENT_STATUS_COLORS: Record<string, string> = {
-  pending: '#FFA500',
-  deployed: '#107c10',
-  failed: '#d13438',
-  deploying: '#0078d4',
-  unassigned: '#666666'
+/**
+ * Course-content deployment statuses, mapped to the design-system badge
+ * variants rather than to hex. base.css owns the actual colours, so these
+ * follow the user's theme instead of being three fixed values.
+ */
+const DEPLOYMENT_STATUS_VARIANTS: Record<string, BadgeVariant> = {
+  pending: 'warning',
+  deployed: 'success',
+  failed: 'error',
+  deploying: 'info',
+  unassigned: 'muted'
 };
 
-export function deploymentStatusColor(status: string): string {
-  return DEPLOYMENT_STATUS_COLORS[status] || DEPLOYMENT_STATUS_COLORS.unassigned!;
+export function deploymentStatusVariant(status: string): BadgeVariant {
+  return DEPLOYMENT_STATUS_VARIANTS[status] || 'muted';
 }
 
-export function statusBadge(text: string, color: string): string {
-  return `<span class="status-badge" style="background-color:${escapeHtml(color)}">${escapeHtml(text)}</span>`;
+/** Deployment status as a themed badge, e.g. badge('DEPLOYED', 'success'). */
+export function deploymentBadge(status: string): string {
+  return badge(status.toUpperCase(), deploymentStatusVariant(status));
 }
 
 export function colorSwatch(color: string): string {

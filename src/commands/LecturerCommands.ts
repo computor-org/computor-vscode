@@ -18,7 +18,6 @@ import { ManageCourseMembersWebviewProvider } from '../ui/webviews/ManageCourseM
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMemberCommentsWebviewProvider';
 import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMemberCommentsInputPanel';
-import { DeploymentInfoWebviewProvider } from '../ui/webviews/DeploymentInfoWebviewProvider';
 import { ReleaseValidationWebviewProvider } from '../ui/webviews/ReleaseValidationWebviewProvider';
 import { CourseProgressOverviewWebviewProvider } from '../ui/webviews/CourseProgressOverviewWebviewProvider';
 import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMemberProgressWebviewProvider';
@@ -59,7 +58,6 @@ export class LecturerCommands {
   private courseGroupCommands: CourseGroupCommands;
   private messagesWebviewProvider: MessagesWebviewProvider;
   private commentsWebviewProvider: CourseMemberCommentsWebviewProvider;
-  private deploymentInfoWebviewProvider: DeploymentInfoWebviewProvider;
   private releaseValidationWebviewProvider: ReleaseValidationWebviewProvider;
   private courseProgressOverviewWebviewProvider: CourseProgressOverviewWebviewProvider;
   private courseMemberProgressWebviewProvider: CourseMemberProgressWebviewProvider;
@@ -94,7 +92,6 @@ export class LecturerCommands {
     if (commentsInputPanel) {
       this.commentsWebviewProvider.setInputPanel(commentsInputPanel);
     }
-    this.deploymentInfoWebviewProvider = new DeploymentInfoWebviewProvider(context, this.apiService);
     this.releaseValidationWebviewProvider = new ReleaseValidationWebviewProvider(context, this.apiService);
     this.courseProgressOverviewWebviewProvider = new CourseProgressOverviewWebviewProvider(context, this.apiService);
     this.courseMemberProgressWebviewProvider = new CourseMemberProgressWebviewProvider(context, this.apiService);
@@ -245,9 +242,6 @@ export class LecturerCommands {
       await this.batchUpdateExampleVersions(item);
     });
 
-    register('computor.lecturer.viewDeploymentInfo', async (item: CourseContentTreeItem) => {
-      await this.viewDeploymentInfo(item);
-    });
 
     // GitLab repository opening
     register('computor.lecturer.openRemoteRepository', async (item: CourseTreeItem | CourseMemberTreeItem) => {
@@ -1810,17 +1804,6 @@ export class LecturerCommands {
     }
   }
 
-  private async viewDeploymentInfo(item: CourseContentTreeItem): Promise<void> {
-    try {
-      await this.deploymentInfoWebviewProvider.showDeploymentInfo(
-        item.courseContent.id,
-        item.courseContent.title || item.courseContent.path
-      );
-    } catch (error: any) {
-      console.error('Failed to view deployment info:', error);
-      notify.error(`Failed to view deployment info: ${error.message}`);
-    }
-  }
 
   private async openRemoteRepository(item: CourseTreeItem | CourseMemberTreeItem): Promise<void> {
     try {

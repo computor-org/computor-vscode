@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentTypeGet, CourseList, CourseContentKindList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
@@ -49,16 +49,12 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       ${infoRow('Can Have Parent', kind.has_ascendants ? badge('Yes', 'info') : badge('No', 'muted'))}
     ` : '';
 
-    const infoHtml = section('Information', `
+    const detailsHtml = section('Content Type', `
+      ${detailGrid(`
       ${infoRowCode('ID', contentType.id)}
-      ${infoRowCode('Slug', contentType.slug)}
-      ${infoRow('Color', `${colorSwatch(color)} <span class="code">${escapeHtml(color)}</span>`)}
       ${infoRowText('Content Kind', kind?.title || contentType.course_content_kind_id)}
-      ${infoRowText('Description', contentType.description)}
       ${kindBadges}
-    `);
-
-    const editHtml = section('Edit Content Type', `
+    `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', contentType.title, { placeholder: 'Content type title' }))}
         ${formGroup('Slug', textInput('slug', contentType.slug, { required: true, pattern: '[a-z0-9_-]+', placeholder: 'content-type-slug' }))}
@@ -75,6 +71,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
         </div>
       </form>
     `);
+
 
     const scriptHtml = `
       var typeId = ${JSON.stringify(contentType.id)};
@@ -110,7 +107,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Content Type', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Content Type', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

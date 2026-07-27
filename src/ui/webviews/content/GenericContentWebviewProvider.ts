@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from '../shared/webviewHelpers';
 
 export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -24,13 +24,12 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
       <p>Content in ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const infoHtml = section('Content Information', `
+    const detailsHtml = section('Content', `
+      ${detailGrid(`
       ${infoRowCode('ID', courseContent.id)}
       ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
-    `);
-
-    const editHtml = section('Edit Content', `
+    `)}
       <form id="editForm">
         ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1.content_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots')}
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Content title' }))}
@@ -42,6 +41,7 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
         </div>
       </form>
     `);
+
 
     const scriptHtml = `
       var contentId = ${JSON.stringify(courseContent.id)};
@@ -88,6 +88,6 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Content', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Content', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 }

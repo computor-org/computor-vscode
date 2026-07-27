@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, statusBadge, deploymentStatusColor, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, detailGrid, badge, deploymentBadge, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
 import { notify } from '../../../utils/notify';
 
 export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewProvider {
@@ -22,37 +22,28 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
     const { courseContent, course, contentType, exampleInfo, exampleVersionInfo } = data;
 
     const deploymentStatus = (courseContent as any).deployment_status || 'unassigned';
-    const statusColor = deploymentStatusColor(deploymentStatus);
+
+    // Timestamps, message and paths only exist on the deployment record, not on
+    // the course content. This used to be a whole second webview ("View
+    // Deployment Info") for these few fields; it now lives in the section
+    // below. Failing to load it must not take the whole page down.
+    const deployment = await this.apiService
+      .lecturerGetDeployment(courseContent.id)
+      .catch(() => null);
 
     const headerHtml = `
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
       <p>Assignment in ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const infoHtml = section('Assignment Information', `
-      ${infoRowCode('ID', courseContent.id)}
-      ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
-      ${infoRowText('Position', String(courseContent.position ?? ''))}
-      ${infoRow('Max Group Size', String(courseContent.max_group_size ?? 1))}
-      ${courseContent.max_test_runs !== undefined && courseContent.max_test_runs !== null ? infoRowText('Max Test Runs', String(courseContent.max_test_runs)) : ''}
-      ${courseContent.max_submissions !== undefined && courseContent.max_submissions !== null ? infoRowText('Max Submissions', String(courseContent.max_submissions)) : ''}
-      ${infoRow('Submittable', badge('Yes', 'success'))}
-    `);
-
-    const deploymentHtml = section('Deployment', `
-      ${infoRow('Status', statusBadge(deploymentStatus.toUpperCase(), statusColor))}
-      ${exampleInfo?.title ? infoRowText('Example', exampleInfo.title) : infoRowText('Example', 'Not assigned')}
-      ${exampleInfo?.identifier ? infoRowCode('Identifier', exampleInfo.identifier) : ''}
-      ${exampleVersionInfo?.version_tag ? infoRowCode('Version', exampleVersionInfo.version_tag) : ''}
-      <div class="actions">
-        ${exampleInfo ? `
-          <button class="btn-secondary" data-action="updateExampleVersion">Update Version</button>
-          <button data-action="deployAssignment">Deploy</button>
-        ` : ''}
-        <button class="btn-secondary" data-action="viewDeployment">View Deployment Info</button>
-      </div>
-    `);
-
-    const editHtml = section('Edit Assignment', `
+    // Group size and the run/submission limits are editable in the form below,
+    // so they appear once, as inputs, rather than also as read-only facts.
+    const detailsHtml = section('Assignment', `
+      ${detailGrid(`
+        ${infoRowCode('ID', courseContent.id)}
+        ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
+        ${infoRowText('Position', String(courseContent.position ?? ''))}
+        ${infoRow('Submittable', badge('Yes', 'success'))}
+      `)}
       <form id="editForm">
         ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1.assignment_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots')}
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Assignment title' }))}
@@ -66,6 +57,39 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
           <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
         </div>
       </form>
+    `);
+
+    const formatTimestamp = (value?: string | null): string =>
+      value ? new Date(value).toLocaleString() : '';
+
+    // Unassigning is rejected server-side once a deployment is live, so say so
+    // rather than letting the user find out from an error.
+    const unassignNote = deploymentStatus === 'deployed' || deploymentStatus === 'deploying'
+      ? `<div class="notice warning">Cannot unassign while the status is
+         <strong>${escapeHtml(deploymentStatus)}</strong>. Unassignment is only
+         allowed for pending or failed deployments.</div>`
+      : '';
+
+    const deploymentHtml = section('Deployment', `
+      ${detailGrid(`
+        ${infoRow('Status', deploymentBadge(deploymentStatus))}
+        ${exampleInfo?.title ? infoRowText('Example', exampleInfo.title) : infoRowText('Example', 'Not assigned')}
+        ${deployment?.assigned_at ? infoRowText('Assigned', formatTimestamp(deployment.assigned_at)) : ''}
+        ${deployment?.deployed_at ? infoRowText('Deployed', formatTimestamp(deployment.deployed_at)) : ''}
+        ${exampleInfo?.identifier ? infoRowCode('Identifier', exampleInfo.identifier) : ''}
+        ${exampleVersionInfo?.version_tag ? infoRowCode('Version', exampleVersionInfo.version_tag) : ''}
+        ${deployment?.deployment_path ? infoRowCode('Deployment Path', deployment.deployment_path) : ''}
+        ${deployment?.example_id ? infoRowCode('Example ID', deployment.example_id) : ''}
+        ${deployment?.deployment_message ? infoRowText('Message', deployment.deployment_message, { wide: true }) : ''}
+      `)}
+      ${unassignNote}
+      <div class="actions">
+        ${exampleInfo ? `
+          <button class="btn-secondary" data-action="updateExampleVersion">Update Version</button>
+          <button data-action="deployAssignment">Deploy</button>
+        ` : ''}
+        <button class="btn-secondary" data-action="refreshData">Refresh</button>
+      </div>
     `);
 
     const scriptHtml = `
@@ -118,19 +142,15 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         vscode.postMessage({ command: 'deployAssignment', data: { courseId: courseId, contentId: contentId } });
       }
 
-      function viewDeployment() {
-        vscode.postMessage({ command: 'viewDeployment', data: { courseId: courseId, contentId: contentId } });
-      }
-
       function deleteContent() {
         vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
       }
 
-      ComputorWebview.registerActions({ refreshData: refreshData, deleteContent: deleteContent, updateExampleVersion: updateExampleVersion, deployAssignment: deployAssignment, viewDeployment: viewDeployment });
+      ComputorWebview.registerActions({ refreshData: refreshData, deleteContent: deleteContent, updateExampleVersion: updateExampleVersion, deployAssignment: deployAssignment });
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Assignment', headerHtml, bodyHtml: infoHtml + deploymentHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Assignment', headerHtml, bodyHtml: detailsHtml + deploymentHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
@@ -150,17 +170,6 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         }
         break;
 
-      case 'viewDeployment':
-        try {
-          const contentData = this.currentData as CourseContentWebviewData;
-          await vscode.commands.executeCommand('computor.lecturer.viewDeploymentInfo', {
-            courseContentId: message.data?.contentId,
-            courseContentTitle: contentData?.courseContent?.title || ''
-          });
-        } catch (error) {
-          notify.error(`Failed to view deployment: ${error}`);
-        }
-        break;
 
       case 'openRemoteRepo':
         await vscode.commands.executeCommand('computor.lecturer.openRemoteRepository', message.data);

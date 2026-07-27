@@ -430,6 +430,61 @@ select {
   cursor: pointer;
 }
 
+/* ---------------------------------------------------------- detail grid */
+
+/*
+ * Read-only facts on a detail page: label above value, flowing into as many
+ * columns as the width allows. This replaces the label-left/value-right
+ * ledger below, which stranded the two halves of a pair on opposite sides of
+ * a wide editor tab. Label styling matches .table th so the two read as one
+ * family.
+ */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-3) var(--sp-4);
+  align-items: start;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Descriptions, URLs and ids need the whole row rather than a 220px column. */
+.detail-item.wide {
+  grid-column: 1 / -1;
+}
+
+.detail-label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--c-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detail-value {
+  color: var(--c-fg);
+  font-size: var(--font-size);
+  overflow-wrap: anywhere;
+}
+.detail-value em {
+  color: var(--c-fg-muted);
+}
+
+/*
+ * Detail pages put the read-only facts and the edit form in one section, so
+ * the form needs a rule to separate it from the grid above it.
+ */
+.section .detail-grid + form {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
+
 /* ------------------------------------------------------------- info rows */
 
 .info-row {
