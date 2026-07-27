@@ -42,13 +42,13 @@
           const org = sp.organization || matchedOrg;
           const orgTitle = org?.title || org?.path || 'Unknown Organization';
           return `
-        <form class="student-profile-card student-profile-form" data-profile-id="${escapeHtml(sp.id)}" style="opacity: 0.5; pointer-events: none;">
+        <form class="student-profile-card stack tight student-profile-form" data-profile-id="${escapeHtml(sp.id)}" style="opacity: 0.5; pointer-events: none;">
           <h3>Student Profile: ${escapeHtml(orgTitle)}</h3>
           <div class="student-profile-meta">ID: ${escapeHtml(sp.id)}${sp.created_at ? ` · Created: ${escapeHtml(sp.created_at)}` : ''}</div>
           <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 12px;">
             Only administrators can modify student profiles. Please contact your administrator.
           </p>
-          <div class="profile-grid">
+          <div class="form-grid">
             <div class="form-field">
               <label for="student-id-${escapeHtml(sp.id)}">Student ID</label>
               <input id="student-id-${escapeHtml(sp.id)}" name="student_id" value="${escapeHtml(toInputValue(sp.student_id))}" placeholder="e.g. matrikel number" disabled>
@@ -58,24 +58,24 @@
               <input id="student-email-${escapeHtml(sp.id)}" name="student_email" type="email" value="${escapeHtml(toInputValue(sp.student_email))}" placeholder="example@university.edu" disabled>
             </div>
           </div>
-          <div class="profile-actions">
-            <button type="submit" class="primary" disabled>Save Changes</button>
+          <div class="actions end">
+            <button type="submit" class="btn" disabled>Save Changes</button>
           </div>
         </form>
       `;
       }).join('')
-      : '<div class="empty-state">No student profiles yet.</div>';
+      : '<div class="text-muted">No student profiles yet.</div>';
 
     root.innerHTML = `
       <div data-notice class="notice" style="display: none;"></div>
 
-      <section class="profile-section">
+      <section class="section stack">
         <div>
           <h2>Account Information</h2>
           <p class="section-description">Core account details.</p>
         </div>
         <form id="account-form">
-          <div class="profile-grid">
+          <div class="form-grid">
             <div class="form-field">
               <label for="account-given-name">Given Name</label>
               <input id="account-given-name" name="given_name" value="${escapeHtml(toInputValue(user.given_name))}" placeholder="Given name" readonly>
@@ -96,13 +96,13 @@
         </form>
       </section>
 
-      <section class="profile-section">
+      <section class="section stack">
         <div>
           <h2>User Profile</h2>
           <p class="section-description">Update your profile used across Computor.</p>
         </div>
         <form id="profile-form">
-          <div class="profile-grid">
+          <div class="form-grid">
             <div class="form-field">
               <label for="profile-nickname">Nickname</label>
               <input id="profile-nickname" name="nickname" value="${escapeHtml(toInputValue(profile.nickname))}" placeholder="Display name">
@@ -131,26 +131,26 @@
               <textarea id="profile-bio" name="bio" placeholder="Tell others a little about you">${escapeHtml(toInputValue(profile.bio))}</textarea>
             </div>
           </div>
-          <div class="profile-actions">
-            <button type="submit" class="primary">Save Profile</button>
+          <div class="actions end">
+            <button type="submit" class="btn">Save Profile</button>
           </div>
         </form>
       </section>
 
-      <section class="profile-section">
+      <section class="section stack">
         <div>
           <h2>Student Profiles</h2>
           <p class="section-description">Student profiles link your Computor account to academic identifiers used by organizations.</p>
         </div>
-        <div class="student-profile-list">
+        <div class="stack">
           ${studentProfilesHtml}
-          <div class="profile-divider"></div>
-          <form id="new-student-profile-form" class="student-profile-card" style="opacity: 0.5; pointer-events: none;">
+          
+          <form id="new-student-profile-form" class="student-profile-card stack tight" style="opacity: 0.5; pointer-events: none;">
             <h3>Add Student Profile</h3>
             <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 12px;">
               Only administrators can create or modify student profiles. Please contact your administrator.
             </p>
-            <div class="profile-grid">
+            <div class="form-grid">
               <div class="form-field">
                 <label for="new-organization">Organization</label>
                 <select id="new-organization" name="organization_id" required disabled>
@@ -167,8 +167,8 @@
                 <input id="new-student-email" name="student_email" type="email" placeholder="example@university.edu" disabled>
               </div>
             </div>
-            <div class="profile-actions">
-              <button type="submit" class="primary" disabled>Add Student Profile</button>
+            <div class="actions end">
+              <button type="submit" class="btn" disabled>Add Student Profile</button>
             </div>
           </form>
         </div>

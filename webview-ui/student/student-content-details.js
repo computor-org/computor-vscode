@@ -60,7 +60,7 @@
 
     if (actions.localPath) {
       const openFolderBtn = document.createElement('button');
-      openFolderBtn.className = 'vscode-button vscode-button--secondary';
+      openFolderBtn.className = 'btn secondary';
       openFolderBtn.textContent = 'Reveal in Explorer';
       openFolderBtn.addEventListener('click', () => sendMessage('openFolder', { path: actions.localPath }));
       actionsContainer.appendChild(openFolderBtn);
@@ -68,7 +68,7 @@
 
     if (actions.webUrl) {
       const openRepoBtn = document.createElement('button');
-      openRepoBtn.className = 'vscode-button vscode-button--secondary';
+      openRepoBtn.className = 'btn secondary';
       openRepoBtn.textContent = 'Open Repository';
       openRepoBtn.addEventListener('click', () => sendMessage('openRepository', { url: actions.webUrl }));
       actionsContainer.appendChild(openRepoBtn);
@@ -76,7 +76,7 @@
 
     if (actions.cloneUrl) {
       const copyBtn = document.createElement('button');
-      copyBtn.className = 'vscode-button vscode-button--tertiary';
+      copyBtn.className = 'btn ghost';
       copyBtn.textContent = 'Copy Clone URL';
       copyBtn.addEventListener('click', () => sendMessage('copyCloneUrl', { url: actions.cloneUrl }));
       actionsContainer.appendChild(copyBtn);
@@ -299,7 +299,7 @@
       <div class="view-header">
         <div class="header-row">
           <h1>${escapeHtml(content.title || content.path || 'Course Content')}</h1>
-          <button type="button" class="vscode-button vscode-button--secondary header-close" data-close>Close</button>
+          <button type="button" class="btn secondary header-close" data-close>Close</button>
         </div>
         ${headerSubtitle}
         ${chips}

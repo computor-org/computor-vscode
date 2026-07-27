@@ -56,7 +56,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
 
     return this.renderPage({
       title: 'My Profile',
-      bodyHtml: '<div id="app" class="profile-root"></div>',
+      bodyHtml: '<div id="app" class="page-root"></div>',
       cssFiles: ['admin/user-profile.css'],
       scriptFiles: ['admin/user-profile.js'],
       initialState: data ?? {}

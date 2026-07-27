@@ -140,6 +140,67 @@ code,
   font-size: 16px;
   color: var(--c-fg);
 }
+/* Explanatory line under a section heading. */
+.section-description {
+  margin: 0;
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+/*
+ * Shell for a full-page view: one centered column, one padding rhythm.
+ * Put it on the mount element and use .section for each block — the column
+ * gap owns the spacing between them, so those sections drop their margin.
+ */
+.page-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--sp-4) var(--sp-6) var(--sp-8);
+}
+.page-root.wide {
+  max-width: 1100px;
+}
+.page-root > .section,
+.page-root > .header {
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .page-root {
+    padding: var(--sp-4);
+  }
+}
+
+/* Vertical flow for the contents of a section, card or list. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.stack.tight {
+  gap: var(--sp-3);
+}
+/* A .stack's gap owns the spacing, so nested sections drop their margin. */
+.stack > .section {
+  margin-bottom: 0;
+}
+/* Inside a .stack, a heading sits in the flow like any other child. */
+.stack > h2 {
+  margin-bottom: 0;
+}
+
+/* Title row inside a .section: heading left, optional actions right. */
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.section-header h2 {
+  margin: 0;
+}
 
 .toolbar {
   display: flex;
@@ -161,11 +222,30 @@ code,
   flex-wrap: wrap;
   align-items: center;
 }
+.actions.end,
+.form-actions.end {
+  justify-content: flex-end;
+}
+/* Inside a .stack the column gap already spaces the row. */
+.stack > .actions,
+.stack > .form-actions {
+  margin-top: 0;
+}
+.stack > .form-field,
+.stack > .form-group {
+  margin-bottom: 0;
+}
 
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--sp-3) var(--sp-4);
+  align-items: start;
+}
+/* The grid gap owns the spacing here, so fields drop their bottom margin. */
+.form-grid .form-field,
+.form-grid .form-group {
+  margin-bottom: 0;
 }
 
 /* --------------------------------------------------------------- buttons */
@@ -240,6 +320,14 @@ button:focus-visible,
 .btn-sm {
   padding: 4px 10px;
   font-size: var(--font-size-sm);
+  line-height: 16px;
+}
+
+/* Chip-sized, for dense filter rows and inline row actions */
+.btn.xs,
+.btn-xs {
+  padding: 2px var(--sp-2);
+  font-size: var(--font-size-xs);
   line-height: 16px;
 }
 
@@ -402,6 +490,12 @@ select {
 .tag {
   background: var(--c-muted-bg);
   color: var(--c-fg-muted);
+}
+
+/* Meta-sized, for dense rows of inline metadata next to body text */
+.badge.xs {
+  padding: 2px var(--sp-2);
+  font-size: var(--font-size-xs);
 }
 
 .status-badge {

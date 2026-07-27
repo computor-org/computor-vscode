@@ -58,7 +58,7 @@
       ? studentProfiles.map(sp => {
           const orgTitle = sp.organization?.title || sp.organization?.name || sp.organization?.path || 'Unknown Organization';
           return `
-        <div class="student-profile-card">
+        <div class="section stack tight">
           <h3>Student Profile: ${escapeHtml(orgTitle)}</h3>
           <div class="profile-grid">
             <div class="info-field">
@@ -81,7 +81,7 @@
         </div>
       `;
       }).join('')
-      : '<div class="empty-state">No student profiles</div>';
+      : '<div class="text-muted">No student profiles</div>';
 
     const archivedBanner = user.archived_at
       ? `<div class="notice warning">⚠️ This user was archived on ${formatDate(user.archived_at)}</div>`
@@ -102,14 +102,14 @@
       ${archivedBanner}
       ${serviceAccountBanner}
 
-      <section class="user-section" aria-labelledby="section-identity">
+      <section class="section stack" aria-labelledby="section-identity">
         <div>
           <h2 id="section-identity">Identity</h2>
           <p class="section-description">Core account fields.${state.isAdmin ? '' : ' Name edits are admin-only.'}</p>
         </div>
         ${state.isAdmin ? `
         <form id="identity-form">
-          <div class="info-grid">
+          <div class="form-grid">
             <div class="form-field">
               <label for="user-given-name">Given Name</label>
               <input id="user-given-name" name="given_name" type="text" value="${escapeHtml(toInputValue(user.given_name))}" autocomplete="given-name">
@@ -119,12 +119,12 @@
               <input id="user-family-name" name="family_name" type="text" value="${escapeHtml(toInputValue(user.family_name))}" autocomplete="family-name">
             </div>
           </div>
-          <div class="form-actions">
-            <button type="submit" class="primary">Save Identity</button>
+          <div class="form-actions end">
+            <button type="submit" class="btn">Save Identity</button>
           </div>
         </form>
         ` : `
-        <div class="info-grid">
+        <div class="form-grid">
           <div class="info-field">
             <label>Given Name</label>
             <div class="info-value">${escapeHtml(user.given_name || 'Not set')}</div>
@@ -140,13 +140,13 @@
             <label for="user-email">Email Address</label>
             <input id="user-email" name="email" type="email" value="${escapeHtml(toInputValue(user.email))}" placeholder="user@example.com" autocomplete="email">
           </div>
-          <div class="form-actions">
-            <button type="submit" class="primary">Update Email</button>
+          <div class="form-actions end">
+            <button type="submit" class="btn">Update Email</button>
           </div>
         </form>
       </section>
 
-      <section class="user-section" aria-labelledby="section-roles">
+      <section class="section stack" aria-labelledby="section-roles">
         <div>
           <h2 id="section-roles">Roles</h2>
           <p class="section-description">System roles assigned to this user. Granting <code>_admin</code> requires admin privileges and is enforced server-side.</p>
@@ -163,19 +163,19 @@
               ${addRoleOptionsHtml}
             </select>
           </div>
-          <div class="form-actions">
-            <button type="submit" class="primary">Assign Role</button>
+          <div class="form-actions end">
+            <button type="submit" class="btn">Assign Role</button>
           </div>
         </form>
         ` : '<p class="field-hint">All available roles are already assigned.</p>'}
       </section>
 
-      <section class="user-section" aria-labelledby="section-profile">
+      <section class="section stack" aria-labelledby="section-profile">
         <div>
           <h2 id="section-profile">Profile</h2>
           <p class="section-description">User profile information (read-only).</p>
         </div>
-        <div class="info-grid">
+        <div class="form-grid">
           <div class="info-field">
             <label>Nickname</label>
             <div class="info-value">${escapeHtml(profile.nickname || 'Not set')}</div>
@@ -205,12 +205,12 @@
         ` : ''}
       </section>
 
-      <section class="user-section" aria-labelledby="section-audit">
+      <section class="section stack" aria-labelledby="section-audit">
         <div>
           <h2 id="section-audit">Audit</h2>
           <p class="section-description">Identifiers and timestamps.</p>
         </div>
-        <div class="info-grid">
+        <div class="form-grid">
           <div class="info-field">
             <label>User ID</label>
             <div class="info-value">${escapeHtml(user.id)}</div>
@@ -232,7 +232,7 @@
         </div>
       </section>
 
-      <section class="user-section danger-zone" aria-labelledby="section-danger">
+      <section class="section stack danger-zone" aria-labelledby="section-danger">
         <div>
           <h2 id="section-danger">Danger Zone</h2>
           <p class="section-description">Destructive actions on this account.</p>
@@ -243,8 +243,8 @@
           <p class="field-hint">${user.archived_at
             ? 'This user is archived. Unarchiving restores access.'
             : 'Archiving hides the user from default lists and blocks authentication.'}</p>
-          <div class="form-actions">
-            <button type="button" id="archive-toggle-btn" class="${user.archived_at ? 'primary' : 'btn-danger'}">
+          <div class="form-actions end">
+            <button type="button" id="archive-toggle-btn" class="btn ${user.archived_at ? '' : 'danger'}">
               ${user.archived_at ? 'Unarchive User' : 'Archive User'}
             </button>
           </div>
@@ -258,8 +258,8 @@
           ${user.banned_at ? '' : `
           <input id="ban-reason" type="text" maxlength="1024" placeholder="Reason (optional)" value="">
           `}
-          <div class="form-actions">
-            <button type="button" id="ban-toggle-btn" class="${user.banned_at ? 'primary' : 'btn-danger'}">
+          <div class="form-actions end">
+            <button type="button" id="ban-toggle-btn" class="btn ${user.banned_at ? '' : 'danger'}">
               ${user.banned_at ? 'Unban User' : 'Ban User'}
             </button>
           </div>

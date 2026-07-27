@@ -1,7 +1,6 @@
 (function () {
   // Shared runtime (base.js).
   const { vscode, escapeHtml, el, createStore } = window.ComputorWebview;
-  const { createButton, createInput } = window.UIComponents || {};
   // Pure, Unicode-aware @-mention helpers (mention.js, loaded before this).
   const mentionUtil = window.ComputorWebview.mention;
 
@@ -471,24 +470,13 @@
     // Title row: subject input + send button
     const titleRow = createElement('div', { className: 'title-row' });
 
-    let titleInput = null;
     if (state.showSubject === false) {
       // Conversational scope (chat / reply) — no subject. A spacer keeps the
       // Send button right-aligned in the flex row.
       titleRow.appendChild(createElement('div', { className: 'title-row-spacer' }));
-    } else if (createInput) {
-      titleInput = createInput({
-        placeholder: 'Subject (optional)',
-        value: state.editingMessage ? state.editingMessage.title || '' : '',
-        disabled: state.loading
-      });
-      const titleEl = titleInput.render();
-      titleEl.id = 'message-title';
-      titleEl.classList.add('chat-title-input');
-      titleRow.appendChild(titleEl);
     } else {
       const inputEl = createElement('input', {
-        className: 'vscode-input chat-title-input',
+        className: 'chat-title-input',
         attributes: {
           type: 'text',
           id: 'message-title',
@@ -503,28 +491,26 @@
     }
 
     // Cancel button in title row (when replying/editing)
-    if (createButton && (state.replyTo || state.editingMessage)) {
-      const cancelButton = createButton({
-        text: 'Cancel',
-        variant: 'tertiary',
-        size: 'sm',
-        onClick: () => {
-          setState({
-            replyTo: undefined,
-            editingMessage: undefined,
-            messageContent: '',
-            activeTab: 'write'
-          });
-          vscode.postMessage({ command: 'cancel' });
-        }
+    if (state.replyTo || state.editingMessage) {
+      const cancelEl = createElement('button', {
+        className: 'btn ghost sm cancel-btn',
+        textContent: 'Cancel',
+        attributes: { type: 'button' }
       });
-      const cancelEl = cancelButton.render();
-      cancelEl.classList.add('cancel-btn');
+      cancelEl.addEventListener('click', () => {
+        setState({
+          replyTo: undefined,
+          editingMessage: undefined,
+          messageContent: '',
+          activeTab: 'write'
+        });
+        vscode.postMessage({ command: 'cancel' });
+      });
       titleRow.appendChild(cancelEl);
     }
 
     // Send/Save button in title row
-    if (createButton) {
+    {
       const sendButton = createElement('button', {
         className: `send-button ${state.loading ? 'loading' : ''} ${state.editingMessage ? 'save-mode' : ''}`,
         attributes: {
@@ -549,7 +535,7 @@
       sendButton.addEventListener('click', () => {
         if (state.loading) return;
 
-        const titleValue = titleInput ? titleInput.getValue() : document.getElementById('message-title')?.value || '';
+        const titleValue = document.getElementById('message-title')?.value || '';
         const contentValue = getEditorContent().trim();
 
         if (!contentValue) {
@@ -592,10 +578,10 @@
     const editorContainer = createElement('div', { className: 'markdown-editor' });
 
     // Tab bar
-    const tabBar = createElement('div', { className: 'editor-tabs' });
+    const tabBar = createElement('div', { className: 'tabs editor-tabs' });
 
     const writeTab = createElement('button', {
-      className: `editor-tab ${state.activeTab === 'write' ? 'active' : ''}`,
+      className: `tab editor-tab ${state.activeTab === 'write' ? 'active' : ''}`,
       textContent: 'Write'
     });
     writeTab.addEventListener('click', () => {
@@ -605,7 +591,7 @@
     });
 
     const previewTab = createElement('button', {
-      className: `editor-tab ${state.activeTab === 'preview' ? 'active' : ''}`,
+      className: `tab editor-tab ${state.activeTab === 'preview' ? 'active' : ''}`,
       textContent: 'Preview'
     });
     previewTab.addEventListener('click', () => {
@@ -625,7 +611,7 @@
 
     if (state.activeTab === 'write') {
       const editor = createElement('div', {
-        className: 'vscode-input chat-textarea mention-editor',
+        className: 'chat-textarea mention-editor',
         attributes: {
           id: 'message-body',
           contenteditable: state.loading ? 'false' : 'true',

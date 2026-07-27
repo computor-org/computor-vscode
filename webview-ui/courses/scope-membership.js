@@ -45,21 +45,21 @@
     const headerLabel = target.kind === 'organization' ? 'Organization' : 'Course Family';
 
     root.innerHTML = `
-      <header class="scope-header">
+      <header class="header">
         <h1>${escapeHtml(target.scopeTitle)}</h1>
-        <p class="scope-subtitle">${escapeHtml(target.scopeSubtitle || headerLabel)} · Members</p>
+        <p>${escapeHtml(target.scopeSubtitle || headerLabel)} · Members</p>
         ${canManage ? '' : '<p class="notice info">You have read-only access. Backend rejects mutations from non-managers.</p>'}
       </header>
 
       ${noticeHtml()}
 
-      <section class="scope-section">
-        <div class="scope-section-header">
+      <section class="section stack tight">
+        <div class="section-header">
           <h2>Members (${members.length})</h2>
         </div>
         ${members.length === 0
-          ? '<p class="scope-empty">No members yet.</p>'
-          : `<table class="scope-members">
+          ? '<p class="text-muted">No members yet.</p>'
+          : `<table class="table scope-members">
               <thead>
                 <tr>
                   <th>User</th>
@@ -97,11 +97,11 @@
       </section>
 
       ${canManage ? `
-      <section class="scope-section">
-        <div class="scope-section-header">
+      <section class="section stack tight">
+        <div class="section-header">
           <h2>Add Member</h2>
         </div>
-        <form id="add-member-form" class="scope-add-form">
+        <form id="add-member-form" class="form-grid scope-add-form">
           <div class="form-field">
             <label for="add-role">Role</label>
             <select id="add-role" name="role_id" required>
@@ -114,9 +114,9 @@
             <input id="add-identifier" name="identifier" type="text" placeholder="user@example.com" autocomplete="off" />
             <p class="field-hint">Looks up the user by exact email.</p>
           </div>
-          <div class="form-actions">
+          <div class="form-actions end">
             <button type="button" id="browse-users-btn" class="btn-secondary">Browse users…</button>
-            <button type="submit" class="primary">Add Member</button>
+            <button type="submit" class="btn">Add Member</button>
           </div>
         </form>
       </section>

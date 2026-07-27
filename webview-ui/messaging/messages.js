@@ -2,7 +2,6 @@
   // Shared runtime (base.js). formatDateTime matches the old local
   // formatDate (toLocaleString, i.e. date + time).
   const { vscode, escapeHtml, formatDateTime: formatDate, el, createStore } = window.ComputorWebview;
-  const { createButton } = window.UIComponents || {};
 
   const { state, setState } = createStore({
     target: undefined,
@@ -155,6 +154,18 @@
     return el(tag, props, children);
   }
 
+  // Buttons are plain base.css primitives (.btn + size/variant modifiers);
+  // this only saves repeating the element-then-listener dance at each site.
+  function button(text, className, onClick) {
+    const node = createElement('button', {
+      className: className,
+      textContent: text,
+      attributes: { type: 'button' }
+    });
+    node.addEventListener('click', onClick);
+    return node;
+  }
+
   function getScopeLabel(scope) {
     const labels = {
       'global': 'Global',
@@ -274,7 +285,7 @@
     if (roleLabel) {
       const roleClass = authorRole ? authorRole.replace('_', '') : '';
       const roleBadge = createElement('span', {
-        className: `author-role-badge role-${roleClass}`,
+        className: `badge xs author-role-badge role-${roleClass}`,
         textContent: roleLabel,
         attributes: {
           title: `Course Role: ${roleLabel}`
@@ -287,7 +298,7 @@
     if (message.scope) {
       const scopeLabel = getScopeLabel(message.scope);
       const scopeTag = createElement('span', {
-        className: `message-scope-tag scope-${message.scope}`,
+        className: `badge xs message-scope-tag scope-${message.scope}`,
         textContent: scopeLabel,
         attributes: {
           title: `Message Scope: ${scopeLabel}`
@@ -304,16 +315,12 @@
     const metaRight = createElement('div', { className: 'message-meta-right' });
 
     const repliesAllowed = state.target?.allowReplies !== false;
-    if (createButton && repliesAllowed) {
-      const replyButton = createButton({
-        text: 'Reply',
-        size: 'xs',
-        variant: 'secondary',
-        onClick: () => vscode.postMessage({ command: 'replyTo', data: message })
-      });
-      const replyEl = replyButton.render();
-      replyEl.classList.add('message-reply-button');
-      metaRight.appendChild(replyEl);
+    if (repliesAllowed) {
+      metaRight.appendChild(
+        button('Reply', 'btn secondary xs message-reply-button', () =>
+          vscode.postMessage({ command: 'replyTo', data: message })
+        )
+      );
     }
 
     metaRight.appendChild(
@@ -340,29 +347,20 @@
     // Only show edit/delete buttons if the user is the author
     const isAuthor = Boolean(message.is_author);
 
-    if (isAuthor && createButton) {
-      const editBtn = createButton({
-        text: 'Edit',
-        size: 'sm',
-        variant: 'secondary',
-        onClick: () => vscode.postMessage({ command: 'editMessage', data: message })
-      });
-      actions.appendChild(editBtn.render());
-    }
-
-    if (isAuthor && createButton) {
-      const deleteBtn = createButton({
-        text: 'Delete',
-        size: 'sm',
-        variant: 'tertiary',
-        onClick: () => {
+    if (isAuthor) {
+      actions.appendChild(
+        button('Edit', 'btn secondary sm', () =>
+          vscode.postMessage({ command: 'editMessage', data: message })
+        )
+      );
+      actions.appendChild(
+        button('Delete', 'btn ghost sm', () =>
           vscode.postMessage({
             command: 'confirmDeleteMessage',
             data: { messageId: message.id, title: message.title }
-          });
-        }
-      });
-      actions.appendChild(deleteBtn.render());
+          })
+        )
+      );
     }
 
     card.appendChild(meta);
@@ -470,92 +468,51 @@
     // Quick filter buttons row
     const quickFilters = createElement('div', { className: 'quick-filters' });
 
-    if (createButton) {
-      // Unread filter buttons
-      const allBtn = createButton({
-        text: 'All',
-        size: 'xs',
-        variant: state.filters.unread === null ? 'primary' : 'secondary',
-        onClick: () => {
-          state.filters.unread = null;
-          applyFilters();
-        }
-      });
-      quickFilters.appendChild(allBtn.render());
+    // A selected quick filter is the primary .btn; the rest are secondary.
+    const filterChip = (selected) => `btn xs${selected ? '' : ' secondary'}`;
 
-      const unreadBtn = createButton({
-        text: 'Unread',
-        size: 'xs',
-        variant: state.filters.unread === true ? 'primary' : 'secondary',
-        onClick: () => {
-          state.filters.unread = true;
-          applyFilters();
-        }
-      });
-      quickFilters.appendChild(unreadBtn.render());
+    quickFilters.appendChild(
+      button('All', filterChip(state.filters.unread === null), () => {
+        state.filters.unread = null;
+        applyFilters();
+      })
+    );
+    quickFilters.appendChild(
+      button('Unread', filterChip(state.filters.unread === true), () => {
+        state.filters.unread = true;
+        applyFilters();
+      })
+    );
 
-      // Date preset buttons
-      const todayBtn = createButton({
-        text: 'Today',
-        size: 'xs',
-        variant: state.filters.datePreset === 'today' ? 'primary' : 'secondary',
-        onClick: () => {
-          state.filters.datePreset = state.filters.datePreset === 'today' ? null : 'today';
+    for (const [preset, label] of [
+      ['today', 'Today'],
+      ['week', 'This Week'],
+      ['month', 'This Month']
+    ]) {
+      quickFilters.appendChild(
+        button(label, filterChip(state.filters.datePreset === preset), () => {
+          state.filters.datePreset = state.filters.datePreset === preset ? null : preset;
           applyFilters();
-        }
-      });
-      quickFilters.appendChild(todayBtn.render());
+        })
+      );
+    }
 
-      const weekBtn = createButton({
-        text: 'This Week',
-        size: 'xs',
-        variant: state.filters.datePreset === 'week' ? 'primary' : 'secondary',
-        onClick: () => {
-          state.filters.datePreset = state.filters.datePreset === 'week' ? null : 'week';
-          applyFilters();
-        }
-      });
-      quickFilters.appendChild(weekBtn.render());
-
-      const monthBtn = createButton({
-        text: 'This Month',
-        size: 'xs',
-        variant: state.filters.datePreset === 'month' ? 'primary' : 'secondary',
-        onClick: () => {
-          state.filters.datePreset = state.filters.datePreset === 'month' ? null : 'month';
-          applyFilters();
-        }
-      });
-      quickFilters.appendChild(monthBtn.render());
-
-      // Clear filters button (only show if filters are active)
-      if (hasActiveFilters()) {
-        const clearBtn = createButton({
-          text: 'Clear Filters',
-          size: 'xs',
-          variant: 'tertiary',
-          onClick: clearFilters
-        });
-        const clearEl = clearBtn.render();
-        clearEl.classList.add('clear-filters-btn');
-        quickFilters.appendChild(clearEl);
-      }
+    if (hasActiveFilters()) {
+      quickFilters.appendChild(
+        button('Clear Filters', 'btn ghost xs clear-filters-btn', clearFilters)
+      );
     }
 
     filterBar.appendChild(quickFilters);
 
     // Advanced filters toggle
-    if (createButton) {
-      const toggleBtn = createButton({
-        text: state.filtersExpanded ? '▼ Advanced Filters' : '▶ Advanced Filters',
-        size: 'xs',
-        variant: 'tertiary',
-        onClick: () => setState({ filtersExpanded: !state.filtersExpanded })
-      });
-      const toggleEl = toggleBtn.render();
-      toggleEl.classList.add('advanced-toggle');
-      filterBar.appendChild(toggleEl);
-    }
+    filterBar.appendChild(
+      button(
+        state.filtersExpanded ? '▼ Advanced Filters' : '▶ Advanced Filters',
+        'btn ghost xs advanced-toggle',
+        () => setState({ filtersExpanded: !state.filtersExpanded })
+      )
+    );
 
     // Advanced filters panel (collapsible)
     if (state.filtersExpanded) {
@@ -566,7 +523,7 @@
       tagsRow.appendChild(createElement('label', { textContent: 'Tags (comma-separated):' }));
 
       const tagsInput = createElement('input', {
-        className: 'vscode-input filter-input',
+        className: 'filter-input',
         attributes: {
           type: 'text'
         }
@@ -594,7 +551,7 @@
       dateRow.appendChild(createElement('label', { textContent: 'Custom date range:' }));
 
       const fromInput = createElement('input', {
-        className: 'vscode-input filter-input date-input',
+        className: 'filter-input date-input',
         attributes: {
           type: 'date',
           placeholder: 'From'
@@ -612,7 +569,7 @@
       dateRow.appendChild(createElement('span', { textContent: ' to ', className: 'date-separator' }));
 
       const toInput = createElement('input', {
-        className: 'vscode-input filter-input date-input',
+        className: 'filter-input date-input',
         attributes: {
           type: 'date',
           placeholder: 'To'
@@ -630,24 +587,18 @@
       advancedPanel.appendChild(dateRow);
 
       // Apply button for advanced filters
-      if (createButton) {
-        const applyRow = createElement('div', { className: 'filter-row filter-actions' });
-        const applyBtn = createButton({
-          text: 'Apply Filters',
-          size: 'sm',
-          variant: 'primary',
-          onClick: () => {
-            // Parse tags from input
-            const tagsValue = tagsInput.value.trim();
-            state.filters.tags = tagsValue
-              ? tagsValue.split(',').map(t => t.trim()).filter(t => t.length > 0)
-              : null;
-            applyFilters();
-          }
-        });
-        applyRow.appendChild(applyBtn.render());
-        advancedPanel.appendChild(applyRow);
-      }
+      const applyRow = createElement('div', { className: 'filter-row filter-actions' });
+      applyRow.appendChild(
+        button('Apply Filters', 'btn sm', () => {
+          // Parse tags from input
+          const tagsValue = tagsInput.value.trim();
+          state.filters.tags = tagsValue
+            ? tagsValue.split(',').map(t => t.trim()).filter(t => t.length > 0)
+            : null;
+          applyFilters();
+        })
+      );
+      advancedPanel.appendChild(applyRow);
 
       filterBar.appendChild(advancedPanel);
     }
@@ -677,20 +628,12 @@
     });
     headerTop.appendChild(titleEl);
 
-    if (createButton) {
-      const refreshBtn = createButton({
-        text: 'Refresh',
-        variant: 'secondary',
-        size: 'sm',
-        onClick: () => {
-          setState({ loading: true });
-          vscode.postMessage({ command: 'refreshMessages' });
-        }
-      });
-      const refreshEl = refreshBtn.render();
-      refreshEl.classList.add('refresh-button');
-      headerTop.appendChild(refreshEl);
-    }
+    headerTop.appendChild(
+      button('Refresh', 'btn secondary sm refresh-button', () => {
+        setState({ loading: true });
+        vscode.postMessage({ command: 'refreshMessages' });
+      })
+    );
 
     header.appendChild(headerTop);
     if (state.target?.subtitle) {

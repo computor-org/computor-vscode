@@ -81,7 +81,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     </div>
 
     <div class="actions">
-      <button id="uploadBtn" class="btn-primary">Upload Changed</button>
+      <button id="uploadBtn" class="btn">Upload Changed</button>
       <button id="uploadSelectedBtn" class="btn-secondary">Upload Selected</button>
     </div>
 

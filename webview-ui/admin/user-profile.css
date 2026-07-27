@@ -1,67 +1,18 @@
 /* User profile view — view-specific layout on top of base.css. */
 
-.profile-root {
-  padding: 16px 24px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 960px;
-  margin: 0 auto;
-}
+/* Shell and section chrome come from base.css (.page-root, .section.stack). */
 
-.profile-section {
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.profile-section h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.profile-section p.section-description {
+.section-description {
   margin: 0;
   color: var(--c-fg-muted);
-  font-size: 12px;
-}
-
-.profile-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px 16px;
-}
-
-/* The grid gap provides the spacing; drop base's .form-field bottom margin. */
-.profile-grid .form-field {
-  margin-bottom: 0;
-}
-
-.profile-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.student-profile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  font-size: var(--font-size-sm);
 }
 
 .student-profile-card {
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: var(--sp-4);
   background: var(--c-bg);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .student-profile-card h3 {
@@ -70,26 +21,6 @@
 }
 
 .student-profile-meta {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--c-fg-muted);
-}
-
-/* Compact inline empty state (overrides base's centered .empty-state). */
-.empty-state {
-  text-align: left;
-  font-size: 13px;
-  color: var(--c-fg-muted);
-  padding: 8px 0;
-}
-
-.profile-divider {
-  height: 1px;
-  background: var(--c-border);
-  margin: 8px 0;
-}
-
-@media (max-width: 640px) {
-  .profile-root {
-    padding: 16px;
-  }
 }
