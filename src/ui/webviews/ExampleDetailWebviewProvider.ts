@@ -50,8 +50,8 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: `Example: ${data.example.title}`,
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['example-details.css'],
-      scriptFiles: ['example-details.js'],
+      cssFiles: ['content/example-details.css'],
+      scriptFiles: ['content/example-details.js'],
       initialState: {
         example: data.example,
         repository: data.repository,

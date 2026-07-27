@@ -116,7 +116,7 @@ export class ReleaseValidationWebviewProvider {
     return renderWebviewPage(webview, this.extensionUri, {
       title: 'Release Validation Failed',
       bodyHtml,
-      cssFiles: ['release-validation.css'],
+      cssFiles: ['content/release-validation.css'],
       inlineScript
     });
   }

@@ -90,8 +90,8 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
       headerHtml: `<h1>Example Configuration</h1>
     <p>${escapeHtml(data.exampleTitle || '')} &mdash; meta.yaml</p>`,
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['meta-yaml-editor.css'],
-      scriptFiles: ['meta-yaml-editor.js'],
+      cssFiles: ['content/meta-yaml-editor.css'],
+      scriptFiles: ['content/meta-yaml-editor.js'],
       initialState: {
         meta: existingData || null,
         filePath: data.filePath,

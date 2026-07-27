@@ -247,8 +247,8 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'Course Members',
       bodyHtml: '<div id="app" class="import-container"><div class="loading">Loading import preview...</div></div>',
-      cssFiles: ['course-member-import.css'],
-      scriptFiles: ['course-member-import.js'],
+      cssFiles: ['courses/course-member-import.css'],
+      scriptFiles: ['courses/course-member-import.js'],
       initialState: data
     });
   }

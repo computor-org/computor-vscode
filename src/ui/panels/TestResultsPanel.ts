@@ -636,7 +636,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
             bodyHtml: `
             <div class="header" id="header">${this.value?.label || 'Test Results'}</div>
             <div class="content" id="content">${this.value?.message || '<span class="no-results">No test results available</span>'}</div>`,
-            cssFiles: ['test-results.css'],
+            cssFiles: ['student/test-results.css'],
             inlineScript: `
                 ComputorWebview.onCommand('resultsUpdate', (data) => {
                     document.getElementById('header').innerText = data.label;

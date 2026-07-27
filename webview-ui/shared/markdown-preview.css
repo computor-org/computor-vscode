@@ -1,6 +1,6 @@
 /*
  * Markdown preview panel (README / help / description previews).
- * Loaded after base.css (and lib/katex-inline.css). Standalone twin of the
+ * Loaded after base.css (and vendor/katex-inline.css). Standalone twin of the
  * .markdown-body rules in chat-shared.css plus document-level extras the
  * chat views don't need (headings, tables, images, math blocks).
  */
