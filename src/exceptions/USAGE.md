@@ -45,7 +45,7 @@ For better user experience, use the display strategies:
 
 ```typescript
 import { errorRecoveryService } from '../services/ErrorRecoveryService';
-import { HttpError } from '../http/errors/HttpError';
+import { HttpError } from './errors/HttpError';
 
 try {
   await apiService.submitAssignment(data);
@@ -244,7 +244,7 @@ try {
 
 ### After
 ```typescript
-import { HttpError } from '../http/errors/HttpError';
+import { HttpError } from './errors/HttpError';
 
 try {
   await apiService.getCourse(id);
@@ -282,7 +282,7 @@ try {
 
 ### Error catalog not loading
 If you see warnings like "Catalog not loaded", check:
-1. The `error-catalog.vscode.json` file exists in `src/exceptions/`
+1. The `error-catalog.vscode.json` file exists in `src/exceptions/generated/`
 2. The file is included in webpack bundle (check `webpack.config.js`)
 3. The extension is properly compiled
 
@@ -296,11 +296,11 @@ If backend errors aren't being recognized:
 
 See these files for real-world usage examples:
 - [src/services/ErrorRecoveryService.ts](../services/ErrorRecoveryService.ts) - Error recovery strategies
-- [src/http/errors/HttpError.ts](../http/errors/HttpError.ts) - Enhanced HttpError class
+- [src/exceptions/errors/HttpError.ts](./errors/HttpError.ts) - Enhanced HttpError class
 - [src/services/ComputorApiService.ts](../services/ComputorApiService.ts) - API error handling
 
 ## Reference
 
-- [Error Catalog JSON](./error-catalog.vscode.json) - Complete error definitions
-- [Error Codes Documentation](./ERROR_CODES.md) - Human-readable error reference
+- [Error Catalog JSON](./generated/error-catalog.vscode.json) - Complete error definitions
+- [Vendored Catalog README](./generated/README.md) - Where the catalog comes from and how to refresh it
 - [Type Definitions](./types.ts) - TypeScript interfaces

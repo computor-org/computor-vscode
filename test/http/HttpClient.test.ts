@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { HttpClient } from '../../src/http/HttpClient';
-import { HttpError, AuthenticationError, NetworkError, TimeoutError } from '../../src/http/errors';
+import { HttpError, AuthenticationError, NetworkError, TimeoutError } from '../../src/exceptions/errors';
 
 class TestHttpClient extends HttpClient {
   private authenticated = false;

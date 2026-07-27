@@ -28,8 +28,9 @@ export class ErrorCatalog {
     }
 
     try {
-      // When webpack bundles, __dirname will be 'dist', so we need to look in 'exceptions' subfolder
-      const catalogPath = path.join(__dirname, 'exceptions', 'error-catalog.vscode.json');
+      // When webpack bundles, __dirname will be 'dist'; CopyWebpackPlugin mirrors the
+      // src layout, so the vendored catalog lands in 'exceptions/generated'.
+      const catalogPath = path.join(__dirname, 'exceptions', 'generated', 'error-catalog.vscode.json');
       console.log('[ErrorCatalog] Attempting to load catalog from:', catalogPath);
       console.log('[ErrorCatalog] __dirname:', __dirname);
       console.log('[ErrorCatalog] File exists:', fs.existsSync(catalogPath));
@@ -40,7 +41,7 @@ export class ErrorCatalog {
       console.log(`[ErrorCatalog] Successfully loaded ${this.catalog.error_count} error definitions (version ${this.catalog.version})`);
     } catch (error) {
       console.error('[ErrorCatalog] Failed to load error catalog:', error);
-      console.error('[ErrorCatalog] Attempted path:', path.join(__dirname, 'exceptions', 'error-catalog.vscode.json'));
+      console.error('[ErrorCatalog] Attempted path:', path.join(__dirname, 'exceptions', 'generated', 'error-catalog.vscode.json'));
       this.catalog = null;
       this.initialized = false;
     }

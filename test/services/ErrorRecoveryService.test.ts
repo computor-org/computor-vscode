@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { ErrorRecoveryService } from '../../src/services/ErrorRecoveryService';
-import { HttpError } from '../../src/http/errors/HttpError';
+import { HttpError } from '../../src/exceptions/errors/HttpError';
 
 describe('ErrorRecoveryService.executeWithRecovery', () => {
   let svc: ErrorRecoveryService;

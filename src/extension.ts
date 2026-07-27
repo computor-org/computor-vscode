@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IconGenerator } from './utils/IconGenerator';
-import { execAsync, GitCancelledError } from './utils/exec';
+import { execAsync } from './utils/exec';
+import { GitCancelledError } from './exceptions/errors/GitExecError';
 import { errorCatalog } from './exceptions/ErrorCatalog';
 import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
 import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
@@ -1027,7 +1028,7 @@ class UnifiedController {
     const { TutorCourseFilterItem, TutorGroupOptionItem, TutorMemberFilterItem, NO_GROUP_SENTINEL, formatMemberName } = await import('./ui/tree/tutor/tutor-filter-tree-items');
     const { TutorSelectionService } = await import('./services/TutorSelectionService');
     const { TutorStatusBarService } = await import('./ui/TutorStatusBarService');
-    const { TutorEditorDecorationService } = await import('./providers/TutorEditorDecorationService');
+    const { TutorEditorDecorationService } = await import('./ui/TutorEditorDecorationService');
     const selection = TutorSelectionService.initialize(this.context, api);
 
     const editorDecorationService = TutorEditorDecorationService.initialize(this.context);

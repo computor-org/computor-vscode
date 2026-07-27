@@ -1,6 +1,6 @@
 import fetch, { Response, Headers } from 'node-fetch';
 import { HttpMethod, HttpResponse, HttpRequestConfig, RequestInterceptor, ResponseInterceptor } from '../types/HttpTypes';
-import { HttpError, NetworkError, TimeoutError, ValidationError } from './errors';
+import { HttpError, NetworkError, TimeoutError, ValidationError } from '../exceptions/errors';
 import { CacheStrategy, CacheKey } from './cache/CacheStrategy';
 import { InMemoryCache } from './cache/InMemoryCache';
 import { NoOpCache } from './cache/NoOpCache';

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
-import { HttpError } from '../http/errors/HttpError';
+import { HttpError } from '../exceptions/errors/HttpError';
 import { errorRecoveryService, RetryOptions } from './ErrorRecoveryService';
 import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';

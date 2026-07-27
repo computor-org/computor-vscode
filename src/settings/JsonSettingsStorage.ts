@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { SettingsStorage } from './SettingsStorage';
-import { SettingsValidationError } from './errors/SettingsError';
+import { SettingsValidationError } from '../exceptions/errors/SettingsError';
 
 export class JsonSettingsStorage<T> extends SettingsStorage<T> {
   protected filePath: string;

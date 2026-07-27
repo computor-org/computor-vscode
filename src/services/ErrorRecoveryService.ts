@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BackendConnectionService } from './BackendConnectionService';
-import { HttpError } from '../http/errors/HttpError';
+import { HttpError } from '../exceptions/errors/HttpError';
 import { ErrorDisplayStrategyFactory } from '../exceptions/ErrorDisplayStrategy';
 import { notify } from '../utils/notify';
 

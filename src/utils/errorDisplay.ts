@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { HttpError } from '../http/errors/HttpError';
+import { HttpError } from '../exceptions/errors/HttpError';
 import { isConsentRequiredError, handleConsentError } from './consentGate';
 
 /**

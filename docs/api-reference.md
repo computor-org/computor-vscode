@@ -220,7 +220,7 @@ Types are organized by domain:
 API calls throw `HttpError` on failure:
 
 ```typescript
-import { HttpError } from '../http/errors/HttpError';
+import { HttpError } from '../exceptions/errors/HttpError';
 
 try {
   const courses = await api.getCourses();

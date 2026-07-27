@@ -14,7 +14,7 @@ import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { extractGraderName } from '../../../utils/gradingHelpers';
 import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/repositoryNaming';
 import { extractZipBuffer } from '../../../utils/zipHelpers';
-import { GitCancelledError } from '../../../utils/exec';
+import { GitCancelledError } from '../../../exceptions/errors/GitExecError';
 import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { notify } from '../../../utils/notify';

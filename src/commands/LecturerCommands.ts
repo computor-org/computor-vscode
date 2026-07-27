@@ -4,7 +4,7 @@ import * as path from 'path';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import type { GitServerGet, CourseGitBindingUpsert } from '../types/courseGit';
-import { CourseGroupCommands } from './lecturer/courseGroupCommands';
+import { CourseGroupCommands } from './LecturerCourseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
 import { CourseContentWebviewFactory } from '../ui/webviews/content/CourseContentWebviewFactory';
@@ -25,7 +25,7 @@ import { CourseMemberProgressWebviewProvider } from '../ui/webviews/CourseMember
 import { ScopeMembershipWebviewProvider } from '../ui/webviews/ScopeMembershipWebviewProvider';
 import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
-import { HttpError } from '../http/errors/HttpError';
+import { HttpError } from '../exceptions/errors/HttpError';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';

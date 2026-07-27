@@ -1,5 +1,5 @@
 import { HttpClient } from './HttpClient';
-import { AuthenticationError } from './errors';
+import { AuthenticationError } from '../exceptions/errors';
 
 export class ApiKeyHttpClient extends HttpClient {
   private apiKey: string;

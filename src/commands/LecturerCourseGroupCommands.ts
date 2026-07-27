@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { ComputorApiService } from '../../services/ComputorApiService';
-import { LecturerTreeDataProvider } from '../../ui/tree/lecturer/LecturerTreeDataProvider';
-import { CourseFolderTreeItem } from '../../ui/tree/lecturer/LecturerTreeItems';
-import { notify } from '../../utils/notify';
+import { ComputorApiService } from '../services/ComputorApiService';
+import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
+import { CourseFolderTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
+import { notify } from '../utils/notify';
 
 export class CourseGroupCommands {
   constructor(

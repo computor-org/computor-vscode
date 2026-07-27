@@ -1,5 +1,5 @@
-import { errorCatalog } from '../../exceptions/ErrorCatalog';
-import { BackendErrorDefinition } from '../../exceptions/types';
+import { errorCatalog } from '../ErrorCatalog';
+import { BackendErrorDefinition } from '../types';
 
 export class HttpError extends Error {
   public readonly errorCode?: string;

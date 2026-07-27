@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import { HttpClient } from './HttpClient';
-import { AuthenticationError, MaintenanceError } from './errors';
+import { AuthenticationError, MaintenanceError } from '../exceptions/errors';
 import { TokenRefreshRequest, TokenRefreshResponse } from '../types/generated/auth';
 
 /** Endpoints that bypass the maintenance mode block. */
