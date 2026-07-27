@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check webview asset paths
+        run: npm run check:assets
+
       - name: Unit tests (with coverage)
         run: npm run test:coverage
 

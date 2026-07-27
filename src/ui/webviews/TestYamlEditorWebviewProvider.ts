@@ -162,8 +162,8 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
       headerHtml: `<h1>Test Configuration</h1>
     <p>${escapeHtml(data.exampleTitle || '')} &mdash; test.yaml</p>`,
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['test-yaml-editor.css'],
-      scriptFiles: ['test-yaml-editor.js'],
+      cssFiles: ['content/test-yaml-editor.css'],
+      scriptFiles: ['content/test-yaml-editor.js'],
       initialState: {
         registry,
         testSuite: existingData || null,

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Vendors KaTeX into webview-ui/lib/ as fully self-contained assets:
+ * Vendors KaTeX into webview-ui/vendor/ as fully self-contained assets:
  *
- *   webview-ui/lib/katex.min.js     — verbatim from the katex npm package
- *   webview-ui/lib/katex-inline.css — katex.min.css with every @font-face
+ *   webview-ui/vendor/katex.min.js     — verbatim from the katex npm package
+ *   webview-ui/vendor/katex-inline.css — katex.min.css with every @font-face
  *                                     reduced to its woff2 source embedded
  *                                     as a base64 data: URI
  *
@@ -22,7 +22,7 @@ const path = require('path');
 const KATEX_VERSION = '0.16.22';
 
 const repoRoot = path.resolve(__dirname, '..');
-const outDir = path.join(repoRoot, 'webview-ui', 'lib');
+const outDir = path.join(repoRoot, 'webview-ui', 'vendor');
 
 function fail(msg) {
   console.error(`vendor-katex: ${msg}`);
@@ -71,8 +71,8 @@ try {
   fs.writeFileSync(path.join(outDir, 'katex-inline.css'), header('katex.min.css + embedded woff2 fonts') + css);
 
   const kb = (f) => Math.round(fs.statSync(path.join(outDir, f)).size / 1024);
-  console.log(`Wrote webview-ui/lib/katex.min.js (${kb('katex.min.js')} KB)`);
-  console.log(`Wrote webview-ui/lib/katex-inline.css (${kb('katex-inline.css')} KB, ${embedded} fonts embedded)`);
+  console.log(`Wrote webview-ui/vendor/katex.min.js (${kb('katex.min.js')} KB)`);
+  console.log(`Wrote webview-ui/vendor/katex-inline.css (${kb('katex-inline.css')} KB, ${embedded} fonts embedded)`);
 } finally {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }

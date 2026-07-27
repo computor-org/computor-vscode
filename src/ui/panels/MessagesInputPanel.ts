@@ -426,8 +426,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     this.view.webview.html = renderWebviewPage(this.view.webview, this.extensionUri, {
       title: 'New Message',
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['components/components.css', 'chat-shared.css', 'messages-input.css'],
-      scriptFiles: ['lib/marked.min.js', 'components.js', 'mention.js', 'messages-input.js']
+      cssFiles: ['shared/components.css', 'shared/chat-shared.css', 'messaging/messages-input.css'],
+      scriptFiles: ['vendor/marked.min.js', 'shared/components.js', 'shared/mention.js', 'messaging/messages-input.js']
     });
   }
 }

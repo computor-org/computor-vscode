@@ -4,7 +4,7 @@ import { expect } from 'chai';
 // Default-imported because the export is assigned inside an IIFE, which the
 // ESM named-export lexer can't see.
 // @ts-ignore -- no type declarations for the plain-JS asset
-import markdownAsset from '../../webview-ui/markdown.js';
+import markdownAsset from '../../webview-ui/shared/markdown.js';
 
 const { renderMarkdown, extractMath } = markdownAsset as {
   renderMarkdown: (markdown: unknown, opts?: Record<string, unknown>) => string;
@@ -45,7 +45,7 @@ function fakeDeps(): {
   };
 }
 
-describe('webview-ui/markdown.js renderMarkdown', () => {
+describe('webview-ui/shared/markdown.js renderMarkdown', () => {
   it('lifts $$…$$ out before marked so \\\\ line breaks survive (issue #267)', () => {
     const deps = fakeDeps();
     const source =
@@ -155,7 +155,7 @@ describe('webview-ui/markdown.js renderMarkdown', () => {
   });
 });
 
-describe('webview-ui/markdown.js extractMath', () => {
+describe('webview-ui/shared/markdown.js extractMath', () => {
   it('masks each segment with a unique token and reports it', () => {
     const { masked, segments } = extractMath('$a$ and $$b$$');
     expect(segments).to.have.length(2);

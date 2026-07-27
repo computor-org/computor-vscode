@@ -365,8 +365,8 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'Manage Members',
       bodyHtml: '<div id="app" class="members-container"><div class="loading">Loading members…</div></div>',
-      cssFiles: ['manage-course-members.css'],
-      scriptFiles: ['manage-course-members.js'],
+      cssFiles: ['courses/manage-course-members.css'],
+      scriptFiles: ['courses/manage-course-members.js'],
       initialState: data ?? {}
     });
   }

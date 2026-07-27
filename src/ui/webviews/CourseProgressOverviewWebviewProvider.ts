@@ -31,8 +31,8 @@ export class CourseProgressOverviewWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'Course Progress Overview',
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['charts.css', 'course-progress-overview.css'],
-      scriptFiles: ['lib/chart.min.js', 'charts.js', 'course-progress-overview.js'],
+      cssFiles: ['courses/charts.css', 'courses/course-progress-overview.css'],
+      scriptFiles: ['vendor/chart.min.js', 'courses/charts.js', 'courses/course-progress-overview.js'],
       initialState: data ?? { course: null, students: [] }
     });
   }

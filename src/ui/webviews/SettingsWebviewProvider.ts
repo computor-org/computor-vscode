@@ -49,8 +49,8 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'Computor Settings',
       bodyHtml: '<div id="app" class="settings-root"></div>',
-      cssFiles: ['settings-view.css'],
-      scriptFiles: ['validators.js', 'settings-view.js'],
+      cssFiles: ['admin/settings-view.css'],
+      scriptFiles: ['shared/validators.js', 'admin/settings-view.js'],
       initialState: data ?? {}
     });
   }

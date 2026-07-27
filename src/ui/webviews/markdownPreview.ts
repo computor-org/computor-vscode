@@ -66,8 +66,8 @@ export async function showMarkdownPreview(
   panel.webview.html = renderWebviewPage(panel.webview, context.extensionUri, {
     title,
     bodyHtml: '<div class="markdown-body" id="content"></div>',
-    cssFiles: ['lib/katex-inline.css', 'markdown-preview.css'],
-    scriptFiles: ['lib/marked.min.js', 'lib/katex.min.js', 'markdown.js'],
+    cssFiles: ['vendor/katex-inline.css', 'shared/markdown-preview.css'],
+    scriptFiles: ['vendor/marked.min.js', 'vendor/katex.min.js', 'shared/markdown.js'],
     initialState: { markdown, baseUri },
     inlineScript: `
       const state = window.__INITIAL_STATE__ || {};

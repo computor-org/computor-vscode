@@ -4,8 +4,8 @@
  * Provides pure validator functions (return error string or null)
  * and a helper to wire live validation onto input elements.
  *
- * Usage:
- *   <script nonce="..." src="${validatorsUri}"></script>
+ * Usage: list it in a provider's scriptFiles before the page script, e.g.
+ *   scriptFiles: ['shared/validators.js', 'admin/settings-view.js']
  *
  * Available on window.Validators after loading.
  */

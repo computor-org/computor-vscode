@@ -17,9 +17,9 @@ export interface WebviewPageOptions {
   bodyHtml: string;
   /** Optional markup wrapped in a <div class="header"> above the body. */
   headerHtml?: string;
-  /** Stylesheets under webview-ui/, loaded after base.css (e.g. 'settings-view.css'). */
+  /** Stylesheets under webview-ui/, loaded after base.css (e.g. 'admin/settings-view.css'). */
   cssFiles?: string[];
-  /** Scripts under webview-ui/, loaded after base.js (e.g. 'settings-view.js'). */
+  /** Scripts under webview-ui/, loaded after base.js (e.g. 'admin/settings-view.js'). */
   scriptFiles?: string[];
   /** Inline script, executed after all external scripts. `vscode` is in scope. */
   inlineScript?: string;
@@ -73,7 +73,7 @@ export function renderWebviewPage(
     }
   };
 
-  const cssLinks = ['base.css', ...(options.cssFiles ?? [])]
+  const cssLinks = ['shared/base.css', ...(options.cssFiles ?? [])]
     .map((file) => {
       const css = readAsset(file);
       return css !== undefined
@@ -82,7 +82,7 @@ export function renderWebviewPage(
     })
     .join('\n  ');
 
-  const scriptTags = ['base.js', ...(options.scriptFiles ?? [])]
+  const scriptTags = ['shared/base.js', ...(options.scriptFiles ?? [])]
     .map((file) => {
       const js = readAsset(file);
       // Break any literal </script in the source so it can't terminate the

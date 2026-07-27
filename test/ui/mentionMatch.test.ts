@@ -4,7 +4,7 @@ import { expect } from 'chai';
 // Default-imported because the export is assigned inside an IIFE, which the
 // ESM named-export lexer can't see.
 // @ts-ignore -- no type declarations for the plain-JS asset
-import mentionAsset from '../../webview-ui/mention.js';
+import mentionAsset from '../../webview-ui/shared/mention.js';
 
 const { matchMentionTrigger, mentionMatches, formatMentionName, foldName } =
   mentionAsset as {
@@ -14,7 +14,7 @@ const { matchMentionTrigger, mentionMatches, formatMentionName, foldName } =
     foldName: (s: unknown) => string;
   };
 
-describe('webview-ui/mention.js matchMentionTrigger', () => {
+describe('webview-ui/shared/mention.js matchMentionTrigger', () => {
   it('captures an ASCII query after @', () => {
     expect(matchMentionTrigger('@Max')).to.deep.equal({ query: 'Max' });
   });
@@ -55,7 +55,7 @@ describe('webview-ui/mention.js matchMentionTrigger', () => {
   });
 });
 
-describe('webview-ui/mention.js mentionMatches', () => {
+describe('webview-ui/shared/mention.js mentionMatches', () => {
   const muller = { given_name: 'Anna', family_name: 'Müller' };
   const weiss = { given_name: 'Jörg', family_name: 'Weiß' };
 
@@ -85,7 +85,7 @@ describe('webview-ui/mention.js mentionMatches', () => {
   });
 });
 
-describe('webview-ui/mention.js formatMentionName', () => {
+describe('webview-ui/shared/mention.js formatMentionName', () => {
   it('joins given and family names', () => {
     expect(formatMentionName({ given_name: 'Anna', family_name: 'Müller' })).to.equal('Anna Müller');
   });
@@ -101,7 +101,7 @@ describe('webview-ui/mention.js formatMentionName', () => {
   });
 });
 
-describe('webview-ui/mention.js foldName', () => {
+describe('webview-ui/shared/mention.js foldName', () => {
   it('strips diacritics and lower-cases', () => {
     expect(foldName('Grün')).to.equal('grun');
     expect(foldName('Schäfer')).to.equal('schafer');

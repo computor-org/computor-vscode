@@ -179,8 +179,8 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
     this.view.webview.html = renderWebviewPage(this.view.webview, this.extensionUri, {
       title: 'Comment',
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['components/components.css', 'comments-input.css'],
-      scriptFiles: ['components.js', 'comments-input.js']
+      cssFiles: ['shared/components.css', 'messaging/comments-input.css'],
+      scriptFiles: ['shared/components.js', 'messaging/comments-input.js']
     });
   }
 }

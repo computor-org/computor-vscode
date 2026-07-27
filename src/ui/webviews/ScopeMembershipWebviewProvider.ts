@@ -72,8 +72,8 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'Members',
       bodyHtml: '<div id="app" class="scope-membership-root"></div>',
-      cssFiles: ['scope-membership.css'],
-      scriptFiles: ['scope-membership.js'],
+      cssFiles: ['courses/scope-membership.css'],
+      scriptFiles: ['courses/scope-membership.js'],
       initialState: data ?? null
     });
   }

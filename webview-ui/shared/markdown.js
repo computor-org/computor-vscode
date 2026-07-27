@@ -1,7 +1,7 @@
 /*
  * Math-aware markdown rendering for preview webviews.
  *
- * Loaded after base.js (and after lib/marked.min.js + lib/katex.min.js in
+ * Loaded after base.js (and after vendor/marked.min.js + vendor/katex.min.js in
  * views that want math). Exposes `window.ComputorWebview.renderMarkdown`.
  *
  * Math must be lifted out of the source BEFORE marked runs: marked treats

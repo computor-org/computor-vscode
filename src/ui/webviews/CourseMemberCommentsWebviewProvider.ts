@@ -64,8 +64,8 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'Course Member Comments',
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['components/components.css', 'chat-shared.css', 'comments.css'],
-      scriptFiles: ['lib/marked.min.js', 'components.js', 'comments.js'],
+      cssFiles: ['shared/components.css', 'shared/chat-shared.css', 'messaging/comments.css'],
+      scriptFiles: ['vendor/marked.min.js', 'shared/components.js', 'messaging/comments.js'],
       initialState: data ?? { courseMemberId: '', title: 'Comments', comments: [] }
     });
   }

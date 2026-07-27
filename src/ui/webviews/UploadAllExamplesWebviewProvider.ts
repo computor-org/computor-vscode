@@ -86,8 +86,8 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     </div>
 
     <div id="summary" class="summary" style="display:none;"></div>`,
-      cssFiles: ['upload-all-examples.css'],
-      scriptFiles: ['upload-all-examples.js'],
+      cssFiles: ['content/upload-all-examples.css'],
+      scriptFiles: ['content/upload-all-examples.js'],
       initialState: examples
     });
   }

@@ -93,7 +93,7 @@ export class ErrorPageWebviewProvider extends BaseWebviewProvider {
       headerHtml,
       bodyHtml,
       inlineStyles: ERROR_PAGE_STYLES,
-      scriptFiles: ['lib/marked.min.js'],
+      scriptFiles: ['vendor/marked.min.js'],
       inlineScript
     });
   }
