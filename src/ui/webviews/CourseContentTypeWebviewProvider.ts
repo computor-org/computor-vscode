@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentTypeGet, CourseList, CourseContentKindList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
@@ -49,14 +49,14 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       ${infoRow('Can Have Parent', kind.has_ascendants ? badge('Yes', 'info') : badge('No', 'muted'))}
     ` : '';
 
-    const infoHtml = section('Information', `
+    const infoHtml = section('Information', detailGrid(`
       ${infoRowCode('ID', contentType.id)}
       ${infoRowCode('Slug', contentType.slug)}
       ${infoRow('Color', `${colorSwatch(color)} <span class="code">${escapeHtml(color)}</span>`)}
       ${infoRowText('Content Kind', kind?.title || contentType.course_content_kind_id)}
       ${infoRowText('Description', contentType.description)}
       ${kindBadges}
-    `);
+    `));
 
     const editHtml = section('Edit Content Type', `
       <form id="editForm">

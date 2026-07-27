@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseGet, CourseFamilyList, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class CourseWebviewProvider extends BaseWebviewProvider {
@@ -36,7 +36,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       ? infoRow('GitLab Repository', `<a href="${escapeHtml(gitlabUrl)}" title="${escapeHtml(gitlabUrl)}">${escapeHtml(gitlabUrl)}</a>`)
       : infoRowText('GitLab Repository', null);
 
-    const infoHtml = section('Information', `
+    const infoHtml = section('Information', detailGrid(`
       ${infoRowCode('ID', course.id)}
       ${infoRowCode('Path', course.path)}
       ${infoRowText('Title', course.title)}
@@ -44,7 +44,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       ${infoRowText('Course Family', courseFamily?.title || courseFamily?.path)}
       ${infoRowText('Organization', organization?.title || organization?.path)}
       ${gitlabRow}
-    `);
+    `));
 
     const editHtml = section('Edit Course', `
       <form id="editForm">

@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { OrganizationGet } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class OrganizationWebviewProvider extends BaseWebviewProvider {
@@ -37,13 +37,13 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(organization.title || organization.path)}</h1>
       <p>Organization</p>`;
 
-    const infoHtml = section('Information', `
+    const infoHtml = section('Information', detailGrid(`
       ${infoRowCode('ID', organization.id)}
       ${infoRowCode('Path', organization.path)}
       ${infoRowText('Title', organization.title)}
       ${infoRowText('Description', organization.description)}
       ${infoRowText('Course Families', String(courseFamiliesCount))}
-    `);
+    `));
 
     const editHtml = section('Edit Organization', `
       <form id="editForm">

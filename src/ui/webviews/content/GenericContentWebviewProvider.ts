@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from '../shared/webviewHelpers';
 
 export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -24,11 +24,11 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
       <p>Content in ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const infoHtml = section('Content Information', `
+    const infoHtml = section('Content Information', detailGrid(`
       ${infoRowCode('ID', courseContent.id)}
       ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
-    `);
+    `));
 
     const editHtml = section('Edit Content', `
       <form id="editForm">

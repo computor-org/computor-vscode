@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { CourseGroupGet, CourseList } from '../../types/generated';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class CourseGroupWebviewProvider extends BaseWebviewProvider {
@@ -31,13 +31,13 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(group.title || group.id)}</h1>
       <p>Course Group${course ? ` in ${escapeHtml(course.title || course.path)}` : ''}</p>`;
 
-    const infoHtml = section('Information', `
+    const infoHtml = section('Information', detailGrid(`
       ${infoRowCode('ID', group.id)}
       ${infoRowText('Title', group.title)}
       ${infoRowText('Description', group.description)}
       ${course ? infoRowText('Course', course.title || course.path) : ''}
       ${infoRowText('Members', String(membersCount || 0))}
-    `);
+    `));
 
     const editHtml = section('Edit Course Group', `
       <form id="editForm">

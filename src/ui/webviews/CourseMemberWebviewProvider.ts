@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseMemberGet, CourseList, CourseGroupGet, CourseRoleList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, selectInput } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, selectInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class CourseMemberWebviewProvider extends BaseWebviewProvider {
@@ -36,13 +36,13 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(displayName)}</h1>
       <p>Course Member${course ? ` in ${escapeHtml(course.title || course.path)}` : ''}</p>`;
 
-    const infoHtml = section('Member Information', `
+    const infoHtml = section('Member Information', detailGrid(`
       ${infoRowCode('ID', member.id)}
       ${user ? infoRowText('Email', user.email) : ''}
       ${infoRowText('Role', role?.title || member.course_role_id)}
       ${infoRowText('Group', group?.title || (member.course_group_id ? member.course_group_id : 'No Group'))}
       ${course ? infoRowText('Course', course.title || course.path) : ''}
-    `);
+    `));
 
     const roleOptions = (availableRoles || []).map(r => ({ value: r.id, label: r.title || r.id }));
     const groupOptions = [

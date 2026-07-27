@@ -22,7 +22,7 @@
     "commands": [
       {
         "command": "computor.tutor.assignment.grading",
-        "title": "Grading…",
+        "title": "Grading\u2026",
         "category": "Computor Tutor"
       },
       {
@@ -204,7 +204,7 @@
       },
       {
         "command": "computor.student.exportCourseExamples",
-        "title": "Export Course Examples…",
+        "title": "Export Course Examples\u2026",
         "icon": "$(file-zip)",
         "category": "Computor Student"
       },
@@ -291,13 +291,13 @@
       },
       {
         "command": "computor.lecturer.documents.newFile",
-        "title": "New File…",
+        "title": "New File\u2026",
         "icon": "$(new-file)",
         "category": "Computor Documents"
       },
       {
         "command": "computor.lecturer.documents.newFolder",
-        "title": "New Folder…",
+        "title": "New Folder\u2026",
         "icon": "$(new-folder)",
         "category": "Computor Documents"
       },
@@ -373,7 +373,7 @@
       },
       {
         "command": "computor.lecturer.compareWithWorking",
-        "title": "Compare with Working: Pick File…",
+        "title": "Compare with Working: Pick File\u2026",
         "icon": "$(diff)",
         "category": "Computor Examples"
       },
@@ -1019,12 +1019,6 @@
         "command": "computor.lecturer.updateExampleVersions",
         "title": "Update All Example Versions",
         "icon": "$(versions)",
-        "category": "Computor Lecturer"
-      },
-      {
-        "command": "computor.lecturer.viewDeploymentInfo",
-        "title": "View Deployment Info",
-        "icon": "$(info)",
         "category": "Computor Lecturer"
       },
       {
@@ -1693,11 +1687,6 @@
           "command": "computor.lecturer.checkoutAssignmentExample",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
           "group": "4_example@3"
-        },
-        {
-          "command": "computor.lecturer.viewDeploymentInfo",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
-          "group": "4_example@4"
         },
         {
           "command": "computor.lecturer.configureCourseGit",

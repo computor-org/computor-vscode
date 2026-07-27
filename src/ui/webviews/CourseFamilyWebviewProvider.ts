@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseFamilyGet, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
@@ -38,14 +38,14 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(courseFamily.title || courseFamily.path)}</h1>
       <p>Course Family in ${escapeHtml(organization?.title || organization?.path)}</p>`;
 
-    const infoHtml = section('Information', `
+    const infoHtml = section('Information', detailGrid(`
       ${infoRowCode('ID', courseFamily.id)}
       ${infoRowCode('Path', courseFamily.path)}
       ${infoRowText('Title', courseFamily.title)}
       ${infoRowText('Description', courseFamily.description)}
       ${infoRowText('Organization', organization?.title || organization?.path)}
       ${infoRowText('Courses', String(coursesCount))}
-    `);
+    `));
 
     const editHtml = section('Edit Course Family', `
       <form id="editForm">

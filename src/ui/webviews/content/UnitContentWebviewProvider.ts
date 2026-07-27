@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from '../shared/webviewHelpers';
 import { notify } from '../../../utils/notify';
 
 export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider {
@@ -36,12 +36,12 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
       <p>Unit in ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const infoHtml = section('Unit Information', `
+    const infoHtml = section('Unit Information', detailGrid(`
       ${infoRowCode('ID', courseContent.id)}
       ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
       ${infoRowText('Children', String(childCount))}
-    `);
+    `));
 
     const editHtml = section('Edit Unit', `
       <form id="editForm">
