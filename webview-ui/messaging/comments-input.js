@@ -1,7 +1,6 @@
 (function () {
   // Shared runtime (base.js). The old local escapeHtml was unused and dropped.
   const { vscode, el, createStore } = window.ComputorWebview;
-  const { createButton } = window.UIComponents || {};
 
   const { state, setState } = createStore({
     courseMemberId: undefined,
@@ -93,7 +92,7 @@
     wrapper.appendChild(header);
 
     const textarea = createElement('textarea', {
-      className: 'vscode-input comments-input-textarea',
+      className: 'comments-input-textarea',
       attributes: {
         rows: '4',
         placeholder: state.editingComment ? 'Edit comment...' : 'Add a comment...',
@@ -122,40 +121,23 @@
     wrapper.appendChild(textarea);
 
     const actions = createElement('div', { className: 'comments-input-actions' });
-    if (createButton) {
-      const submitBtn = createButton({
-        text: state.editingComment ? 'Save Changes' : 'Add Comment',
-        variant: 'primary',
-        loading: state.loading,
-        onClick: () => submit(textarea.value)
-      });
-      actions.appendChild(submitBtn.render());
 
-      if (state.editingComment) {
-        const cancelBtn = createButton({
-          text: 'Cancel',
-          variant: 'secondary',
-          onClick: () => vscode.postMessage({ command: 'cancel' })
-        });
-        actions.appendChild(cancelBtn.render());
-      }
-    } else {
-      const submitBtn = createElement('button', {
-        className: 'vscode-button vscode-button--primary',
-        textContent: state.editingComment ? 'Save Changes' : 'Add Comment',
+    const submitBtn = createElement('button', {
+      className: 'btn',
+      textContent: state.editingComment ? 'Save Changes' : 'Add Comment',
+      attributes: { type: 'button', disabled: state.loading ? 'disabled' : null }
+    });
+    submitBtn.addEventListener('click', () => submit(textarea.value));
+    actions.appendChild(submitBtn);
+
+    if (state.editingComment) {
+      const cancelBtn = createElement('button', {
+        className: 'btn secondary',
+        textContent: 'Cancel',
         attributes: { type: 'button' }
       });
-      submitBtn.addEventListener('click', () => submit(textarea.value));
-      actions.appendChild(submitBtn);
-      if (state.editingComment) {
-        const cancelBtn = createElement('button', {
-          className: 'vscode-button vscode-button--secondary',
-          textContent: 'Cancel',
-          attributes: { type: 'button' }
-        });
-        cancelBtn.addEventListener('click', () => vscode.postMessage({ command: 'cancel' }));
-        actions.appendChild(cancelBtn);
-      }
+      cancelBtn.addEventListener('click', () => vscode.postMessage({ command: 'cancel' }));
+      actions.appendChild(cancelBtn);
     }
 
     const hint = createElement('span', {

@@ -48,7 +48,7 @@ body {
   font-size: 0.9em;
 }
 
-/* Input chrome comes from .vscode-input (components.css) / base textarea */
+/* Input chrome comes from base.css's textarea rule */
 .comments-input-textarea {
   flex: 1 1 auto;
   resize: none;
@@ -62,7 +62,7 @@ body {
   flex-shrink: 0;
 }
 
-.comments-input-actions .vscode-button {
+.comments-input-actions .btn {
   flex: 0 0 auto;
 }
 

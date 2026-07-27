@@ -1,51 +1,20 @@
 /* User management view — view-specific layout on top of base.css. */
 
-.user-management-root {
-  padding: 16px 24px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 960px;
-  margin: 0 auto;
-}
+/*
+ * Shell and section chrome come from base.css: .page-root for the column,
+ * .section.stack for each block, .form-grid for the field grids.
+ */
 
-.user-section {
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.user-section.danger-zone {
+.danger-zone {
   border-color: var(--c-error);
   background: var(--c-error-bg);
 }
 
-.user-section h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.user-section p.section-description {
-  margin: 0;
-  color: var(--c-fg-muted);
-  font-size: 12px;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px 16px;
-}
-
+/* Read-only field: a label above a value, as opposed to base's .form-field. */
 .info-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .info-field.full-width {
@@ -53,15 +22,15 @@
 }
 
 .info-field label {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--c-fg-muted);
 }
 
 .info-field .info-value {
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--c-fg);
-  padding: 4px 0;
+  padding: var(--sp-1) 0;
 }
 
 .empty-value {
@@ -69,18 +38,23 @@
   color: var(--c-fg-muted);
 }
 
+.role-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+/* Like base .chip, but carries a remove affordance, so it needs its own box. */
 .role-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
-  padding: 2px 4px 2px 8px;
+  padding: 2px var(--sp-1) 2px var(--sp-2);
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  margin-right: 6px;
-  margin-bottom: 4px;
 }
 
 .role-badge-label {
@@ -94,8 +68,8 @@
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
-  padding: 0 4px;
-  border-radius: 8px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--radius-pill);
   opacity: 0.7;
 }
 
@@ -106,18 +80,7 @@
 }
 
 .role-add-form {
-  margin-top: 12px;
-}
-
-.role-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-/* Section flex gap provides the spacing; drop base's .form-field margin. */
-.user-section .form-field {
-  margin-bottom: 0;
+  margin-top: var(--sp-3);
 }
 
 /* Reset default <p> margins on hints (markup uses <p class="field-hint">). */
@@ -125,42 +88,8 @@
   margin: 2px 0 0;
 }
 
-.form-actions {
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
-.student-profile-card {
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  background: var(--c-bg);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.student-profile-card h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-/* Compact inline empty state (overrides base's centered .empty-state). */
-.empty-state {
-  text-align: left;
-  font-size: 13px;
-  color: var(--c-fg-muted);
-  padding: 8px 0;
-  font-style: italic;
-}
-
 @media (max-width: 640px) {
-  .user-management-root {
-    padding: 16px;
-  }
-
-  .info-grid {
+  .form-grid {
     grid-template-columns: 1fr;
   }
 }

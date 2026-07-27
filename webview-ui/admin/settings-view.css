@@ -1,32 +1,21 @@
 /* Settings view — view-specific layout on top of base.css. */
 
-.settings-root {
-  padding: 16px 24px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 1100px;
-  margin: 0 auto;
-}
+/*
+ * Shell, page header, sections and buttons come from base.css
+ * (.page-root.wide, .header, .section.stack.tight, .btn). Only the
+ * settings-specific blocks below are view-local.
+ */
 
-.settings-root h1 {
-  margin: 0 0 4px;
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--c-fg);
-}
-
-.settings-root .subtitle {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--c-fg-muted);
-}
-
-/* Two-column grid for top sections */
+/* Two-column grid for top sections. The grid gap owns the spacing, and the
+   columns stretch so side-by-side sections end level. */
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--sp-4);
+}
+
+.settings-grid > .section {
+  margin-bottom: 0;
 }
 
 @media (max-width: 700px) {
@@ -35,46 +24,8 @@
   }
 }
 
-/* Sections */
-.settings-section {
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.settings-section h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--c-fg);
-}
-
-.settings-section .section-description {
-  margin: 0;
-  font-size: 12px;
-  color: var(--c-fg-muted);
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.section-header h2 {
-  margin: 0;
-}
-
 /* Form fields: base.css styles .form-field, labels and inputs. Only the
    validation-driven states below are view-specific. */
-.settings-section .form-field {
-  margin-bottom: 0;
-}
-
 .form-field input.valid {
   border-color: var(--c-success);
 }
@@ -96,11 +47,8 @@
   margin-top: 2px;
 }
 
-/* Section actions (save buttons) — pushed to bottom of section */
+/* Save row sticks to the bottom so side-by-side sections align. */
 .section-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
   margin-top: auto;
 }
 
@@ -114,18 +62,18 @@
 .provider-stored-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  font-size: 13px;
+  font-size: var(--font-size);
   background: var(--vscode-sideBar-background, transparent);
 }
 
 .provider-stored-item .provider-stored-url {
   flex: 1;
   font-family: var(--vscode-editor-fontFamily, monospace);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--c-fg);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -133,28 +81,28 @@
 }
 
 .provider-stored-item .provider-stored-status {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--c-success);
   white-space: nowrap;
 }
 
 /* Provider update token panel */
 .provider-update-panel {
-  padding: 10px 10px 10px 16px;
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
   border-left: 2px solid var(--c-focus);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 /* Provider entries (new/edit) */
 .provider-entry {
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .provider-entry-header {
@@ -164,7 +112,7 @@
 }
 
 .provider-entry-header span {
-  font-size: 13px;
+  font-size: var(--font-size);
   font-weight: 500;
   color: var(--c-fg);
 }
@@ -172,7 +120,7 @@
 .provider-entry-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 @media (max-width: 700px) {
@@ -183,12 +131,12 @@
 
 .provider-entry-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
 }
 
 .provider-validation-status {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   flex: 1;
 }
 
@@ -213,9 +161,9 @@
 .save-indicator {
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  margin-left: 8px;
+  margin-left: var(--sp-2);
   opacity: 0;
   transition: opacity 0.25s ease;
   vertical-align: middle;
@@ -231,7 +179,7 @@
 
 .save-indicator-success::before {
   content: '\2713';
-  margin-right: 4px;
+  margin-right: var(--sp-1);
   font-size: 14px;
 }
 
@@ -241,6 +189,6 @@
 
 .save-indicator-error::before {
   content: '\2717';
-  margin-right: 4px;
+  margin-right: var(--sp-1);
   font-size: 14px;
 }

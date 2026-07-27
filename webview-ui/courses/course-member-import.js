@@ -95,7 +95,7 @@
           <button class="btn btn-secondary" id="deselectAllBtn" ${isImporting ? 'disabled' : ''}>
             Deselect All
           </button>
-          <button class="btn btn-primary" id="importBtn" ${selectedCount === 0 || isImporting ? 'disabled' : ''}>
+          <button class="btn" id="importBtn" ${selectedCount === 0 || isImporting ? 'disabled' : ''}>
             ${isImporting ? '<span class="spinner"></span>' : ''} Import Selected (${selectedCount})
           </button>
         </div>

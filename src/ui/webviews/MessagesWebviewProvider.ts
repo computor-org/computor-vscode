@@ -386,8 +386,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     return this.renderPage({
       title: 'Messages',
       bodyHtml: '<div id="app"></div>',
-      cssFiles: ['shared/components.css', 'shared/chat-shared.css', 'messaging/messages.css'],
-      scriptFiles: ['vendor/marked.min.js', 'shared/components.js', 'messaging/messages.js'],
+      cssFiles: ['shared/chat-shared.css', 'messaging/messages.css'],
+      scriptFiles: ['vendor/marked.min.js', 'messaging/messages.js'],
       initialState: data ?? { target: null, messages: [] }
     });
   }

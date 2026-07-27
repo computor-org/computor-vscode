@@ -2,7 +2,6 @@
   // Shared runtime (base.js). formatDateTime matches the old local
   // formatDate (toLocaleString, i.e. date + time).
   const { vscode, escapeHtml, formatDateTime: formatDate, el, createStore } = window.ComputorWebview;
-  const { createButton } = window.UIComponents || {};
 
   const { state, setState } = createStore({
     courseMemberId: undefined,
@@ -104,23 +103,21 @@
 
         const actions = createElement('div', { className: 'comment-actions' });
 
-        if (createButton) {
-          const editBtn = createButton({
-            text: 'Edit',
-            size: 'sm',
-            variant: 'secondary',
-            onClick: () => {
-              vscode.postMessage({
-                command: 'editComment',
-                data: { commentId: comment.id }
-              });
-            }
+        const editBtn = createElement('button', {
+          className: 'btn secondary sm',
+          textContent: 'Edit',
+          attributes: { type: 'button' }
+        });
+        editBtn.addEventListener('click', () => {
+          vscode.postMessage({
+            command: 'editComment',
+            data: { commentId: comment.id }
           });
-          actions.appendChild(editBtn.render());
-        }
+        });
+        actions.appendChild(editBtn);
 
         const deleteBtn = createElement('button', {
-          className: 'vscode-button vscode-button--tertiary vscode-button--sm',
+          className: 'btn ghost sm',
           textContent: 'Delete',
           attributes: { type: 'button' }
         });
@@ -155,17 +152,16 @@
     );
 
     const toolbar = createElement('div', { className: 'toolbar' });
-    if (createButton) {
-      const refreshBtn = createButton({
-        text: 'Refresh',
-        variant: 'secondary',
-        onClick: () => {
-          setState({ loading: true });
-          vscode.postMessage({ command: 'refreshComments' });
-        }
-      });
-      toolbar.appendChild(refreshBtn.render());
-    }
+    const refreshBtn = createElement('button', {
+      className: 'btn secondary',
+      textContent: 'Refresh',
+      attributes: { type: 'button' }
+    });
+    refreshBtn.addEventListener('click', () => {
+      setState({ loading: true });
+      vscode.postMessage({ command: 'refreshComments' });
+    });
+    toolbar.appendChild(refreshBtn);
 
     const commentsContainer = createElement('div', { className: 'comments-container' });
     renderComments(commentsContainer);

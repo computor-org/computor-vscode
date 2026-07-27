@@ -230,7 +230,7 @@
           '</div>' +
           '<div class="provider-entry-actions">' +
             '<button type="button" class="btn btn-secondary btn-sm provider-validate-update-btn" data-url="' + escapeHtml(t.url) + '">Validate</button>' +
-            '<button type="button" class="btn btn-primary btn-sm provider-save-update-btn" data-url="' + escapeHtml(t.url) + '"' +
+            '<button type="button" class="btn sm provider-save-update-btn" data-url="' + escapeHtml(t.url) + '"' +
               (canSave ? '' : ' disabled') + '>Save Token</button>' +
             (statusText ? '<span class="provider-validation-status ' + statusClass + '">' + escapeHtml(statusText) + '</span>' : '') +
           '</div>' +
@@ -273,7 +273,7 @@
       '</div>' +
       '<div class="provider-entry-actions">' +
         '<button type="button" class="btn btn-secondary btn-sm provider-validate-btn" data-entry-id="' + entry.id + '">Validate</button>' +
-        '<button type="button" class="btn btn-primary btn-sm provider-save-btn" data-entry-id="' + entry.id + '"' +
+        '<button type="button" class="btn sm provider-save-btn" data-entry-id="' + entry.id + '"' +
           (canSave ? '' : ' disabled') + '>Save Token</button>' +
         '<button type="button" class="btn btn-danger btn-sm provider-remove-btn" data-entry-id="' + entry.id + '">Cancel</button>' +
         '<span class="provider-validation-status ' + statusClass + '">' + escapeHtml(statusText) + '</span>' +
@@ -297,12 +297,14 @@
     var providerEntriesHtml = state.providerEntries.map(renderProviderEntry).join('');
 
     root.innerHTML =
-      '<h1>Computor Settings</h1>' +
-      '<p class="subtitle">Manage your environment configuration.</p>' +
+      '<div class="header">' +
+        '<h1>Computor Settings</h1>' +
+        '<p>Manage your environment configuration.</p>' +
+      '</div>' +
       noticeHtml +
 
       '<div class="settings-grid">' +
-        '<div class="settings-section">' +
+        '<div class="section stack tight">' +
           '<div class="section-header"><h2>Backend URL</h2></div>' +
           '<p class="section-description">The URL of your institution\'s Computor server.</p>' +
           '<div class="form-field">' +
@@ -321,14 +323,14 @@
             }
             return txt ? '<span class="provider-validation-status ' + cls + '">' + escapeHtml(txt) + '</span>' : '';
           })() +
-          '<div class="section-actions">' +
+          '<div class="actions end section-actions">' +
             '<button type="button" class="btn btn-secondary btn-sm" id="validate-backend-url-btn">Validate</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="cancel-backend-url-btn">Cancel</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="save-backend-url-btn">Save URL</button>' +
           '</div>' +
         '</div>' +
 
-        '<div class="settings-section">' +
+        '<div class="section stack tight">' +
           '<div class="section-header"><h2>Git Configuration</h2></div>' +
           '<p class="section-description">Your name and email for git commits.</p>' +
           '<div class="form-field">' +
@@ -341,14 +343,14 @@
             '<input type="email" id="git-email" value="' + escapeHtml(state.gitEmail) + '" placeholder="you@example.com">' +
             '<span class="field-error"></span>' +
           '</div>' +
-          '<div class="section-actions">' +
+          '<div class="actions end section-actions">' +
             '<button type="button" class="btn btn-secondary btn-sm" id="cancel-git-config-btn">Cancel</button>' +
             '<button type="button" class="btn btn-secondary btn-sm" id="save-git-config-btn">Save Git Config</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
 
-      '<div class="settings-section">' +
+      '<div class="section stack tight">' +
         '<div class="section-header">' +
           '<h2>Git Providers</h2>' +
           '<button type="button" class="btn btn-secondary btn-sm" id="add-provider-btn">+ Add</button>' +

@@ -95,7 +95,7 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
     return this.renderPage({
       title: 'Student Content Details',
       bodyHtml: '<div id="app" class="view-root"></div>',
-      cssFiles: ['shared/components.css', 'student/student-content-details.css'],
+      cssFiles: ['student/student-content-details.css'],
       scriptFiles: ['student/student-content-details.js'],
       initialState: data ?? {}
     });
