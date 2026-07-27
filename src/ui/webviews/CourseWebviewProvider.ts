@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseGet, CourseFamilyList, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
 
 export class CourseWebviewProvider extends BaseWebviewProvider {
@@ -32,21 +32,13 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(course.title || course.path)}</h1>
       <p>Course in ${escapeHtml(courseFamily?.title || courseFamily?.path)} / ${escapeHtml(organization?.title || organization?.path)}</p>`;
 
-    const gitlabRow = gitlabUrl
-      ? infoRow('GitLab Repository', `<a href="${escapeHtml(gitlabUrl)}" title="${escapeHtml(gitlabUrl)}">${escapeHtml(gitlabUrl)}</a>`)
-      : infoRowText('GitLab Repository', null);
-
-    const infoHtml = section('Information', detailGrid(`
+    const detailsHtml = section('Course', `
+      ${detailGrid(`
       ${infoRowCode('ID', course.id)}
       ${infoRowCode('Path', course.path)}
-      ${infoRowText('Title', course.title)}
-      ${infoRowText('Description', course.description)}
       ${infoRowText('Course Family', courseFamily?.title || courseFamily?.path)}
       ${infoRowText('Organization', organization?.title || organization?.path)}
-      ${gitlabRow}
-    `));
-
-    const editHtml = section('Edit Course', `
+    `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', course.title, { placeholder: 'Course title' }))}
         ${formGroup('Description', textareaInput('description', course.description, { placeholder: 'Course description' }))}
@@ -57,6 +49,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         </div>
       </form>
     `);
+
 
     const scriptHtml = `
       const courseId = ${JSON.stringify(course.id)};
@@ -84,7 +77,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Course', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Course', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

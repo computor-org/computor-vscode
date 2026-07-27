@@ -28,7 +28,7 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
       return this.getBaseHtml('Course Member', '<p>No course member data available</p>');
     }
 
-    const { member, course, group, role, availableGroups, availableRoles } = data;
+    const { member, course, availableGroups, availableRoles } = data;
     const user = member.user;
     const displayName = user ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || user.email : member.user_id;
 
@@ -36,21 +36,19 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(displayName)}</h1>
       <p>Course Member${course ? ` in ${escapeHtml(course.title || course.path)}` : ''}</p>`;
 
-    const infoHtml = section('Member Information', detailGrid(`
-      ${infoRowCode('ID', member.id)}
-      ${user ? infoRowText('Email', user.email) : ''}
-      ${infoRowText('Role', role?.title || member.course_role_id)}
-      ${infoRowText('Group', group?.title || (member.course_group_id ? member.course_group_id : 'No Group'))}
-      ${course ? infoRowText('Course', course.title || course.path) : ''}
-    `));
-
     const roleOptions = (availableRoles || []).map(r => ({ value: r.id, label: r.title || r.id }));
     const groupOptions = [
       { value: '', label: 'No Group' },
       ...(availableGroups || []).map(g => ({ value: g.id, label: g.title || g.id }))
     ];
 
-    const editHtml = section('Edit Member', `
+    // Role and Group are editable below, so they are not repeated as facts.
+    const detailsHtml = section('Member', `
+      ${detailGrid(`
+        ${infoRowCode('ID', member.id)}
+        ${user ? infoRowText('Email', user.email) : ''}
+        ${course ? infoRowText('Course', course.title || course.path) : ''}
+      `)}
       <form id="editForm">
         ${formGroup('Role', selectInput('courseRoleId', roleOptions, member.course_role_id))}
         ${formGroup('Group', selectInput('courseGroupId', groupOptions, member.course_group_id || ''))}
@@ -87,7 +85,7 @@ export class CourseMemberWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Course Member', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Course Member', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

@@ -35,15 +35,29 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
       <p>Assignment in ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const infoHtml = section('Assignment Information', detailGrid(`
-      ${infoRowCode('ID', courseContent.id)}
-      ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
-      ${infoRowText('Position', String(courseContent.position ?? ''))}
-      ${infoRow('Max Group Size', String(courseContent.max_group_size ?? 1))}
-      ${courseContent.max_test_runs !== undefined && courseContent.max_test_runs !== null ? infoRowText('Max Test Runs', String(courseContent.max_test_runs)) : ''}
-      ${courseContent.max_submissions !== undefined && courseContent.max_submissions !== null ? infoRowText('Max Submissions', String(courseContent.max_submissions)) : ''}
-      ${infoRow('Submittable', badge('Yes', 'success'))}
-    `));
+    // Group size and the run/submission limits are editable in the form below,
+    // so they appear once, as inputs, rather than also as read-only facts.
+    const detailsHtml = section('Assignment', `
+      ${detailGrid(`
+        ${infoRowCode('ID', courseContent.id)}
+        ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
+        ${infoRowText('Position', String(courseContent.position ?? ''))}
+        ${infoRow('Submittable', badge('Yes', 'success'))}
+      `)}
+      <form id="editForm">
+        ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1.assignment_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots')}
+        ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Assignment title' }))}
+        ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Assignment description' }))}
+        ${formGroup('Max Group Size', textInput('maxGroupSize', String(courseContent.max_group_size ?? 1), { type: 'number', min: 1 }))}
+        ${courseContent.max_test_runs !== undefined ? formGroup('Max Test Runs', textInput('maxTestRuns', String(courseContent.max_test_runs ?? ''), { type: 'number', min: 0 })) : ''}
+        ${courseContent.max_submissions !== undefined ? formGroup('Max Submissions', textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0 })) : ''}
+        <div class="actions">
+          <button type="submit">Save Changes</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
+        </div>
+      </form>
+    `);
 
     const formatTimestamp = (value?: string | null): string =>
       value ? new Date(value).toLocaleString() : '';
@@ -76,22 +90,6 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         ` : ''}
         <button class="btn-secondary" data-action="refreshData">Refresh</button>
       </div>
-    `);
-
-    const editHtml = section('Edit Assignment', `
-      <form id="editForm">
-        ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1.assignment_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots')}
-        ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Assignment title' }))}
-        ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Assignment description' }))}
-        ${formGroup('Max Group Size', textInput('maxGroupSize', String(courseContent.max_group_size ?? 1), { type: 'number', min: 1 }))}
-        ${courseContent.max_test_runs !== undefined ? formGroup('Max Test Runs', textInput('maxTestRuns', String(courseContent.max_test_runs ?? ''), { type: 'number', min: 0 })) : ''}
-        ${courseContent.max_submissions !== undefined ? formGroup('Max Submissions', textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0 })) : ''}
-        <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
-          <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
-        </div>
-      </form>
     `);
 
     const scriptHtml = `
@@ -152,7 +150,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Assignment', headerHtml, bodyHtml: infoHtml + deploymentHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Assignment', headerHtml, bodyHtml: detailsHtml + deploymentHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {

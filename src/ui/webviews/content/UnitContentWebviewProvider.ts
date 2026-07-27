@@ -36,14 +36,13 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
       <p>Unit in ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const infoHtml = section('Unit Information', detailGrid(`
+    const detailsHtml = section('Unit', `
+      ${detailGrid(`
       ${infoRowCode('ID', courseContent.id)}
       ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
       ${infoRowText('Children', String(childCount))}
-    `));
-
-    const editHtml = section('Edit Unit', `
+    `)}
       <form id="editForm">
         ${formGroup('Path', textInput('path', courseContent.path, { placeholder: 'e.g. unit_1', pattern: '[a-z0-9_]+(\\.[a-z0-9_]+)*' }), 'Lowercase alphanumeric segments separated by dots. Changing this will also update all children.')}
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Unit title' }))}
@@ -55,6 +54,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
         </div>
       </form>
     `);
+
 
     const scriptHtml = `
       var contentId = ${JSON.stringify(courseContent.id)};
@@ -101,7 +101,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Unit', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Unit', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {

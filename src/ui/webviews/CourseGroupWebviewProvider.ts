@@ -31,15 +31,12 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(group.title || group.id)}</h1>
       <p>Course Group${course ? ` in ${escapeHtml(course.title || course.path)}` : ''}</p>`;
 
-    const infoHtml = section('Information', detailGrid(`
+    const detailsHtml = section('Course Group', `
+      ${detailGrid(`
       ${infoRowCode('ID', group.id)}
-      ${infoRowText('Title', group.title)}
-      ${infoRowText('Description', group.description)}
       ${course ? infoRowText('Course', course.title || course.path) : ''}
       ${infoRowText('Members', String(membersCount || 0))}
-    `));
-
-    const editHtml = section('Edit Course Group', `
+    `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', group.title, { required: true, placeholder: 'Group title' }))}
         ${formGroup('Description', textareaInput('description', group.description, { placeholder: 'Group description' }))}
@@ -49,6 +46,7 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
         </div>
       </form>
     `);
+
 
     const scriptHtml = `
       const groupId = ${JSON.stringify(group.id)};
@@ -75,7 +73,7 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Course Group', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Course Group', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

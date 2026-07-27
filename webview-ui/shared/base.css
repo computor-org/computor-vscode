@@ -475,6 +475,16 @@ select {
   color: var(--c-fg-muted);
 }
 
+/*
+ * Detail pages put the read-only facts and the edit form in one section, so
+ * the form needs a rule to separate it from the grid above it.
+ */
+.section .detail-grid + form {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
+
 /* ------------------------------------------------------------- info rows */
 
 .info-row {

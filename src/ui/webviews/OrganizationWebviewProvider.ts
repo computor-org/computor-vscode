@@ -37,15 +37,12 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(organization.title || organization.path)}</h1>
       <p>Organization</p>`;
 
-    const infoHtml = section('Information', detailGrid(`
+    const detailsHtml = section('Organization', `
+      ${detailGrid(`
       ${infoRowCode('ID', organization.id)}
       ${infoRowCode('Path', organization.path)}
-      ${infoRowText('Title', organization.title)}
-      ${infoRowText('Description', organization.description)}
       ${infoRowText('Course Families', String(courseFamiliesCount))}
-    `));
-
-    const editHtml = section('Edit Organization', `
+    `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', organization.title, { required: true, placeholder: 'Organization title' }))}
         ${formGroup('Description', textareaInput('description', organization.description, { placeholder: 'Organization description' }))}
@@ -55,6 +52,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
         </div>
       </form>
     `);
+
 
     const scriptHtml = `
       const orgId = ${JSON.stringify(organization.id)};
@@ -81,7 +79,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Organization', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Organization', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {

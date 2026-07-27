@@ -38,16 +38,13 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
       <h1>${escapeHtml(courseFamily.title || courseFamily.path)}</h1>
       <p>Course Family in ${escapeHtml(organization?.title || organization?.path)}</p>`;
 
-    const infoHtml = section('Information', detailGrid(`
+    const detailsHtml = section('Course Family', `
+      ${detailGrid(`
       ${infoRowCode('ID', courseFamily.id)}
       ${infoRowCode('Path', courseFamily.path)}
-      ${infoRowText('Title', courseFamily.title)}
-      ${infoRowText('Description', courseFamily.description)}
       ${infoRowText('Organization', organization?.title || organization?.path)}
       ${infoRowText('Courses', String(coursesCount))}
-    `));
-
-    const editHtml = section('Edit Course Family', `
+    `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', courseFamily.title, { required: true, placeholder: 'Course family title' }))}
         ${formGroup('Description', textareaInput('description', courseFamily.description, { placeholder: 'Course family description' }))}
@@ -57,6 +54,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
         </div>
       </form>
     `);
+
 
     const scriptHtml = `
       const familyId = ${JSON.stringify(courseFamily.id)};
@@ -83,7 +81,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Course Family', headerHtml, bodyHtml: infoHtml + editHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: 'Course Family', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {
