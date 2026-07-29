@@ -75,7 +75,12 @@ export const extensions = {
 
 export const Uri = {
   file: (path: string) => ({ fsPath: path, path, scheme: 'file', toString: () => `file://${path}` }),
-  parse: (value: string) => ({ fsPath: value, path: value, scheme: 'unknown', toString: () => value })
+  parse: (value: string) => ({ fsPath: value, path: value, scheme: 'unknown', toString: () => value }),
+  joinPath: (base: any, ...segments: string[]) => {
+    const path = [String(base?.path ?? '').replace(/\/+$/, ''), ...segments].join('/');
+    const scheme = base?.scheme ?? 'file';
+    return { fsPath: path, path, scheme, toString: () => `${scheme}://${path}` };
+  }
 };
 
 export class ThemeIcon {

@@ -32,6 +32,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
     private panelProvider: TestResultsPanelProvider | undefined;
     private resultArtifacts: ResultArtifactInfo[] = [];
     private currentResultId: string | undefined;
+    private resultFingerprint: string | undefined;
 
     constructor(private testResults: any) {
     }
@@ -55,30 +56,50 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
     }
 
     refresh(testResults: any): void {
+        const fingerprint = this.fingerprint(testResults);
+        // The results view is also refreshed with the payload it already shows
+        // (tree selection, view becoming visible again). Only a genuinely new
+        // result should reset the details panel.
+        const isNewResult = fingerprint !== this.resultFingerprint;
+
         this.testResults = testResults;
+        this.resultFingerprint = fingerprint;
         this._onDidChangeTreeData.fire();
 
-        if (this.panelProvider) {
-            const nodes = this.convertToNodes(this.testResults);
-            const selectedNode = this.selectedNodeId
-                ? this.findNodeById(nodes, this.selectedNodeId)
-                : undefined;
+        if (isNewResult) {
+            // Refreshing rebuilds every node, so the tree drops its selection.
+            // Drop ours too, otherwise the previous run's detail stays on
+            // screen and looks like failures survived a passing run (#281).
+            this.selectedNodeId = undefined;
+        }
 
-            const hasResults = this.testResults
-                && typeof this.testResults === 'object'
-                && Object.keys(this.testResults).length > 0;
+        if (!this.panelProvider) {
+            return;
+        }
 
-            if (selectedNode) {
-                this.panelProvider.updateTestResults(selectedNode);
-            } else if (hasResults) {
-                // Results were just loaded (e.g. after a workspace restart via
-                // "Show Test Result") but the user hasn't clicked a tree node
-                // yet. Show the full result summary instead of blanking the
-                // panel to "No test results available" (issue #273).
-                this.panelProvider.updateTestResults({ result_json: this.testResults });
-            } else {
-                this.panelProvider.clearResults();
-            }
+        const selectedNode = this.selectedNodeId
+            ? this.findNodeById(this.convertToNodes(this.testResults), this.selectedNodeId)
+            : undefined;
+
+        if (selectedNode) {
+            this.panelProvider.showDetails(selectedNode);
+        } else {
+            this.selectedNodeId = undefined;
+            this.panelProvider.clearDetails(this.hasResults());
+        }
+    }
+
+    private hasResults(): boolean {
+        return !!this.testResults
+            && typeof this.testResults === 'object'
+            && Object.keys(this.testResults).length > 0;
+    }
+
+    private fingerprint(testResults: any): string {
+        try {
+            return JSON.stringify(testResults ?? null);
+        } catch {
+            return String(testResults);
         }
     }
 
@@ -372,7 +393,10 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 }
 
                 if ('version' in data) {
-                    toolTipHead += ` ${data.version}`;
+                    // Concatenating onto an unset tooltip used to render a
+                    // literal "undefined 1.2.3"; the details view shows this
+                    // text, so build it defensively.
+                    toolTipHead = toolTipHead ? `${toolTipHead} ${data.version}` : `${data.version}`;
                 }
 
                 const childrenHead: ResultsTreeNode[] = [];
@@ -476,127 +500,94 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
     }
 }
 
+/** What the details view currently shows: one Result Tree entry, or a hint. */
+interface ResultDetails {
+    label: string;
+    /** Already-escaped HTML for the body. */
+    body: string;
+}
+
+/**
+ * The "Result Details" view. It shows the details of the entry selected in the
+ * "Result Tree" — nothing else. It deliberately does not render the whole
+ * result: that would duplicate the tree standing right next to it, and the
+ * duplicate is what went stale in issues #280 and #281.
+ */
 export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'computor.testResultsPanel';
     private view?: vscode.WebviewView;
-    private value?: any;
-    //private testResultsTreeProvider?: TestResultsTreeDataProvider;
+    private details: ResultDetails;
 
     constructor(private readonly extensionUri: vscode.Uri) {
-        this.value = this.buildMessage(undefined);
+        this.details = this.emptyDetails(false);
     }
 
-    public updateTestResults(testResults: any): void {
-        this.value = this.buildMessage(testResults);
-        this.postResultsUpdate();
+    /** Show the details of the Result Tree entry the user just selected. */
+    public showDetails(node: any): void {
+        this.details = this.buildDetails(node);
+        this.postDetails();
     }
 
-    public clearResults(): void {
-        this.value = this.buildMessage(undefined);
-        this.postResultsUpdate();
+    /**
+     * Nothing is selected: prompt for a selection when a result is loaded,
+     * otherwise say there is nothing to show.
+     */
+    public clearDetails(hasResults: boolean): void {
+        this.details = this.emptyDetails(hasResults);
+        this.postDetails();
     }
 
-    private postResultsUpdate(): void {
-        if (this.view) {
-            this.view.webview.postMessage({
-                command: 'resultsUpdate',
-                data: {
-                    message: this.value.message,
-                    label: this.value.label
-                }
-            });
-        }
+    private postDetails(): void {
+        // No-op while the view is hidden; the webview asks for the current
+        // details again as soon as it is (re-)created, see getHtmlContent().
+        void this.view?.webview.postMessage({
+            command: 'resultsUpdate',
+            data: this.details
+        });
     }
 
-    // public setTreeProvider(provider: TestResultsTreeDataProvider): void {
-    //     this.testResultsTreeProvider = provider;
-    // }
+    private emptyDetails(hasResults: boolean): ResultDetails {
+        return {
+            label: 'Result Details',
+            body: hasResults
+                ? '<span class="no-results">Select an entry in the Result Tree to see its details.</span>'
+                : '<span class="no-results">No test results available</span>'
+        };
+    }
 
-    private buildMessage(value: any): { label: string; message: string } {
-        let message = "No test results available";
-        let label = "Test Results";
-
-        if (value !== undefined) {
-            if ('message' in value) {
-                message = this.escapeHtml(value.message);
-            } else if (value.result_json) {
-                // Parse the test results
-                try {
-                    const results = typeof value.result_json === 'string' 
-                        ? JSON.parse(value.result_json) 
-                        : value.result_json;
-                    
-                    message = this.formatTestResults(results);
-                    label = results.name || "Test Results";
-                } catch (error) {
-                    message = "Error parsing test results";
-                    console.error('Error parsing test results:', error);
-                }
-            } else if (typeof value === 'object') {
-                // message = `<pre>${JSON.stringify(value, null, 2)}</pre>`;
-                message = '-';
-            }
-            
-            if ('label' in value) {
-                label = value.label;
-            }
+    private buildDetails(node: any): ResultDetails {
+        if (!node || typeof node !== 'object') {
+            return this.emptyDetails(true);
         }
 
-        return { label, message };
-    }
+        const label = typeof node.label === 'string' && node.label ? node.label : 'Result Details';
+        const parts: string[] = [];
 
-    private formatTestResults(results: any): string {
-        let html = '<div class="test-results">';
-
-        // Summary section
-        if (results.summary) {
-            html += '<div class="summary">';
-            html += '<h3>Summary</h3>';
-            html += '<ul>';
-            for (const [key, value] of Object.entries(results.summary)) {
-                html += `<li><strong>${this.escapeHtml(String(key))}:</strong> ${this.escapeHtml(String(value))}</li>`;
-            }
-            html += '</ul>';
-            html += '</div>';
+        if (typeof node.passed === 'boolean') {
+            parts.push(node.passed
+                ? '<div class="detail-status passed">✅ Passed</div>'
+                : '<div class="detail-status failed">❌ Failed</div>');
         }
 
-        // Test details
-        if (results.tests && Array.isArray(results.tests)) {
-            html += '<div class="tests">';
-            html += '<h3>Test Results</h3>';
-            html += '<ul class="test-list">';
-
-            for (const test of results.tests) {
-                const passed = test.result === 'PASSED';
-                const icon = passed ? '✅' : '❌';
-                const className = passed ? 'passed' : 'failed';
-
-                html += `<li class="test-item ${className}">`;
-                html += `<span class="test-icon">${icon}</span>`;
-                html += `<span class="test-name">${this.escapeHtml(test.name || 'Unnamed Test')}</span>`;
-
-                if (test.resultMessage) {
-                    html += `<div class="test-message">${this.formatMessage(test.resultMessage)}</div>`;
-                }
-
-                html += '</li>';
-            }
-
-            html += '</ul>';
-            html += '</div>';
+        if (typeof node.description === 'string' && node.description.trim()) {
+            parts.push(`<div class="detail-meta">${escapeHtml(node.description.trim())}</div>`);
         }
 
-        html += '</div>';
-        return html;
-    }
+        // `toolTip` may be a MarkdownString on some nodes; only plain text is
+        // meaningful here, and it is the same text as `message` when both exist.
+        const message = typeof node.message === 'string' && node.message
+            ? node.message
+            : (typeof node.toolTip === 'string' ? node.toolTip : undefined);
 
-    private escapeHtml(text: string): string {
-        return escapeHtml(text);
-    }
+        if (message && message !== node.description) {
+            parts.push(`<div class="detail-message">${escapeHtml(message)}</div>`);
+        }
 
-    private formatMessage(message: string): string {
-        // Escape HTML - newlines will be preserved by CSS white-space: pre
-        return this.escapeHtml(message);
+        if (parts.length === 0) {
+            parts.push('<span class="no-results">No further details for this entry.</span>');
+        }
+
+        return { label, body: parts.join('') };
     }
 
     public resolveWebviewView(
@@ -613,18 +604,17 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtmlContent();
 
-        // Handle messages from the webview
-        webviewView.webview.onDidReceiveMessage(
-            message => {
-                switch (message.command) {
-                    case 'refresh':
-                        // Refresh test results
-                        break;
-                }
-            },
-            undefined,
-            []
-        );
+        webviewView.webview.onDidReceiveMessage(message => {
+            if (message?.command === 'ready') {
+                this.postDetails();
+            }
+        });
+
+        webviewView.onDidDispose(() => {
+            if (this.view === webviewView) {
+                this.view = undefined;
+            }
+        });
     }
 
     private getHtmlContent(): string {
@@ -632,16 +622,22 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
             return '';
         }
         return renderWebviewPage(this.view.webview, this.extensionUri, {
-            title: 'Test Results',
+            title: 'Result Details',
             bodyHtml: `
-            <div class="header" id="header">${this.value?.label || 'Test Results'}</div>
-            <div class="content" id="content">${this.value?.message || '<span class="no-results">No test results available</span>'}</div>`,
+            <div class="header" id="header">${escapeHtml(this.details.label)}</div>
+            <div class="content" id="content">${this.details.body}</div>`,
             cssFiles: ['student/test-results.css'],
             inlineScript: `
                 ComputorWebview.onCommand('resultsUpdate', (data) => {
-                    document.getElementById('header').innerText = data.label;
-                    document.getElementById('content').innerHTML = data.message;
-                });`
+                    document.getElementById('header').textContent = data.label;
+                    document.getElementById('content').innerHTML = data.body;
+                });
+                // Collapsing this view (or hiding the Results panel) tears the
+                // webview down and later reloads it from the HTML captured at
+                // resolve time, and messages posted meanwhile are dropped. Ask
+                // for the current details on every load so the view can never
+                // resurrect an older render (issues #280, #281).
+                ComputorWebview.post('ready');`
         });
     }
 
