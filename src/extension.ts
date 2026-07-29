@@ -920,12 +920,12 @@ class UnifiedController {
     }));
     this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
       resultsTree.setSelectedNodeId(item.id);
-      panelProvider.updateTestResults(item);
+      panelProvider.showDetails(item);
     }));
     this.disposables.push(vscode.commands.registerCommand('computor.results.clear', () => {
       resultsTree.clearResultArtifacts();
+      // refresh() resets the details view along with the tree.
       resultsTree.refresh({});
-      panelProvider.clearResults();
     }));
     this.disposables.push(vscode.commands.registerCommand('computor.results.artifact.open', async (resultId: string, artifactInfo: any) => {
       try {
