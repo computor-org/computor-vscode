@@ -1226,12 +1226,6 @@
       ]
     },
     "menus": {
-      "commandPalette": [
-        {
-          "command": "computor.figures.show",
-          "when": "computor.figures.available"
-        }
-      ],
       "view/title": [
         {
           "command": "computor.lecturer.refreshExamples",

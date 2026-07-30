@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import {
+  configuredFiguresDirectory,
   Figure,
   FigureFolderChange,
   FigureFolderWatcher,
@@ -187,33 +188,43 @@ export class FiguresPanel implements vscode.Disposable {
 }
 
 /**
- * Wire up the figure viewer, if this installation has a figure folder at all.
+ * Wire up the figure viewer.
  *
- * Only workspaces publish figures. On a lecturer's own machine there is no
- * folder and nothing to watch, so the viewer stays out of the way — including
- * out of the command palette, via the `computor.figures.available` context.
+ * A workspace publishes figures, so there the folder is watched from startup
+ * and a plot opens the panel by itself. Elsewhere — a lecturer's own machine,
+ * or a workspace whose folder does not exist yet — watching starts only when
+ * someone opens the viewer, so nothing creates the folder behind their back.
+ *
+ * "Show Figures" is registered either way. Gating the command on the folder
+ * existing made the viewer impossible to find, impossible to try, and blind to
+ * a folder that appeared after startup.
  */
 export function registerFigureViewer(context: vscode.ExtensionContext): void {
-  const directory = resolveFiguresDirectory();
-  void vscode.commands.executeCommand('setContext', 'computor.figures.available', !!directory);
+  let panel: FiguresPanel | undefined;
 
-  if (!directory) {
-    return;
-  }
-
-  const watcher = new FigureFolderWatcher(directory);
-  const panel = new FiguresPanel(context.extensionUri, watcher);
+  const startWatching = (directory: string): FiguresPanel => {
+    const watcher = new FigureFolderWatcher(directory);
+    const started = new FiguresPanel(context.extensionUri, watcher);
+    context.subscriptions.push(
+      watcher,
+      started,
+      watcher.onDidChange((change) => {
+        void started.apply(change);
+      })
+    );
+    watcher.start();
+    panel = started;
+    return started;
+  };
 
   context.subscriptions.push(
-    watcher,
-    panel,
-    watcher.onDidChange((change) => {
-      void panel.apply(change);
-    }),
     vscode.commands.registerCommand('computor.figures.show', async () => {
-      await panel.show(false);
+      await (panel ?? startWatching(configuredFiguresDirectory())).show(false);
     })
   );
 
-  watcher.start();
+  const directory = resolveFiguresDirectory();
+  if (directory) {
+    startWatching(directory);
+  }
 }

@@ -56,15 +56,22 @@ const SCAN_DEBOUNCE_MS = 80;
  */
 const RESCAN_INTERVAL_MS = 5000;
 
-/** Resolves the figure folder, or `undefined` where there is nothing to watch. */
+/** Where figures would go here — the workspace's setting, or the default. */
+export function configuredFiguresDirectory(): string {
+  return (process.env.COMPUTOR_FIGURES_DIR ?? '').trim() || DEFAULT_FIGURES_DIR;
+}
+
+/**
+ * The folder to start watching on its own, or `undefined` for "not unless
+ * asked". Outside a workspace container nothing publishes figures, and
+ * watching the default path anyway would create the folder on a lecturer's own
+ * machine — so that only happens once someone opens the viewer themselves.
+ */
 export function resolveFiguresDirectory(): string | undefined {
   const configured = (process.env.COMPUTOR_FIGURES_DIR ?? '').trim();
   if (configured) {
     return configured;
   }
-  // Outside a workspace container nothing publishes figures. Watching the
-  // default path anyway would create the folder on a lecturer's own machine,
-  // so only take it when something has already put it there.
   return fs.existsSync(DEFAULT_FIGURES_DIR) ? DEFAULT_FIGURES_DIR : undefined;
 }
 
