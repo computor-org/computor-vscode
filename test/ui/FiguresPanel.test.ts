@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { commands } from '../helpers/vscode-stub';
+import { commands, fileSystemWatchers, webviewPanels } from '../helpers/vscode-stub';
 import { registerFigureViewer } from '../../src/ui/panels/FiguresPanel';
 
 /**
@@ -53,6 +53,56 @@ describe('registerFigureViewer', () => {
     registerFigureViewer(context);
 
     expect(registered).to.include('computor.figures.show');
+  });
+
+  /**
+   * Closing the panel means "done with these", not "never again". Re-running a
+   * script usually overwrites fig-000001 instead of adding a figure, so a
+   * reveal rule that waited for a new number left the panel shut for good
+   * unless the student happened to press Close on the figure first.
+   */
+  it('comes back when a script re-runs after the panel was closed', async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'computor-reopen-'));
+    process.env.COMPUTOR_FIGURES_DIR = folder;
+    webviewPanels.length = 0;
+
+    const publish = (bytes: string) => {
+      fs.writeFileSync(path.join(folder, 'fig-000001.json'),
+        JSON.stringify({ number: 1, title: 'Test', source: 'matplotlib' }));
+      fs.writeFileSync(path.join(folder, 'fig-000001.png'), bytes);
+    };
+    const settle = async () => {
+      fileSystemWatchers[fileSystemWatchers.length - 1]!.fireChange();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    };
+
+    try {
+      registerFigureViewer(context);
+      // Let the first scan see the empty folder. Figures already there at
+      // startup are left over from an earlier session and deliberately do not
+      // open the panel, which would otherwise be what this test measured.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      publish('first-run');
+      await settle();
+      expect(webviewPanels.length, 'first run opens the panel').to.equal(1);
+
+      // The student closes the panel with [x] — without pressing Close on the
+      // figure, so fig-000001 stays on disk.
+      webviewPanels[0]!.dispose();
+      expect(fs.existsSync(path.join(folder, 'fig-000001.png'))).to.be.true;
+
+      // Running the script again overwrites the same figure.
+      publish('second-run-different-bytes');
+      await settle();
+
+      expect(webviewPanels.length, 'the re-run brings the panel back').to.equal(2);
+      expect(webviewPanels[1]!.disposed).to.be.false;
+    } finally {
+      context.subscriptions.forEach((d: any) => d?.dispose?.());
+      context.subscriptions.length = 0;
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
   });
 
   it('starts watching by itself where the workspace names a folder', () => {

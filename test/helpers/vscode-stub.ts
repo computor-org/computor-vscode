@@ -52,8 +52,53 @@ export const window = {
   createOutputChannel: () => ({ appendLine() {}, append() {}, show() {}, dispose() {}, clear() {}, name: 'stub' }),
   createTreeView: () => ({ dispose() {}, reveal: notImplemented('TreeView.reveal'), onDidExpandElement: () => ({ dispose() {} }), onDidCollapseElement: () => ({ dispose() {} }), onDidChangeSelection: () => ({ dispose() {} }), onDidChangeVisibility: () => ({ dispose() {} }) }),
   registerTreeDataProvider: () => ({ dispose() {} }),
-  registerWebviewViewProvider: () => ({ dispose() {} })
+  registerWebviewViewProvider: () => ({ dispose() {} }),
+  createWebviewPanel: (viewType: string, title: string, _column?: any, _options?: any): WebviewPanelStub => {
+    const disposeEmitter = new EventEmitterStub<void>();
+    const messageEmitter = new EventEmitterStub<any>();
+    const panel: WebviewPanelStub = {
+      viewType,
+      title,
+      viewColumn: 2,
+      disposed: false,
+      posted: [],
+      webview: {
+        options: {},
+        html: '',
+        cspSource: 'vscode-resource:',
+        asWebviewUri: (uri: any) => uri,
+        onDidReceiveMessage: messageEmitter.event,
+        postMessage: async (message: any) => { panel.posted.push(message); return true; }
+      },
+      onDidDispose: disposeEmitter.event,
+      reveal: () => {},
+      // What the editor's [x] does, for a test that needs the panel closed.
+      dispose: () => {
+        if (panel.disposed) { return; }
+        panel.disposed = true;
+        disposeEmitter.fire(undefined as any);
+      }
+    };
+    webviewPanels.push(panel);
+    return panel;
+  }
 };
+
+export interface WebviewPanelStub {
+  viewType: string;
+  title: string;
+  viewColumn: number;
+  disposed: boolean;
+  /** Everything the extension posted to this panel's webview. */
+  posted: any[];
+  webview: any;
+  onDidDispose: (listener: (e: void) => void) => Disposable;
+  reveal(): void;
+  dispose(): void;
+}
+
+/** Panels handed out by `window.createWebviewPanel`, newest last. */
+export const webviewPanels: WebviewPanelStub[] = [];
 
 /**
  * Watchers handed out by `workspace.createFileSystemWatcher`, newest last.

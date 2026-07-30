@@ -29,8 +29,14 @@ export interface Figure {
 
 export interface FigureFolderChange {
   figures: Figure[];
-  /** Numbers that were not in the folder before — these reveal the viewer. */
+  /** Numbers that were not in the folder before. */
   added: number[];
+  /**
+   * Numbers whose image changed — a script re-run that overwrites its figures
+   * rather than creating new ones. Together with `added` this is "a plot just
+   * happened", which is what decides whether the viewer shows itself.
+   */
+  updated: number[];
   /**
    * True for what the first look at the folder found. Those figures are
    * left over from an earlier session, so the viewer takes note of them but
@@ -185,6 +191,9 @@ export class FigureFolderWatcher implements vscode.Disposable {
 
     const revisions = new Map(figures.map((figure) => [figure.number, figure.revision]));
     const added = figures.filter((f) => !this.revisions.has(f.number)).map((f) => f.number);
+    const updated = figures
+      .filter((f) => this.revisions.has(f.number) && this.revisions.get(f.number) !== f.revision)
+      .map((f) => f.number);
     const unchanged =
       revisions.size === this.revisions.size &&
       figures.every((f) => this.revisions.get(f.number) === f.revision);
@@ -195,7 +204,7 @@ export class FigureFolderWatcher implements vscode.Disposable {
     }
 
     this.revisions = revisions;
-    this.changeEmitter.fire({ figures, added, initial });
+    this.changeEmitter.fire({ figures, added, updated, initial });
   }
 
   private async readFigure(figureNumber: number, pngPath: string): Promise<Figure | undefined> {

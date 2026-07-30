@@ -52,16 +52,28 @@ export class FiguresPanel implements vscode.Disposable {
   /** Take in what the folder now holds. */
   async apply(change: FigureFolderChange): Promise<void> {
     this.figures = change.figures;
+    const wasClosed = this.panel === undefined;
 
-    // A figure that just appeared is the one the student wants to look at.
-    const newest = change.added[change.added.length - 1];
+    // A figure that just appeared is the one the student wants to look at; if
+    // none did, a figure that was just redrawn is the next best answer, but
+    // only when the panel is coming back — an open panel keeps its selection.
+    const newest = change.added[change.added.length - 1]
+      ?? (wasClosed ? change.updated[change.updated.length - 1] : undefined);
     if (newest !== undefined) {
       this.selected = newest;
     } else if (this.selected === undefined || !this.has(this.selected)) {
       this.selected = this.figures[this.figures.length - 1]?.number;
     }
 
-    if (newest !== undefined && !change.initial) {
+    // Closing the panel is not a decision to stop seeing figures — it is done
+    // with the ones on screen. Running the script again has to bring it back,
+    // and re-running usually *overwrites* fig-000001 rather than adding to it,
+    // so waiting for a brand new number left the panel shut for good unless
+    // the student had pressed Close first (issue #279 follow-up).
+    const plotted = change.added.length > 0 || change.updated.length > 0;
+    const reveal = plotted && !change.initial && (wasClosed || change.added.length > 0);
+
+    if (reveal) {
       // Reveal, never focus: a plot appearing must not take the cursor out of
       // the editor the student is typing in.
       await this.show(true);
