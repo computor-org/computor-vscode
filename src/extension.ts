@@ -53,6 +53,7 @@ import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/pane
 import { TestResultService } from './services/TestResultService';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
+import { registerFigureViewer } from './ui/panels/FiguresPanel';
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
@@ -1611,6 +1612,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Initialize all view contexts to false to hide views until login
   await setViewContextKeys([], ['student', 'tutor', 'lecturer', 'student.offline']);
+
+  // Plots. A workspace container has no desktop, so plotting libraries publish
+  // figures as files and this shows them. Independent of login and of role:
+  // the figures come from the student's own code, not from the backend.
+  registerFigureViewer(context);
 
   // Unified login command (Keycloak SSO browser flow)
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
