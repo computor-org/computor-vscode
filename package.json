@@ -1050,6 +1050,12 @@
         "title": "Release Content",
         "icon": "$(rocket)",
         "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.figures.show",
+        "title": "Show Figures",
+        "icon": "$(graph)",
+        "category": "Computor"
       }
     ],
     "viewsContainers": {
@@ -1220,6 +1226,12 @@
       ]
     },
     "menus": {
+      "commandPalette": [
+        {
+          "command": "computor.figures.show",
+          "when": "computor.figures.available"
+        }
+      ],
       "view/title": [
         {
           "command": "computor.lecturer.refreshExamples",

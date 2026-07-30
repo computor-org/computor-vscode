@@ -55,12 +55,45 @@ export const window = {
   registerWebviewViewProvider: () => ({ dispose() {} })
 };
 
+/**
+ * Watchers handed out by `workspace.createFileSystemWatcher`, newest last.
+ * Nothing watches the file system in a Node test, so a test that needs a
+ * watcher to fire drives it here: `fileSystemWatchers.at(-1).fireCreate(uri)`.
+ */
+export const fileSystemWatchers: FileSystemWatcherStub[] = [];
+
+export interface FileSystemWatcherStub {
+  onDidCreate: (listener: (e: any) => void) => Disposable;
+  onDidChange: (listener: (e: any) => void) => Disposable;
+  onDidDelete: (listener: (e: any) => void) => Disposable;
+  dispose(): void;
+  fireCreate(uri?: any): void;
+  fireChange(uri?: any): void;
+  fireDelete(uri?: any): void;
+}
+
 export const workspace = {
   workspaceFolders: undefined as any,
   getConfiguration: (_section?: string) => configurationStub,
   updateWorkspaceFolders: () => true,
   onDidChangeWorkspaceFolders: () => ({ dispose() {} }),
-  openTextDocument: notImplemented('workspace.openTextDocument')
+  openTextDocument: notImplemented('workspace.openTextDocument'),
+  createFileSystemWatcher: (_pattern: any): FileSystemWatcherStub => {
+    const created = new EventEmitterStub<any>();
+    const changed = new EventEmitterStub<any>();
+    const deleted = new EventEmitterStub<any>();
+    const watcher: FileSystemWatcherStub = {
+      onDidCreate: created.event,
+      onDidChange: changed.event,
+      onDidDelete: deleted.event,
+      dispose: () => { created.dispose(); changed.dispose(); deleted.dispose(); },
+      fireCreate: (uri?: any) => created.fire(uri),
+      fireChange: (uri?: any) => changed.fire(uri),
+      fireDelete: (uri?: any) => deleted.fire(uri)
+    };
+    fileSystemWatchers.push(watcher);
+    return watcher;
+  }
 };
 
 export const commands = {
