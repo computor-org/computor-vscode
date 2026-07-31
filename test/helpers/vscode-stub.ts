@@ -72,6 +72,8 @@ export const window = {
       },
       onDidDispose: disposeEmitter.event,
       reveal: () => {},
+      // What a click in the webview does, for a test that needs one.
+      fireMessage: (message: any) => messageEmitter.fire(message),
       // What the editor's [x] does, for a test that needs the panel closed.
       dispose: () => {
         if (panel.disposed) { return; }
@@ -94,6 +96,8 @@ export interface WebviewPanelStub {
   webview: any;
   onDidDispose: (listener: (e: void) => void) => Disposable;
   reveal(): void;
+  /** Deliver a message as the webview's script would have posted it. */
+  fireMessage(message: any): void;
   dispose(): void;
 }
 

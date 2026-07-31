@@ -112,6 +112,13 @@ export class FiguresPanel implements vscode.Disposable {
         case 'close':
           void this.watcher.closeFigure(Number(message.data?.number));
           break;
+        case 'closeAll':
+          // The figures this panel is showing, not whatever the folder holds
+          // now: a figure published between the render and the click is one
+          // the student never saw, and closing it would fight the script that
+          // just drew it.
+          void this.watcher.closeFigures(this.figures.map((figure) => figure.number));
+          break;
       }
     });
 
@@ -185,6 +192,7 @@ export class FiguresPanel implements vscode.Disposable {
             <span class="figures-stage-meta" id="figuresStageMeta"></span>
             <span class="flex-spacer"></span>
             <button class="btn secondary" data-action="closeSelected" title="Close this figure">Close</button>
+            <button class="btn secondary hidden" id="figuresCloseAll" data-action="closeAll" title="Close every figure">Close All</button>
           </div>
           <div class="figures-canvas"><img id="figuresStageImage" alt=""></div>
         </div>
