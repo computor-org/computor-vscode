@@ -53,6 +53,10 @@ export const window = {
   createTreeView: () => ({ dispose() {}, reveal: notImplemented('TreeView.reveal'), onDidExpandElement: () => ({ dispose() {} }), onDidCollapseElement: () => ({ dispose() {} }), onDidChangeSelection: () => ({ dispose() {} }), onDidChangeVisibility: () => ({ dispose() {} }) }),
   registerTreeDataProvider: () => ({ dispose() {} }),
   registerWebviewViewProvider: () => ({ dispose() {} }),
+  registerCustomEditorProvider: (viewType: string, provider: any, options?: any): Disposable => {
+    customEditorProviders.push({ viewType, provider, options });
+    return { dispose() {} };
+  },
   createWebviewPanel: (viewType: string, title: string, _column?: any, _options?: any): WebviewPanelStub => {
     const disposeEmitter = new EventEmitterStub<void>();
     const messageEmitter = new EventEmitterStub<any>();
@@ -103,6 +107,13 @@ export interface WebviewPanelStub {
 
 /** Panels handed out by `window.createWebviewPanel`, newest last. */
 export const webviewPanels: WebviewPanelStub[] = [];
+
+/**
+ * Custom editors registered through `window.registerCustomEditorProvider`.
+ * VS Code resolves these when a matching file is opened; a test drives that
+ * itself: `customEditorProviders.at(-1).provider.resolveCustomEditor(doc, panel)`.
+ */
+export const customEditorProviders: { viewType: string; provider: any; options?: any }[] = [];
 
 /**
  * Watchers handed out by `workspace.createFileSystemWatcher`, newest last.

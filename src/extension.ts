@@ -54,6 +54,7 @@ import { TestResultService } from './services/TestResultService';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
+import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
@@ -1617,6 +1618,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // figures as files and this shows them. Independent of login and of role:
   // the figures come from the student's own code, not from the backend.
   registerFigureViewer(context);
+
+  // Opening a PNG. The built-in image editor cannot show one under code-server
+  // in Firefox or older Safari — its picture, stylesheet and script all come
+  // through a service worker that never sees the request (issue #282) — so we
+  // bring our own, inlined like every other Computor webview.
+  registerImageViewer(context);
 
   // Unified login command (Keycloak SSO browser flow)
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
