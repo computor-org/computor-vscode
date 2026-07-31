@@ -17,6 +17,7 @@
   const stageMetaNode = document.getElementById('figuresStageMeta');
   const stageImageNode = document.getElementById('figuresStageImage');
   const stripNode = document.getElementById('figuresStrip');
+  const closeAllNode = document.getElementById('figuresCloseAll');
 
   /** number -> { title, source, image } as last received. */
   const figures = new Map();
@@ -108,6 +109,9 @@
     const figure = selected === null ? undefined : figures.get(selected);
     emptyNode.classList.toggle('hidden', !!figure);
     stageNode.classList.toggle('hidden', !figure);
+    // With a single figure "Close All" is just "Close" under a longer name, so
+    // it appears on the same terms as the strip: only once there are several.
+    closeAllNode.classList.toggle('hidden', order.length < 2);
     if (!figure) {
       // Drop the image so a closed figure cannot flash back when the next one
       // opens the stage again.
@@ -148,6 +152,9 @@
       if (selected !== null) {
         post('close', { number: selected });
       }
+    },
+    closeAll: () => {
+      post('closeAll');
     }
   });
 

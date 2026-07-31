@@ -127,6 +127,44 @@ describe('FigureFolderWatcher', () => {
     await watcher.closeFigure(42);
   });
 
+  /**
+   * "Close All" empties the folder in one step. Closing figure by figure would
+   * report the viewer down to two figures, then one, then none — three renders
+   * for one decision, and two of them show a state the student never asked for.
+   */
+  it('closing several figures empties the folder in one change', async () => {
+    publish(1, 'Sales');
+    publish(2, 'Costs');
+    publish(3, 'Margin');
+    await settle();
+    changes.length = 0;
+
+    await watcher.closeFigures([1, 2, 3]);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(fs.readdirSync(directory)).to.be.empty;
+    expect(changes).to.have.lengthOf(1);
+    expect(changes[0]!.figures).to.be.empty;
+  });
+
+  /**
+   * A figure published after the strip was drawn is one the student never saw,
+   * so "Close All" names the figures it is closing rather than emptying the
+   * folder — the new one stays, and the script that drew it keeps it.
+   */
+  it('closing several figures leaves out one it was not asked about', async () => {
+    publish(1, 'Sales');
+    publish(2, 'Costs');
+    await settle();
+    changes.length = 0;
+
+    publish(3, 'Just arrived');
+    await watcher.closeFigures([1, 2]);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(changes[changes.length - 1]!.figures.map((figure) => figure.number)).to.deep.equal([3]);
+  });
+
   it('reports a figure closed by its producer', async () => {
     publish(1, 'Sales');
     await settle();

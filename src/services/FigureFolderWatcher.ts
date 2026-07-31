@@ -123,6 +123,20 @@ export class FigureFolderWatcher implements vscode.Disposable {
    * owns it sees the file go and closes its own figure to match.
    */
   async closeFigure(figureNumber: number): Promise<void> {
+    await this.closeFigures([figureNumber]);
+  }
+
+  /**
+   * Close several figures as one act, so "Close All" costs a single re-scan
+   * and the viewer empties in one step instead of blinking down one figure at
+   * a time as each deletion lands.
+   */
+  async closeFigures(figureNumbers: number[]): Promise<void> {
+    await Promise.all(figureNumbers.map((figureNumber) => this.removeFigure(figureNumber)));
+    this.scheduleScan();
+  }
+
+  private async removeFigure(figureNumber: number): Promise<void> {
     const stem = path.join(this.directory, `fig-${String(figureNumber).padStart(6, '0')}`);
     for (const file of [`${stem}.png`, `${stem}.json`]) {
       try {
@@ -133,7 +147,6 @@ export class FigureFolderWatcher implements vscode.Disposable {
         }
       }
     }
-    this.scheduleScan();
   }
 
   private scheduleScan(): void {

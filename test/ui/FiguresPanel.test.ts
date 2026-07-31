@@ -105,6 +105,51 @@ describe('registerFigureViewer', () => {
     }
   });
 
+  /**
+   * "Close All" is the plot-window action students expect after a script draws
+   * a dozen figures: one press, an empty viewer, and every producing figure
+   * closed with it — the deleted PNGs are how the script learns.
+   */
+  it('closes every figure on screen when the webview asks it to', async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'computor-close-all-'));
+    process.env.COMPUTOR_FIGURES_DIR = folder;
+    webviewPanels.length = 0;
+
+    const publish = (figureNumber: number) => {
+      const stem = path.join(folder, `fig-${String(figureNumber).padStart(6, '0')}`);
+      fs.writeFileSync(`${stem}.json`,
+        JSON.stringify({ number: figureNumber, title: `Figure ${figureNumber}`, source: 'matplotlib' }));
+      fs.writeFileSync(`${stem}.png`, `image-${figureNumber}`);
+    };
+    const settle = async () => {
+      fileSystemWatchers[fileSystemWatchers.length - 1]!.fireChange();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    };
+
+    try {
+      registerFigureViewer(context);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      publish(1);
+      publish(2);
+      publish(3);
+      await settle();
+      expect(webviewPanels.length, 'the plots open the panel').to.equal(1);
+
+      webviewPanels[0]!.fireMessage({ command: 'closeAll' });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(fs.readdirSync(folder), 'every figure is closed').to.be.empty;
+      const last = webviewPanels[0]!.posted[webviewPanels[0]!.posted.length - 1];
+      expect(last.command).to.equal('figuresUpdate');
+      expect(last.data.figures, 'the viewer is left empty').to.be.empty;
+    } finally {
+      context.subscriptions.forEach((d: any) => d?.dispose?.());
+      context.subscriptions.length = 0;
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
   it('starts watching by itself where the workspace names a folder', () => {
     const folder = path.join(os.tmpdir(), `computor-watched-${Date.now()}`);
     fs.rmSync(folder, { recursive: true, force: true });
