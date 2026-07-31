@@ -1058,6 +1058,18 @@
         "category": "Computor"
       }
     ],
+    "customEditors": [
+      {
+        "viewType": "computor.imagePreview",
+        "displayName": "Computor Image Preview",
+        "priority": "option",
+        "selector": [
+          {
+            "filenamePattern": "*.{png,jpg,jpe,jpeg,gif,bmp,ico,webp,avif,svg}"
+          }
+        ]
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {

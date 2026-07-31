@@ -1,0 +1,113 @@
+/*
+ * The image editor. Like the Figures panel this owns the full viewport rather
+ * than the padded document base.css lays out for text pages, because a picture
+ * should use whatever room the tab has.
+ */
+
+body {
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.image-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* --------------------------------------------------------------- toolbar */
+
+.image-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--c-border);
+  flex: 0 0 auto;
+}
+
+.image-meta {
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The zoom readout sits between two one-character buttons, so give it a floor
+   wide enough that stepping 100% -> 90% does not shuffle them sideways. */
+#imageZoom {
+  min-width: 5.5ch;
+  text-align: center;
+}
+
+/* --------------------------------------------------------------- canvas */
+
+.image-canvas {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-3);
+  overflow: auto;
+  min-height: 0;
+}
+
+/* Scrollbars only appear once the image is bigger than the canvas, and then
+   it should sit at the top left rather than stay centred under the cursor. */
+.image-canvas.zoomed {
+  align-items: safe center;
+  justify-content: safe center;
+}
+
+.image-canvas img {
+  /* A checkerboard, so a transparent PNG reads as transparent instead of as
+     whatever the current theme's background happens to be. Mid grey at low
+     alpha over the editor background lands on both light and dark themes,
+     which keeps this on the variables base.css exposes. */
+  background-color: var(--vscode-editor-background);
+  background-image:
+    conic-gradient(rgba(128, 128, 128, 0.22) 25%, transparent 25% 50%,
+                   rgba(128, 128, 128, 0.22) 50% 75%, transparent 75%);
+  background-size: 16px 16px;
+  border: 1px solid var(--c-border);
+  /* Fit is the default; the script swaps in explicit dimensions to zoom. */
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.image-canvas.zoomed img {
+  max-width: none;
+  max-height: none;
+  object-fit: none;
+}
+
+/* Above ~3x the picture is being inspected pixel by pixel, and smoothing it
+   defeats the point. */
+.image-canvas img.pixelated {
+  image-rendering: pixelated;
+}
+
+.image-canvas.can-zoom-in img {
+  cursor: zoom-in;
+}
+
+.image-canvas.can-zoom-out img {
+  cursor: zoom-out;
+}
+
+/* ---------------------------------------------------------------- error */
+
+.image-error {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+  text-align: center;
+  color: var(--c-fg-muted);
+  max-width: 60ch;
+  margin: 0 auto;
+}
