@@ -150,6 +150,44 @@ describe('registerFigureViewer', () => {
     }
   });
 
+  /**
+   * "Close All" first shipped hidden until a second figure existed, on the
+   * theory that with one figure it is "Close" under a longer name. That theory
+   * ignored who goes looking for the button: the first person to try it had a
+   * single plot open, found nothing, and asked where it was. A control that
+   * hides exactly when someone searches for it is worse than a redundant one.
+   */
+  it('offers Close All even with a single figure open', async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'computor-close-all-one-'));
+    process.env.COMPUTOR_FIGURES_DIR = folder;
+    webviewPanels.length = 0;
+
+    try {
+      registerFigureViewer(context);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      fs.writeFileSync(path.join(folder, 'fig-000001.json'),
+        JSON.stringify({ number: 1, title: 'Sales', source: 'matplotlib' }));
+      fs.writeFileSync(path.join(folder, 'fig-000001.png'), 'image-bytes');
+      fileSystemWatchers[fileSystemWatchers.length - 1]!.fireChange();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const html: string = webviewPanels[0]!.webview.html;
+      const button = /<button[^>]*data-action="closeAll"[^>]*>/.exec(html);
+      expect(button, 'the toolbar has a Close All button').to.not.be.null;
+      expect(button![0], 'and it is not hidden').to.not.match(/\bhidden\b/);
+
+      // And it still closes the one figure there is.
+      webviewPanels[0]!.fireMessage({ command: 'closeAll' });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(fs.readdirSync(folder)).to.be.empty;
+    } finally {
+      context.subscriptions.forEach((d: any) => d?.dispose?.());
+      context.subscriptions.length = 0;
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
   it('starts watching by itself where the workspace names a folder', () => {
     const folder = path.join(os.tmpdir(), `computor-watched-${Date.now()}`);
     fs.rmSync(folder, { recursive: true, force: true });

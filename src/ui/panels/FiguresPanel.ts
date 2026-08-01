@@ -192,7 +192,7 @@ export class FiguresPanel implements vscode.Disposable {
             <span class="figures-stage-meta" id="figuresStageMeta"></span>
             <span class="flex-spacer"></span>
             <button class="btn secondary" data-action="closeSelected" title="Close this figure">Close</button>
-            <button class="btn secondary hidden" id="figuresCloseAll" data-action="closeAll" title="Close every figure">Close All</button>
+            <button class="btn secondary" data-action="closeAll" title="Close every figure">Close All</button>
           </div>
           <div class="figures-canvas"><img id="figuresStageImage" alt=""></div>
         </div>
