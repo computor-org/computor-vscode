@@ -4,12 +4,12 @@ import { LecturerRepositoryManager } from '../../../services/LecturerRepositoryM
 import * as fs from 'fs';
 import * as path from 'path';
 import { RepositoryTokenManager } from '../../../services/RepositoryTokenManager';
-import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { isConsentRequiredError, handleConsentError } from '../../../utils/consentGate';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
+import { UiStateService } from '../../../services/UiStateService';
 import { openFileCommand } from '../../editorLayout';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
 import { DragDropManager } from '../../../services/DragDropManager';
@@ -93,8 +93,8 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
   private apiService: ComputorApiService;
   private gitLabTokenManager: RepositoryTokenManager;
-  private settingsManager: ComputorSettingsManager;
   private expandedStates: Record<string, boolean> = {};
+  private readonly uiState = UiStateService.getInstanceOrUndefined();
   
   // Pagination state for different node types
   private paginationState: Map<string, PaginationInfo> = new Map();
@@ -114,7 +114,6 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
     // Use provided apiService or create a new one
     this.apiService = apiService || new ComputorApiService(context);
     this.gitLabTokenManager = RepositoryTokenManager.getInstance(context);
-    this.settingsManager = new ComputorSettingsManager(context);
     this.gitWrapper = new GitWrapper();
     this.repositoryManager = new LecturerRepositoryManager(context, this.apiService as any);
     
@@ -1364,12 +1363,11 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
    * Load expanded states from settings
    */
   private async loadExpandedStates(): Promise<void> {
-    try {
-      this.expandedStates = await this.settingsManager.getTreeExpandedStates();
-    } catch (error) {
-      console.error('Failed to load expanded states:', error);
-      this.expandedStates = {};
-    }
+    // Reads synchronously from UiStateService. This used to await the settings
+    // file, and getChildren could outrun it, so the first render after a
+    // reload collapsed the tree it was meant to restore
+    // (computor-org/issues#285).
+    this.expandedStates = { ...(this.uiState?.expandedNodes('lecturer') ?? {}) };
   }
 
 
@@ -1383,11 +1381,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       delete this.expandedStates[nodeId];
     }
 
-    try {
-      await this.settingsManager.setNodeExpandedState(nodeId, expanded);
-    } catch (error) {
-      console.error('Failed to save node expanded state:', error);
-    }
+    this.uiState?.setExpanded('lecturer', nodeId, expanded);
   }
 
   // Drag and drop implementation

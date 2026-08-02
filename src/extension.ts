@@ -1147,6 +1147,7 @@ class UnifiedController {
     registerTreeView('computor.tutor.courses', {
       provider: tree,
       options: { showCollapseAll: true },
+      onExpand: (event) => tree.handleExpand(event.element),
       onCollapse: (event) => tree.handleCollapse(event.element),
       onSelection: (event) => {
         const selected = event.selection[0];

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { ComputorApiService } from '../../../services/ComputorApiService';
 import type { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { TutorSelectionService } from '../../../services/TutorSelectionService';
+import { UiStateService } from '../../../services/UiStateService';
 import type { CourseTutorList, TutorCourseMemberList, CourseGroupList } from '../../../types/generated/courses';
 import {
   TutorCourseFamilyFilterItem,
@@ -47,44 +48,25 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
   private groupsInFlight = new Map<string, Promise<CourseGroupList[]>>();
   private membersInFlight = new Map<string, Promise<TutorCourseMemberList[]>>();
 
-  private expandedStates: Record<string, boolean> = {};
+  private readonly uiState = UiStateService.getInstanceOrUndefined();
 
   constructor(
     private readonly api: ComputorApiService,
     private readonly selection: TutorSelectionService,
-    private readonly settingsManager?: ComputorSettingsManager
+    _settingsManager?: ComputorSettingsManager
   ) {
     super();
-    void this.loadExpandedStates();
-  }
-
-  private async loadExpandedStates(): Promise<void> {
-    if (!this.settingsManager) { return; }
-    try {
-      this.expandedStates = await this.settingsManager.getTutorTreeExpandedStates();
-    } catch (error) {
-      console.error('[TutorFilterTree] Failed to load expanded states:', error);
-      this.expandedStates = {};
-    }
   }
 
   async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
-    if (expanded) {
-      this.expandedStates[nodeId] = true;
-    } else {
-      delete this.expandedStates[nodeId];
-    }
-    if (this.settingsManager) {
-      try {
-        await this.settingsManager.setTutorNodeExpandedState(nodeId, expanded);
-      } catch (error) {
-        console.error('[TutorFilterTree] Failed to persist expanded state:', error);
-      }
-    }
+    this.uiState?.setExpanded('tutorFilters', nodeId, expanded);
   }
 
   private isExpanded(nodeId: string): boolean {
-    return this.expandedStates[nodeId] === true;
+    // Synchronous, so the first getChildren after a reload sees the real
+    // state. It used to await a load kicked off in the constructor, which the
+    // first render could outrun (computor-org/issues#285).
+    return this.uiState?.isExpanded('tutorFilters', nodeId) ?? false;
   }
 
   getTreeItem(element: FilterTreeItem): vscode.TreeItem {
