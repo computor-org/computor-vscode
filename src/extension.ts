@@ -8,6 +8,8 @@ import { errorCatalog } from './exceptions/ErrorCatalog';
 import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
 import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
 import { openFile, registerEditorLayout, showOptions } from './ui/editorLayout';
+import { UiStateService } from './services/UiStateService';
+import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -263,6 +265,19 @@ function registerTreeView<T>(
   if (registration.onCollapse) disposables.push(treeView.onDidCollapseElement(registration.onCollapse));
   if (registration.onSelection) disposables.push(treeView.onDidChangeSelection(registration.onSelection));
   if (registration.onVisibility) disposables.push(treeView.onDidChangeVisibility(registration.onVisibility));
+
+  // Every tree goes through here, so this is the one place that can see which
+  // container the user is actually in. A view becoming visible means its
+  // container is the one on screen — that is what gets restored on the next
+  // activation (computor-org/issues#285).
+  const container = containerForView(id);
+  if (container) {
+    disposables.push(treeView.onDidChangeVisibility(event => {
+      if (event.visible) {
+        UiStateService.getInstanceOrUndefined()?.setActiveContainer(container.id);
+      }
+    }));
+  }
   return treeView;
 }
 
@@ -285,7 +300,12 @@ function createActiveSession(context: vscode.ExtensionContext, controller: Unifi
       await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.chat.show', false);
-      await context.globalState.update('computor.tutor.selection', undefined);
+      // Deliberately does NOT clear the tutor selection any more. deactivate()
+      // runs on window close, so this destroyed the one selection that had a
+      // working restore path exactly when it needed to survive
+      // (computor-org/issues#285). Forgetting is logout's job, and
+      // LogoutCommands.clearAllGlobalState already does it.
+      await UiStateService.getInstanceOrUndefined()?.flush();
       backendConnectionService.stopHealthCheck();
     }),
     getActiveViews: () => controller.getActiveViews(),
@@ -597,6 +617,7 @@ class UnifiedController {
   private messagesInputPanel?: MessagesInputPanelProvider;
   private commentsInputPanel?: CourseMemberCommentsInputPanelProvider;
   private wsService?: WebSocketService;
+  private readonly uiState = UiStateService.getInstanceOrUndefined();
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -744,29 +765,40 @@ class UnifiedController {
     await vscode.commands.executeCommand('setContext', 'computor.chat.show', true);
   }
 
+  /**
+   * Open the container the user was last in.
+   *
+   * This used to run a fixed lecturer > tutor > student priority on every
+   * activation, not just the first, so a tutor who worked in the Tutor
+   * container was put back in Lecturer every time they reopened the workspace
+   * (computor-org/issues#285). The remembered container wins when it is still
+   * reachable — roles change between sessions, and focusing a container whose
+   * views are all gated off would leave an empty pane.
+   */
   private async focusHighestPriorityView(views: string[]): Promise<void> {
-    // Priority: lecturer > tutor > student
-    let viewToFocus: string | null = null;
-    let commandToRun: string | null = null;
-
-    if (views.includes('lecturer')) {
-      viewToFocus = 'lecturer';
-      commandToRun = 'workbench.view.extension.computor-lecturer';
-    } else if (views.includes('tutor')) {
-      viewToFocus = 'tutor';
-      commandToRun = 'workbench.view.extension.computor-tutor';
-    } else if (views.includes('student')) {
-      viewToFocus = 'student';
-      commandToRun = 'workbench.view.extension.computor-student';
+    const remembered = this.uiState?.getActiveContainer();
+    let target = remembered ? containerById(remembered) : undefined;
+    if (target && !isContainerAvailable(target, views)) {
+      target = undefined;
     }
 
-    if (commandToRun) {
-      try {
-        await vscode.commands.executeCommand(commandToRun);
-        console.log(`Focused on ${viewToFocus} view after login`);
-      } catch (err) {
-        console.warn(`Failed to focus on ${viewToFocus} view:`, err);
-      }
+    if (!target) {
+      const fallback = ['lecturer', 'tutor', 'student'].find(role => views.includes(role));
+      target = fallback === 'lecturer' ? containerById('computor-lecturer')
+        : fallback === 'tutor' ? containerById('computor-tutor')
+          : fallback === 'student' ? containerById('computor-student')
+            : undefined;
+    }
+
+    if (!target) {
+      return;
+    }
+
+    try {
+      await vscode.commands.executeCommand(target.focusCommand);
+      console.log(`Focused ${target.id}${remembered === target.id ? ' (where you left off)' : ''}`);
+    } catch (err) {
+      console.warn(`Failed to focus ${target.id}:`, err);
     }
   }
 
@@ -1633,7 +1665,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   errorCatalog.initialize();
   clientErrorCatalog.initialize();
 
-  extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
+  const settingsManager = new ComputorSettingsManager(context);
+  extensionUpdateService = new ExtensionUpdateService(context, settingsManager);
+
+  // How the workspace looked when it was last closed: which container was
+  // open, which nodes were expanded, what was selected. Set up before any
+  // tree is built, because every provider reads it on its first render.
+  const uiState = UiStateService.initialize(context);
+  await uiState.migrateLegacyExpansion(settingsManager);
 
   // Initialize all view contexts to false to hide views until login
   await setViewContextKeys([], ['student', 'tutor', 'lecturer', 'student.offline']);
@@ -1819,5 +1858,9 @@ export async function deactivate(): Promise<void> {
     await activeSession.deactivate();
     activeSession = null;
   }
+  // Writes are debounced, so the last expand or click before the window closes
+  // would otherwise never reach disk — which is the exact moment it matters.
+  // Runs even without a session, since state changes before login too.
+  await UiStateService.getInstanceOrUndefined()?.flush();
   IconGenerator.cleanup();
 }

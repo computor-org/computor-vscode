@@ -227,12 +227,16 @@ export class LogoutCommands {
    * Clear all Computor-related global state
    */
   private async clearAllGlobalState(): Promise<void> {
+    // Logging out is the one place that forgets things — the session teardown
+    // used to clear the tutor selection on every window close, which is why
+    // it never survived a reopen (computor-org/issues#285).
     const stateKeys = [
       'computor.lastUsername',
       'computor.lastBackendUrl',
       'computor.tutor.selection',
       'computor.selectedCourse',
-      'computor.activeViews'
+      'computor.activeViews',
+      'computor.ui.state'
     ];
 
     for (const key of stateKeys) {
