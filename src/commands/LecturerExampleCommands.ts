@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { openFile, showOptions } from '../ui/editorLayout';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -2012,7 +2013,7 @@ export class LecturerExampleCommands {
         'Open Version File'
       );
       if (action === 'Open Version File') {
-        await vscode.commands.executeCommand('vscode.open', versionUri);
+        await openFile(versionUri);
       }
       return;
     }
@@ -2069,7 +2070,7 @@ export class LecturerExampleCommands {
         fs.mkdirSync(path.dirname(targetPath), { recursive: true });
         fs.writeFileSync(targetPath, '', 'utf8');
         const doc = await vscode.workspace.openTextDocument(targetPath);
-        await vscode.window.showTextDocument(doc);
+        await vscode.window.showTextDocument(doc, showOptions(targetPath));
       }
       this.treeProvider.refresh();
     } catch (error) {
@@ -2351,7 +2352,7 @@ export class LecturerExampleCommands {
     this.treeProvider.refresh();
 
     const doc = await vscode.workspace.openTextDocument(filePath);
-    await vscode.window.showTextDocument(doc);
+    await vscode.window.showTextDocument(doc, showOptions(filePath));
   }
 
   private async runExampleTests(item: CheckedOutVersionTreeItem): Promise<void> {

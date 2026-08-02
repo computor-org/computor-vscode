@@ -10,6 +10,7 @@ import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
+import { openFileCommand } from '../../editorLayout';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { extractGraderName } from '../../../utils/gradingHelpers';
 import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/repositoryNaming';
@@ -1578,11 +1579,7 @@ class FileSystemItem extends TreeItem {
         this.resourceUri = uri;
         
         if (type === vscode.FileType.File) {
-            this.command = {
-                command: 'vscode.open',
-                title: 'Open File',
-                arguments: [uri]
-            };
+            this.command = openFileCommand(uri);
             this.contextValue = 'file';
             
             // Set appropriate icon based on file extension

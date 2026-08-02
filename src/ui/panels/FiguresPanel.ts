@@ -7,6 +7,7 @@ import {
   FigureFolderWatcher,
   resolveFiguresDirectory
 } from '../../services/FigureFolderWatcher';
+import { AUX_COLUMN } from '../editorLayout';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 
 /** A figure as the webview needs it: the image travels with it. */
@@ -90,7 +91,10 @@ export class FiguresPanel implements vscode.Disposable {
     const panel = vscode.window.createWebviewPanel(
       FiguresPanel.viewType,
       'Figures',
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus },
+      // Absolute, not Beside: Beside is relative to whatever has focus, so a
+      // plot drawn while the student was looking at a figure opened a third
+      // group instead of reusing the second (computor-org/issues#286).
+      { viewColumn: AUX_COLUMN, preserveFocus },
       {
         enableScripts: true,
         retainContextWhenHidden: true,

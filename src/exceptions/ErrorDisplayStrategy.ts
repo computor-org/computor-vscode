@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AUX_COLUMN } from '../ui/editorLayout';
 import { BackendErrorDefinition } from './types';
 
 /**
@@ -135,9 +136,12 @@ export class DetailedMarkdownDisplayStrategy implements ErrorDisplayStrategy {
       language: 'markdown'
     });
 
+    // An error report is something you read while fixing the code, so it goes
+    // in the auxiliary group — absolute, because Beside would open a third
+    // group whenever that group already had focus (computor-org/issues#286).
     await vscode.window.showTextDocument(doc, {
       preview: true,
-      viewColumn: vscode.ViewColumn.Beside
+      viewColumn: AUX_COLUMN
     });
   }
 

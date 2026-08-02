@@ -7,6 +7,7 @@ import { GitCancelledError } from './exceptions/errors/GitExecError';
 import { errorCatalog } from './exceptions/ErrorCatalog';
 import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
 import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
+import { openFile, registerEditorLayout, showOptions } from './ui/editorLayout';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -1015,13 +1016,15 @@ class UnifiedController {
     const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat'];
 
     if (imageExtensions.includes(ext)) {
-      await vscode.commands.executeCommand('vscode.open', fileUri, { preview: false });
+      // openFile puts an image in the auxiliary group with the figures, and
+      // keeps it routed to the Computor image preview.
+      await openFile(fileUri, { preview: false });
     } else if (binaryExtensions.includes(ext)) {
       await vscode.commands.executeCommand('revealFileInOS', fileUri);
       notify.info(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
     } else {
       const doc = await vscode.workspace.openTextDocument(fileUri);
-      await vscode.window.showTextDocument(doc, { preview: false });
+      await vscode.window.showTextDocument(doc, showOptions(fileUri, { preview: false }));
     }
   }
 
@@ -1624,6 +1627,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // through a service worker that never sees the request (issue #282) — so we
   // bring our own, inlined like every other Computor webview.
   registerImageViewer(context);
+
+  // Which editor group a file opens in. Registered before any tree is built,
+  // because every tree item's click binds to computor.openFile.
+  registerEditorLayout(context);
 
   // Unified login command (Keycloak SSO browser flow)
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));

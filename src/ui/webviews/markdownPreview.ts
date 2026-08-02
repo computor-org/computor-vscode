@@ -1,12 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { AUX_COLUMN } from '../editorLayout';
 import { renderWebviewPage } from './shared/webviewPage';
 
 export interface MarkdownPreviewOptions {
   /** Panel/tab title; defaults to the file's basename. */
   title?: string;
-  /** Defaults to Beside when an editor is active, One otherwise. */
+  /** Defaults to the auxiliary group, alongside the figures. */
   viewColumn?: vscode.ViewColumn;
 }
 
@@ -32,9 +33,12 @@ export async function showMarkdownPreview(
   const dir = path.dirname(filePath);
   const markdown = fs.readFileSync(filePath, 'utf8');
   const title = options.title ?? path.basename(filePath);
-  const column =
-    options.viewColumn ??
-    (vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One);
+  // A README belongs beside the code, never on top of it. The old
+  // "Beside when an editor is active, One otherwise" put the preview in the
+  // *source* group whenever focus happened to be on a webview — which is
+  // always true when the student is looking at a figure
+  // (computor-org/issues#286).
+  const column = options.viewColumn ?? AUX_COLUMN;
 
   // The resource roots must follow the previewed file: a reused panel would
   // otherwise keep the first file's roots and images from any other
@@ -57,7 +61,9 @@ export async function showMarkdownPreview(
     });
   } else {
     previewPanel.webview.options = webviewOptions;
-    previewPanel.reveal(column);
+    // preserveFocus: re-showing a README must not pull the cursor out of the
+    // editor the student is typing in.
+    previewPanel.reveal(column, true);
   }
 
   const panel = previewPanel;

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { showOptions } from '../ui/editorLayout';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SimpleGit } from 'simple-git';
@@ -7,7 +8,9 @@ import { notify } from '../utils/notify';
 
 function openFileInMergeEditor(filePath: string): void {
   void vscode.workspace.openTextDocument(filePath).then((document) => {
-    void vscode.window.showTextDocument(document);
+    // A conflicted file is a file to edit, so it belongs in the source group
+    // rather than wherever focus happened to be (computor-org/issues#286).
+    void vscode.window.showTextDocument(document, showOptions(filePath));
   });
 }
 

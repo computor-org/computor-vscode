@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { promisify } from 'util';
 import { GitWrapper } from '../../../git/GitWrapper';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import { openFileCommand } from '../../editorLayout';
 
 const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
@@ -311,11 +312,7 @@ class FileSystemItem extends vscode.TreeItem {
         this.resourceUri = uri;
 
         if (type === vscode.FileType.File) {
-            this.command = {
-                command: 'vscode.open',
-                title: 'Open File',
-                arguments: [uri]
-            };
+            this.command = openFileCommand(uri);
             this.contextValue = 'offlineFile';
 
             // Set appropriate icon based on file extension

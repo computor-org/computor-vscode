@@ -10,6 +10,7 @@ import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { isConsentRequiredError, handleConsentError } from '../../../utils/consentGate';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
+import { openFileCommand } from '../../editorLayout';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
 import { DragDropManager } from '../../../services/DragDropManager';
 import { GitWrapper } from '../../../git/GitWrapper';
@@ -2055,7 +2056,7 @@ class FSFileItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('file');
     this.resourceUri = vscode.Uri.file(absPath);
     this.contextValue = 'lecturerFsFile';
-    this.command = { command: 'vscode.open', title: 'Open File', arguments: [vscode.Uri.file(absPath)] };
+    this.command = openFileCommand(vscode.Uri.file(absPath));
     this.tooltip = absPath;
   }
 }

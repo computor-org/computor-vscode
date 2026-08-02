@@ -6,6 +6,7 @@ import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { IconGenerator } from '../../../utils/IconGenerator';
+import { openFileCommand } from '../../editorLayout';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
 import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../utils/repositoryNaming';
 import { extractGraderName } from '../../../utils/gradingHelpers';
@@ -995,7 +996,7 @@ class TutorFsFileItem extends vscode.TreeItem {
     this.contextValue = folderType ? `tutorFsFile.${folderType}` : 'tutorFsFile';
     this.tooltip = absPath;
     this.resourceUri = vscode.Uri.file(absPath);
-    this.command = { command: 'vscode.open', title: 'Open File', arguments: [vscode.Uri.file(absPath)] };
+    this.command = openFileCommand(vscode.Uri.file(absPath));
     this.id = `tutorFsFile:${courseId}:${memberId}:${absPath}`;
   }
 }

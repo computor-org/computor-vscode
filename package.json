@@ -21,6 +21,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "computor.openFile",
+        "title": "Open File",
+        "category": "Computor"
+      },
+      {
         "command": "computor.tutor.assignment.grading",
         "title": "Grading\u2026",
         "category": "Computor Tutor"
@@ -1238,6 +1243,12 @@
       ]
     },
     "menus": {
+      "commandPalette": [
+        {
+          "command": "computor.openFile",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "computor.lecturer.refreshExamples",
