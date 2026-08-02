@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AUX_COLUMN } from '../editorLayout';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
@@ -200,7 +201,10 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
   private async handleOpenFile(filePath: string): Promise<void> {
     try {
       const doc = await vscode.workspace.openTextDocument(filePath);
-      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
+      // Beside the form, which lives in the source group — but absolute, so
+      // it stays there instead of following whatever had focus
+      // (computor-org/issues#286).
+      await vscode.window.showTextDocument(doc, { viewColumn: AUX_COLUMN });
     } catch (error) {
       notify.error(`Failed to open file: ${error}`);
     }

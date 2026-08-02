@@ -52,6 +52,8 @@ interface PersistedState {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
   mutedScopes?: MessageScope[];
+  /** `${scope}::${courseId}` for each open course node. */
+  expandedCourseGroups?: string[];
 }
 
 type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatCourseGroupItem;
@@ -446,6 +448,9 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     } else {
       this.expandedCourseGroups.delete(key);
     }
+    // Scope expansion was persisted and this was not, so open course nodes
+    // survived a refresh but not a reopen (computor-org/issues#285).
+    void this.persistState();
   }
 
   /**
@@ -1254,6 +1259,9 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         if (Array.isArray(stored.mutedScopes)) {
           this.mutedScopes = new Set(stored.mutedScopes);
         }
+        if (Array.isArray(stored.expandedCourseGroups)) {
+          this.expandedCourseGroups = new Set(stored.expandedCourseGroups);
+        }
       }
     } catch (err) {
       console.warn('[ChatInbox] Failed to load persisted state:', err);
@@ -1266,7 +1274,8 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     const state: PersistedState = {
       expandedScopes: Array.from(this.expandedScopes),
       unreadOnly: this.unreadOnly,
-      mutedScopes: Array.from(this.mutedScopes)
+      mutedScopes: Array.from(this.mutedScopes),
+      expandedCourseGroups: Array.from(this.expandedCourseGroups)
     };
     try {
       await this.context.globalState.update(STATE_KEY, state);

@@ -5,11 +5,12 @@ import { promisify } from 'util';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseSelectionService } from '../../../services/CourseSelectionService';
 import { StudentRepositoryProvisioningService } from '../../../services/StudentRepositoryProvisioningService';
-import { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
+import { UiStateService } from '../../../services/UiStateService';
+import { openFileCommand } from '../../editorLayout';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { extractGraderName } from '../../../utils/gradingHelpers';
 import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/repositoryNaming';
@@ -52,13 +53,13 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
     private provisioning?: StudentRepositoryProvisioningService;
-    private settingsManager?: ComputorSettingsManager;
     // Course-level-git model per course (descriptor + recorded repo), cached for
     // the session; cleared when a course's contents are refreshed.
     private gitModelCache: Map<string, CourseGitModel> = new Map();
     private courseContentsCache: Map<string, CourseContentStudentList[]> = new Map(); // Cache course contents per course
     private contentKinds: CourseContentKindList[] = [];
     private expandedStates: Record<string, boolean> = {};
+    private readonly uiState = UiStateService.getInstanceOrUndefined();
     private itemIndex: Map<string, TreeItem> = new Map();
     private forceRefresh: boolean = false;
     // Per-render grouping cache so org/family children resolve without refetching.
@@ -81,7 +82,6 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         this.apiService = apiService;
         this.courseSelection = courseSelection;
         if (context) {
-            this.settingsManager = new ComputorSettingsManager(context);
             // Course-level-git provisioning (managed/external/download) for courses
             // on the new model; needs the extension context for secret storage.
             this.provisioning = new StudentRepositoryProvisioningService(context, apiService);
@@ -141,9 +141,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     }
 
     private async loadExpandedStates(): Promise<void> {
-        if (!this.settingsManager) return;
         try {
-            this.expandedStates = await this.settingsManager.getStudentTreeExpandedStates();
+            // Synchronous read; see UiStateService. The await this replaced was
+            // a race the first render could win (computor-org/issues#285).
+            this.expandedStates = { ...(this.uiState?.expandedNodes('student') ?? {}) };
             // Mark courses that were expanded at startup as already set up
             // for bulk course-level setup (avoids duplicate bulk clone on course expand).
             // Individual assignment-level setup is tracked separately and always allowed.
@@ -1037,15 +1038,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             delete this.expandedStates[nodeId];
         }
         
-        if (this.settingsManager) {
-            try {
-                await this.settingsManager.setStudentNodeExpandedState(nodeId, expanded);
-                console.log(`Saved student expanded state for ${nodeId}: ${expanded}`);
-                console.log('Current student expanded states:', Object.keys(this.expandedStates));
-            } catch (error) {
-                console.error('Failed to save student node expanded state:', error);
-            }
-        }
+        this.uiState?.setExpanded('student', nodeId, expanded);
     }
 }
 
@@ -1578,11 +1571,7 @@ class FileSystemItem extends TreeItem {
         this.resourceUri = uri;
         
         if (type === vscode.FileType.File) {
-            this.command = {
-                command: 'vscode.open',
-                title: 'Open File',
-                arguments: [uri]
-            };
+            this.command = openFileCommand(uri);
             this.contextValue = 'file';
             
             // Set appropriate icon based on file extension

@@ -93,7 +93,9 @@ export class TutorCommands {
         this.apiService.clearTutorCoursesCache();
         if (courseId) {
           this.apiService.clearTutorCourseGroupsCache(courseId);
-          this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
+          // Every group filter's roster, not just the one on screen: an
+          // explicit Refresh should leave nothing stale behind it.
+          this.apiService.clearTutorCourseMembersCache(courseId);
         }
         if (memberId) {
           this.apiService.clearTutorMemberCourseContentsCache(memberId);
@@ -405,12 +407,12 @@ export class TutorCommands {
 
         // Clear caches and refresh to get updated data
         const courseId = sel.getCurrentCourseId();
-        // API-safe id: never the "No Group" sentinel (would target a stale cache key).
-        const groupId = sel.getApiGroupId();
 
         this.apiService.clearTutorMemberCourseContentsCache(memberId);
         if (courseId) {
-          this.apiService.clearTutorCourseMembersCache(courseId, groupId || undefined);
+          // The ungraded-submissions badge just changed, and this member
+          // appears in the "All groups" roster as well as their own.
+          this.apiService.clearTutorCourseMembersCache(courseId);
         }
 
         // Full tree refresh: status changes affect parent unit items (aggregated from API)

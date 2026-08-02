@@ -35,13 +35,30 @@ export class JsonSettingsStorage<T> extends SettingsStorage<T> {
     }
   }
   
+  /**
+   * Write the settings file atomically.
+   *
+   * This is a whole-file read-modify-write, and the file also holds the backend
+   * URL and the rest of the authentication config. A plain writeFile truncates
+   * first, so a process going away mid-write — closing the browser tab a
+   * code-server workspace runs in is exactly that — could leave a truncated or
+   * empty config behind. Writing a sibling and renaming makes the replacement
+   * atomic on the same filesystem: readers see the old file or the new one.
+   */
   async save(settings: T): Promise<void> {
     if (!this.validate(settings)) {
       throw new SettingsValidationError('Invalid settings format');
     }
-    
+
     await this.ensureDirectoryExists();
-    await fs.writeFile(this.filePath, JSON.stringify(settings, null, 2));
+    const temporary = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await fs.writeFile(temporary, JSON.stringify(settings, null, 2));
+      await fs.rename(temporary, this.filePath);
+    } catch (error) {
+      await fs.unlink(temporary).catch(() => undefined);
+      throw error;
+    }
     this.cache.clear();
   }
   

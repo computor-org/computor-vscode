@@ -121,6 +121,24 @@ export class CacheService<T = any> {
   }
   
   /**
+   * Delete every entry whose key starts with `prefix`.
+   *
+   * For caches keyed by a variable suffix — `tutorCourseMembers-<course>-<group>`
+   * has one entry per group filter the user has looked at — where invalidating
+   * "this course" means invalidating all of them, and the alternative is
+   * clearing the whole cache.
+   *
+   * Returns how many entries went.
+   */
+  deletePrefix(prefix: string): number {
+    const keys = [...this.cache.keys()].filter(key => key.startsWith(prefix));
+    for (const key of keys) {
+      this.delete(key);
+    }
+    return keys.length;
+  }
+
+  /**
    * Clear all cache
    */
   clear(): void {
@@ -404,6 +422,17 @@ export class MultiTierCache {
     return deleted;
   }
   
+  /**
+   * Delete every entry whose key starts with `prefix`, from all tiers.
+   */
+  deletePrefix(prefix: string): number {
+    let deleted = 0;
+    for (const tier of this.tiers) {
+      deleted += tier.cache.deletePrefix(prefix);
+    }
+    return deleted;
+  }
+
   /**
    * Clear all tiers
    */

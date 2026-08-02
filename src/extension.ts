@@ -7,6 +7,10 @@ import { GitCancelledError } from './exceptions/errors/GitExecError';
 import { errorCatalog } from './exceptions/ErrorCatalog';
 import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
 import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
+import { openFile, registerEditorLayout, showOptions } from './ui/editorLayout';
+import { UiStateService } from './services/UiStateService';
+import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
+import { isRestoringSelection, restoreSelection, trackTree, treeItemId } from './ui/treeRestore';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -253,15 +257,46 @@ function registerTreeView<T>(
   // createTreeView already binds the data provider; calling
   // registerTreeDataProvider in addition would attach a second listener to
   // onDidChangeTreeData and cause every refresh to invoke getChildren twice.
+  // Wrapped, not replaced: this supplies getParent (which reveal() needs and
+  // most providers do not implement) and an id index, while every command
+  // holding a reference to the provider itself keeps working.
+  const tracked = trackTree(registration.provider);
   const treeView = vscode.window.createTreeView(id, {
-    treeDataProvider: registration.provider,
+    treeDataProvider: tracked.provider,
     ...registration.options
   });
-  disposables.push(treeView);
+  disposables.push(treeView, tracked);
   if (registration.onExpand) disposables.push(treeView.onDidExpandElement(registration.onExpand));
   if (registration.onCollapse) disposables.push(treeView.onDidCollapseElement(registration.onCollapse));
   if (registration.onSelection) disposables.push(treeView.onDidChangeSelection(registration.onSelection));
   if (registration.onVisibility) disposables.push(treeView.onDidChangeVisibility(registration.onVisibility));
+
+  // Remember what was selected, and put it back next time.
+  const uiState = UiStateService.getInstanceOrUndefined();
+  if (uiState) {
+    disposables.push(treeView.onDidChangeSelection(event => {
+      if (!isRestoringSelection()) {
+        uiState.setSelection(id, treeItemId(event.selection[0]));
+      }
+    }));
+    const remembered = uiState.getSelection(id);
+    if (remembered) {
+      restoreSelection(treeView, tracked, remembered, disposables);
+    }
+  }
+
+  // Every tree goes through here, so this is the one place that can see which
+  // container the user is actually in. A view becoming visible means its
+  // container is the one on screen — that is what gets restored on the next
+  // activation (computor-org/issues#285).
+  const container = containerForView(id);
+  if (container) {
+    disposables.push(treeView.onDidChangeVisibility(event => {
+      if (event.visible) {
+        UiStateService.getInstanceOrUndefined()?.setActiveContainer(container.id);
+      }
+    }));
+  }
   return treeView;
 }
 
@@ -284,7 +319,12 @@ function createActiveSession(context: vscode.ExtensionContext, controller: Unifi
       await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.chat.show', false);
-      await context.globalState.update('computor.tutor.selection', undefined);
+      // Deliberately does NOT clear the tutor selection any more. deactivate()
+      // runs on window close, so this destroyed the one selection that had a
+      // working restore path exactly when it needed to survive
+      // (computor-org/issues#285). Forgetting is logout's job, and
+      // LogoutCommands.clearAllGlobalState already does it.
+      await UiStateService.getInstanceOrUndefined()?.flush();
       backendConnectionService.stopHealthCheck();
     }),
     getActiveViews: () => controller.getActiveViews(),
@@ -596,6 +636,7 @@ class UnifiedController {
   private messagesInputPanel?: MessagesInputPanelProvider;
   private commentsInputPanel?: CourseMemberCommentsInputPanelProvider;
   private wsService?: WebSocketService;
+  private readonly uiState = UiStateService.getInstanceOrUndefined();
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -743,29 +784,40 @@ class UnifiedController {
     await vscode.commands.executeCommand('setContext', 'computor.chat.show', true);
   }
 
+  /**
+   * Open the container the user was last in.
+   *
+   * This used to run a fixed lecturer > tutor > student priority on every
+   * activation, not just the first, so a tutor who worked in the Tutor
+   * container was put back in Lecturer every time they reopened the workspace
+   * (computor-org/issues#285). The remembered container wins when it is still
+   * reachable — roles change between sessions, and focusing a container whose
+   * views are all gated off would leave an empty pane.
+   */
   private async focusHighestPriorityView(views: string[]): Promise<void> {
-    // Priority: lecturer > tutor > student
-    let viewToFocus: string | null = null;
-    let commandToRun: string | null = null;
-
-    if (views.includes('lecturer')) {
-      viewToFocus = 'lecturer';
-      commandToRun = 'workbench.view.extension.computor-lecturer';
-    } else if (views.includes('tutor')) {
-      viewToFocus = 'tutor';
-      commandToRun = 'workbench.view.extension.computor-tutor';
-    } else if (views.includes('student')) {
-      viewToFocus = 'student';
-      commandToRun = 'workbench.view.extension.computor-student';
+    const remembered = this.uiState?.getActiveContainer();
+    let target = remembered ? containerById(remembered) : undefined;
+    if (target && !isContainerAvailable(target, views)) {
+      target = undefined;
     }
 
-    if (commandToRun) {
-      try {
-        await vscode.commands.executeCommand(commandToRun);
-        console.log(`Focused on ${viewToFocus} view after login`);
-      } catch (err) {
-        console.warn(`Failed to focus on ${viewToFocus} view:`, err);
-      }
+    if (!target) {
+      const fallback = ['lecturer', 'tutor', 'student'].find(role => views.includes(role));
+      target = fallback === 'lecturer' ? containerById('computor-lecturer')
+        : fallback === 'tutor' ? containerById('computor-tutor')
+          : fallback === 'student' ? containerById('computor-student')
+            : undefined;
+    }
+
+    if (!target) {
+      return;
+    }
+
+    try {
+      await vscode.commands.executeCommand(target.focusCommand);
+      console.log(`Focused ${target.id}${remembered === target.id ? ' (where you left off)' : ''}`);
+    } catch (err) {
+      console.warn(`Failed to focus ${target.id}:`, err);
     }
   }
 
@@ -830,6 +882,9 @@ class UnifiedController {
         if (!selected) return;
         if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
           lastSelectedAssignment = selected;
+          // A restore only puts the highlight back. Fetching results for it
+          // would make every workspace reopen wait on the backend.
+          if (isRestoringSelection()) return;
           // Always load the latest result from the backend rather than gating on
           // the possibly-stale in-memory tree item — after a workspace restart
           // the item may not carry `.result` yet even though a prior result
@@ -1015,13 +1070,15 @@ class UnifiedController {
     const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat'];
 
     if (imageExtensions.includes(ext)) {
-      await vscode.commands.executeCommand('vscode.open', fileUri, { preview: false });
+      // openFile puts an image in the auxiliary group with the figures, and
+      // keeps it routed to the Computor image preview.
+      await openFile(fileUri, { preview: false });
     } else if (binaryExtensions.includes(ext)) {
       await vscode.commands.executeCommand('revealFileInOS', fileUri);
       notify.info(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
     } else {
       const doc = await vscode.workspace.openTextDocument(fileUri);
-      await vscode.window.showTextDocument(doc, { preview: false });
+      await vscode.window.showTextDocument(doc, showOptions(fileUri, { preview: false }));
     }
   }
 
@@ -1039,21 +1096,31 @@ class UnifiedController {
     // Register filter tree (replaces webview filter panel)
     const tutorSettingsManager = new ComputorSettingsManager(this.context);
     const filterTree = new TutorFilterTreeProvider(api, selection, tutorSettingsManager);
+
+    // One way in for "the tutor is now looking at this course", shared by the
+    // course node's click, its expand, and picking a member of another course.
+    const selectTutorCourse = async (courseId: string, label?: string | null): Promise<boolean> => {
+      if (selection.getCurrentCourseId() === courseId) {
+        return false;
+      }
+      await selection.selectCourse(courseId, label ?? filterTree.resolveCourseLabel(courseId));
+      filterTree.refresh();
+      return true;
+    };
     registerTreeView('computor.tutor.filters', {
       provider: filterTree,
       options: { showCollapseAll: true },
       onExpand: async (event) => {
+        // Switch first, persist after: writing ~/.computor/config.json is a
+        // read-modify-write of the whole file, and it used to sit between the
+        // user's click and the selection actually changing.
+        if (event.element instanceof TutorCourseFilterItem) {
+          await selectTutorCourse(event.element.course.id, event.element.course.title
+            || event.element.course.path || event.element.course.name || event.element.course.id);
+        }
         const id = event.element.id;
         if (id) {
-          await filterTree.setNodeExpanded(id, true);
-        }
-        if (event.element instanceof TutorCourseFilterItem) {
-          const course = event.element.course;
-          const currentCourseId = selection.getCurrentCourseId();
-          if (currentCourseId !== course.id) {
-            await selection.selectCourse(course.id, course.title || course.path || course.name || course.id);
-            filterTree.refresh();
-          }
+          void filterTree.setNodeExpanded(id, true);
         }
       },
       onCollapse: async (event) => {
@@ -1065,7 +1132,16 @@ class UnifiedController {
     }, this.disposables);
 
     // Register filter interaction commands
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectCourse', async (item: InstanceType<typeof TutorCourseFilterItem>) => {
+      const course = item.course;
+      await selectTutorCourse(course.id, course.title || course.path || course.name || course.id);
+    }));
+
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectGroup', async (item: InstanceType<typeof TutorGroupOptionItem>) => {
+      // Picking a group under another course means switching to that course.
+      // selectCourse resets the group, so it has to happen first or the click
+      // is thrown away.
+      await selectTutorCourse(item.courseId);
       if (item.isNoGroup) {
         await selection.selectGroup(NO_GROUP_SENTINEL, 'No Group');
       } else {
@@ -1075,6 +1151,8 @@ class UnifiedController {
     }));
 
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectMember', async (item: InstanceType<typeof TutorMemberFilterItem>) => {
+      // Same here: selectCourse resets the member, so course comes first.
+      await selectTutorCourse(item.courseId);
       const name = formatMemberName(item.member);
       const memberGroupId = item.member.course_group_id ?? null;
       const memberGroupLabel = memberGroupId
@@ -1091,11 +1169,15 @@ class UnifiedController {
     registerTreeView('computor.tutor.courses', {
       provider: tree,
       options: { showCollapseAll: true },
+      onExpand: (event) => tree.handleExpand(event.element),
       onCollapse: (event) => tree.handleCollapse(event.element),
       onSelection: (event) => {
         const selected = event.selection[0];
         if (!selected) return;
         if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
+          // Never on a restore: this clones the member's repository, which is
+          // not something reopening a workspace should set off by itself.
+          if (isRestoringSelection()) return;
           void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
           if ((selected as any).content?.result) {
             void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
@@ -1609,7 +1691,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   errorCatalog.initialize();
   clientErrorCatalog.initialize();
 
-  extensionUpdateService = new ExtensionUpdateService(context, new ComputorSettingsManager(context));
+  const settingsManager = new ComputorSettingsManager(context);
+  extensionUpdateService = new ExtensionUpdateService(context, settingsManager);
+
+  // How the workspace looked when it was last closed: which container was
+  // open, which nodes were expanded, what was selected. Set up before any
+  // tree is built, because every provider reads it on its first render.
+  const uiState = UiStateService.initialize(context);
+  await uiState.migrateLegacyExpansion(settingsManager);
 
   // Initialize all view contexts to false to hide views until login
   await setViewContextKeys([], ['student', 'tutor', 'lecturer', 'student.offline']);
@@ -1624,6 +1713,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // through a service worker that never sees the request (issue #282) — so we
   // bring our own, inlined like every other Computor webview.
   registerImageViewer(context);
+
+  // Which editor group a file opens in. Registered before any tree is built,
+  // because every tree item's click binds to computor.openFile.
+  registerEditorLayout(context);
 
   // Unified login command (Keycloak SSO browser flow)
   context.subscriptions.push(vscode.commands.registerCommand('computor.login', async () => unifiedLoginFlow(context)));
@@ -1791,5 +1884,9 @@ export async function deactivate(): Promise<void> {
     await activeSession.deactivate();
     activeSession = null;
   }
+  // Writes are debounced, so the last expand or click before the window closes
+  // would otherwise never reach disk — which is the exact moment it matters.
+  // Runs even without a session, since state changes before login too.
+  await UiStateService.getInstanceOrUndefined()?.flush();
   IconGenerator.cleanup();
 }

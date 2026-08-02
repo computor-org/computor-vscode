@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { ComputorApiService } from '../../../services/ComputorApiService';
 import type { ComputorSettingsManager } from '../../../settings/ComputorSettingsManager';
 import type { TutorSelectionService } from '../../../services/TutorSelectionService';
+import { UiStateService } from '../../../services/UiStateService';
 import type { CourseTutorList, TutorCourseMemberList, CourseGroupList } from '../../../types/generated/courses';
 import {
   TutorCourseFamilyFilterItem,
@@ -39,47 +40,33 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
   private groupsCache = new Map<string, CourseGroupList[]>();
   private membersCache = new Map<string, TutorCourseMemberList[]>();
 
-  private currentGroupFetchCourseId?: string | null;
-  private currentMemberFetchKey?: { courseId: string | null; groupId: string | null };
+  // In-flight fetches, keyed. These used to be single slots holding "the one
+  // fetch we care about", and a second course resolving its children stamped
+  // over the first, whose await then returned [] and rendered that course
+  // empty. With expansion persisted, two courses resolving at once is the
+  // normal case, not an edge one.
+  private groupsInFlight = new Map<string, Promise<CourseGroupList[]>>();
+  private membersInFlight = new Map<string, Promise<TutorCourseMemberList[]>>();
 
-  private expandedStates: Record<string, boolean> = {};
+  private readonly uiState = UiStateService.getInstanceOrUndefined();
 
   constructor(
     private readonly api: ComputorApiService,
     private readonly selection: TutorSelectionService,
-    private readonly settingsManager?: ComputorSettingsManager
+    _settingsManager?: ComputorSettingsManager
   ) {
     super();
-    void this.loadExpandedStates();
-  }
-
-  private async loadExpandedStates(): Promise<void> {
-    if (!this.settingsManager) { return; }
-    try {
-      this.expandedStates = await this.settingsManager.getTutorTreeExpandedStates();
-    } catch (error) {
-      console.error('[TutorFilterTree] Failed to load expanded states:', error);
-      this.expandedStates = {};
-    }
   }
 
   async setNodeExpanded(nodeId: string, expanded: boolean): Promise<void> {
-    if (expanded) {
-      this.expandedStates[nodeId] = true;
-    } else {
-      delete this.expandedStates[nodeId];
-    }
-    if (this.settingsManager) {
-      try {
-        await this.settingsManager.setTutorNodeExpandedState(nodeId, expanded);
-      } catch (error) {
-        console.error('[TutorFilterTree] Failed to persist expanded state:', error);
-      }
-    }
+    this.uiState?.setExpanded('tutorFilters', nodeId, expanded);
   }
 
   private isExpanded(nodeId: string): boolean {
-    return this.expandedStates[nodeId] === true;
+    // Synchronous, so the first getChildren after a reload sees the real
+    // state. It used to await a load kicked off in the constructor, which the
+    // first render could outrun (computor-org/issues#285).
+    return this.uiState?.isExpanded('tutorFilters', nodeId) ?? false;
   }
 
   getTreeItem(element: FilterTreeItem): vscode.TreeItem {
@@ -115,6 +102,10 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
     this.hierarchyLoadingPromise = undefined;
     this.groupsCache.clear();
     this.membersCache.clear();
+    // Drop in-flight fetches too, or a refresh can be answered from a request
+    // that was already on its way with the pre-refresh state.
+    this.groupsInFlight.clear();
+    this.membersInFlight.clear();
     super.refresh();
   }
 
@@ -260,17 +251,26 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
 
   private async getCourseChildren(courseItem: TutorCourseFilterItem): Promise<FilterTreeItem[]> {
     const courseId = courseItem.course.id;
-    const groupId = this.selection.getCurrentGroupId();
+
+    // Everything under a course node belongs to *that* course, but only the
+    // selected one may read — or write — the global selection.
+    //
+    // Expansion is persisted, so after switching from Python to MATLAB the
+    // Python node is still expanded and still resolves its children. It used
+    // to read the global group id and then call autoSelectFirstMember
+    // unconditionally, which, finding no MATLAB member in the Python roster,
+    // re-elected Python's first member and Python's group label. A render path
+    // was writing the selection, and the last course to resolve won — so tutor
+    // mode snapped back to Group A of the course you had just left
+    // (computor-org/issues#287).
+    //
+    // A non-selected course now renders read-only: its own roster, no group
+    // narrowing that isn't its own, and nothing written back.
+    const isSelectedCourse = courseId === this.selection.getCurrentCourseId();
+    const groupId = isSelectedCourse ? this.selection.getCurrentGroupId() : null;
     const items: FilterTreeItem[] = [];
 
-    if (!this.groupsCache.has(courseId)) {
-      this.currentGroupFetchCourseId = courseId;
-      const groups = await this.api.getTutorCourseGroups(courseId) || [];
-      if (this.currentGroupFetchCourseId !== courseId) {
-        return [];
-      }
-      this.groupsCache.set(courseId, groups);
-    }
+    await this.fetchGroups(courseId);
 
     const currentGroupLabel = this.resolveGroupLabel(courseId, groupId);
     items.push(new TutorGroupFilterItem(courseId, currentGroupLabel));
@@ -280,9 +280,11 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
       return items;
     }
 
-    await this.autoSelectFirstMember(courseId, members);
+    if (isSelectedCourse) {
+      await this.autoSelectFirstMember(courseId, members);
+    }
 
-    const selectedMemberId = this.selection.getCurrentMemberId();
+    const selectedMemberId = isSelectedCourse ? this.selection.getCurrentMemberId() : null;
     for (const member of members) {
       items.push(new TutorMemberFilterItem(member, courseId, member.id === selectedMemberId));
     }
@@ -290,10 +292,16 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
     return items;
   }
 
-  private getGroupOptions(groupFilterItem: TutorGroupFilterItem): FilterTreeItem[] {
+  private async getGroupOptions(groupFilterItem: TutorGroupFilterItem): Promise<FilterTreeItem[]> {
     const courseId = groupFilterItem.courseId;
-    const groups = this.groupsCache.get(courseId) || [];
-    const currentGroupId = this.selection.getCurrentGroupId();
+    // Refetch rather than trusting the cache: a refresh clears it, and this
+    // node can be re-requested on its own.
+    const groups = await this.fetchGroups(courseId);
+    // Only the selected course's options reflect the current group; another
+    // course's list would otherwise tick a group that isn't in it.
+    const currentGroupId = courseId === this.selection.getCurrentCourseId()
+      ? this.selection.getCurrentGroupId()
+      : null;
 
     const options: TutorGroupOptionItem[] = [];
 
@@ -315,6 +323,15 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
     return options;
   }
 
+  /** Display label for a course, for callers that only hold its id. */
+  resolveCourseLabel(courseId: string): string | null {
+    const course = this.courses.find(c => c.id === courseId);
+    if (!course) {
+      return null;
+    }
+    return course.title || course.path || course.id;
+  }
+
   resolveGroupLabel(courseId: string, groupId: string | null): string {
     if (!groupId) {
       return 'All';
@@ -327,30 +344,59 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
     return group?.title || groupId;
   }
 
+  /** Course groups, fetched once per course even if two nodes ask at once. */
+  private async fetchGroups(courseId: string): Promise<CourseGroupList[]> {
+    const cached = this.groupsCache.get(courseId);
+    if (cached) {
+      return cached;
+    }
+    return this.dedupe(this.groupsInFlight, courseId, async () => {
+      const groups = (await this.api.getTutorCourseGroups(courseId)) || [];
+      this.groupsCache.set(courseId, groups);
+      return groups;
+    });
+  }
+
   private async fetchMembers(courseId: string, groupId: string | null): Promise<TutorCourseMemberList[]> {
-    const isNoGroup = groupId === NO_GROUP_SENTINEL;
-    const effectiveGroupId = isNoGroup ? undefined : (groupId || undefined);
     const cacheKey = `${courseId}-${groupId ?? 'all'}`;
-
-    if (this.membersCache.has(cacheKey)) {
-      return this.membersCache.get(cacheKey)!;
+    const cached = this.membersCache.get(cacheKey);
+    if (cached) {
+      return cached;
     }
 
-    this.currentMemberFetchKey = { courseId, groupId };
-    let members: TutorCourseMemberList[] = await this.api.getTutorCourseMembers(courseId, effectiveGroupId) || [];
+    return this.dedupe(this.membersInFlight, cacheKey, async () => {
+      const isNoGroup = groupId === NO_GROUP_SENTINEL;
+      const effectiveGroupId = isNoGroup ? undefined : (groupId || undefined);
+      let members: TutorCourseMemberList[] =
+        (await this.api.getTutorCourseMembers(courseId, effectiveGroupId)) || [];
 
-    const latest = this.currentMemberFetchKey;
-    if (!latest || latest.courseId !== courseId || latest.groupId !== groupId) {
-      return [];
+      if (isNoGroup) {
+        members = members.filter(m => !m.course_group_id);
+      }
+
+      members.sort(compareMembersByName);
+      this.membersCache.set(cacheKey, members);
+      return members;
+    });
+  }
+
+  /** Share one in-flight request per key instead of racing duplicates. */
+  private dedupe<T>(
+    inFlight: Map<string, Promise<T>>,
+    key: string,
+    load: () => Promise<T>
+  ): Promise<T> {
+    const pending = inFlight.get(key);
+    if (pending) {
+      return pending;
     }
-
-    if (isNoGroup) {
-      members = members.filter(m => !m.course_group_id);
-    }
-
-    members.sort(compareMembersByName);
-    this.membersCache.set(cacheKey, members);
-    return members;
+    const started = load();
+    inFlight.set(key, started);
+    const forget = (): void => {
+      inFlight.delete(key);
+    };
+    started.then(forget, forget);
+    return started;
   }
 
   private async autoSelectFirstMember(courseId: string, members: TutorCourseMemberList[]): Promise<void> {

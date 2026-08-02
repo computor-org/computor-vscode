@@ -137,6 +137,11 @@ export class ComputorSettingsManager {
     if (!settings.ui.lecturerTree) {
       settings.ui.lecturerTree = { expandedStates: {} };
     }
+    // The student and tutor variants below both guard this; this one did not,
+    // so a config with `ui.lecturerTree` but no `expandedStates` threw here.
+    if (!settings.ui.lecturerTree.expandedStates) {
+      settings.ui.lecturerTree.expandedStates = {};
+    }
     if (expanded) {
       settings.ui.lecturerTree.expandedStates[nodeId] = true;
     } else {

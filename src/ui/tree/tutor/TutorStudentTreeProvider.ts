@@ -6,6 +6,8 @@ import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import { IconGenerator } from '../../../utils/IconGenerator';
+import { openFileCommand } from '../../editorLayout';
+import { UiStateService } from '../../../services/UiStateService';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
 import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../utils/repositoryNaming';
 import { extractGraderName } from '../../../utils/gradingHelpers';
@@ -33,10 +35,14 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
   // Content ID whose virtual folders (Reference, Submissions) should be expanded (one-time trigger)
   private pendingExpandVirtualFoldersForContentId?: string;
 
-  // Expansion state cache - persists until user collapses manually
-  private expandedContentIds = new Set<string>();
-  private expandedVirtualFolderIds = new Set<string>();
-  private expandedSubmissionIds = new Set<string>();
+  // Expansion state. Backed by UiStateService so it survives a reload and not
+  // only a refresh — these were three plain in-memory Sets, which is why the
+  // tutor content tree came back fully collapsed every time the workspace was
+  // reopened (computor-org/issues#285).
+  private readonly uiState = UiStateService.getInstanceOrUndefined();
+  private expandedContentIds = new PersistedIdSet(this.uiState, 'content');
+  private expandedVirtualFolderIds = new PersistedIdSet(this.uiState, 'folder');
+  private expandedSubmissionIds = new PersistedIdSet(this.uiState, 'submission');
   private wsSubscription = new CourseChannelSubscription('tutor-tree');
 
   constructor(private api: ComputorApiService, private selection: TutorSelectionService) {
@@ -82,6 +88,26 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
     this.expandedContentIds.delete(baseId);
     this.expandedVirtualFolderIds.delete(baseId);
     this.expandedSubmissionIds.delete(baseId);
+  }
+
+  /**
+   * Handle expand event from TreeView.
+   *
+   * Only collapses were listened for, so a node the render path had not
+   * expanded by itself — anything the tutor opened by hand — was never
+   * recorded and could not be restored (computor-org/issues#285).
+   */
+  handleExpand(element: vscode.TreeItem): void {
+    const id = element.id;
+    if (!id) return;
+    const baseId = id.replace(/:expanded:\d+$/, '');
+    if (baseId.startsWith('tutorVirtualFolder:')) {
+      this.expandedVirtualFolderIds.add(baseId);
+    } else if (baseId.startsWith('tutorSubmission:')) {
+      this.expandedSubmissionIds.add(baseId);
+    } else {
+      this.expandedContentIds.add(baseId);
+    }
   }
 
   /**
@@ -995,7 +1021,7 @@ class TutorFsFileItem extends vscode.TreeItem {
     this.contextValue = folderType ? `tutorFsFile.${folderType}` : 'tutorFsFile';
     this.tooltip = absPath;
     this.resourceUri = vscode.Uri.file(absPath);
-    this.command = { command: 'vscode.open', title: 'Open File', arguments: [vscode.Uri.file(absPath)] };
+    this.command = openFileCommand(vscode.Uri.file(absPath));
     this.id = `tutorFsFile:${courseId}:${memberId}:${absPath}`;
   }
 }
@@ -1119,5 +1145,53 @@ class TutorSubmissionItem extends vscode.TreeItem {
       tooltip += `\nResult: ${(result * 100).toFixed(1)}%`;
     }
     this.tooltip = tooltip;
+  }
+}
+
+
+/**
+ * A Set of expanded node ids that also lives in UiStateService.
+ *
+ * The tutor content tree keeps three of these, one per kind of node, and they
+ * were all plain Sets — fine across a refresh, gone on reload. The kind prefix
+ * keeps ids from the three from colliding within the one scope.
+ *
+ * The `:expanded:<timestamp>` suffix the tree items carry is deliberately left
+ * alone. VS Code will not re-apply Expanded to an id it already knows as
+ * collapsed, and that suffix is what makes the collapsibleState this state
+ * feeds take effect at all. Replacing it needs reveal(item, {expand: true}),
+ * which needs getParent() on this provider.
+ */
+class PersistedIdSet {
+  private readonly ids: Set<string>;
+
+  constructor(
+    private readonly uiState: UiStateService | undefined,
+    private readonly kind: string
+  ) {
+    const prefix = `${kind}:`;
+    const stored = Object.keys(this.uiState?.expandedNodes('tutorContent') ?? {});
+    this.ids = new Set(
+      stored.filter(id => id.startsWith(prefix)).map(id => id.slice(prefix.length))
+    );
+  }
+
+  has(id: string): boolean {
+    return this.ids.has(id);
+  }
+
+  add(id: string): void {
+    if (this.ids.has(id)) {
+      return;
+    }
+    this.ids.add(id);
+    this.uiState?.setExpanded('tutorContent', `${this.kind}:${id}`, true);
+  }
+
+  delete(id: string): void {
+    if (!this.ids.delete(id)) {
+      return;
+    }
+    this.uiState?.setExpanded('tutorContent', `${this.kind}:${id}`, false);
   }
 }

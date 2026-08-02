@@ -268,8 +268,15 @@
 
   function renderMessageNode(message, depth = 0) {
     const level = message.level ?? depth;
+    // A deleted message only reaches the list when it still has live replies,
+    // and it is kept solely so those replies keep their context — so mark it
+    // as spent rather than letting it read like an ordinary message.
     const card = createElement('article', {
-      className: `message-card ${level > 0 ? 'message-reply' : ''}`,
+      className: [
+        'message-card',
+        level > 0 ? 'message-reply' : '',
+        message.is_deleted ? 'message-deleted' : ''
+      ].filter(Boolean).join(' '),
       attributes: { 'data-message-id': message.id }
     });
 
@@ -344,15 +351,18 @@
 
     const actions = createElement('div', { className: 'message-actions' });
 
-    // Only show edit/delete buttons if the user is the author
-    const isAuthor = Boolean(message.is_author);
-
-    if (isAuthor) {
+    // can_edit/can_delete, not is_author: a deleted message stays authored by
+    // the person who wrote it, and the backend refuses to edit or re-delete
+    // it. Offering the buttons on a tombstone is what made the deletion in
+    // computor-org/issues#288 look like it had failed.
+    if (message.can_edit) {
       actions.appendChild(
         button('Edit', 'btn secondary sm', () =>
           vscode.postMessage({ command: 'editMessage', data: message })
         )
       );
+    }
+    if (message.can_delete) {
       actions.appendChild(
         button('Delete', 'btn ghost sm', () =>
           vscode.postMessage({

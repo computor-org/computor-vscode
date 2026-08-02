@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { showOptions } from '../ui/editorLayout';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ComputorApiService } from '../services/ComputorApiService';
@@ -111,12 +112,12 @@ export class DocumentsCommands {
     if (!(item instanceof DocumentsFileItem)) { return; }
     const { scope, entry } = item;
     if (entry.local && entry.state !== 'remote-only') {
-      await vscode.window.showTextDocument(vscode.Uri.file(entry.local.absPath), { preview: false });
+      await vscode.window.showTextDocument(vscode.Uri.file(entry.local.absPath), showOptions(entry.local.absPath, { preview: false }));
       return;
     }
     const localPath = await this.pullToMirror(scope, entry.relativePath);
     if (localPath) {
-      await vscode.window.showTextDocument(vscode.Uri.file(localPath), { preview: false });
+      await vscode.window.showTextDocument(vscode.Uri.file(localPath), showOptions(localPath, { preview: false }));
     }
   }
 
@@ -283,7 +284,7 @@ export class DocumentsCommands {
     this.tree.invalidateDirectory(target.scope, target.parentPath);
     const localPath = this.tree.cache.resolveLocalPath(target.scope, relativePath);
     if (localPath && fs.existsSync(localPath)) {
-      await vscode.window.showTextDocument(vscode.Uri.file(localPath), { preview: false });
+      await vscode.window.showTextDocument(vscode.Uri.file(localPath), showOptions(localPath, { preview: false }));
     }
   }
 

@@ -223,4 +223,43 @@ describe('MultiTierCache', () => {
     const warm = stats.find(s => s.tier === 'warm')!;
     expect(warm.stats.size).to.equal(1);
   });
+
+  // Rosters are cached one entry per group filter
+  // (`tutorCourseMembers-<course>-<group>`), so invalidating "this course"
+  // has to reach all of them — clearing only the unfiltered key left the
+  // rest stale behind an explicit Refresh (computor-org/issues#287).
+  describe('deletePrefix', () => {
+    it('removes every key under the prefix and leaves the rest', () => {
+      const cache = new CacheService<string>();
+      cache.set('tutorCourseMembers-c1', 'all');
+      cache.set('tutorCourseMembers-c1-g1', 'group one');
+      cache.set('tutorCourseMembers-c1-g2', 'group two');
+      cache.set('tutorCourseMembers-c2', 'other course');
+      cache.set('courseGroups-c1', 'groups');
+
+      expect(cache.deletePrefix('tutorCourseMembers-c1')).to.equal(3);
+      expect(cache.get('tutorCourseMembers-c1')).to.be.undefined;
+      expect(cache.get('tutorCourseMembers-c1-g1')).to.be.undefined;
+      expect(cache.get('tutorCourseMembers-c1-g2')).to.be.undefined;
+      expect(cache.get('tutorCourseMembers-c2')).to.equal('other course');
+      expect(cache.get('courseGroups-c1')).to.equal('groups');
+    });
+
+    it('reports zero when nothing matches', () => {
+      const cache = new CacheService<string>();
+      cache.set('a', '1');
+      expect(cache.deletePrefix('nope-')).to.equal(0);
+      expect(cache.get('a')).to.equal('1');
+    });
+
+    it('reaches every tier', () => {
+      const cache = new MultiTierCache();
+      cache.set('tutorCourseMembers-c1-g1', 'v', 'hot');
+      cache.set('tutorCourseMembers-c1-g2', 'v', 'warm');
+      cache.set('tutorCourseMembers-c1-g3', 'v', 'cold');
+
+      expect(cache.deletePrefix('tutorCourseMembers-c1')).to.equal(3);
+      expect(cache.get('tutorCourseMembers-c1-g2')).to.be.undefined;
+    });
+  });
 });

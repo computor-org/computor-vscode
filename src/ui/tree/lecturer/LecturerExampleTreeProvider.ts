@@ -9,6 +9,7 @@ import {
   ExampleList
 } from '../../../types/generated';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
+import { openFileCommand } from '../../editorLayout';
 import { scanCheckedOutExamples, getVersionPath } from '../../../utils/checkedOutExampleManager';
 import type { CheckedOutExampleGroup, CheckedOutVersion } from '../../../utils/checkedOutExampleManager';
 import { computeExampleDiff } from '../../../utils/exampleDiffHelper';
@@ -296,11 +297,7 @@ class FileSystemTreeItem extends vscode.TreeItem {
     this.tooltip = relativePath;
     this.resourceUri = vscode.Uri.file(filePath);
     if (!isDirectory) {
-      this.command = {
-        command: 'vscode.open',
-        title: 'Open',
-        arguments: [this.resourceUri]
-      };
+      this.command = openFileCommand(this.resourceUri, 'Open');
     }
   }
 }

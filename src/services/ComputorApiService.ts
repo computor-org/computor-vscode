@@ -1011,7 +1011,11 @@ export class ComputorApiService {
   }
 
   clearTutorCourseGroupsCache(courseId: string): void {
-    multiTierCache.delete(`tutorCourseGroups-${courseId}`);
+    // getTutorCourseGroups delegates to getCourseGroups, which caches under
+    // `courseGroups-<id>`. This deleted `tutorCourseGroups-<id>` — a key
+    // nothing ever wrote — so "Refresh" never actually refreshed the group
+    // roster and stale groups survived it (computor-org/issues#287).
+    multiTierCache.delete(`courseGroups-${courseId}`);
   }
 
   clearTutorMemberCourseContentsCache(memberId: string): void {
@@ -1022,9 +1026,19 @@ export class ComputorApiService {
     multiTierCache.delete('courseContentKinds');
   }
 
+  /**
+   * Drop the tutor member roster for a course.
+   *
+   * With no `groupId`, every group filter's roster goes — there is one entry
+   * per group the tutor has looked at, and clearing only the unfiltered one
+   * left the rest stale after a refresh.
+   */
   clearTutorCourseMembersCache(courseId: string, groupId?: string): void {
-    const cacheKey = groupId ? `tutorCourseMembers-${courseId}-${groupId}` : `tutorCourseMembers-${courseId}`;
-    multiTierCache.delete(cacheKey);
+    if (groupId) {
+      multiTierCache.delete(`tutorCourseMembers-${courseId}-${groupId}`);
+      return;
+    }
+    multiTierCache.deletePrefix(`tutorCourseMembers-${courseId}`);
   }
 
   clearStudentCourseContentCache(contentId: string): void {

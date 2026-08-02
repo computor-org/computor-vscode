@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AUX_COLUMN } from '../ui/editorLayout';
 import * as path from 'path';
 import * as fs from 'fs';
 // import * as os from 'os';
@@ -145,7 +146,12 @@ export class StudentCommands {
           // The built-in preview is exactly the path that stalls blank on the
           // affected browsers, so fall back to the raw file instead.
           console.warn('[openReadmeIfExists] Custom README preview failed, opening raw file:', previewError);
-          await vscode.window.showTextDocument(vscode.Uri.file(readmePath), { preview: true });
+          // Still the README's group, even unrendered — it must not land on
+          // top of the assignment the student is editing.
+          await vscode.window.showTextDocument(vscode.Uri.file(readmePath), {
+            preview: true,
+            viewColumn: AUX_COLUMN
+          });
         }
         return true;
       }
@@ -1502,10 +1508,7 @@ export class StudentCommands {
         return;
       }
 
-      await showMarkdownPreview(this.context, helpPath, {
-        title: 'Computor Help',
-        viewColumn: vscode.ViewColumn.Active
-      });
+      await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
 
     } catch (error) {
       console.error('[showHelp] Failed to show help:', error);
