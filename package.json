@@ -799,6 +799,11 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.selectCourse",
+        "title": "Select Course",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.selectGroup",
         "title": "Select Group Filter",
         "category": "Computor Tutor"

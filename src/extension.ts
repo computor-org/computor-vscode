@@ -1042,21 +1042,31 @@ class UnifiedController {
     // Register filter tree (replaces webview filter panel)
     const tutorSettingsManager = new ComputorSettingsManager(this.context);
     const filterTree = new TutorFilterTreeProvider(api, selection, tutorSettingsManager);
+
+    // One way in for "the tutor is now looking at this course", shared by the
+    // course node's click, its expand, and picking a member of another course.
+    const selectTutorCourse = async (courseId: string, label?: string | null): Promise<boolean> => {
+      if (selection.getCurrentCourseId() === courseId) {
+        return false;
+      }
+      await selection.selectCourse(courseId, label ?? filterTree.resolveCourseLabel(courseId));
+      filterTree.refresh();
+      return true;
+    };
     registerTreeView('computor.tutor.filters', {
       provider: filterTree,
       options: { showCollapseAll: true },
       onExpand: async (event) => {
+        // Switch first, persist after: writing ~/.computor/config.json is a
+        // read-modify-write of the whole file, and it used to sit between the
+        // user's click and the selection actually changing.
+        if (event.element instanceof TutorCourseFilterItem) {
+          await selectTutorCourse(event.element.course.id, event.element.course.title
+            || event.element.course.path || event.element.course.name || event.element.course.id);
+        }
         const id = event.element.id;
         if (id) {
-          await filterTree.setNodeExpanded(id, true);
-        }
-        if (event.element instanceof TutorCourseFilterItem) {
-          const course = event.element.course;
-          const currentCourseId = selection.getCurrentCourseId();
-          if (currentCourseId !== course.id) {
-            await selection.selectCourse(course.id, course.title || course.path || course.name || course.id);
-            filterTree.refresh();
-          }
+          void filterTree.setNodeExpanded(id, true);
         }
       },
       onCollapse: async (event) => {
@@ -1068,7 +1078,16 @@ class UnifiedController {
     }, this.disposables);
 
     // Register filter interaction commands
+    this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectCourse', async (item: InstanceType<typeof TutorCourseFilterItem>) => {
+      const course = item.course;
+      await selectTutorCourse(course.id, course.title || course.path || course.name || course.id);
+    }));
+
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectGroup', async (item: InstanceType<typeof TutorGroupOptionItem>) => {
+      // Picking a group under another course means switching to that course.
+      // selectCourse resets the group, so it has to happen first or the click
+      // is thrown away.
+      await selectTutorCourse(item.courseId);
       if (item.isNoGroup) {
         await selection.selectGroup(NO_GROUP_SENTINEL, 'No Group');
       } else {
@@ -1078,6 +1097,8 @@ class UnifiedController {
     }));
 
     this.disposables.push(vscode.commands.registerCommand('computor.tutor.selectMember', async (item: InstanceType<typeof TutorMemberFilterItem>) => {
+      // Same here: selectCourse resets the member, so course comes first.
+      await selectTutorCourse(item.courseId);
       const name = formatMemberName(item.member);
       const memberGroupId = item.member.course_group_id ?? null;
       const memberGroupLabel = memberGroupId

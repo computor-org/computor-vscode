@@ -341,6 +341,15 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
     return options;
   }
 
+  /** Display label for a course, for callers that only hold its id. */
+  resolveCourseLabel(courseId: string): string | null {
+    const course = this.courses.find(c => c.id === courseId);
+    if (!course) {
+      return null;
+    }
+    return course.title || course.path || course.id;
+  }
+
   resolveGroupLabel(courseId: string, groupId: string | null): string {
     if (!groupId) {
       return 'All';

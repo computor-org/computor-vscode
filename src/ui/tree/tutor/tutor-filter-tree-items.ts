@@ -95,6 +95,15 @@ export class TutorCourseFilterItem extends vscode.TreeItem {
     if (isSelected) {
       this.description = '(selected)';
     }
+    // Clicking a course selects it, the way clicking a group or a member does.
+    // Selection used to happen only on *expand*, so a course left expanded
+    // from a previous session could not be switched to at all — you had to
+    // collapse it first (computor-org/issues#287).
+    this.command = {
+      command: 'computor.tutor.selectCourse',
+      title: 'Select Course',
+      arguments: [this]
+    };
   }
 }
 
