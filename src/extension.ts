@@ -10,6 +10,7 @@ import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider
 import { openFile, registerEditorLayout, showOptions } from './ui/editorLayout';
 import { UiStateService } from './services/UiStateService';
 import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
+import { isRestoringSelection, restoreSelection, trackTree, treeItemId } from './ui/treeRestore';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -256,15 +257,33 @@ function registerTreeView<T>(
   // createTreeView already binds the data provider; calling
   // registerTreeDataProvider in addition would attach a second listener to
   // onDidChangeTreeData and cause every refresh to invoke getChildren twice.
+  // Wrapped, not replaced: this supplies getParent (which reveal() needs and
+  // most providers do not implement) and an id index, while every command
+  // holding a reference to the provider itself keeps working.
+  const tracked = trackTree(registration.provider);
   const treeView = vscode.window.createTreeView(id, {
-    treeDataProvider: registration.provider,
+    treeDataProvider: tracked.provider,
     ...registration.options
   });
-  disposables.push(treeView);
+  disposables.push(treeView, tracked);
   if (registration.onExpand) disposables.push(treeView.onDidExpandElement(registration.onExpand));
   if (registration.onCollapse) disposables.push(treeView.onDidCollapseElement(registration.onCollapse));
   if (registration.onSelection) disposables.push(treeView.onDidChangeSelection(registration.onSelection));
   if (registration.onVisibility) disposables.push(treeView.onDidChangeVisibility(registration.onVisibility));
+
+  // Remember what was selected, and put it back next time.
+  const uiState = UiStateService.getInstanceOrUndefined();
+  if (uiState) {
+    disposables.push(treeView.onDidChangeSelection(event => {
+      if (!isRestoringSelection()) {
+        uiState.setSelection(id, treeItemId(event.selection[0]));
+      }
+    }));
+    const remembered = uiState.getSelection(id);
+    if (remembered) {
+      restoreSelection(treeView, tracked, remembered, disposables);
+    }
+  }
 
   // Every tree goes through here, so this is the one place that can see which
   // container the user is actually in. A view becoming visible means its
@@ -863,6 +882,9 @@ class UnifiedController {
         if (!selected) return;
         if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
           lastSelectedAssignment = selected;
+          // A restore only puts the highlight back. Fetching results for it
+          // would make every workspace reopen wait on the backend.
+          if (isRestoringSelection()) return;
           // Always load the latest result from the backend rather than gating on
           // the possibly-stale in-memory tree item — after a workspace restart
           // the item may not carry `.result` yet even though a prior result
@@ -1153,6 +1175,9 @@ class UnifiedController {
         const selected = event.selection[0];
         if (!selected) return;
         if (selected.contextValue?.startsWith('tutorStudentContent.assignment')) {
+          // Never on a restore: this clones the member's repository, which is
+          // not something reopening a workspace should set off by itself.
+          if (isRestoringSelection()) return;
           void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
           if ((selected as any).content?.result) {
             void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
