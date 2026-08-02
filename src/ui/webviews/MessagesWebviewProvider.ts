@@ -659,15 +659,19 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       .filter((part) => part.length > 0);
     const fullName = trimmedParts.join(' ');
     const hasFullName = fullName.length > 0;
-    const canEdit = currentUserId ? message.author_id === currentUserId : false;
+    const isAuthor = currentUserId ? message.author_id === currentUserId : false;
+    // A deleted message is nobody's to edit — the backend refuses both with
+    // "Cannot update deleted messages", and offering the buttons anyway is how
+    // the reporter of computor-org/issues#288 found out it had been deleted.
+    const isDeleted = message.is_deleted === true;
 
     return {
       ...message,
       author_display: hasFullName ? fullName : undefined,
       author_name: hasFullName ? fullName : undefined,
-      can_edit: canEdit,
-      can_delete: canEdit,
-      is_author: canEdit
+      can_edit: isAuthor && !isDeleted,
+      can_delete: isAuthor && !isDeleted,
+      is_author: isAuthor
     } satisfies EnrichedMessage;
   }
 
@@ -683,13 +687,14 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     // appear on freshly arrived own messages until the user hits Refresh.
     const currentUserId = this.currentUserId ?? this.apiService.getCurrentUserId();
     const isAuthor = currentUserId ? message.author_id === currentUserId : (message.is_author ?? false);
+    const isDeleted = message.is_deleted === true;
 
     return {
       ...message,
       author_display: hasFullName ? fullName : undefined,
       author_name: hasFullName ? fullName : undefined,
-      can_edit: isAuthor,
-      can_delete: isAuthor,
+      can_edit: isAuthor && !isDeleted,
+      can_delete: isAuthor && !isDeleted,
       is_author: isAuthor
     } satisfies EnrichedMessage;
   }

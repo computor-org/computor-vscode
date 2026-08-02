@@ -95,6 +95,17 @@ body {
   margin-left: var(--sp-4);
 }
 
+/* Kept only so its replies keep their context; nothing here is actionable. */
+.message-card.message-deleted {
+  border-style: dashed;
+  opacity: 0.65;
+}
+
+.message-card.message-deleted .message-body {
+  font-style: italic;
+  color: var(--c-fg-muted);
+}
+
 .reply-context-line {
   font-size: var(--font-size-xs);
   color: var(--c-fg-muted);
