@@ -8,7 +8,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
-import { SubmissionGroupStudentList, SubmissionCreate, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel, CourseContentStudentGet } from '../types/generated';
+import { SubmissionGroupStudentList, SubmissionCreate, SubmissionGroupStudentGet, MessageCreate, CourseContentStudentList, CourseContentTypeList, SubmissionGroupGradingList, SubmissionGroupMemberBasic, ResultWithGrading, SubmissionUploadResponseModel, CourseContentStudentGet, SubmissionArtifactList } from '../types/generated';
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/StudentRepositoryProvisioningService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
@@ -67,6 +67,28 @@ export class StudentCommands {
     }
     this.contentDetailsWebviewProvider = new StudentCourseContentDetailsWebviewProvider(context);
     void this.courseContentTreeProvider; // Unused for now
+  }
+
+  /**
+   * The newest artifact that has actually been tested.
+   *
+   * An artifact counts as tested only when it carries a result - the caller must
+   * therefore have listed with `with_latest_result`. Ordering is re-established
+   * here rather than relying on the server's default sort, so the "version that
+   * was tested" can never turn out to be an arbitrary or untested one.
+   */
+  private static pickLatestTestedArtifact(
+    artifacts: SubmissionArtifactList[]
+  ): SubmissionArtifactList | null {
+    const timestampOf = (artifact: SubmissionArtifactList): number => {
+      const raw = artifact.uploaded_at || artifact.created_at;
+      const parsed = raw ? Date.parse(raw) : NaN;
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    return artifacts
+      .filter(artifact => !!artifact.latest_result && !!artifact.version_identifier)
+      .sort((a, b) => timestampOf(b) - timestampOf(a))[0] ?? null;
   }
 
   private async pushWithAuthRetry(repoPath: string): Promise<void> {
@@ -934,17 +956,20 @@ export class StudentCommands {
           throw new Error('Failed to get current commit hash');
         }
 
-        // Get the most recent tested artifact (submit=false)
-        let latestTestedArtifact: any = null;
+        // Get the most recent *tested* artifact. Both halves matter: ask the
+        // server for the results (latest_result is omitted otherwise, so every
+        // artifact looks untested) and pick the newest artifact that actually
+        // carries one. Taking [0] of the unfiltered list meant an untested
+        // artifact could pose as "the tested version" and get submitted.
+        let latestTestedArtifact: SubmissionArtifactList | null = null;
         try {
-          const latestTestedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+          const previousArtifacts = await this.apiService.listStudentSubmissionArtifacts({
             submission_group_id: submissionGroupId,
-            submit: false
+            submit: false,
+            with_latest_result: true
           });
 
-          if (latestTestedArtifacts.length > 0) {
-            latestTestedArtifact = latestTestedArtifacts[0];
-          }
+          latestTestedArtifact = StudentCommands.pickLatestTestedArtifact(previousArtifacts);
         } catch (listError) {
           console.warn('[submitAssignment] Failed to check tested artifacts:', listError);
         }
@@ -979,30 +1004,31 @@ export class StudentCommands {
           try {
             const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
-              version_identifier: currentCommitHash
+              version_identifier: currentCommitHash,
+              with_latest_result: true
             });
 
-            if (existingArtifacts.length > 0) {
-              const artifact = existingArtifacts[0];
-              if (artifact) {
-                const hasResult = artifact.result !== undefined && artifact.result !== null;
-                if (hasResult) {
-                  // Already tested, update latestTestedArtifact
-                  console.log(`[submitAssignment] Commit ${currentCommitHash} already tested`);
-                  latestTestedArtifact = artifact;
-                } else {
-                  // Artifact exists but not tested - reuse it for testing
-                  console.log(`[submitAssignment] Reusing existing untested artifact ID: ${artifact.id}`);
-                  testArtifactId = artifact.id;
-                }
-              }
+            // Any tested artifact for HEAD means there is nothing to run. Search
+            // the whole list rather than trusting [0] to be the tested one.
+            const testedForHead = existingArtifacts.find(artifact => !!artifact.latest_result);
+            if (testedForHead) {
+              console.log(`[submitAssignment] Commit ${currentCommitHash} already tested`);
+              latestTestedArtifact = testedForHead;
+            } else if (existingArtifacts.length > 0 && existingArtifacts[0]) {
+              // Artifact exists but not tested - reuse it for testing
+              console.log(`[submitAssignment] Reusing existing untested artifact ID: ${existingArtifacts[0].id}`);
+              testArtifactId = existingArtifacts[0].id;
             }
           } catch (checkError) {
             console.warn('[submitAssignment] Failed to check existing artifacts:', checkError);
           }
 
-          // If no existing artifact, create one
-          if (!testArtifactId && !latestTestedArtifact?.version_identifier) {
+          // Create an artifact whenever HEAD itself has no tested one. The old
+          // condition asked whether *any* tested artifact existed, so an older
+          // tested commit suppressed both the upload and the test run below -
+          // and that older commit was then what got submitted.
+          const headAlreadyTested = latestTestedArtifact?.version_identifier === currentCommitHash;
+          if (!testArtifactId && !headAlreadyTested) {
             await vscode.window.withProgress({
               location: vscode.ProgressLocation.Notification,
               title: `Testing ${assignmentTitle}...`,
@@ -1066,10 +1092,13 @@ export class StudentCommands {
             try {
               const testedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
                 submission_group_id: submissionGroupId,
-                version_identifier: currentCommitHash
+                version_identifier: currentCommitHash,
+                with_latest_result: true
               });
-              if (testedArtifacts.length > 0) {
-                latestTestedArtifact = testedArtifacts[0];
+              const refreshed = StudentCommands.pickLatestTestedArtifact(testedArtifacts)
+                ?? testedArtifacts[0];
+              if (refreshed) {
+                latestTestedArtifact = refreshed;
               }
             } catch (refreshError) {
               console.warn('[submitAssignment] Failed to refresh tested artifact:', refreshError);
@@ -1087,6 +1116,26 @@ export class StudentCommands {
           // No tested artifact exists, submit current HEAD
           submissionVersion = currentCommitHash;
           console.log(`[submitAssignment] No tested artifact found, using current HEAD: ${submissionVersion}`);
+        }
+
+        // Submitting anything other than HEAD means the student's newest work is
+        // not what gets graded. That used to happen silently; never do it without
+        // saying so. Reachable when the test run could not be started (e.g. the
+        // upload returned no artifact) and an older tested commit is all we have.
+        if (submissionVersion !== currentCommitHash) {
+          const submitOlder = 'Submit the tested commit';
+          const choice = await vscode.window.showWarningMessage(
+            `Your latest commit (${currentCommitHash.substring(0, 8)}) has not been tested.\n\n` +
+            `Continuing submits the last tested commit (${submissionVersion.substring(0, 8)}) instead — ` +
+            'your newest work will not be graded.',
+            { modal: true },
+            submitOlder
+          );
+          if (choice !== submitOlder) {
+            notify.info('Submission cancelled. Run a test on your latest commit, then submit again.');
+            return;
+          }
+          console.log(`[submitAssignment] Student confirmed submitting older commit ${submissionVersion}`);
         }
 
         await vscode.window.withProgress({
@@ -1391,7 +1440,8 @@ export class StudentCommands {
           try {
             const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
               submission_group_id: submissionGroupId,
-              version_identifier: currentCommitHash
+              version_identifier: currentCommitHash,
+              with_latest_result: true
             });
 
             if (existingArtifacts.length > 0) {
@@ -1402,10 +1452,10 @@ export class StudentCommands {
 
               console.log(`[TestAssignment] Found existing artifact for commit ${currentCommitHash}:`, artifact);
 
-              // Check if artifact has been tested (has result field)
-              const hasResult = artifact.result !== undefined && artifact.result !== null;
-
-              if (hasResult) {
+              // "Tested" is carried by latest_result, which only comes back when
+              // asked for above. This used to read a `result` field the endpoint
+              // never returns, so the already-tested guard never fired.
+              if (existingArtifacts.some(candidate => !!candidate.latest_result)) {
                 throw new Error('This commit has already been tested. Make new changes to test again.');
               }
 

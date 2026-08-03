@@ -88,7 +88,6 @@ import {
   CourseContentStudentGet,
   ResultWithGrading,
   SubmissionCreate,
-  SubmissionListItem,
   SubmissionQuery,
   SubmissionUploadResponseModel,
   SubmissionArtifactUpdate,
@@ -3251,10 +3250,17 @@ export class ComputorApiService {
   }
 
   // Student submission API
-  async listStudentSubmissionArtifacts(params?: SubmissionQuery | null): Promise<SubmissionListItem[]> {
+  //
+  // Returns SubmissionArtifactList, which is what /submissions/artifacts actually
+  // serves. It has no `result` field - whether an artifact was tested is carried by
+  // `latest_result`, and only when `with_latest_result` is requested. Callers that
+  // need to tell tested from untested artifacts MUST pass it.
+  async listStudentSubmissionArtifacts(
+    params?: (SubmissionQuery & { with_latest_result?: boolean }) | null
+  ): Promise<SubmissionArtifactList[]> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<SubmissionListItem[]>('/submissions/artifacts', params ?? undefined);
+      const response = await client.get<SubmissionArtifactList[]>('/submissions/artifacts', params ?? undefined);
       return Array.isArray(response.data) ? response.data : [];
     } catch (error: any) {
       console.error('Failed to list student submissions:', error);
