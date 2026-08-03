@@ -53,8 +53,7 @@ import { StudentCommands } from './commands/StudentCommands';
 
 import { TutorCommands } from './commands/TutorCommands';
 
-import { TestResultsPanelProvider, TestResultsTreeDataProvider } from './ui/panels/TestResultsPanel';
-import { TestResultService } from './services/TestResultService';
+import { registerResultsPanel } from './ui/results/registerResultsPanel';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
@@ -757,6 +756,10 @@ class UnifiedController {
     // Store the active views
     this.activeViews = views;
 
+    // Results panel first: every role's flows dispatch computor.results.* and
+    // computor.showTestResults, so the commands must exist before any view runs.
+    this.initializeResultsPanel(api);
+
     // Initialize ALL available views - each will get its own activity bar container
     // Each view will fetch and display all available courses
     if (views.includes('student')) {
@@ -957,41 +960,20 @@ class UnifiedController {
     const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
     commands.registerCommands();
 
-    // Results panel + tree
-    const panelProvider = new TestResultsPanelProvider(this.context.extensionUri);
-    this.disposables.push(vscode.window.registerWebviewViewProvider(TestResultsPanelProvider.viewType, panelProvider));
-    const resultsTree = new TestResultsTreeDataProvider([]);
-    resultsTree.setPanelProvider(panelProvider);
-    this.disposables.push(vscode.window.registerTreeDataProvider('computor.testResultsView', resultsTree));
-    TestResultService.getInstance().setApiService(api);
-    this.disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any, resultId?: string, artifacts?: any[]) => {
-      try {
-        if (resultId && artifacts && artifacts.length > 0) {
-          resultsTree.setResultArtifacts(resultId, artifacts);
-        } else {
-          resultsTree.clearResultArtifacts();
-        }
-        resultsTree.refresh(results || {});
-        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
-      } catch (e) { console.error(e); }
-    }));
-    this.disposables.push(vscode.commands.registerCommand('computor.results.panel.update', (item: any) => {
-      resultsTree.setSelectedNodeId(item.id);
-      panelProvider.showDetails(item);
-    }));
-    this.disposables.push(vscode.commands.registerCommand('computor.results.clear', () => {
-      resultsTree.clearResultArtifacts();
-      // refresh() resets the details view along with the tree.
-      resultsTree.refresh({});
-    }));
-    this.disposables.push(vscode.commands.registerCommand('computor.results.artifact.open', async (resultId: string, artifactInfo: any) => {
-      try {
-        await this.openResultArtifact(api, resultId, artifactInfo);
-      } catch (e) {
-        console.error('Failed to open artifact:', e);
-        notify.error(`Failed to open artifact: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }));
+  }
+
+  /**
+   * The Results panel is contributed unconditionally in package.json and driven
+   * from student, tutor and lecturer flows alike, so its provider and commands
+   * are registered for every authenticated user - not only when the account
+   * happens to have the student view.
+   */
+  private initializeResultsPanel(api: ComputorApiService): void {
+    this.disposables.push(...registerResultsPanel(
+      this.context,
+      api,
+      (resultId, artifactInfo) => this.openResultArtifact(api, resultId, artifactInfo)
+    ));
   }
 
   private async openResultArtifact(api: ComputorApiService, resultId: string, artifactInfo: any): Promise<void> {
