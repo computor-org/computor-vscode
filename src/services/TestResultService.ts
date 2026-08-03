@@ -15,6 +15,9 @@ export class TestResultService {
   private pollingIntervals: Map<string, NodeJS.Timer> = new Map();
   private readonly POLL_INTERVAL = 2000; // 2 seconds
   private readonly MAX_POLL_DURATION = 300000; // 5 minutes
+  // Transient backend hiccups are normal; give up only after a run of them, so
+  // the user hears about a real outage instead of waiting out the full timeout.
+  private readonly MAX_CONSECUTIVE_POLL_FAILURES = 5;
 
   private constructor() {
     // API service will be set via setApiService
@@ -87,65 +90,102 @@ export class TestResultService {
 
           this.stopPolling(resultId);
 
+          // The callback is async, so it must guard itself on two counts:
+          // a rejected await inside it becomes an unhandled promise rejection
+          // (the user then learns nothing until the 5-minute timeout), and a
+          // poll that outlives the interval would otherwise let callbacks
+          // overlap and fire concurrent requests.
+          let pollInFlight = false;
+          let consecutiveFailures = 0;
+
           const interval = setInterval(async () => {
-            pollCount++;
-
-            if (token && token.isCancellationRequested) {
-              this.stopPolling(resultId);
-              resolve({ status: 'CANCELLED' });
+            if (pollInFlight) {
+              console.log('[TestResultService] Previous poll still in flight, skipping this tick');
               return;
             }
+            pollInFlight = true;
 
-            if (Date.now() - startTime > this.MAX_POLL_DURATION) {
-              this.stopPolling(resultId);
-              notify.warning(`Test for ${assignmentTitle} timed out after 5 minutes`);
-              resolve({ status: 'TIMEOUT' });
-              return;
-            }
+            try {
+              pollCount++;
 
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            progress.report({ message: `Running tests... (${elapsed}s)` });
+              if (token && token.isCancellationRequested) {
+                this.stopPolling(resultId);
+                resolve({ status: 'CANCELLED' });
+                return;
+              }
 
-            const status = await this.apiService!.getResultStatus(resultId) as unknown as number | string;
-            console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
+              if (Date.now() - startTime > this.MAX_POLL_DURATION) {
+                this.stopPolling(resultId);
+                notify.warning(`Test for ${assignmentTitle} timed out after 5 minutes`);
+                resolve({ status: 'TIMEOUT' });
+                return;
+              }
 
-            if (status === undefined) {
-              return;
-            }
+              const elapsed = Math.floor((Date.now() - startTime) / 1000);
+              progress.report({ message: `Running tests... (${elapsed}s)` });
 
-            if (status === 0 || status === 1 || status === 6 || status === "finished" || status === "failed" || status === "cancelled") {
-              this.stopPolling(resultId);
+              const status = await this.apiService!.getResultStatus(resultId) as unknown as number | string;
+              console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
 
-              const fullResult = await this.apiService!.getResult(resultId);
+              // The request came back, whatever it said - the connection is alive.
+              consecutiveFailures = 0;
 
-              if (fullResult) {
-                console.log('[TestResultService] Test complete, full result:', fullResult);
+              if (status === undefined) {
+                return;
+              }
 
-                await this.displayTestResults(fullResult, assignmentTitle);
+              if (status === 0 || status === 1 || status === 6 || status === "finished" || status === "failed" || status === "cancelled") {
+                this.stopPolling(resultId);
 
-                const isSuccess = status === 0 || status === "finished";
-                const isCancelled = status === "cancelled" || status === 6;
+                const fullResult = await this.apiService!.getResult(resultId);
 
-                if (isSuccess) {
-                  notify.info(
-                    `✅ Tests completed for ${assignmentTitle}`
-                  );
-                  resolve({ status: 'SUCCESS', result: fullResult.result });
-                } else if (isCancelled) {
-                  notify.warning(
-                    `⚠️ Tests cancelled for ${assignmentTitle}`
-                  );
-                  resolve({ status: 'CANCELLED' });
+                if (fullResult) {
+                  console.log('[TestResultService] Test complete, full result:', fullResult);
+
+                  await this.displayTestResults(fullResult, assignmentTitle);
+
+                  const isSuccess = status === 0 || status === "finished";
+                  const isCancelled = status === "cancelled" || status === 6;
+
+                  if (isSuccess) {
+                    notify.info(
+                      `✅ Tests completed for ${assignmentTitle}`
+                    );
+                    resolve({ status: 'SUCCESS', result: fullResult.result });
+                  } else if (isCancelled) {
+                    notify.warning(
+                      `⚠️ Tests cancelled for ${assignmentTitle}`
+                    );
+                    resolve({ status: 'CANCELLED' });
+                  } else {
+                    notify.error(
+                      `❌ Tests failed for ${assignmentTitle}`
+                    );
+                    resolve({ status: 'FAILED', result: fullResult.result });
+                  }
                 } else {
-                  notify.error(
-                    `❌ Tests failed for ${assignmentTitle}`
-                  );
-                  resolve({ status: 'FAILED', result: fullResult.result });
+                  resolve({ status: 'ERROR' });
                 }
-              } else {
+                return;
+              }
+            } catch (pollError) {
+              consecutiveFailures++;
+              console.warn(
+                `[TestResultService] Poll ${pollCount} failed ` +
+                `(${consecutiveFailures}/${this.MAX_CONSECUTIVE_POLL_FAILURES}):`,
+                pollError
+              );
+
+              if (consecutiveFailures >= this.MAX_CONSECUTIVE_POLL_FAILURES) {
+                this.stopPolling(resultId);
+                notify.error(
+                  `Lost contact with the server while waiting for ${assignmentTitle} test results. ` +
+                  'The test may still be running — check again in a moment.'
+                );
                 resolve({ status: 'ERROR' });
               }
-              return;
+            } finally {
+              pollInFlight = false;
             }
           }, this.POLL_INTERVAL);
 
