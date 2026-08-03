@@ -1854,9 +1854,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
   }));
 
-  // Maintain legacy settings command to open extension settings scope
+  // Legacy alias kept for existing keybindings. It used to open VS Code's own
+  // settings filtered by "computor", which showed an empty page: the extension
+  // contributes no `configuration` section - the real settings live in
+  // ~/.computor/config.json and are edited through the settings webview. It is
+  // hidden from the command palette so only one Settings entry is offered.
   context.subscriptions.push(vscode.commands.registerCommand('computor.settings', async () => {
-    await vscode.commands.executeCommand('workbench.action.openSettings', 'computor');
+    await vscode.commands.executeCommand('computor.settingsView');
   }));
 
 }
