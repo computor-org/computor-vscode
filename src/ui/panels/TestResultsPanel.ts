@@ -277,6 +277,43 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
         return new vscode.ThemeIcon('file');
     }
 
+    /**
+     * Render a test report's `timestamp` as local time.
+     *
+     * Testers do not agree on the format. Everything driven by
+     * computor-testing emits a proper ISO 8601 instant
+     * ("2026-07-28T20:26:29.140387+00:00"), but the MATLAB framework
+     * (itp-matlab-testing, CodeAbilityTestOutput.m) emits an unzoned
+     * "yyyy-MM-dd HH:mm:ss" read off the worker's clock — and every worker
+     * runs on UTC.
+     *
+     * `new Date()` reads a date-time string with no offset as *local* time
+     * per the ECMAScript spec, so those MATLAB stamps rendered UTC_OFFSET
+     * early — two hours in CEST. Tag an offset-less stamp as UTC before
+     * parsing. This also repairs results already stored in MinIO, which no
+     * producer-side fix can reach.
+     */
+    private formatReportTimestamp(value: unknown): string | undefined {
+        if (typeof value !== 'string') {
+            return undefined;
+        }
+        const raw = value.trim();
+        if (!raw) {
+            return undefined;
+        }
+
+        // "YYYY-MM-DD[ T]HH:MM[:SS[.fff]]" with nothing naming a zone.
+        const offsetless =
+            /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(raw);
+        const normalized = offsetless ? `${raw.replace(' ', 'T')}Z` : raw;
+
+        const date = new Date(normalized);
+        if (isNaN(date.getTime())) {
+            return raw; // unparseable — show it verbatim rather than "Invalid Date"
+        }
+        return date.toLocaleString();
+    }
+
     private formatFileSize(bytes: number): string {
         if (bytes < 1024) {
             return `${bytes} B`;
@@ -378,14 +415,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 let toolTipHead: string | undefined = undefined;
 
                 if ('timestamp' in data) {
-                    // Convert UTC timestamp to local time
-                    try {
-                        const date = new Date(data.timestamp);
-                        descriptionHead = date.toLocaleString();
-                    } catch (e) {
-                        // Fallback to raw timestamp if parsing fails
-                        descriptionHead = `${data.timestamp}`;
-                    }
+                    descriptionHead = this.formatReportTimestamp(data.timestamp);
                 }
 
                 if ('description' in data) {

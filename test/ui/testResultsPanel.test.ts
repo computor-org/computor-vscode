@@ -172,3 +172,73 @@ describe('Result Details panel', () => {
     expect(last().body).to.contain('ZeroDivisionError');
   });
 });
+
+/**
+ * Every worker container runs on UTC, but the testers disagree on how they say
+ * so. computor-testing emits a real ISO 8601 instant; the MATLAB framework
+ * (itp-matlab-testing, CodeAbilityTestOutput.m) emits a bare
+ * "yyyy-MM-dd HH:mm:ss". `new Date()` reads an offset-less date-time as *local*
+ * time, so MATLAB runs used to render UTC_OFFSET early — two hours behind in
+ * CEST, one in CET.
+ */
+describe('Result Tree timestamp', () => {
+  function rootDescription(result: any): string | undefined {
+    const tree = new TestResultsTreeDataProvider({});
+    tree.refresh(result);
+    return tree.getChildren()[0]?.description;
+  }
+
+  // Fixed instant so the assertions do not depend on the current DST offset.
+  const expectedLocal = (iso: string) => new Date(iso).toLocaleString();
+
+  it('reads an offset-less MATLAB timestamp as UTC, not local time', () => {
+    // Verbatim from a stored MATLAB result_json.
+    const description = rootDescription({
+      type: 'MATLAB',
+      timestamp: '2026-08-10 07:12:00',
+      tests: []
+    });
+
+    expect(description).to.equal(expectedLocal('2026-08-10T07:12:00Z'));
+  });
+
+  it('renders the fixed MATLAB framework output unchanged', () => {
+    // What CodeAbilityTestOutput.m emits once it tags the zone, verified
+    // against MATLAB R2025b. Both forms must land on the same wall clock.
+    const legacy = rootDescription({ type: 'MATLAB', timestamp: '2026-08-10 07:12:00', tests: [] });
+    const fixed = rootDescription({ type: 'MATLAB', timestamp: '2026-08-10T07:12:00Z', tests: [] });
+
+    expect(fixed).to.equal(expectedLocal('2026-08-10T07:12:00Z'));
+    expect(fixed).to.equal(legacy);
+  });
+
+  it('keeps the offset an ISO timestamp already carries', () => {
+    const description = rootDescription({
+      type: 'python',
+      timestamp: '2026-07-28T20:26:29.140387+00:00',
+      tests: []
+    });
+
+    expect(description).to.equal(expectedLocal('2026-07-28T20:26:29.140387Z'));
+  });
+
+  it('does not shift a timestamp that names a non-UTC offset', () => {
+    const description = rootDescription({
+      type: 'python',
+      timestamp: '2026-08-10T09:12:00+02:00',
+      tests: []
+    });
+
+    expect(description).to.equal(expectedLocal('2026-08-10T07:12:00Z'));
+  });
+
+  it('shows an unparseable timestamp verbatim rather than "Invalid Date"', () => {
+    const description = rootDescription({
+      type: 'MATLAB',
+      timestamp: 'not a date',
+      tests: []
+    });
+
+    expect(description).to.equal('not a date');
+  });
+});
