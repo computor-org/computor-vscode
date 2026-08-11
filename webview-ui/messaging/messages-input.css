@@ -280,7 +280,17 @@ body {
   margin: 0;
 }
 
-/* Footer bar */
+/*
+ * Footer bar — the typing indicator's home, and empty the rest of the time.
+ *
+ * `display: none` rather than a zero height: an empty flex child still gets
+ * the parent's `gap`, so collapsing the box alone would leave --sp-2 of dead
+ * space above it. Taking it out of the flow removes the gap with it.
+ *
+ * The element itself always exists in the DOM — updateTypingIndicator()
+ * patches it in place rather than re-rendering (issue #268), so it needs a
+ * stable mount point to find.
+ */
 .actions-bar {
   display: flex;
   align-items: center;
@@ -288,14 +298,8 @@ body {
   flex-shrink: 0;
 }
 
-/* Markdown hint */
-.markdown-hint {
-  font-size: var(--font-size-xs);
-  color: var(--c-fg-muted);
-  opacity: 0.7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.actions-bar:empty {
+  display: none;
 }
 
 /* Typing indicator specifics on top of chat-shared.css */

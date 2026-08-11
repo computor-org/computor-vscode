@@ -321,22 +321,20 @@
     return container;
   }
 
-  // Patch only the footer (typing indicator vs. markdown hint) in place.
-  // A full render() rebuilds the whole form and recreates the contenteditable
-  // #message-body, which destroys focus and the caret — so typing updates must
-  // never go through setState()/render() or the user gets locked out of the
-  // input after every keystroke (issue #268).
+  // Patch the footer in place. A full render() rebuilds the whole form and
+  // recreates the contenteditable #message-body, which destroys focus and the
+  // caret — so typing updates must never go through setState()/render() or the
+  // user gets locked out of the input after every keystroke (issue #268).
+  //
+  // The footer stays in the DOM even when empty, because it is this function's
+  // mount point; `.actions-bar:empty` hides it so it costs no height (and no
+  // flex gap) while nobody is typing, which is nearly always.
   function updateTypingIndicator() {
     const footer = root()?.querySelector('.actions-bar');
     if (!footer) return;
     footer.innerHTML = '';
     if (state.typingUsers && state.typingUsers.length > 0) {
       footer.appendChild(renderTypingIndicator(state.typingUsers));
-    } else {
-      footer.appendChild(createElement('span', {
-        className: 'markdown-hint',
-        textContent: 'Markdown supported'
-      }));
     }
   }
 
@@ -694,18 +692,15 @@
 
     container.appendChild(form);
 
-    // Footer: typing indicator or markdown hint
+    // Footer: the typing indicator, and nothing else.
+    //
+    // It used to carry a permanent "Markdown supported" line, which cost a
+    // row in a sidebar composer to repeat what the editor's own placeholder
+    // already says. Empty is the normal state; `:empty` collapses it.
     const footer = createElement('div', { className: 'actions-bar' });
 
     if (state.typingUsers && state.typingUsers.length > 0) {
-      const typingIndicator = renderTypingIndicator(state.typingUsers);
-      footer.appendChild(typingIndicator);
-    } else {
-      const mdHint = createElement('span', {
-        className: 'markdown-hint',
-        textContent: 'Markdown supported'
-      });
-      footer.appendChild(mdHint);
+      footer.appendChild(renderTypingIndicator(state.typingUsers));
     }
 
     container.appendChild(footer);
