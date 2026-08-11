@@ -35,11 +35,35 @@ const path = require('path');
 const REPO_ROOT = path.resolve(__dirname, '..');
 const WEBVIEW_ROOT = path.join(REPO_ROOT, 'webview-ui');
 const BASE_CSS = path.join(WEBVIEW_ROOT, 'shared', 'base.css');
-// Work targets release/2026.10, not main — main trails it by ~185 commits, so
-// using it as the ratchet baseline marks most of webview-ui/ as "changed" and
-// reports 82 inherited violations on a clean branch. Override with
-// COMPUTOR_BASE_REF when working against a different line.
-const BASE_REF = process.env.COMPUTOR_BASE_REF || 'release/2026.10';
+/*
+ * The ratchet baseline: which ref "changed files" is measured against.
+ *
+ * Hardcoding one integration branch breaks on both sides of a release. Work
+ * currently targets release/2026.10 while main trails it by ~185 commits, so
+ * baselining on main marks most of webview-ui/ as changed and reports 82
+ * inherited violations on a clean branch. Baselining on release/2026.10 instead
+ * would then go stale the moment that branch merges into main and the next
+ * release branch opens.
+ *
+ * So don't choose — measure. Take the candidate whose merge-base with HEAD is
+ * the most recent commit: that is the closest common ancestor, i.e. the tightest
+ * baseline, i.e. the fewest inherited findings. It self-corrects as branches
+ * merge and as release lines are renamed, with no edit here.
+ */
+const BASE_CANDIDATES = ['release/2026.10', 'main', 'origin/release/2026.10', 'origin/main'];
+
+function pickBaseRef() {
+  if (process.env.COMPUTOR_BASE_REF) return process.env.COMPUTOR_BASE_REF;
+  let best = null;
+  let bestTs = -1;
+  for (const ref of BASE_CANDIDATES) {
+    const mb = sh(`git merge-base HEAD ${ref}`).trim();
+    if (!mb) continue;
+    const ts = parseInt(sh(`git show -s --format=%ct ${mb}`).trim(), 10);
+    if (Number.isFinite(ts) && ts > bestTs) { bestTs = ts; best = ref; }
+  }
+  return best;
+}
 
 /** Directories whose contents are third-party and not ours to restyle. */
 const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', 'out', 'vendor']);
@@ -81,7 +105,8 @@ function sh(cmd) {
 }
 
 function changedFiles() {
-  let base = sh(`git merge-base HEAD ${BASE_REF}`).trim() || 'HEAD';
+  const ref = pickBaseRef();
+  let base = (ref ? sh(`git merge-base HEAD ${ref}`).trim() : '') || 'HEAD';
   const out = [
     sh(`git diff --name-only --diff-filter=ACM ${base}`),
     sh('git diff --name-only --diff-filter=ACM'),
