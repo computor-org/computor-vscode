@@ -898,20 +898,11 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
       if (threads.length === 0 && !alwaysShow) { continue; }
 
-      // Global has no per-target id, so when there are no messages yet the
-      // user wouldn't see a clickable row to open the panel from. Inject a
-      // synthetic placeholder thread so admins / user managers always have an
-      // entry point to compose announcements.
-      if (scope === 'global' && threads.length === 0) {
-        threads.push({
-          scope: 'global',
-          targetId: null,
-          title: 'Global Announcements',
-          unreadCount: 0,
-          messageCount: 0,
-          messages: []
-        });
-      }
+      // An empty Global used to get a synthetic "Global Announcements" thread
+      // injected, purely so there was something clickable to open the
+      // composer from. It read as a real message that didn't exist. The scope
+      // row opens itself now — see ChatScopeItem, which gives a childless row
+      // its own open command — so the fake row is gone.
 
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;

@@ -634,7 +634,13 @@
           contenteditable: state.loading ? 'false' : 'true',
           role: 'textbox',
           'aria-multiline': 'true',
-          'data-placeholder': 'Write your message… (Markdown supported, @ to mention)'
+          // The placeholder is the only place any of this is documented now
+          // that the footer hint is gone — and it costs no layout, since it
+          // only shows while the editor is empty and has room to spare.
+          // Enter-sends leads because it is the surprising one: without the
+          // hint, reaching for a new line posts a half-written message.
+          'data-placeholder':
+            'Write your message… (Enter to send, Shift+Enter for a new line, Markdown, @ to mention)'
         }
       });
       // Use saved content or editing message content, rendered as text + chips.

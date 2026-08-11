@@ -117,6 +117,19 @@ export class ChatScopeItem extends vscode.TreeItem {
       ? `${baseLabel}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
       : `${baseLabel}: ${childCount} ${childKind}(s)`;
     this.tooltip = muted ? `${baseTooltip}\nNotifications muted for this scope.` : baseTooltip;
+
+    // A scope with children expands on click — that is what the arrow is for.
+    // A childless one (Global before anyone has posted) would otherwise do
+    // nothing at all, so it opens instead. This replaces the synthetic
+    // placeholder thread that used to be injected to give it something
+    // clickable; the command is on the context menu either way.
+    if (childCount === 0) {
+      this.command = {
+        command: 'computor.chat.openMessages',
+        title: 'Open Messages',
+        arguments: [this]
+      };
+    }
   }
 }
 

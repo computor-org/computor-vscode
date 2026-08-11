@@ -321,3 +321,37 @@ describe('ChatInboxTreeProvider — target choices', () => {
     expect(await choices('course_content')).to.deep.equal([]);
   });
 });
+
+describe('ChatScopeItem — childless rows open themselves', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { ChatScopeItem } = require('../../../src/ui/tree/chat/ChatInboxTreeItems');
+
+  it('gives a scope with no children an open command', () => {
+    // Global before anyone has posted. It used to get a synthetic
+    // "Global Announcements" thread injected purely so there was something
+    // clickable; that read as a message that did not exist.
+    const item = new ChatScopeItem('global', [], 0, false);
+    expect(item.command?.command).to.equal('computor.chat.openMessages');
+    expect(item.command?.arguments?.[0]).to.equal(item);
+  });
+
+  it('leaves a scope with children alone, so the click still expands', () => {
+    const thread: ChatThread = {
+      scope: 'global',
+      targetId: null,
+      title: 'A notice',
+      unreadCount: 0,
+      messageCount: 1,
+      messages: []
+    };
+    const item = new ChatScopeItem('global', [thread], 0, false);
+    expect(item.command).to.equal(undefined);
+  });
+
+  it('treats a course-grouped scope by its course count', () => {
+    const empty = new ChatScopeItem('submission_group', [], 0, false, { courseChildCount: 0 });
+    const filled = new ChatScopeItem('submission_group', [], 0, false, { courseChildCount: 3 });
+    expect(empty.command?.command).to.equal('computor.chat.openMessages');
+    expect(filled.command).to.equal(undefined);
+  });
+});
