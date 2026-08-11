@@ -174,6 +174,19 @@ body {
   font-size: var(--font-size-xs);
 }
 
+/*
+ * Unread announcement: an accent rail on the leading edge, so the reader can
+ * see at a glance where they left off in the list. Cleared in place once the
+ * card has actually been on screen — not on panel open.
+ */
+.message-card.message-unread {
+  border-left: var(--sp-1) solid var(--c-link);
+}
+
+.message-card.message-unread .message-title {
+  color: var(--c-fg);
+}
+
 .message-body {
   font-size: var(--font-size-sm);
   line-height: 1.4;

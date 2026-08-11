@@ -39,6 +39,61 @@
    */
   const isAnnouncement = () => state.target?.kind === 'announcement';
 
+  /**
+   * Marks an announcement read once the reader has actually seen it.
+   *
+   * A board is worked through item by item, so clearing every notice because
+   * the panel was opened loses the reader's place — and made the panel's own
+   * "Unread" filter self-defeating, since it ran right after the sweep that
+   * emptied it. A card counts as seen when most of it has been on screen for
+   * a moment; ids are batched so a fast scroll is one request, not thirty.
+   */
+  const seenObserver = (() => {
+    if (typeof IntersectionObserver === 'undefined') { return null; }
+    const pending = new Set();
+    const dwelling = new Map();
+    let flushTimer = null;
+    const DWELL_MS = 700;
+    const BATCH_MS = 400;
+
+    function flush() {
+      flushTimer = null;
+      if (pending.size === 0) { return; }
+      const messageIds = [...pending];
+      pending.clear();
+      vscode.postMessage({ command: 'markRead', data: { messageIds } });
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const id = entry.target.dataset.messageId;
+        if (!id) { return; }
+        if (!entry.isIntersecting) {
+          clearTimeout(dwelling.get(id));
+          dwelling.delete(id);
+          return;
+        }
+        if (dwelling.has(id)) { return; }
+        dwelling.set(id, setTimeout(() => {
+          dwelling.delete(id);
+          observer.unobserve(entry.target);
+          entry.target.classList.remove('message-unread');
+          pending.add(id);
+          if (!flushTimer) { flushTimer = setTimeout(flush, BATCH_MS); }
+        }, DWELL_MS));
+      });
+    }, { threshold: 0.6 });
+
+    return {
+      watch(card) { observer.observe(card); },
+      reset() {
+        observer.disconnect();
+        dwelling.forEach((t) => clearTimeout(t));
+        dwelling.clear();
+      }
+    };
+  })();
+
   // Thread assembly and ordering live in shared/messageThreads.js — pure, and
   // unit-tested there.
   const { buildThreads, flattenThreads } = window.ComputorWebview.messageThreads;
@@ -227,10 +282,15 @@
     // and it is kept solely so those replies keep their context — so mark it
     // as spent rather than letting it read like an ordinary message.
     const announcement = isAnnouncement();
+    // Unread is only rendered on a board, where it survives being looked at
+    // and tells the reader where they left off. A conversation is read by
+    // opening it, so every card would carry the marker.
+    const unread = announcement && message.is_read === false && !message.is_author;
     const card = createElement('article', {
       className: [
         'message-card',
         announcement ? 'message-announcement' : '',
+        unread ? 'message-unread' : '',
         level > 0 ? 'message-reply' : '',
         message.is_deleted ? 'message-deleted' : ''
       ].filter(Boolean).join(' '),
@@ -358,11 +418,18 @@
       card.appendChild(actions);
     }
 
+    if (unread && seenObserver) {
+      seenObserver.watch(card);
+    }
+
     // Don't nest children — they are rendered flat by flattenThreads
     return card;
   }
 
   function renderMessagesSection(container, prevScroll) {
+    // The old cards are about to be discarded; stop watching them so their
+    // dwell timers can't fire against detached nodes.
+    if (seenObserver) { seenObserver.reset(); }
     container.innerHTML = '';
 
     if (state.loading) {
