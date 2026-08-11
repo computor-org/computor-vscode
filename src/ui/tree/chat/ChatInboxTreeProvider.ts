@@ -115,8 +115,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   private readonly wsHandlerId = `chat-inbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   private wsReloadTimer?: ReturnType<typeof setTimeout>;
   private static readonly WS_RELOAD_DEBOUNCE_MS = 250;
-  /** Cap on concurrent mark-read API calls to avoid flooding the backend. */
-  private static readonly MARK_READ_CONCURRENCY = 4;
   /** When we mark messages read locally, suppress WS-driven reloads for this
    *  window — every server-side broadcast otherwise re-paginates the inbox. */
   private static readonly MARK_READ_WS_SUPPRESS_MS = 4000;
@@ -454,13 +452,18 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   }
 
   /**
-   * Posts mark-read for many message ids without flooding the backend.
-   * - Caps in-flight requests at MARK_READ_CONCURRENCY (workers).
-   * - Suppresses WS-driven reloads while it runs, so each backend
-   *   read:update broadcast we triggered ourselves doesn't kick off a fresh
-   *   re-paginated GET /messages of the entire inbox.
-   * - Errors per-id are swallowed (best-effort; the optimistic local state
-   *   is already applied, and the next manual refresh will re-confirm).
+   * Posts mark-read for many message ids in a single request.
+   *
+   * This used to fan out one POST per id behind a 4-worker limiter, because
+   * every one of them triggered a server-side read:update broadcast that
+   * looped straight back here and re-paginated the whole inbox. The bulk
+   * endpoint collapses that to one request and one broadcast per channel,
+   * so the limiter is gone.
+   *
+   * The WS suppression window stays: even one broadcast comes back to us,
+   * and we have already applied the state optimistically.
+   *
+   * Errors are swallowed — best-effort, and the next refresh re-confirms.
    */
   private async markMessagesReadOnBackend(ids: string[]): Promise<void> {
     if (ids.length === 0) { return; }
@@ -470,27 +473,12 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       this.wsReloadTimer = undefined;
     }
     try {
-      let cursor = 0;
-      const workers: Promise<void>[] = [];
-      for (let w = 0; w < ChatInboxTreeProvider.MARK_READ_CONCURRENCY; w += 1) {
-        workers.push((async () => {
-          while (true) {
-            const i = cursor;
-            cursor += 1;
-            if (i >= ids.length) { return; }
-            try {
-              await this.api.markMessageRead(ids[i]!);
-            } catch {
-              // best-effort
-            }
-          }
-        })());
-      }
-      await Promise.all(workers);
+      await this.api.markMessagesRead(ids);
+    } catch {
+      // best-effort
     } finally {
-      // Extend the WS suppression window slightly past now so the burst of
-      // server-side read:update broadcasts that lag behind our last request
-      // doesn't immediately trigger a re-pagination.
+      // Extend the window slightly past now so the broadcast that lags
+      // behind our request doesn't immediately trigger a re-pagination.
       this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
     }
   }
@@ -919,9 +907,9 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       for (const [targetId, msgs] of (byTarget ?? new Map<string, MessageList[]>())) {
         const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
         const lastMessage = sortedMessages[sortedMessages.length - 1];
-        // Exclude the user's own messages — backend doesn't auto-stamp authors
-        // as readers of their own posts, so without this they'd show as
-        // permanently unread to themselves.
+        // Belt and braces on own messages: the backend stamps the author as a
+        // reader at create time (mark_author_as_reader), so is_read is already
+        // true for them — this also covers rows predating that.
         const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
         if (this.unreadOnly && unreadCount === 0) { continue; }
 

@@ -14,9 +14,7 @@
       unread: null,
       datePreset: null,
       created_after: null,
-      created_before: null,
-      tags: null,
-      tags_match_all: false
+      created_before: null
     },
     typingUsers: [], // { userId, userName }
     _scrollToBottom: false,
@@ -39,10 +37,16 @@
       }
     });
 
+    // Order by when a message was *written*, never by when it was last
+    // edited: sorting on updated_at moved a three-week-old message to the
+    // bottom of the conversation the moment someone fixed a typo in it.
     const sortFn = (a, b) => {
-      const aTime = a.updated_at || a.created_at || '';
-      const bTime = b.updated_at || b.created_at || '';
-      return aTime.localeCompare(bTime);
+      const aTime = a.created_at || '';
+      const bTime = b.created_at || '';
+      const byTime = aTime.localeCompare(bTime);
+      // Same timestamp (bulk imports, or a coarse clock) — fall back to id
+      // so the order is at least stable between renders.
+      return byTime !== 0 ? byTime : String(a.id).localeCompare(String(b.id));
     };
 
     function sortNode(node) {
@@ -166,21 +170,6 @@
     return node;
   }
 
-  function getScopeLabel(scope) {
-    const labels = {
-      'global': 'Global',
-      'organization': 'Organization',
-      'course_family': 'Course Family',
-      'course': 'Course',
-      'course_content': 'Content',
-      'course_group': 'Group',
-      'submission_group': 'Submission',
-      'course_member': 'Member',
-      'user': 'Direct'
-    };
-    return labels[scope] || scope;
-  }
-
   function getAuthorRoleLabel(courseRoleId) {
     if (!courseRoleId) return null;
     const roleLabels = {
@@ -232,11 +221,6 @@
       if (state.filters.created_before) filterData.created_before = state.filters.created_before;
     }
 
-    if (state.filters.tags && state.filters.tags.length > 0) {
-      filterData.tags = state.filters.tags;
-      filterData.tags_match_all = state.filters.tags_match_all;
-    }
-
     setState({ loading: true });
     vscode.postMessage({ command: 'applyFilters', data: filterData });
   }
@@ -247,9 +231,7 @@
         unread: null,
         datePreset: null,
         created_after: null,
-        created_before: null,
-        tags: null,
-        tags_match_all: false
+        created_before: null
       }
     });
     setState({ loading: true });
@@ -261,8 +243,7 @@
       state.filters.unread !== null ||
       state.filters.datePreset !== null ||
       state.filters.created_after !== null ||
-      state.filters.created_before !== null ||
-      (state.filters.tags && state.filters.tags.length > 0)
+      state.filters.created_before !== null
     );
   }
 
@@ -277,7 +258,9 @@
         level > 0 ? 'message-reply' : '',
         message.is_deleted ? 'message-deleted' : ''
       ].filter(Boolean).join(' '),
-      attributes: { 'data-message-id': message.id }
+      // data-level lets a live arrival find the end of its parent's subtree
+      // without rebuilding the tree (see insertionPointFor).
+      attributes: { 'data-message-id': message.id, 'data-level': String(level) }
     });
 
     const meta = createElement('div', { className: 'message-meta' });
@@ -301,18 +284,10 @@
       metaLeftChildren.push(roleBadge);
     }
 
-    // Add scope tag if available
-    if (message.scope) {
-      const scopeLabel = getScopeLabel(message.scope);
-      const scopeTag = createElement('span', {
-        className: `badge xs message-scope-tag scope-${message.scope}`,
-        textContent: scopeLabel,
-        attributes: {
-          title: `Message Scope: ${scopeLabel}`
-        }
-      });
-      metaLeftChildren.push(scopeTag);
-    }
+    // No per-message scope badge: every panel now pins exactly one scope, so
+    // the chip was identical on every card in the list. It existed back when
+    // a single panel mixed submission-group, course-content and course-wide
+    // messages together and you needed to tell them apart.
 
     const metaLeft = createElement('div', {
       className: 'message-meta-left',
@@ -528,33 +503,10 @@
     if (state.filtersExpanded) {
       const advancedPanel = createElement('div', { className: 'advanced-filters' });
 
-      // Tags filter row
-      const tagsRow = createElement('div', { className: 'filter-row' });
-      tagsRow.appendChild(createElement('label', { textContent: 'Tags (comma-separated):' }));
-
-      const tagsInput = createElement('input', {
-        className: 'filter-input',
-        attributes: {
-          type: 'text'
-        }
-      });
-      tagsInput.value = state.filters.tags ? state.filters.tags.join(', ') : '';
-      tagsRow.appendChild(tagsInput);
-
-      // Tags match all checkbox
-      const matchAllLabel = createElement('label', { className: 'checkbox-label' });
-      const matchAllCheckbox = createElement('input', {
-        attributes: { type: 'checkbox' }
-      });
-      matchAllCheckbox.checked = state.filters.tags_match_all;
-      matchAllCheckbox.addEventListener('change', () => {
-        state.filters.tags_match_all = matchAllCheckbox.checked;
-      });
-      matchAllLabel.appendChild(matchAllCheckbox);
-      matchAllLabel.appendChild(document.createTextNode(' Match all tags'));
-      tagsRow.appendChild(matchAllLabel);
-
-      advancedPanel.appendChild(tagsRow);
+      // No tag filter: tags were parsed out of the title with a regex, and
+      // the only thing that ever wrote them was the agent's retired
+      // "#ai" / "#ai::response" convention — it identifies itself by
+      // author_id now. The subject line is a human subject again.
 
       // Custom date range row
       const dateRow = createElement('div', { className: 'filter-row' });
@@ -599,14 +551,7 @@
       // Apply button for advanced filters
       const applyRow = createElement('div', { className: 'filter-row filter-actions' });
       applyRow.appendChild(
-        button('Apply Filters', 'btn sm', () => {
-          // Parse tags from input
-          const tagsValue = tagsInput.value.trim();
-          state.filters.tags = tagsValue
-            ? tagsValue.split(',').map(t => t.trim()).filter(t => t.length > 0)
-            : null;
-          applyFilters();
-        })
+        button('Apply Filters', 'btn sm', applyFilters)
       );
       advancedPanel.appendChild(applyRow);
 
@@ -707,6 +652,35 @@
     }
   });
 
+  // Where a newly arrived message belongs in the flat list, expressed as the
+  // node to insert before (null = append). Mirrors buildThreads/flattenThreads
+  // so a live arrival lands exactly where the next full render would put it.
+  function insertionPointFor(container, message) {
+    const typingEl = container.querySelector('.typing-indicator');
+    if (!message.parent_id) {
+      // A new root goes at the end of the list, before the typing indicator.
+      return typingEl || null;
+    }
+    const parentCard = container.querySelector(
+      `[data-message-id="${message.parent_id}"]`
+    );
+    if (!parentCard) {
+      return typingEl || null;
+    }
+    // Skip past the parent's existing replies (its subtree is contiguous and
+    // every descendant renders deeper than the parent).
+    const parentLevel = Number(parentCard.dataset.level ?? 0);
+    let cursor = parentCard.nextElementSibling;
+    while (
+      cursor &&
+      cursor.classList.contains('message-card') &&
+      Number(cursor.dataset.level ?? 0) > parentLevel
+    ) {
+      cursor = cursor.nextElementSibling;
+    }
+    return cursor || typingEl || null;
+  }
+
   // True when the scroll position is at (or within a small threshold of) the
   // bottom of the list.
   function isNearBottom(container, threshold) {
@@ -733,17 +707,19 @@
       emptyState.remove();
     }
 
-    // Flat layout: all messages are siblings in the container
+    // Flat layout: all messages are siblings in the container, but a reply
+    // belongs directly after its parent's subtree — appending it to the end
+    // put it in a different place than the next full render would, so the
+    // message visibly jumped on refresh.
     const typingEl = container.querySelector('.typing-indicator');
     let level = 0;
     if (data.parent_id) {
-      // Find parent's level from state and go one deeper
       const parent = state.messages.find((m) => m.id === data.parent_id);
       level = (parent?.level ?? 0) + 1;
     }
     data.level = level;
     const node = renderMessageNode(data, level);
-    container.insertBefore(node, typingEl || null);
+    container.insertBefore(node, insertionPointFor(container, data));
 
     // Follow the new message to the bottom only if the user was already there.
     if (wasNearBottom) {

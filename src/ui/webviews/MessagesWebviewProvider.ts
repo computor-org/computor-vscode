@@ -11,8 +11,6 @@ export interface MessageFilters {
   unread?: boolean;
   created_after?: string;
   created_before?: string;
-  tags?: string[];
-  tags_match_all?: boolean;
 }
 
 export interface MessageTargetContext {
@@ -510,15 +508,14 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       return;
     }
 
-    await Promise.allSettled(
-      unreadIds.map(async (messageId) => {
-        try {
-          await this.apiService.markMessageRead(messageId);
-        } catch (error) {
-          console.error(`Failed to mark message ${messageId} as read:`, error);
-        }
-      })
-    );
+    // One request for the whole sweep. This used to fan out one POST per
+    // message, each triggering a full per-user cache invalidation and two
+    // server-side broadcasts.
+    try {
+      await this.apiService.markMessagesRead(unreadIds);
+    } catch (error) {
+      console.error('Failed to mark messages as read:', error);
+    }
 
     this.notifyIndicatorsUpdated(target, messages);
   }

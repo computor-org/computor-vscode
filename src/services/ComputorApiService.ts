@@ -82,6 +82,7 @@ import {
   MessageCreate,
   MessageUpdate,
   MessageQuery,
+  MessageReadBulkResult,
   MessageMentionRef,
   MentionableQuery,
   CourseMemberCommentList,
@@ -3076,6 +3077,37 @@ export class ComputorApiService {
   async markMessageRead(id: string): Promise<void> {
     const client = await this.getHttpClient();
     await client.post(`/messages/${id}/reads`);
+  }
+
+  /**
+   * Mark many messages read in one request.
+   *
+   * Opening a thread marks everything in it read. Doing that one id at a
+   * time cost a request, a full per-user cache invalidation and two Redis
+   * publishes each — a panel with 200 unread paid all of it 200 times, and
+   * the resulting broadcast storm is why the inbox needed a concurrency
+   * limiter and a WebSocket-suppression window.
+   *
+   * Ids the caller cannot read are skipped server-side; the result reports
+   * how many actually landed. The backend caps a batch at 1000 ids.
+   */
+  async markMessagesRead(ids: string[]): Promise<MessageReadBulkResult | undefined> {
+    if (ids.length === 0) {
+      return { marked: 0, requested: 0 };
+    }
+    const client = await this.getHttpClient();
+    const BATCH_LIMIT = 1000;
+    let marked = 0;
+    let requested = 0;
+    for (let i = 0; i < ids.length; i += BATCH_LIMIT) {
+      const response = await client.post<MessageReadBulkResult>(
+        '/messages/reads/bulk',
+        { message_ids: ids.slice(i, i + BATCH_LIMIT) }
+      );
+      marked += response.data?.marked ?? 0;
+      requested += response.data?.requested ?? 0;
+    }
+    return { marked, requested };
   }
 
   async markMessageUnread(id: string): Promise<void> {
