@@ -475,12 +475,15 @@
       // Send button right-aligned in the flex row.
       titleRow.appendChild(createElement('div', { className: 'title-row-spacer' }));
     } else {
+      // Announcement scope: the subject is what identifies this message in a
+      // list, so it is required — the backend rejects a blank one.
       const inputEl = createElement('input', {
         className: 'chat-title-input',
         attributes: {
           type: 'text',
           id: 'message-title',
-          placeholder: 'Subject (optional)'
+          placeholder: 'Subject',
+          required: 'required'
         }
       });
       inputEl.value = state.editingMessage ? state.editingMessage.title || '' : '';
@@ -535,11 +538,27 @@
       sendButton.addEventListener('click', () => {
         if (state.loading) return;
 
-        const titleValue = document.getElementById('message-title')?.value || '';
         const contentValue = getEditorContent().trim();
 
         if (!contentValue) {
           vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
+          return;
+        }
+
+        // The subject only exists on announcement scopes. Where it is shown
+        // it is required; where it is not, omit it entirely rather than
+        // sending '' — that used to wipe the subject of any message that had
+        // one, and filled the column with empty strings instead of nulls.
+        const hasSubjectField = state.showSubject !== false;
+        const titleValue = hasSubjectField
+          ? (document.getElementById('message-title')?.value || '').trim()
+          : undefined;
+
+        if (hasSubjectField && !titleValue) {
+          vscode.postMessage({
+            command: 'showWarning',
+            data: 'A subject is required — it is what identifies this announcement in the list.'
+          });
           return;
         }
 
@@ -550,7 +569,7 @@
             command: 'updateMessage',
             data: {
               messageId: state.editingMessage.id,
-              title: titleValue.trim(),
+              title: titleValue,
               content: contentValue
             }
           });
@@ -558,7 +577,7 @@
           vscode.postMessage({
             command: 'createMessage',
             data: {
-              title: titleValue.trim(),
+              title: titleValue,
               content: contentValue,
               parent_id: state.replyTo ? state.replyTo.id : undefined
             }

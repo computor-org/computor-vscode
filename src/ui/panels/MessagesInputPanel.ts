@@ -5,6 +5,8 @@ import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
 import { WebSocketService } from '../../services/WebSocketService';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
+import { deriveScopeFromCreatePayload, scopeHasSubject } from '../../services/MessagePermissions';
+import { MESSAGE_TARGET_FIELDS } from '../../types/generated/constants';
 
 interface TypingUser {
   userId: string;
@@ -113,7 +115,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     if (!payload) {
       return undefined;
     }
-    for (const field of TARGET_FIELDS_BY_SPECIFICITY) {
+    for (const field of MESSAGE_TARGET_FIELDS) {
       const value = payload[field];
       if (typeof value === 'string' && value.length > 0) {
         return { [field]: value } as MentionableQuery;
@@ -287,27 +289,30 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  // Subject (title) only belongs on announcement scopes. Conversational scopes
-  // (user / course_member / submission_group) and any reply are chats — no
-  // subject. Mirrors CONVERSATIONAL_TARGET_FIELDS in the backend.
+  /**
+   * Whether to render the subject input.
+   *
+   * A subject belongs to announcements only — it is what identifies one in a
+   * list. Conversations are chat, and any reply is by definition inside one.
+   * The backend enforces the same rule from the same scope set, and rejects
+   * a subject on a conversation outright.
+   *
+   * When editing an existing message we can read `kind` straight off the DTO;
+   * when composing a new one there is no message yet, so the scope is derived
+   * from the target we are about to post to.
+   */
   private shouldShowSubject(): boolean {
     if (this.state.replyTo) {
       return false;
     }
-    const source = (this.state.editingMessage
-      ? this.state.editingMessage
-      : this.state.target?.createPayload) as Record<string, unknown> | undefined;
-    if (!source) {
-      return true; // global / no target = announcement
+    if (this.state.editingMessage) {
+      return this.state.editingMessage.kind === 'announcement';
     }
-    const conversational = ['user_id', 'course_member_id', 'submission_group_id'];
-    for (const field of TARGET_FIELDS_BY_SPECIFICITY) {
-      const value = source[field];
-      if (typeof value === 'string' && value.length > 0) {
-        return !conversational.includes(field);
-      }
+    const payload = this.state.target?.createPayload;
+    if (!payload) {
+      return true; // no target = global = announcement
     }
-    return true; // no target set = global = announcement
+    return scopeHasSubject(deriveScopeFromCreatePayload(payload));
   }
 
   private postState(): void {
@@ -338,7 +343,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private async handleCreateMessage(data: { title: string; content: string; parent_id?: string }): Promise<void> {
+  private async handleCreateMessage(data: { title?: string; content: string; parent_id?: string }): Promise<void> {
     const target = this.state.target;
     if (!target) {
       notify.warning('Unable to post message: target context missing.');
@@ -349,19 +354,22 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const level = this.resolveMessageLevel(data.parent_id);
     // Backend enforces a single-target invariant — only the most-specific
     // target is persisted, all other target columns are forced NULL. Send
     // exactly one to keep the wire payload honest.
     const filteredPayload = pickMostSpecificTarget(target.createPayload);
 
     const payload: MessageCreate = {
-      title: data.title,
       content: data.content,
       parent_id: data.parent_id ?? null,
-      level,
       ...filteredPayload
     } as MessageCreate;
+
+    // Only carry a subject when there is one. Sending `title: ''` on a
+    // conversational scope is now a 400, and it was never meaningful.
+    if (data.title) {
+      payload.title = data.title;
+    }
 
     try {
       this.postLoading(true);
@@ -379,15 +387,19 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async handleUpdateMessage(data: { messageId: string; title: string; content: string }): Promise<void> {
+  private async handleUpdateMessage(data: { messageId: string; title?: string; content: string }): Promise<void> {
     if (!data?.messageId) {
       return;
     }
 
-    const updates: MessageUpdate = {
-      title: data.title,
-      content: data.content
-    };
+    // An omitted title means "leave the subject alone". This used to send
+    // `title: ''` unconditionally — including from conversational scopes,
+    // where the input isn't even rendered — which erased the subject of any
+    // message that had one.
+    const updates: MessageUpdate = { content: data.content };
+    if (data.title) {
+      updates.title = data.title;
+    }
 
     try {
       this.postLoading(true);
@@ -405,18 +417,10 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private resolveMessageLevel(parentId?: string): number {
-    if (!parentId) {
-      return 0;
-    }
-
-    const messages = this.state.messages ?? [];
-    const parent = messages.find((message) => message.id === parentId);
-    if (!parent) {
-      return 1;
-    }
-    return (parent.level ?? 0) + 1;
-  }
+  // resolveMessageLevel() is gone: thread depth is derived server-side from
+  // parent_id now. Guessing it from whatever happened to be in this panel's
+  // in-memory page — and falling back to 1 when the parent wasn't loaded —
+  // is exactly the wrong value the backend used to store verbatim.
 
   private updateHtml(): void {
     if (!this.view) {
@@ -432,23 +436,20 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   }
 }
 
-// Most-specific first; the first match is the only target sent on the wire.
-// user_id / course_member_id sit at the top: backend currently rejects writes
-// to those scopes (NotImplementedException), but we forward them so the user
-// sees the real error rather than a misleading global-post 403.
-const TARGET_FIELDS_BY_SPECIFICITY = [
-  'user_id',
-  'course_member_id',
-  'submission_group_id',
-  'course_content_id',
-  'course_group_id',
-  'course_id',
-  'course_family_id',
-  'organization_id'
-] as const;
-
+/**
+ * The single target to send on the wire.
+ *
+ * The backend keeps exactly one target column and nulls the rest, so
+ * sending more than one just invites the two sides to disagree about which
+ * won. MESSAGE_TARGET_FIELDS is generated from the same tuple the backend
+ * resolves with, so "most specific" means the same thing on both ends.
+ *
+ * user_id / course_member_id sit at the top and are forwarded even though
+ * the backend rejects writes to them (NotImplementedException), so the user
+ * sees the real error rather than a misleading global-post 403.
+ */
 function pickMostSpecificTarget(createPayload: Record<string, unknown>): Partial<MessageCreate> {
-  for (const field of TARGET_FIELDS_BY_SPECIFICITY) {
+  for (const field of MESSAGE_TARGET_FIELDS) {
     const value = createPayload[field];
     if (typeof value === 'string' && value.length > 0) {
       return { [field]: value } as Partial<MessageCreate>;

@@ -1,4 +1,5 @@
-import type { UserScopes } from '../types/generated';
+import type { MessageGet, MessageQuery, UserScopes } from '../types/generated';
+import { CONVERSATIONAL_SCOPES, MESSAGE_TARGET_FIELDS } from '../types/generated/constants';
 
 const POSTING_ROLES = new Set(['_owner', '_manager']);
 
@@ -8,42 +9,57 @@ const POSTING_ROLES = new Set(['_owner', '_manager']);
 // `_check_course_*_write_permission` helpers all gate on `_lecturer`.
 const COURSE_ANNOUNCEMENT_ROLES = new Set(['_lecturer', '_maintainer', '_owner']);
 
-// Scopes where threading replies makes sense. Broadcast-style scopes
-// (course/family/org/global, plus course_group / course_content) host one-way
-// announcements — a reply thread on those quickly turns into noise that's
-// visible to everyone who sees the original. Replies are restricted to
-// conversational scopes only.
-type ScopeName =
-  | 'user'
-  | 'course_member'
-  | 'submission_group'
-  | 'course_group'
-  | 'course_content'
-  | 'course'
-  | 'course_family'
-  | 'organization'
-  | 'global';
+/** The message scopes, straight off the generated MessageQuery. */
+export type ScopeName = NonNullable<MessageQuery['scope']>;
+/** Conversation vs. announcement, straight off the generated MessageGet. */
+export type MessageKind = MessageGet['kind'];
 
-const REPLY_ALLOWED_SCOPES: ReadonlySet<ScopeName> = new Set<ScopeName>([
-  'user',
-  'course_member',
-  'submission_group'
-]);
+const CONVERSATIONAL: ReadonlySet<string> = new Set(CONVERSATIONAL_SCOPES);
 
+/**
+ * Whether a scope hosts a conversation or a one-way announcement.
+ *
+ * Prefer reading `kind` off a MessageGet/MessageList — the server computes
+ * it from the same set. This exists for the compose path, which has to
+ * decide before any message exists.
+ */
+export function kindForScope(scope: ScopeName): MessageKind {
+  return CONVERSATIONAL.has(scope) ? 'conversation' : 'announcement';
+}
+
+/** The scope a message posted with this payload would land in. */
 export function deriveScopeFromCreatePayload(payload: Record<string, unknown>): ScopeName {
-  if (typeof payload.user_id === 'string' && payload.user_id) { return 'user'; }
-  if (typeof payload.course_member_id === 'string' && payload.course_member_id) { return 'course_member'; }
-  if (typeof payload.submission_group_id === 'string' && payload.submission_group_id) { return 'submission_group'; }
-  if (typeof payload.course_group_id === 'string' && payload.course_group_id) { return 'course_group'; }
-  if (typeof payload.course_content_id === 'string' && payload.course_content_id) { return 'course_content'; }
-  if (typeof payload.course_id === 'string' && payload.course_id) { return 'course'; }
-  if (typeof payload.course_family_id === 'string' && payload.course_family_id) { return 'course_family'; }
-  if (typeof payload.organization_id === 'string' && payload.organization_id) { return 'organization'; }
+  // MESSAGE_TARGET_FIELDS is ordered most-specific first, matching the
+  // backend's single-target rule: the first one set is the one persisted.
+  for (const field of MESSAGE_TARGET_FIELDS) {
+    const value = payload[field];
+    if (typeof value === 'string' && value.length > 0) {
+      // Every target field is named `<scope>_id`.
+      return field.slice(0, -3) as ScopeName;
+    }
+  }
   return 'global';
 }
 
+/**
+ * Whether a scope accepts replies.
+ *
+ * Announcements are one-way: a reply to a course-wide announcement fans out
+ * to every course member, which is the opposite of what the scope is for.
+ * The backend refuses those with a 400.
+ */
 export function canReplyInScope(scope: ScopeName): boolean {
-  return REPLY_ALLOWED_SCOPES.has(scope);
+  return kindForScope(scope) === 'conversation';
+}
+
+/**
+ * Whether a message in this scope carries a subject line.
+ *
+ * Announcements require one — it is what identifies them in a list.
+ * Conversations must not have one; the backend rejects a subject there.
+ */
+export function scopeHasSubject(scope: ScopeName): boolean {
+  return kindForScope(scope) === 'announcement';
 }
 
 function hasPostingRole(roles: string[] | undefined): boolean {
