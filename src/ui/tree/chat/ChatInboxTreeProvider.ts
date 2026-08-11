@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
-import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../../../services/MessagePermissions';
+import { canPostGlobal, canPostToCourseFamily, canPostToOrganization, kindForScope } from '../../../services/MessagePermissions';
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageList } from '../../../types/generated';
@@ -248,13 +248,15 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       return;
     }
 
-    // Optimistically clear unread for this thread. The backend only broadcasts
-    // read:update on submission_group channels, so non-submission-group threads
-    // never receive a WS event when MessagesWebview marks their messages as
-    // read — the badge would otherwise stay until a manual refresh. Mutating
-    // the cached MessageList objects in place updates both the per-thread and
-    // per-scope counts on the next rebuild. The mark-read API call is fired
-    // here too; if MessagesWebview also fires it the call is idempotent.
+    // Optimistically clear unread for this row. Mutating the cached
+    // MessageList objects in place updates both the per-thread and per-scope
+    // counts on the next rebuild. The mark-read API call is fired here too;
+    // if MessagesWebview also fires it the call is idempotent.
+    //
+    // For an announcement row this marks exactly that one notice, because the
+    // row *is* one notice — clicking it is the reader explicitly choosing it,
+    // which is the engagement signal the panel's scroll-into-view marking is
+    // also looking for.
     const unread = threadItem.thread.messages.filter(
       m => !m.is_read && m.author_id !== this.currentUserId
     );
@@ -598,37 +600,13 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
 
     const items: AnyTreeItem[] = [];
-    // Group this course's messages into threads by target id.
     const byTarget = new Map<string, MessageList[]>();
     for (const m of state.messages) {
       const targetId = this.targetIdFor(scope, m) ?? '__none__';
       if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
       byTarget.get(targetId)!.push(m);
     }
-    const threads: ChatThread[] = [];
-    for (const [targetId, msgs] of byTarget) {
-      const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
-      const lastMessage = sortedMessages[sortedMessages.length - 1];
-      const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
-      if (this.unreadOnly && unreadCount === 0) { continue; }
-      const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
-      threads.push({
-        scope,
-        targetId: targetId === '__none__' ? null : targetId,
-        title,
-        subtitle,
-        lastMessage,
-        unreadCount,
-        messageCount: msgs.length,
-        messages: sortedMessages
-      });
-    }
-    threads.sort((a, b) => {
-      if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
-        return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
-      }
-      return compareThreadRecency(b, a);
-    });
+    const threads = this.buildThreadRows(scope, byTarget);
     items.push(...threads.map(t => new ChatThreadItem(t)));
     if (state.fetched < state.total) {
       items.push(new ChatLoadMoreItem(scope, state.fetched, state.total, courseId));
@@ -903,28 +881,10 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       const alwaysShow = scope === 'global';
       if ((!byTarget || byTarget.size === 0) && !alwaysShow) { continue; }
 
-      const threads: ChatThread[] = [];
-      for (const [targetId, msgs] of (byTarget ?? new Map<string, MessageList[]>())) {
-        const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
-        const lastMessage = sortedMessages[sortedMessages.length - 1];
-        // Belt and braces on own messages: the backend stamps the author as a
-        // reader at create time (mark_author_as_reader), so is_read is already
-        // true for them — this also covers rows predating that.
-        const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
-        if (this.unreadOnly && unreadCount === 0) { continue; }
-
-        const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
-        threads.push({
-          scope,
-          targetId: targetId === '__none__' ? null : targetId,
-          title,
-          subtitle,
-          lastMessage,
-          unreadCount,
-          messageCount: msgs.length,
-          messages: sortedMessages
-        });
-      }
+      const threads = this.buildThreadRows(
+        scope,
+        byTarget ?? new Map<string, MessageList[]>()
+      );
 
       if (threads.length === 0 && !alwaysShow) { continue; }
 
@@ -943,13 +903,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         });
       }
 
-      threads.sort((a, b) => {
-        if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
-          return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
-        }
-        return compareThreadRecency(b, a);
-      });
-
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
       result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, {
@@ -958,6 +911,96 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
 
     return result;
+  }
+
+  /**
+   * Turn a scope's messages, already grouped by target id, into tree rows.
+   *
+   * Conversations get one row per target: a submission group *is* one thread,
+   * and its row shows the latest line with an unread count.
+   *
+   * Announcements get one row per announcement. They all share a target —
+   * every notice in a course carries the same `course_id` — so grouping them
+   * by target collapsed a whole semester into a single row labelled with the
+   * course name and "40 unread". Each notice is its own item, labelled by its
+   * subject, which is what a subject is for.
+   *
+   * Both are sorted unread-first, then most recent first.
+   */
+  private buildThreadRows(
+    scope: MessageScope,
+    byTarget: Map<string, MessageList[]>
+  ): ChatThread[] {
+    const isUnread = (m: MessageList) => !m.is_read && m.author_id !== this.currentUserId;
+    const threads: ChatThread[] = [];
+
+    for (const [rawTargetId, msgs] of byTarget) {
+      const targetId = rawTargetId === '__none__' ? null : rawTargetId;
+
+      if (kindForScope(scope) === 'announcement') {
+        // Replies can't exist on an announcement scope (the backend refuses
+        // them), but a legacy row could still carry a parent — fold those
+        // under their root rather than listing them as notices of their own.
+        const roots = msgs.filter(m => !m.parent_id);
+        const repliesByRoot = new Map<string, MessageList[]>();
+        for (const m of msgs) {
+          if (!m.parent_id) { continue; }
+          if (!repliesByRoot.has(m.parent_id)) { repliesByRoot.set(m.parent_id, []); }
+          repliesByRoot.get(m.parent_id)!.push(m);
+        }
+
+        for (const root of roots) {
+          const replies = repliesByRoot.get(root.id) ?? [];
+          const messages = [root, ...replies].sort((a, b) => compareCreated(a, b));
+          const unreadCount = messages.filter(isUnread).length;
+          if (this.unreadOnly && unreadCount === 0) { continue; }
+          const { subtitle } = this.threadLabels(scope, targetId, msgs);
+          threads.push({
+            scope,
+            targetId,
+            // The subject identifies the announcement. Rows predating the
+            // subject requirement fall back to the scope's own label.
+            title: root.title?.trim()
+              || this.threadLabels(scope, targetId, [root]).title,
+            subtitle,
+            lastMessage: root,
+            unreadCount,
+            messageCount: messages.length,
+            messages,
+            anchorMessageId: root.id
+          });
+        }
+        continue;
+      }
+
+      const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
+      const lastMessage = sortedMessages[sortedMessages.length - 1];
+      // Belt and braces on own messages: the backend stamps the author as a
+      // reader at create time (mark_author_as_reader), so is_read is already
+      // true for them — this also covers rows predating that.
+      const unreadCount = msgs.filter(isUnread).length;
+      if (this.unreadOnly && unreadCount === 0) { continue; }
+
+      const { title, subtitle } = this.threadLabels(scope, targetId, msgs);
+      threads.push({
+        scope,
+        targetId,
+        title,
+        subtitle,
+        lastMessage,
+        unreadCount,
+        messageCount: msgs.length,
+        messages: sortedMessages
+      });
+    }
+
+    threads.sort((a, b) => {
+      if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
+        return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+      }
+      return compareThreadRecency(b, a);
+    });
+    return threads;
   }
 
   private threadLabels(scope: MessageScope, targetId: string | null, msgs: MessageList[]): { title: string; subtitle?: string } {
