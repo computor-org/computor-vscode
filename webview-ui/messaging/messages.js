@@ -17,6 +17,13 @@
       created_before: null
     },
     typingUsers: [], // { userId, userName }
+    // Navigation: the scope bar across the top and the target list beside
+    // the messages. Both come from the extension host, which owns the
+    // fetching and label resolution.
+    scopes: [],
+    activeScope: undefined,
+    targets: [],
+    activeTargetId: null,
     _scrollToBottom: false,
     ...(window.__INITIAL_STATE__ || {})
   }, render);
@@ -678,11 +685,102 @@
     const messagesContainer = createElement('div', { className: 'messages-container' });
     renderMessagesSection(messagesContainer, prevScroll);
 
-    view.appendChild(header);
-    view.appendChild(filterBar);
-    view.appendChild(messagesContainer);
+    // Scope bar sits above the per-target header: it is navigation for the
+    // whole window, not chrome for the list currently shown.
+    const scopeBar = renderScopeBar();
+    if (scopeBar) { view.appendChild(scopeBar); }
 
+    // Targets alongside the messages, so switching course (or group, or
+    // chat) doesn't mean going back to the tree.
+    const body = createElement('div', { className: 'messages-body' });
+    const targetList = renderTargetList();
+    if (targetList) { body.appendChild(targetList); }
+
+    const pane = createElement('div', { className: 'messages-pane' });
+    pane.appendChild(header);
+    pane.appendChild(filterBar);
+    pane.appendChild(messagesContainer);
+    body.appendChild(pane);
+
+    view.appendChild(body);
     mount.appendChild(view);
+  }
+
+  function renderScopeBar() {
+    const scopes = state.scopes;
+    if (!scopes || scopes.length === 0) { return null; }
+
+    const bar = createElement('div', { className: 'scope-bar', attributes: { role: 'tablist' } });
+    scopes.forEach((s) => {
+      const active = s.scope === state.activeScope;
+      const tab = createElement('button', {
+        className: `scope-tab${active ? ' active' : ''}`,
+        attributes: {
+          type: 'button',
+          role: 'tab',
+          'aria-selected': active ? 'true' : 'false',
+          title: `${s.label} · ${s.total} message${s.total === 1 ? '' : 's'}`
+        }
+      });
+      tab.appendChild(createElement('span', { textContent: s.label }));
+      if (s.unreadCount > 0) {
+        tab.appendChild(createElement('span', {
+          className: 'badge xs scope-tab-unread',
+          textContent: String(s.unreadCount)
+        }));
+      }
+      if (!active) {
+        tab.addEventListener('click', () => {
+          setState({ loading: true });
+          vscode.postMessage({ command: 'selectScope', data: { scope: s.scope } });
+        });
+      }
+      bar.appendChild(tab);
+    });
+    return bar;
+  }
+
+  function renderTargetList() {
+    const targets = state.targets;
+    // Global is the destination, not a container of them — a one-entry list
+    // would be pure chrome.
+    if (!targets || targets.length === 0) { return null; }
+
+    const list = createElement('div', { className: 'target-list' });
+    targets.forEach((t) => {
+      const active = (t.id ?? null) === (state.activeTargetId ?? null);
+      const entry = createElement('button', {
+        className: `target-entry${active ? ' active' : ''}${t.unreadCount > 0 ? ' unread' : ''}`,
+        attributes: { type: 'button', title: t.subtitle ? `${t.subtitle} / ${t.title}` : t.title }
+      });
+      entry.appendChild(createElement('span', {
+        className: 'target-entry-title',
+        textContent: t.title
+      }));
+      if (t.subtitle) {
+        entry.appendChild(createElement('span', {
+          className: 'target-entry-subtitle',
+          textContent: t.subtitle
+        }));
+      }
+      if (t.unreadCount > 0) {
+        entry.appendChild(createElement('span', {
+          className: 'badge xs target-entry-unread',
+          textContent: String(t.unreadCount)
+        }));
+      }
+      if (!active) {
+        entry.addEventListener('click', () => {
+          setState({ loading: true });
+          vscode.postMessage({
+            command: 'selectTarget',
+            data: { scope: state.activeScope, targetId: t.id }
+          });
+        });
+      }
+      list.appendChild(entry);
+    });
+    return list;
   }
 
   window.addEventListener('message', (event) => {

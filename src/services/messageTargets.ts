@@ -126,11 +126,14 @@ export async function buildTargetContext(
         ? 'Posting to this course family requires manager or owner role.'
         : undefined;
     } else if (scope === 'course' || scope === 'course_content' || scope === 'course_group') {
-      // All three gate on _lecturer in the containing course. That course id
-      // cannot come off the messages — the single-target invariant leaves
-      // `course_id` NULL on a course_content message — so it comes from the
-      // label resolver, which recorded it when it fetched the entity.
-      const courseId = labels.parentCourseId(scope, targetId);
+      // All three gate on _lecturer in the containing course. A course is its
+      // own course; a content or group needs a lookup, and that cannot come
+      // off the messages — the single-target invariant leaves `course_id`
+      // NULL on a course_content message — so it comes from the label
+      // resolver, which recorded it when it fetched the entity.
+      const courseId = scope === 'course'
+        ? targetId!
+        : labels.parentCourseId(scope, targetId);
       readOnly = !canPostCourseAnnouncement(userScopes, courseId);
       readOnlyReason = readOnly ? COURSE_ANNOUNCEMENT_DENIED_REASON : undefined;
     }

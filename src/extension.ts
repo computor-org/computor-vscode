@@ -1373,6 +1373,13 @@ class UnifiedController {
     );
 
     this.disposables.push(
+      // Opens the unified messages window without going through a tree node.
+      // The window carries its own scope bar and target list, so "Global" is
+      // just a starting point — this is how scopes with no tree node of their
+      // own (unit-level course_content announcements, for one) are reached.
+      vscode.commands.registerCommand('computor.messages.browse', () => {
+        void messagesWebview.browseMessages('global', null);
+      }),
       vscode.commands.registerCommand('computor.chat.refresh', () => tree.refresh()),
       vscode.commands.registerCommand('computor.chat.showUnreadOnly', () => tree.setUnreadOnly(true)),
       vscode.commands.registerCommand('computor.chat.showAll', () => tree.setUnreadOnly(false)),

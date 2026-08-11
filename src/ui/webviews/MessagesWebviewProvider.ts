@@ -2,8 +2,11 @@ import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { canReplyInScope, deriveScopeFromCreatePayload, kindForScope } from '../../services/MessagePermissions';
-import type { MessageKind } from '../../services/MessagePermissions';
-import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
+import type { MessageKind, ScopeName } from '../../services/MessagePermissions';
+import { MessageLabelResolver } from '../../services/MessageLabelResolver';
+import { buildTargetContext, groupByTarget } from '../../services/messageTargets';
+import { scopeLabel } from '../tree/chat/ChatInboxTreeItems';
+import { MessageGet, MessageList, MessageQuery, UserScopes } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
 import { notify } from '../../utils/notify';
@@ -49,12 +52,56 @@ export interface MessageTargetContext {
   cacheCourseMemberId?: string;
 }
 
-interface MessagesWebviewData {
+/** One entry in the scope bar across the top of the messages window. */
+export interface ScopeTab {
+  scope: ScopeName;
+  label: string;
+  kind: MessageKind;
+  /** Messages of this scope the viewer can see. */
+  total: number;
+  unreadCount: number;
+}
+
+/** One destination within the active scope (a course, a group, a chat). */
+export interface TargetEntry {
+  id: string | null;
+  title: string;
+  subtitle?: string;
+  unreadCount: number;
+  lastActivity?: string;
+}
+
+interface NavigationState {
+  scopes: ScopeTab[];
+  activeScope: ScopeName;
+  activeTargetId: string | null;
+  targets: TargetEntry[];
+}
+
+interface MessagesWebviewData extends Partial<NavigationState> {
   target: MessageTargetContext;
   messages: EnrichedMessage[];
   identity?: { id: string; full_name?: string };
   activeFilters?: MessageFilters;
 }
+
+/**
+ * Scope bar order: broadest first, so it reads as a zoom from "everyone" down
+ * to "just us". Mirrors the inbox tree's ordering, reversed — a tree lists the
+ * most personal first because that is what you check; a bar reads left to
+ * right as a hierarchy.
+ */
+const SCOPE_ORDER: ScopeName[] = [
+  'global',
+  'organization',
+  'course_family',
+  'course',
+  'course_content',
+  'course_group',
+  'submission_group',
+  'course_member',
+  'user'
+];
 
 type EnrichedMessage = MessageList & {
   author_display?: string;
@@ -71,6 +118,18 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   private currentWsChannel?: string;
   private readonly wsHandlerId: string;
   private pendingUnreadMessageIds: Set<string> = new Set();
+  /** Shared with the chat inbox tree — same lookups, same caches. */
+  private readonly labels: MessageLabelResolver;
+  private userScopes?: UserScopes;
+  private userViews: string[] = [];
+  /**
+   * How many messages to scan when building a scope's target list.
+   *
+   * Targets are derived from the messages that reference them, so this is a
+   * ceiling on how far back a quiet target stays listed. Well above a
+   * semester of announcements, and one request.
+   */
+  private static readonly TARGET_SCAN_LIMIT = 500;
 
   /** Shared instance reused across the chat, student, tutor and lecturer
    *  views — every caller routes through the same provider so that opening
@@ -88,6 +147,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.messagesView');
     this.apiService = apiService;
+    this.labels = new MessageLabelResolver(apiService);
     this.wsHandlerId = `messages-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
@@ -144,6 +204,48 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     return this.currentUserIdPromise;
   }
 
+  /**
+   * Open the messages window, navigated to one scope + target.
+   *
+   * This is the entry point every tree command uses: they know which
+   * conversation or board the user clicked, and the window opens there. The
+   * scope bar and target list are still populated, so the user can move on
+   * from that starting point without going back to the tree — which is the
+   * whole reason the window is unified. A unit-level announcement is now
+   * reachable even though no tree node points at it.
+   */
+  async browseMessages(scope: ScopeName, targetId: string | null): Promise<void> {
+    await this.ensureUserContext();
+    const target = await buildTargetContext({
+      scope,
+      targetId,
+      labels: this.labels,
+      userScopes: this.userScopes,
+      userViews: this.userViews,
+      currentUserId: this.currentUserId
+    });
+    if (!target) {
+      notify.warning('Cannot open this conversation: target context unavailable.');
+      return;
+    }
+    await this.showMessages(target);
+  }
+
+  /** Identity, scopes and role views — fetched once, reused by navigation. */
+  private async ensureUserContext(): Promise<void> {
+    if (this.userScopes !== undefined && this.currentUserId) {
+      return;
+    }
+    const [identity, scopes, views] = await Promise.all([
+      this.apiService.getCurrentUser().catch(() => undefined),
+      this.apiService.getUserScopes().catch(() => undefined),
+      this.apiService.getUserViews().catch(() => [] as string[])
+    ]);
+    if (identity?.id) { this.currentUserId = identity.id; }
+    this.userScopes = scopes;
+    this.userViews = views ?? [];
+  }
+
   async showMessages(target: MessageTargetContext): Promise<void> {
     target = this.withScopePolicy(target);
     // Resolve identity unconditionally, and before subscribing to the WS
@@ -162,7 +264,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId, target);
     void this.markMessagesOnOpen(rawMessages, target, currentUserId);
     const messages = this.enrichMessages(normalizedMessages, identity);
-    const payload: MessagesWebviewData = { target, messages, identity };
+    const navigation = await this.buildNavigation(target);
+    const payload: MessagesWebviewData = { target, messages, identity, ...navigation };
     await this.show(`Messages: ${target.title}`, payload);
 
     // Subscribe to WebSocket channel for real-time updates
@@ -176,6 +279,123 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       }
       await this.inputPanel.reveal();
     }
+  }
+
+  /**
+   * The scope bar and the target list for the scope currently being shown.
+   *
+   * The bar is built from cheap per-scope counts (limit=1, read the total off
+   * X-Total-Count) rather than by pulling every scope's messages — the window
+   * only needs the full list for the one scope it is displaying. `global`
+   * always appears, so there is always somewhere to read announcements from
+   * and somewhere for an admin to post them.
+   */
+  private async buildNavigation(target: MessageTargetContext): Promise<NavigationState> {
+    const activeScope = deriveScopeFromCreatePayload(target.createPayload);
+    const activeTargetId = activeScope === 'global'
+      ? null
+      : (target.query[`${activeScope}_id`] ?? null);
+
+    const counts = await Promise.all(
+      SCOPE_ORDER.map(async (scope) => {
+        try {
+          const [all, unread] = await Promise.all([
+            this.apiService.listMessagesPage({ scope, skip: 0, limit: 1 }),
+            this.apiService.listMessagesPage({ scope, skip: 0, limit: 1, unread: true })
+          ]);
+          return { scope, total: all.total, unreadCount: unread.total };
+        } catch {
+          return { scope, total: 0, unreadCount: 0 };
+        }
+      })
+    );
+
+    const scopes: ScopeTab[] = counts
+      .filter(c => c.total > 0 || c.scope === 'global' || c.scope === activeScope)
+      .map(c => ({
+        scope: c.scope,
+        label: scopeLabel(c.scope),
+        kind: kindForScope(c.scope),
+        total: c.total,
+        unreadCount: c.unreadCount
+      }));
+
+    return {
+      scopes,
+      activeScope,
+      activeTargetId,
+      targets: await this.buildTargetList(activeScope)
+    };
+  }
+
+  /** Every target of `scope` the viewer can see, newest activity first. */
+  private async buildTargetList(scope: ScopeName): Promise<TargetEntry[]> {
+    if (scope === 'global') {
+      // Global has no targets — the scope *is* the destination.
+      return [];
+    }
+    let messages: MessageList[] = [];
+    try {
+      const page = await this.apiService.listMessagesPage({
+        scope,
+        skip: 0,
+        limit: MessagesWebviewProvider.TARGET_SCAN_LIMIT
+      });
+      messages = page.items;
+    } catch {
+      return [];
+    }
+
+    const byTarget = groupByTarget(scope, messages);
+    await this.labels.prefetch(new Map([[scope, byTarget]]));
+
+    const entries: TargetEntry[] = [];
+    for (const [rawId, msgs] of byTarget) {
+      const id = rawId === '__none__' ? null : rawId;
+      const label = this.labels.label(scope, id, msgs, this.currentUserId);
+      const sorted = msgs
+        .slice()
+        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+      entries.push({
+        id,
+        title: label.title,
+        subtitle: label.subtitle,
+        unreadCount: msgs.filter(
+          m => !m.is_read && m.author_id !== this.currentUserId
+        ).length,
+        lastActivity: sorted[sorted.length - 1]?.created_at ?? undefined
+      });
+    }
+
+    entries.sort((a, b) => {
+      const aUnread = a.unreadCount > 0 ? 1 : 0;
+      const bUnread = b.unreadCount > 0 ? 1 : 0;
+      if (aUnread !== bUnread) { return bUnread - aUnread; }
+      return (b.lastActivity || '').localeCompare(a.lastActivity || '');
+    });
+    return entries;
+  }
+
+  /** Scope bar click: move to that scope's first (or most urgent) target. */
+  private async handleSelectScope(data: { scope?: ScopeName }): Promise<void> {
+    const scope = data?.scope;
+    if (!scope) { return; }
+    if (scope === 'global') {
+      await this.browseMessages('global', null);
+      return;
+    }
+    const targets = await this.buildTargetList(scope);
+    if (targets.length === 0) {
+      notify.info(`No ${scopeLabel(scope).toLowerCase()} messages you can see yet.`);
+      return;
+    }
+    await this.browseMessages(scope, targets[0]!.id);
+  }
+
+  /** Target list click. */
+  private async handleSelectTarget(data: { scope?: ScopeName; targetId?: string | null }): Promise<void> {
+    if (!data?.scope) { return; }
+    await this.browseMessages(data.scope, data.targetId ?? null);
   }
 
   /**
@@ -458,6 +678,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       case 'markRead':
         await this.handleMarkRead(message.data);
         break;
+      case 'selectScope':
+        await this.handleSelectScope(message.data);
+        break;
+      case 'selectTarget':
+        await this.handleSelectTarget(message.data);
+        break;
       case 'showWarning':
         if (message.data) {
           notify.warning(String(message.data));
@@ -699,7 +925,20 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         void this.markMessagesOnOpen(rawMessages, target, currentUserId);
       }
       const messages = this.enrichMessages(normalizedMessages, identity);
-      this.currentData = { target, messages, identity, activeFilters } satisfies MessagesWebviewData;
+      // Keep the navigation state: a refresh reloads the message list, it
+      // does not renavigate, and dropping the scope bar and target list on
+      // every refetch would empty the window's chrome.
+      const previous = this.currentData as MessagesWebviewData | undefined;
+      this.currentData = {
+        target,
+        messages,
+        identity,
+        activeFilters,
+        scopes: previous?.scopes,
+        activeScope: previous?.activeScope,
+        targets: previous?.targets,
+        activeTargetId: previous?.activeTargetId
+      } satisfies MessagesWebviewData;
       this.panel.webview.postMessage({ command: 'updateMessages', data: messages });
       this.postLoadingState(false);
 
