@@ -141,11 +141,6 @@ body {
   flex-shrink: 0;
 }
 
-/* Pushes the Send button right when the subject field is hidden (chat scopes) */
-.title-row-spacer {
-  flex: 1 1 auto;
-}
-
 .title-row .chat-title-input {
   flex: 1 1 auto;
   min-width: 0;
@@ -214,6 +209,25 @@ body {
   border-bottom-color: var(--c-border);
   background-color: var(--vscode-editorWidget-background);
   flex-shrink: 0;
+  /* Deliberately NOT align-items:center — the tabs have to stretch so the
+     active tab's underline lands on the strip's bottom edge. The action
+     group centres its own contents instead. */
+}
+
+/*
+ * Send and Cancel ride in the tab strip rather than in a row of their own.
+ * In a sidebar the composer only gets a few rows, and on chat scopes — where
+ * there is no subject — the old row existed solely to hold this button.
+ *
+ * The strip's height is set by the tabs, so the buttons here are sized to sit
+ * inside it: anything taller and the row grows back the space this saved.
+ */
+.editor-tab-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
 }
 
 .editor-tab {
@@ -301,27 +315,34 @@ body {
   font-size: var(--font-size-sm);
 }
 
-/* Modern Send Button */
+/*
+ * Send button, sized to sit inside the tab strip.
+ *
+ * It used to own a row, so it could afford --sp-4 padding, a raised shadow
+ * and full --font-size. In the strip those would push the row taller than the
+ * tabs and give back the space the move reclaimed, so it drops to the tabs'
+ * own font size and vertical rhythm and loses the shadow — it no longer needs
+ * to lift off a background it now shares.
+ */
 .send-button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: var(--sp-2) var(--sp-4);
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
   border: none;
   border-radius: var(--radius-pill);
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   font-family: var(--vscode-font-family);
-  font-size: var(--font-size);
+  font-size: var(--font-size-sm);
   font-weight: 500;
+  line-height: 1.4;
   cursor: pointer;
-  transition: background-color 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: var(--shadow-1);
+  transition: background-color 0.15s, transform 0.1s;
 }
 
 .send-button:hover:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
-  box-shadow: var(--shadow-2);
 }
 
 .send-button:active:not(:disabled) {
@@ -351,7 +372,7 @@ body {
 }
 
 .send-button-icon {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1;
   flex-shrink: 0;
 }

@@ -467,16 +467,13 @@
 
     const form = createElement('div', { className: 'input-form' });
 
-    // Title row: subject input + send button
-    const titleRow = createElement('div', { className: 'title-row' });
-
-    if (state.showSubject === false) {
-      // Conversational scope (chat / reply) — no subject. A spacer keeps the
-      // Send button right-aligned in the flex row.
-      titleRow.appendChild(createElement('div', { className: 'title-row-spacer' }));
-    } else {
-      // Announcement scope: the subject is what identifies this message in a
-      // list, so it is required — the backend rejects a blank one.
+    // Subject row — only on announcement scopes, and only for the subject.
+    // It used to exist on every scope purely to host the Send button, which
+    // in a sidebar meant a whole row of chrome for one control.
+    if (state.showSubject !== false) {
+      const titleRow = createElement('div', { className: 'title-row' });
+      // The subject is what identifies this message in a list, so it is
+      // required — the backend rejects a blank one.
       const inputEl = createElement('input', {
         className: 'chat-title-input',
         attributes: {
@@ -491,9 +488,13 @@
         inputEl.disabled = true;
       }
       titleRow.appendChild(inputEl);
+      form.appendChild(titleRow);
     }
 
-    // Cancel button in title row (when replying/editing)
+    // Cancel + Send live in the editor's tab strip (built below), which
+    // already exists and has spare width.
+    const editorActions = createElement('div', { className: 'editor-tab-actions' });
+
     if (state.replyTo || state.editingMessage) {
       const cancelEl = createElement('button', {
         className: 'btn ghost sm cancel-btn',
@@ -509,10 +510,10 @@
         });
         vscode.postMessage({ command: 'cancel' });
       });
-      titleRow.appendChild(cancelEl);
+      editorActions.appendChild(cancelEl);
     }
 
-    // Send/Save button in title row
+    // Send/Save
     {
       const sendButton = createElement('button', {
         className: `send-button ${state.loading ? 'loading' : ''} ${state.editingMessage ? 'save-mode' : ''}`,
@@ -588,15 +589,13 @@
         state.activeTab = 'write';
       });
 
-      titleRow.appendChild(sendButton);
+      editorActions.appendChild(sendButton);
     }
-
-    form.appendChild(titleRow);
 
     // Markdown editor container with tabs
     const editorContainer = createElement('div', { className: 'markdown-editor' });
 
-    // Tab bar
+    // Tab bar — Write / Preview on the left, the actions pushed right.
     const tabBar = createElement('div', { className: 'tabs editor-tabs' });
 
     const writeTab = createElement('button', {
@@ -623,6 +622,7 @@
 
     tabBar.appendChild(writeTab);
     tabBar.appendChild(previewTab);
+    tabBar.appendChild(editorActions);
     editorContainer.appendChild(tabBar);
 
     // Content area (textarea or preview)
