@@ -239,6 +239,132 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     void this.persistState();
   }
 
+  /**
+   * Open the messages view for whatever chat row this was invoked on.
+   *
+   * A thread row already names its target, so it opens straight away. A scope
+   * row or a course node does not — "Courses" is nine courses, and
+   * "Submission Groups → Programmierung 1" is every group in that course — so
+   * those ask which one.
+   *
+   * The picker is what makes an *empty* destination reachable. Rows are built
+   * from messages that exist, so a course nobody has posted an announcement
+   * to yet has no row to click, and there was no way to write the first one.
+   * For course scopes the choices come from the user's actual enrolments
+   * rather than from the message list, which covers exactly that case.
+   */
+  async openMessagesFor(item: ChatScopeItem | ChatCourseGroupItem): Promise<void> {
+    const scope = item.scope;
+    const courseId = item instanceof ChatCourseGroupItem ? item.courseId : undefined;
+
+    // Global is the destination; there is nothing to pick.
+    if (scope === 'global') {
+      await this.openScopeTarget(scope, null);
+      return;
+    }
+
+    // A course node under the Courses scope already is the target.
+    if (scope === 'course' && courseId) {
+      await this.openScopeTarget(scope, courseId);
+      return;
+    }
+
+    const choices = await this.targetChoices(scope, courseId);
+    if (choices.length === 0) {
+      notify.info(`No ${scopeLabel(scope).toLowerCase()} you can open here yet.`);
+      return;
+    }
+    if (choices.length === 1) {
+      await this.openScopeTarget(scope, choices[0]!.targetId);
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      choices.map(c => ({
+        label: c.label,
+        description: c.description,
+        targetId: c.targetId
+      })),
+      { title: `Open ${scopeLabel(scope)}`, placeHolder: 'Pick a destination' }
+    );
+    if (!picked) { return; }
+    await this.openScopeTarget(scope, picked.targetId);
+  }
+
+  /** Destinations offerable for a scope, optionally narrowed to one course. */
+  private async targetChoices(
+    scope: MessageScope,
+    courseId?: string
+  ): Promise<Array<{ targetId: string | null; label: string; description?: string }>> {
+    await this.ensureUserScopes();
+
+    // Courses come from enrolment, not from messages — otherwise a course with
+    // no announcements yet is unreachable, which is precisely when someone
+    // wants to write one.
+    if (scope === 'course') {
+      const ids = this.userScopes?.course ? Object.keys(this.userScopes.course) : [];
+      await Promise.all(ids.map(id => this.labels.ensureCourseLabel(id).catch(() => undefined)));
+      return ids.map(id => ({
+        targetId: id,
+        label: this.labels.courseLabel(id) || id
+      }));
+    }
+
+    // Everything else is derived from the messages of that scope. Fetch them
+    // rather than reading `cachedMessages`: the course-grouped scopes are
+    // lazy, so the cache is empty until the user has expanded a course node,
+    // and offering "nothing here" because of that would be a lie. The backend
+    // walks down from `course_id`, so it narrows server-side when we have one.
+    let messages: MessageList[] = [];
+    try {
+      const page = await this.api.listMessagesPage({
+        scope,
+        ...(courseId ? { course_id: courseId } : {}),
+        skip: 0,
+        limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
+      });
+      messages = page.items;
+    } catch (err: any) {
+      notify.error(`Failed to load ${scopeLabel(scope).toLowerCase()}: ${err?.message || err}`);
+      return [];
+    }
+
+    const seen = new Map<string, MessageList[]>();
+    for (const m of messages) {
+      const targetId = this.targetIdFor(scope, m);
+      if (!targetId) { continue; }
+      if (!seen.has(targetId)) { seen.set(targetId, []); }
+      seen.get(targetId)!.push(m);
+    }
+
+    await Promise.all(
+      [...seen.keys()].map(id => this.labels.ensureLabel(scope, id).catch(() => undefined))
+    );
+
+    return [...seen.entries()].map(([targetId, msgs]) => {
+      const label = this.labels.label(scope, targetId, msgs, this.currentUserId);
+      return { targetId, label: label.title, description: label.subtitle };
+    });
+  }
+
+  /** Build the panel target for a scope+target and show it. */
+  private async openScopeTarget(scope: MessageScope, targetId: string | null): Promise<void> {
+    await this.ensureUserScopes();
+    const ctx = await buildTargetContext({
+      scope,
+      targetId,
+      labels: this.labels,
+      userScopes: this.userScopes,
+      userViews: this.userViews,
+      currentUserId: this.currentUserId
+    });
+    if (!ctx) {
+      notify.warning('Cannot open this view: target context unavailable.');
+      return;
+    }
+    await this.messagesProvider.showMessages(ctx);
+  }
+
   async openThread(threadItem: ChatThreadItem): Promise<void> {
     const ctx = await this.buildTargetContext(threadItem.thread);
     if (!ctx) {

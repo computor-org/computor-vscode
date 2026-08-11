@@ -213,3 +213,111 @@ describe('ChatInboxTreeProvider — conversation rows', () => {
     expect(rows('submission_group', byTarget)[0]!.unreadCount).to.equal(2);
   });
 });
+
+/**
+ * Opening messages from a chat row.
+ *
+ * A thread row names its target and opens straight away. A scope row or a
+ * course node names a scope but not which destination — "Courses" is nine
+ * courses — so those pick. The picker is also the only route to a
+ * destination nobody has posted to yet: rows are built from messages that
+ * exist, so an empty course has no row to click and no way to write the
+ * first announcement.
+ */
+describe('ChatInboxTreeProvider — target choices', () => {
+  function withApi(over: Record<string, unknown> = {}) {
+    const { provider } = makeProvider();
+    const anyProvider = provider as unknown as {
+      targetChoices: (
+        s: MessageScope,
+        c?: string
+      ) => Promise<Array<{ targetId: string | null; label: string; description?: string }>>;
+      userScopes?: unknown;
+      labels: Record<string, unknown>;
+      api: Record<string, unknown>;
+      currentUserId?: string;
+    };
+    anyProvider.api = {
+      // targetChoices resolves the caller's scopes first; without this the
+      // stub throws before it ever reaches the branch under test.
+      getUserScopes: async () => ({ is_admin: false }),
+      getUserViews: async () => [],
+      listMessagesPage: async () => ({ items: [], total: 0 }),
+      ...over
+    };
+    return { provider, choices: anyProvider.targetChoices.bind(provider), p: anyProvider };
+  }
+
+  it('offers courses from enrolment, not from messages', async () => {
+    // The case that matters: a course with no announcements yet still has to
+    // be openable, or nobody can post the first one.
+    const { choices, p } = withApi({
+      listMessagesPage: async () => ({ items: [], total: 0 })
+    });
+    p.userScopes = { is_admin: false, course: { 'c-1': ['_lecturer'], 'c-2': ['_lecturer'] } };
+    p.labels = {
+      ensureCourseLabel: async () => undefined,
+      courseLabel: (id: string) => (id === 'c-1' ? 'Programmierung 1' : 'Physics'),
+      ensureLabel: async () => undefined,
+      label: () => ({ title: 'x' })
+    };
+
+    const result = await choices('course');
+    expect(result.map(c => c.targetId)).to.have.members(['c-1', 'c-2']);
+    expect(result.map(c => c.label)).to.have.members(['Programmierung 1', 'Physics']);
+  });
+
+  it('fetches a scope rather than trusting the lazy cache', async () => {
+    // Course-grouped scopes are only pulled once a course node is expanded,
+    // so reading the cache would report "nothing here" before that.
+    let asked: Record<string, unknown> | undefined;
+    const { choices, p } = withApi({
+      listMessagesPage: async (params: Record<string, unknown>) => {
+        asked = params;
+        return {
+          items: [
+            { id: 'm1', submission_group_id: 'sg-1', author_id: 'u' },
+            { id: 'm2', submission_group_id: 'sg-1', author_id: 'u' },
+            { id: 'm3', submission_group_id: 'sg-2', author_id: 'u' }
+          ],
+          total: 3
+        };
+      }
+    });
+    p.labels = {
+      ensureCourseLabel: async () => undefined,
+      courseLabel: () => undefined,
+      ensureLabel: async () => undefined,
+      label: (_s: string, id: string) => ({ title: `Group ${id}` })
+    };
+
+    const result = await choices('submission_group', 'c-1');
+
+    expect(asked).to.include({ scope: 'submission_group', course_id: 'c-1' });
+    expect(result.map(c => c.targetId)).to.deep.equal(['sg-1', 'sg-2']);
+  });
+
+  it('returns nothing when a scope genuinely has no destinations', async () => {
+    const { choices, p } = withApi();
+    p.labels = {
+      ensureCourseLabel: async () => undefined,
+      courseLabel: () => undefined,
+      ensureLabel: async () => undefined,
+      label: () => ({ title: 'x' })
+    };
+    expect(await choices('course_group')).to.deep.equal([]);
+  });
+
+  it('survives a failed fetch without throwing', async () => {
+    const { choices, p } = withApi({
+      listMessagesPage: async () => { throw new Error('backend down'); }
+    });
+    p.labels = {
+      ensureCourseLabel: async () => undefined,
+      courseLabel: () => undefined,
+      ensureLabel: async () => undefined,
+      label: () => ({ title: 'x' })
+    };
+    expect(await choices('course_content')).to.deep.equal([]);
+  });
+});
