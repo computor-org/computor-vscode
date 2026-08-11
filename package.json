@@ -466,12 +466,6 @@
         "category": "Computor Examples"
       },
       {
-        "command": "computor.messages.browse",
-        "title": "Browse Messages",
-        "icon": "$(comment-discussion)",
-        "category": "Computor Chat"
-      },
-      {
         "command": "computor.chat.refresh",
         "title": "Refresh Chat",
         "icon": "$(refresh)",
@@ -1288,11 +1282,6 @@
           "command": "computor.lecturer.documents.refresh",
           "when": "view == computor.lecturer.documents",
           "group": "navigation@5"
-        },
-        {
-          "command": "computor.messages.browse",
-          "when": "view == computor.chat.inbox",
-          "group": "navigation@0"
         },
         {
           "command": "computor.chat.refresh",
