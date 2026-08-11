@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { canReplyInScope, deriveScopeFromCreatePayload } from '../../services/MessagePermissions';
+import { canReplyInScope, deriveScopeFromCreatePayload, kindForScope } from '../../services/MessagePermissions';
+import type { MessageKind } from '../../services/MessagePermissions';
 import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
@@ -27,6 +28,15 @@ export interface MessageTargetContext {
   readOnlyReason?: string;
   /** Whether replies are permitted in this scope (computed from createPayload). */
   allowReplies?: boolean;
+  /**
+   * Conversation or announcement, computed from the target scope.
+   *
+   * Derived from the target rather than read off the messages, because an
+   * empty announcement board has no message to read `kind` from — and that
+   * is exactly the case whose empty state used to invite the reader to
+   * "start the discussion".
+   */
+  kind?: MessageKind;
   /**
    * Course member whose cached tree data to refresh after a read sweep.
    *
@@ -85,12 +95,17 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     this.inputPanel = inputPanel;
   }
 
-  private withReplyPolicy(target: MessageTargetContext): MessageTargetContext {
-    if (target.allowReplies !== undefined) {
-      return target;
-    }
+  /**
+   * Fill in the scope-derived policy every caller would otherwise repeat:
+   * what kind of message list this is, and whether it accepts replies.
+   */
+  private withScopePolicy(target: MessageTargetContext): MessageTargetContext {
     const scope = deriveScopeFromCreatePayload(target.createPayload);
-    return { ...target, allowReplies: canReplyInScope(scope) };
+    return {
+      ...target,
+      kind: target.kind ?? kindForScope(scope),
+      allowReplies: target.allowReplies ?? canReplyInScope(scope)
+    };
   }
 
   public setWebSocketService(wsService: WebSocketService): void {
@@ -130,7 +145,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
-    target = this.withReplyPolicy(target);
+    target = this.withScopePolicy(target);
     // Resolve identity unconditionally, and before subscribing to the WS
     // channel below: API-token sessions can't read the user id from the
     // token, so GET /user is the only way to learn it. Skipping it left the
@@ -395,7 +410,10 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       title: 'Messages',
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['shared/chat-shared.css', 'messaging/messages.css'],
-      scriptFiles: ['vendor/marked.min.js', 'messaging/messages.js'],
+      // messageThreads.js must precede messages.js — it registers the thread
+      // ordering helpers on window.ComputorWebview that messages.js destructures
+      // at load time.
+      scriptFiles: ['vendor/marked.min.js', 'shared/messageThreads.js', 'messaging/messages.js'],
       initialState: data ?? { target: null, messages: [] }
     });
   }

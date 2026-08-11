@@ -23,51 +23,25 @@
 
   const root = () => document.getElementById('app');
 
-  function buildThreads(messages) {
-    const map = new Map();
-    const roots = [];
-    messages.forEach((msg) => {
-      map.set(msg.id, { ...msg, children: [] });
-    });
-    map.forEach((node) => {
-      if (node.parent_id && map.has(node.parent_id)) {
-        map.get(node.parent_id).children.push(node);
-      } else {
-        roots.push(node);
-      }
-    });
+  /**
+   * Announcements and conversations are two different reading experiences,
+   * and this panel used to render both as a chat log.
+   *
+   * A conversation is read forwards: oldest first, newest at the bottom
+   * where you are typing, scrolled to the end, with a typing indicator.
+   * An announcement board is read backwards: the newest one matters most,
+   * nobody is "typing" at you, and being scrolled to the bottom shows you
+   * the oldest notice in the course.
+   *
+   * `kind` comes from the target (server-computed for real messages), so an
+   * empty announcement board still knows not to invite you to "start the
+   * discussion".
+   */
+  const isAnnouncement = () => state.target?.kind === 'announcement';
 
-    // Order by when a message was *written*, never by when it was last
-    // edited: sorting on updated_at moved a three-week-old message to the
-    // bottom of the conversation the moment someone fixed a typo in it.
-    const sortFn = (a, b) => {
-      const aTime = a.created_at || '';
-      const bTime = b.created_at || '';
-      const byTime = aTime.localeCompare(bTime);
-      // Same timestamp (bulk imports, or a coarse clock) — fall back to id
-      // so the order is at least stable between renders.
-      return byTime !== 0 ? byTime : String(a.id).localeCompare(String(b.id));
-    };
-
-    function sortNode(node) {
-      node.children.sort(sortFn).forEach(sortNode);
-    }
-
-    roots.sort(sortFn).forEach(sortNode);
-    return roots;
-  }
-
-  function flattenThreads(threads, depth) {
-    const result = [];
-    threads.forEach((node) => {
-      const d = depth ?? (node.level ?? 0);
-      result.push({ ...node, level: d, children: [] });
-      if (node.children && node.children.length > 0) {
-        result.push(...flattenThreads(node.children, d + 1));
-      }
-    });
-    return result;
-  }
+  // Thread assembly and ordering live in shared/messageThreads.js — pure, and
+  // unit-tested there.
+  const { buildThreads, flattenThreads } = window.ComputorWebview.messageThreads;
 
   function renderMarkdown(text) {
     if (!text) {
@@ -252,9 +226,11 @@
     // A deleted message only reaches the list when it still has live replies,
     // and it is kept solely so those replies keep their context — so mark it
     // as spent rather than letting it read like an ordinary message.
+    const announcement = isAnnouncement();
     const card = createElement('article', {
       className: [
         'message-card',
+        announcement ? 'message-announcement' : '',
         level > 0 ? 'message-reply' : '',
         message.is_deleted ? 'message-deleted' : ''
       ].filter(Boolean).join(' '),
@@ -312,12 +288,20 @@
     meta.appendChild(metaLeft);
     meta.appendChild(metaRight);
 
-    const title = message.title
+    // An announcement is identified by its subject, so it is the headline
+    // and always present — the backend requires one. Legacy rows predating
+    // that rule get a placeholder rather than an untitled card.
+    const title = announcement
       ? createElement('h3', {
           className: 'message-title',
-          textContent: message.title
+          textContent: message.title || '(no subject)'
         })
-      : null;
+      : message.title
+        ? createElement('h3', {
+            className: 'message-title',
+            textContent: message.title
+          })
+        : null;
 
     const body = createElement('div', {
       className: 'message-body markdown-body',
@@ -348,6 +332,11 @@
       );
     }
 
+    // On an announcement the subject leads and the byline follows it; in a
+    // conversation the speaker leads and the body follows.
+    if (announcement && title) {
+      card.appendChild(title);
+    }
     card.appendChild(meta);
 
     // Reply context line — below meta
@@ -361,7 +350,7 @@
       card.appendChild(replyContext);
     }
 
-    if (title) {
+    if (title && !announcement) {
       card.appendChild(title);
     }
     card.appendChild(body);
@@ -400,22 +389,30 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'No messages yet. Use the input panel below to start the discussion.'
+          textContent: emptyStateText()
         })
       );
       return;
     }
 
-    const threads = buildThreads(state.messages);
+    const threads = buildThreads(state.messages, { newestFirst: isAnnouncement() });
     const flat = flattenThreads(threads);
     flat.forEach((msg) => {
       container.appendChild(renderMessageNode(msg, msg.level ?? 0));
     });
 
-    // Render typing indicator if someone is typing
-    if (state.typingUsers && state.typingUsers.length > 0) {
-      const typingIndicator = renderTypingIndicator();
-      container.appendChild(typingIndicator);
+    // Nobody types at a notice board — the indicator only belongs where
+    // someone is composing a reply you are waiting for.
+    if (!isAnnouncement() && state.typingUsers && state.typingUsers.length > 0) {
+      container.appendChild(renderTypingIndicator());
+    }
+
+    if (isAnnouncement()) {
+      // Newest is already at the top; jumping to the bottom would land the
+      // reader on the oldest notice in the course.
+      state._scrollToBottom = false;
+      container.scrollTop = prevScroll > 0 ? prevScroll : 0;
+      return;
     }
 
     if (state._scrollToBottom) {
@@ -427,6 +424,17 @@
     } else if (prevScroll > 0) {
       container.scrollTop = prevScroll;
     }
+  }
+
+  function emptyStateText() {
+    if (isAnnouncement()) {
+      return state.target?.readOnly
+        ? 'No announcements yet.'
+        : 'No announcements yet. Post one from the input panel below.';
+    }
+    return state.target?.readOnly
+      ? 'No messages yet.'
+      : 'No messages yet. Use the input panel below to start the discussion.';
   }
 
   function renderTypingIndicator() {
@@ -658,6 +666,10 @@
   function insertionPointFor(container, message) {
     const typingEl = container.querySelector('.typing-indicator');
     if (!message.parent_id) {
+      // Newest-first on an announcement board, so a new root goes at the top.
+      if (isAnnouncement()) {
+        return container.querySelector('.message-card');
+      }
       // A new root goes at the end of the list, before the typing indicator.
       return typingEl || null;
     }
@@ -711,7 +723,6 @@
     // belongs directly after its parent's subtree — appending it to the end
     // put it in a different place than the next full render would, so the
     // message visibly jumped on refresh.
-    const typingEl = container.querySelector('.typing-indicator');
     let level = 0;
     if (data.parent_id) {
       const parent = state.messages.find((m) => m.id === data.parent_id);
@@ -720,6 +731,12 @@
     data.level = level;
     const node = renderMessageNode(data, level);
     container.insertBefore(node, insertionPointFor(container, data));
+
+    // A new announcement lands at the top; scrolling to the bottom would
+    // take the reader away from it.
+    if (isAnnouncement()) {
+      return;
+    }
 
     // Follow the new message to the bottom only if the user was already there.
     if (wasNearBottom) {
@@ -770,7 +787,7 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'No messages yet. Use the input panel below to start the discussion.'
+          textContent: emptyStateText()
         })
       );
     }
@@ -778,6 +795,9 @@
 
   function handleWsTypingUpdate(data) {
     if (!data) return;
+    // Announcement scopes are lecturer-write-only broadcasts; a "someone is
+    // typing" line on a notice board is noise, not presence.
+    if (isAnnouncement()) return;
     const { userId, userName, isTyping } = data;
 
     let typingUsers = [...(state.typingUsers || [])];

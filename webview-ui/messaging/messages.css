@@ -152,6 +152,28 @@ body {
   margin: 0;
 }
 
+/*
+ * An announcement is a list item, not a chat line: the subject leads, and
+ * the byline reads as attribution underneath it rather than as a speaker.
+ * Slightly more room between cards so the list scans as discrete notices
+ * instead of a continuous transcript.
+ */
+.message-card.message-announcement {
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+}
+
+/* The type scale is --font-size / -sm / -xs; .message-title already sits one
+   step above the body, so the headline needs breathing room, not a new size. */
+.message-card.message-announcement .message-title {
+  line-height: 1.3;
+}
+
+.message-card.message-announcement .message-meta {
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-xs);
+}
+
 .message-body {
   font-size: var(--font-size-sm);
   line-height: 1.4;
