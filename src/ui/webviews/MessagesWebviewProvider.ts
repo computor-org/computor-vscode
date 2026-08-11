@@ -29,6 +29,16 @@ export interface MessageTargetContext {
   readOnlyReason?: string;
   /** Whether replies are permitted in this scope (computed from createPayload). */
   allowReplies?: boolean;
+  /**
+   * Course member whose cached tree data to refresh after a read sweep.
+   *
+   * Purely a client-side cache hint — it is NOT a query filter. The tutor
+   * commands used to smuggle it through `query`, which meant the API client
+   * had to strip `course_member_id` out of every message request; that in
+   * turn silently discarded the chat inbox's legitimate use of it when
+   * opening a course_member thread.
+   */
+  cacheCourseMemberId?: string;
 }
 
 interface MessagesWebviewData {
@@ -544,7 +554,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         break;
       }
       case 'tutor': {
-        const memberId = target.createPayload.course_member_id || target.query.course_member_id;
+        const memberId = target.cacheCourseMemberId;
         if (typeof memberId === 'string' && memberId.length > 0) {
           this.apiService.clearTutorMemberCourseContentsCache(memberId);
           // Use refreshTree instead of refresh to avoid unnecessary API re-fetch

@@ -2,6 +2,12 @@ import type { UserScopes } from '../types/generated';
 
 const POSTING_ROLES = new Set(['_owner', '_manager']);
 
+// Course roles that may post an announcement to a course, one of its
+// contents, or one of its groups. Mirrors LECTURER_AND_ABOVE in
+// computor_backend/permissions/roles.py — the backend's
+// `_check_course_*_write_permission` helpers all gate on `_lecturer`.
+const COURSE_ANNOUNCEMENT_ROLES = new Set(['_lecturer', '_maintainer', '_owner']);
+
 // Scopes where threading replies makes sense. Broadcast-style scopes
 // (course/family/org/global, plus course_group / course_content) host one-way
 // announcements — a reply thread on those quickly turns into noise that's
@@ -80,3 +86,39 @@ export function canPostGlobal(
 ): boolean {
   return scopes?.is_admin === true || isUserManager;
 }
+
+/**
+ * Whether the user may post an announcement scoped to this course — which
+ * covers the `course`, `course_content` and `course_group` scopes, since
+ * the backend gates all three on `_lecturer` in the containing course.
+ *
+ * Callers used to skip this check entirely and build a compose payload
+ * anyway, with a comment admitting it would 403. Students and tutors got a
+ * full Subject + body + Send form on a lecturer-only scope and found out by
+ * typing a message.
+ */
+export function canPostCourseAnnouncement(
+  scopes: UserScopes | undefined,
+  courseId: string | undefined
+): boolean {
+  if (!scopes || !courseId) {
+    return false;
+  }
+  if (scopes.is_admin) {
+    return true;
+  }
+  const roles = scopes.course?.[courseId];
+  if (!roles) {
+    return false;
+  }
+  for (const role of roles) {
+    if (COURSE_ANNOUNCEMENT_ROLES.has(role)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The reason to show under a locked compose box for a course announcement. */
+export const COURSE_ANNOUNCEMENT_DENIED_REASON =
+  'Only lecturers and above can post announcements here. You can read them.';

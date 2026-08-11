@@ -2959,12 +2959,8 @@ export class ComputorApiService {
   async listMessages(params: MessageQuery = {}): Promise<MessageList[]> {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
-      // course_member_id is carried in the params for cache invalidation hooks
-      // upstream but isn't a backend query parameter — strip it before sending.
       const baseQuery = Object.fromEntries(
-        Object.entries(params).filter(([key, value]) =>
-          value !== undefined && value !== null && key !== 'course_member_id'
-        )
+        Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
       );
 
       // Caller-controlled pagination: if either skip or limit is set, do a
@@ -3025,9 +3021,7 @@ export class ComputorApiService {
     return errorRecoveryService.executeWithRecovery(async () => {
       const client = await this.getHttpClient();
       const query = Object.fromEntries(
-        Object.entries(params).filter(([key, value]) =>
-          value !== undefined && value !== null && key !== 'course_member_id'
-        )
+        Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
       );
       const response = await client.get<MessageList[]>('/messages', query);
       const items = response.data || [];
