@@ -321,22 +321,20 @@
     return container;
   }
 
-  // Patch only the footer (typing indicator vs. markdown hint) in place.
-  // A full render() rebuilds the whole form and recreates the contenteditable
-  // #message-body, which destroys focus and the caret — so typing updates must
-  // never go through setState()/render() or the user gets locked out of the
-  // input after every keystroke (issue #268).
+  // Patch the footer in place. A full render() rebuilds the whole form and
+  // recreates the contenteditable #message-body, which destroys focus and the
+  // caret — so typing updates must never go through setState()/render() or the
+  // user gets locked out of the input after every keystroke (issue #268).
+  //
+  // The footer stays in the DOM even when empty, because it is this function's
+  // mount point; `.actions-bar:empty` hides it so it costs no height (and no
+  // flex gap) while nobody is typing, which is nearly always.
   function updateTypingIndicator() {
     const footer = root()?.querySelector('.actions-bar');
     if (!footer) return;
     footer.innerHTML = '';
     if (state.typingUsers && state.typingUsers.length > 0) {
       footer.appendChild(renderTypingIndicator(state.typingUsers));
-    } else {
-      footer.appendChild(createElement('span', {
-        className: 'markdown-hint',
-        textContent: 'Markdown supported'
-      }));
     }
   }
 
@@ -467,20 +465,20 @@
 
     const form = createElement('div', { className: 'input-form' });
 
-    // Title row: subject input + send button
-    const titleRow = createElement('div', { className: 'title-row' });
-
-    if (state.showSubject === false) {
-      // Conversational scope (chat / reply) — no subject. A spacer keeps the
-      // Send button right-aligned in the flex row.
-      titleRow.appendChild(createElement('div', { className: 'title-row-spacer' }));
-    } else {
+    // Subject row — only on announcement scopes, and only for the subject.
+    // It used to exist on every scope purely to host the Send button, which
+    // in a sidebar meant a whole row of chrome for one control.
+    if (state.showSubject !== false) {
+      const titleRow = createElement('div', { className: 'title-row' });
+      // The subject is what identifies this message in a list, so it is
+      // required — the backend rejects a blank one.
       const inputEl = createElement('input', {
         className: 'chat-title-input',
         attributes: {
           type: 'text',
           id: 'message-title',
-          placeholder: 'Subject (optional)'
+          placeholder: 'Subject',
+          required: 'required'
         }
       });
       inputEl.value = state.editingMessage ? state.editingMessage.title || '' : '';
@@ -488,9 +486,13 @@
         inputEl.disabled = true;
       }
       titleRow.appendChild(inputEl);
+      form.appendChild(titleRow);
     }
 
-    // Cancel button in title row (when replying/editing)
+    // Cancel + Send live in the editor's tab strip (built below), which
+    // already exists and has spare width.
+    const editorActions = createElement('div', { className: 'editor-tab-actions' });
+
     if (state.replyTo || state.editingMessage) {
       const cancelEl = createElement('button', {
         className: 'btn ghost sm cancel-btn',
@@ -506,10 +508,10 @@
         });
         vscode.postMessage({ command: 'cancel' });
       });
-      titleRow.appendChild(cancelEl);
+      editorActions.appendChild(cancelEl);
     }
 
-    // Send/Save button in title row
+    // Send/Save
     {
       const sendButton = createElement('button', {
         className: `send-button ${state.loading ? 'loading' : ''} ${state.editingMessage ? 'save-mode' : ''}`,
@@ -535,11 +537,27 @@
       sendButton.addEventListener('click', () => {
         if (state.loading) return;
 
-        const titleValue = document.getElementById('message-title')?.value || '';
         const contentValue = getEditorContent().trim();
 
         if (!contentValue) {
           vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
+          return;
+        }
+
+        // The subject only exists on announcement scopes. Where it is shown
+        // it is required; where it is not, omit it entirely rather than
+        // sending '' — that used to wipe the subject of any message that had
+        // one, and filled the column with empty strings instead of nulls.
+        const hasSubjectField = state.showSubject !== false;
+        const titleValue = hasSubjectField
+          ? (document.getElementById('message-title')?.value || '').trim()
+          : undefined;
+
+        if (hasSubjectField && !titleValue) {
+          vscode.postMessage({
+            command: 'showWarning',
+            data: 'A subject is required — it is what identifies this announcement in the list.'
+          });
           return;
         }
 
@@ -550,7 +568,7 @@
             command: 'updateMessage',
             data: {
               messageId: state.editingMessage.id,
-              title: titleValue.trim(),
+              title: titleValue,
               content: contentValue
             }
           });
@@ -558,7 +576,7 @@
           vscode.postMessage({
             command: 'createMessage',
             data: {
-              title: titleValue.trim(),
+              title: titleValue,
               content: contentValue,
               parent_id: state.replyTo ? state.replyTo.id : undefined
             }
@@ -569,15 +587,13 @@
         state.activeTab = 'write';
       });
 
-      titleRow.appendChild(sendButton);
+      editorActions.appendChild(sendButton);
     }
-
-    form.appendChild(titleRow);
 
     // Markdown editor container with tabs
     const editorContainer = createElement('div', { className: 'markdown-editor' });
 
-    // Tab bar
+    // Tab bar — Write / Preview on the left, the actions pushed right.
     const tabBar = createElement('div', { className: 'tabs editor-tabs' });
 
     const writeTab = createElement('button', {
@@ -604,6 +620,7 @@
 
     tabBar.appendChild(writeTab);
     tabBar.appendChild(previewTab);
+    tabBar.appendChild(editorActions);
     editorContainer.appendChild(tabBar);
 
     // Content area (textarea or preview)
@@ -617,7 +634,13 @@
           contenteditable: state.loading ? 'false' : 'true',
           role: 'textbox',
           'aria-multiline': 'true',
-          'data-placeholder': 'Write your message… (Markdown supported, @ to mention)'
+          // The placeholder is the only place any of this is documented now
+          // that the footer hint is gone — and it costs no layout, since it
+          // only shows while the editor is empty and has room to spare.
+          // Enter-sends leads because it is the surprising one: without the
+          // hint, reaching for a new line posts a half-written message.
+          'data-placeholder':
+            'Write your message… (Enter to send, Shift+Enter for a new line, Markdown, @ to mention)'
         }
       });
       // Use saved content or editing message content, rendered as text + chips.
@@ -675,18 +698,15 @@
 
     container.appendChild(form);
 
-    // Footer: typing indicator or markdown hint
+    // Footer: the typing indicator, and nothing else.
+    //
+    // It used to carry a permanent "Markdown supported" line, which cost a
+    // row in a sidebar composer to repeat what the editor's own placeholder
+    // already says. Empty is the normal state; `:empty` collapses it.
     const footer = createElement('div', { className: 'actions-bar' });
 
     if (state.typingUsers && state.typingUsers.length > 0) {
-      const typingIndicator = renderTypingIndicator(state.typingUsers);
-      footer.appendChild(typingIndicator);
-    } else {
-      const mdHint = createElement('span', {
-        className: 'markdown-hint',
-        textContent: 'Markdown supported'
-      });
-      footer.appendChild(mdHint);
+      footer.appendChild(renderTypingIndicator(state.typingUsers));
     }
 
     container.appendChild(footer);

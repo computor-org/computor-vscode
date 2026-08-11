@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
-import { canReplyInScope, deriveScopeFromCreatePayload } from '../../services/MessagePermissions';
+import { canReplyInScope, deriveScopeFromCreatePayload, kindForScope } from '../../services/MessagePermissions';
+import type { MessageKind } from '../../services/MessagePermissions';
 import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
@@ -11,8 +12,6 @@ export interface MessageFilters {
   unread?: boolean;
   created_after?: string;
   created_before?: string;
-  tags?: string[];
-  tags_match_all?: boolean;
 }
 
 export interface MessageTargetContext {
@@ -29,6 +28,25 @@ export interface MessageTargetContext {
   readOnlyReason?: string;
   /** Whether replies are permitted in this scope (computed from createPayload). */
   allowReplies?: boolean;
+  /**
+   * Conversation or announcement, computed from the target scope.
+   *
+   * Derived from the target rather than read off the messages, because an
+   * empty announcement board has no message to read `kind` from — and that
+   * is exactly the case whose empty state used to invite the reader to
+   * "start the discussion".
+   */
+  kind?: MessageKind;
+  /**
+   * Course member whose cached tree data to refresh after a read sweep.
+   *
+   * Purely a client-side cache hint — it is NOT a query filter. The tutor
+   * commands used to smuggle it through `query`, which meant the API client
+   * had to strip `course_member_id` out of every message request; that in
+   * turn silently discarded the chat inbox's legitimate use of it when
+   * opening a course_member thread.
+   */
+  cacheCourseMemberId?: string;
 }
 
 interface MessagesWebviewData {
@@ -77,12 +95,17 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     this.inputPanel = inputPanel;
   }
 
-  private withReplyPolicy(target: MessageTargetContext): MessageTargetContext {
-    if (target.allowReplies !== undefined) {
-      return target;
-    }
+  /**
+   * Fill in the scope-derived policy every caller would otherwise repeat:
+   * what kind of message list this is, and whether it accepts replies.
+   */
+  private withScopePolicy(target: MessageTargetContext): MessageTargetContext {
     const scope = deriveScopeFromCreatePayload(target.createPayload);
-    return { ...target, allowReplies: canReplyInScope(scope) };
+    return {
+      ...target,
+      kind: target.kind ?? kindForScope(scope),
+      allowReplies: target.allowReplies ?? canReplyInScope(scope)
+    };
   }
 
   public setWebSocketService(wsService: WebSocketService): void {
@@ -122,7 +145,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   async showMessages(target: MessageTargetContext): Promise<void> {
-    target = this.withReplyPolicy(target);
+    target = this.withScopePolicy(target);
     // Resolve identity unconditionally, and before subscribing to the WS
     // channel below: API-token sessions can't read the user id from the
     // token, so GET /user is the only way to learn it. Skipping it left the
@@ -136,8 +159,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
     const currentUserId = this.currentUserId ?? this.apiService.getCurrentUserId();
 
-    const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
-    void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+    const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId, target);
+    void this.markMessagesOnOpen(rawMessages, target, currentUserId);
     const messages = this.enrichMessages(normalizedMessages, identity);
     const payload: MessagesWebviewData = { target, messages, identity };
     await this.show(`Messages: ${target.title}`, payload);
@@ -148,9 +171,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (this.inputPanel) {
       this.inputPanel.setTarget(target, rawMessages);
       this.inputPanel.setOnMessageCreated(() => this.refreshMessages({ skipIndicatorUpdate: true }));
-      if (target.wsChannel) {
-        this.inputPanel.setWebSocketChannel(target.wsChannel);
-      }
+      // Set unconditionally, including to undefined. Guarding on truthiness
+      // left the previous panel's channel in place when the new one had none,
+      // and the input panel skips its post-send refresh whenever it believes
+      // a channel exists — so a message posted to a channel-less scope was
+      // never shown until a manual refresh.
+      this.inputPanel.setWebSocketChannel(target.wsChannel);
       await this.inputPanel.reveal();
     }
   }
@@ -257,21 +283,22 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       data: enrichedMessage
     });
 
-    // Handle read marking if message is not from current user. Use the
-    // enriched is_author — the raw WS payload has it stripped (see above).
+    // A message arriving in an open conversation has been read — you are
+    // sitting in the chat. A new announcement has not: it lands at the top
+    // of a list the reader may not be looking at, and clearing it on arrival
+    // is how a notice gets missed. It stays unread until scrolled into view.
+    if (this.getCurrentTarget()?.kind === 'announcement') {
+      return;
+    }
+
+    // Use the enriched is_author — the raw WS payload has it stripped.
     if (!enrichedMessage.is_author && messageData.id) {
-      console.log('[MessagesWebviewProvider] Message is not from current user, will mark as read');
       if (this.isPanelVisible) {
-        // Panel is visible - mark as read immediately
-        console.log('[MessagesWebviewProvider] Panel visible, marking as read immediately:', messageData.id);
         this.markSingleMessageAsRead(messageData.id);
       } else {
-        // Panel is hidden - queue for later
-        console.log('[MessagesWebviewProvider] Panel hidden, queuing for later:', messageData.id);
+        // Panel is hidden — queue until it comes back.
         this.pendingUnreadMessageIds.add(messageData.id);
       }
-    } else {
-      console.log('[MessagesWebviewProvider] Message is from current user (is_author=true), skipping read mark');
     }
   }
 
@@ -387,7 +414,10 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       title: 'Messages',
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['shared/chat-shared.css', 'messaging/messages.css'],
-      scriptFiles: ['vendor/marked.min.js', 'messaging/messages.js'],
+      // messageThreads.js must precede messages.js — it registers the thread
+      // ordering helpers on window.ComputorWebview that messages.js destructures
+      // at load time.
+      scriptFiles: ['vendor/marked.min.js', 'shared/messageThreads.js', 'messaging/messages.js'],
       initialState: data ?? { target: null, messages: [] }
     });
   }
@@ -428,6 +458,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       case 'applyFilters':
         await this.handleApplyFilters(message.data);
         break;
+      case 'markRead':
+        await this.handleMarkRead(message.data);
+        break;
       case 'showWarning':
         if (message.data) {
           notify.warning(String(message.data));
@@ -460,8 +493,20 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private normalizeReadState(messages: MessageList[], currentUserId?: string): MessageList[] {
-    if (!currentUserId) {
+  /**
+   * Optimistically show a conversation as read.
+   *
+   * Opening a conversation reads it, so the panel doesn't wait for the
+   * round-trip to stop showing its own contents as unread. An announcement
+   * board is different: it is a list of notices you work through, so its
+   * unread marks have to survive being looked at — see markMessagesOnOpen.
+   */
+  private normalizeReadState(
+    messages: MessageList[],
+    currentUserId?: string,
+    target?: MessageTargetContext
+  ): MessageList[] {
+    if (!currentUserId || target?.kind === 'announcement') {
       return messages;
     }
 
@@ -473,44 +518,78 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     });
   }
 
-  private async markUnreadMessagesAsRead(
+  /**
+   * Mark what opening this panel actually read.
+   *
+   * For a conversation that is everything in it: you opened the chat, you
+   * read the chat. For an announcement board it is nothing — a board is a
+   * list of individual notices, and clearing all of them because the panel
+   * was opened destroys the reader's own place in it (and made the panel's
+   * "Unread" filter self-defeating, since it ran right after the sweep that
+   * emptied it). Announcements are marked read one at a time as they are
+   * actually scrolled into view; see handleMarkRead.
+   */
+  private async markMessagesOnOpen(
     messages: MessageList[],
     target: MessageTargetContext | undefined,
     currentUserId?: string
   ): Promise<void> {
-    console.log('[MessagesWebviewProvider] markUnreadMessagesAsRead called', {
-      totalMessages: messages.length,
-      currentUserId,
-      messageStates: messages.map((m) => ({
-        id: m.id,
-        is_read: m.is_read,
-        author_id: m.author_id,
-        isOwnMessage: m.author_id === currentUserId
-      }))
-    });
+    if (target?.kind === 'announcement') {
+      return;
+    }
 
     const unreadIds = messages
       .filter((message) => !message.is_read && message.author_id !== currentUserId)
       .map((message) => message.id);
 
-    console.log('[MessagesWebviewProvider] Found unread messages to mark:', unreadIds);
-
     if (unreadIds.length === 0) {
-      console.log('[MessagesWebviewProvider] No unread messages to mark');
       return;
     }
 
-    await Promise.allSettled(
-      unreadIds.map(async (messageId) => {
-        try {
-          await this.apiService.markMessageRead(messageId);
-        } catch (error) {
-          console.error(`Failed to mark message ${messageId} as read:`, error);
-        }
-      })
-    );
+    // One request for the whole sweep. This used to fan out one POST per
+    // message, each triggering a full per-user cache invalidation and two
+    // server-side broadcasts.
+    try {
+      await this.apiService.markMessagesRead(unreadIds);
+    } catch (error) {
+      console.error('Failed to mark messages as read:', error);
+    }
 
     this.notifyIndicatorsUpdated(target, messages);
+  }
+
+  /**
+   * Mark announcements the reader has actually seen.
+   *
+   * The webview reports ids as their cards come into view, batched; this
+   * applies them locally so the marker clears without a refetch, and posts
+   * the batch in one request.
+   */
+  private async handleMarkRead(data: { messageIds?: string[] }): Promise<void> {
+    const target = this.getCurrentTarget();
+    const currentUserId = this.currentUserId ?? this.apiService.getCurrentUserId();
+    const ids = (data?.messageIds ?? []).filter((id) => typeof id === 'string' && id);
+    if (ids.length === 0) {
+      return;
+    }
+
+    const panelData = this.currentData as MessagesWebviewData | undefined;
+    const seen = new Set(ids);
+    const toMark = (panelData?.messages ?? []).filter(
+      (m) => seen.has(m.id) && !m.is_read && m.author_id !== currentUserId
+    );
+    if (toMark.length === 0) {
+      return;
+    }
+    toMark.forEach((m) => { m.is_read = true; });
+
+    try {
+      await this.apiService.markMessagesRead(toMark.map((m) => m.id));
+    } catch (error) {
+      console.error('Failed to mark announcements as read:', error);
+      return;
+    }
+    this.notifyIndicatorsUpdated(target, toMark);
   }
 
   private notifyIndicatorsUpdated(target: MessageTargetContext | undefined, messages: MessageList[]): void {
@@ -544,7 +623,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         break;
       }
       case 'tutor': {
-        const memberId = target.createPayload.course_member_id || target.query.course_member_id;
+        const memberId = target.cacheCourseMemberId;
         if (typeof memberId === 'string' && memberId.length > 0) {
           this.apiService.clearTutorMemberCourseContentsCache(memberId);
           // Use refreshTree instead of refresh to avoid unnecessary API re-fetch
@@ -617,10 +696,10 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       };
 
       const rawMessages = await this.apiService.listMessages(query);
-      const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId);
+      const normalizedMessages = this.normalizeReadState(rawMessages, currentUserId, target);
       // Only mark as read and update indicators when not skipping (e.g., after sending a message)
       if (!options?.skipIndicatorUpdate) {
-        void this.markUnreadMessagesAsRead(rawMessages, target, currentUserId);
+        void this.markMessagesOnOpen(rawMessages, target, currentUserId);
       }
       const messages = this.enrichMessages(normalizedMessages, identity);
       this.currentData = { target, messages, identity, activeFilters } satisfies MessagesWebviewData;

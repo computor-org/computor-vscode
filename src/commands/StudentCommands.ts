@@ -12,6 +12,7 @@ import { SubmissionGroupStudentList, SubmissionCreate, SubmissionGroupStudentGet
 import { StudentRepositoryManager } from '../services/StudentRepositoryManager';
 import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/StudentRepositoryProvisioningService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
+import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
@@ -1604,6 +1605,7 @@ export class StudentCommands {
         let createPayload: Partial<MessageCreate>;
 
         let wsChannel: string | undefined;
+        let readOnly = false;
 
         if (submissionGroup?.id) {
           // Assignment with submission group - students only need submission_group messages.
@@ -1618,16 +1620,20 @@ export class StudentCommands {
           };
           wsChannel = `submission_group:${submissionGroup.id}`;
         } else {
-          // Unit content without submission group - show course_content messages
-          // Students can only read (lecturer+ for writing).
+          // Unit content without a submission group: course_content is an
+          // announcement scope, lecturer+ only. Students read it.
           query = {
             scope: 'course_content',
             course_content_id: content.id
           };
           createPayload = {
-            course_content_id: content.id  // This will fail with ForbiddenException, but allows reading
+            course_content_id: content.id
           };
           wsChannel = `course_content:${content.id}`;
+          readOnly = !canPostCourseAnnouncement(
+            await this.apiService.getUserScopes().catch(() => undefined),
+            courseId
+          );
         }
 
         target = {
@@ -1636,7 +1642,9 @@ export class StudentCommands {
           query,
           createPayload,
           sourceRole: 'student',
-          wsChannel
+          wsChannel,
+          readOnly,
+          readOnlyReason: readOnly ? COURSE_ANNOUNCEMENT_DENIED_REASON : undefined
         } satisfies MessageTargetContext;
       }
 
@@ -1649,16 +1657,22 @@ export class StudentCommands {
         const courseLabel = courseInfo?.title || courseInfo?.path || 'Course messages';
         const subtitle = courseInfo?.path ? `Course • ${courseInfo.path}` : undefined;
 
-        // Students cannot write to course_id (lecturer+ only)
-        // This will show course messages but prevent students from creating them
-        // Use scope filter to show ONLY course-scoped messages, not content/submission messages
+        // Course announcements: lecturer+ writes, everyone in the course
+        // reads. Scope is pinned so the list stays announcements rather than
+        // walking down into contents, groups and submission-group chats.
+        const canPost = canPostCourseAnnouncement(
+          await this.apiService.getUserScopes().catch(() => undefined),
+          courseId
+        );
         target = {
           title: courseLabel,
           subtitle,
           query: { course_id: courseId, scope: 'course' },
-          createPayload: { course_id: courseId },  // This will fail with ForbiddenException
+          createPayload: { course_id: courseId },
           sourceRole: 'student',
-          wsChannel: `course:${courseId}`
+          wsChannel: `course:${courseId}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : COURSE_ANNOUNCEMENT_DENIED_REASON
         } satisfies MessageTargetContext;
       }
 

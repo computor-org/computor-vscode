@@ -13,6 +13,7 @@ import { CourseMemberCommentsWebviewProvider } from '../ui/webviews/CourseMember
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 import { CourseMemberCommentsInputPanelProvider } from '../ui/panels/CourseMemberCommentsInputPanel';
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
+import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { notify } from '../utils/notify';
@@ -563,14 +564,15 @@ export class TutorCommands {
         let createPayload: Partial<MessageCreate>;
 
         let wsChannel: string | undefined;
+        let readOnly = false;
 
         if (submissionGroup?.id) {
-          // Assignment with submission group - tutors only need submission_group messages
-          // (not course_content announcements which are for all students)
-          // Include course_member_id for cache invalidation (not sent to API)
+          // Assignment with submission group — the tutor's conversation with
+          // that student. Pin scope so the submission_group filter doesn't
+          // also walk into the group's course_member messages.
           query = {
-            submission_group_id: submissionGroup.id,
-            course_member_id: memberId
+            scope: 'submission_group',
+            submission_group_id: submissionGroup.id
           };
           createPayload = {
             submission_group_id: submissionGroup.id
@@ -578,17 +580,20 @@ export class TutorCommands {
           // Tutors subscribe to the specific submission group for targeted updates
           wsChannel = `submission_group:${submissionGroup.id}`;
         } else {
-          // Unit content without submission group - show course_content messages
-          // Tutors can only read (lecturer+ for writing)
-          // Include course_member_id for cache invalidation (not sent to API)
+          // Unit content without a submission group: course_content is an
+          // announcement scope, lecturer+ only. Tutors read it.
           query = {
-            course_content_id: content.id,
-            course_member_id: memberId
+            scope: 'course_content',
+            course_content_id: content.id
           };
           createPayload = {
-            course_content_id: content.id  // Lecturer+ only
+            course_content_id: content.id
           };
           wsChannel = `course_content:${content.id}`;
+          readOnly = !canPostCourseAnnouncement(
+            await this.apiService.getUserScopes().catch(() => undefined),
+            courseId
+          );
         }
 
         const subtitleSegments = [courseLabel, memberName, content.path || contentTitle].filter(Boolean) as string[];
@@ -601,24 +606,34 @@ export class TutorCommands {
           query,
           createPayload,
           sourceRole: 'tutor',
-          wsChannel
+          wsChannel,
+          // The tree refresh after a read sweep keys off this member, and it
+          // used to be smuggled through `query` (where the API client had to
+          // strip it again before every request).
+          cacheCourseMemberId: memberId,
+          readOnly,
+          readOnlyReason: readOnly ? COURSE_ANNOUNCEMENT_DENIED_REASON : undefined
         } satisfies MessageTargetContext;
       }
 
       if (!target) {
-        // For general course member messages
-        // Tutors cannot write to course_id or course_member_id
-        // course_member_id is not implemented, course_id is lecturer+ only
-        // Use scope filter to show ONLY course-scoped messages, not content/submission messages
+        // Course announcements: lecturer+ writes, everyone in the course reads.
         const subtitleSegments = [courseLabel, memberName].filter(Boolean) as string[];
         const subtitle = subtitleSegments.length > 0 ? subtitleSegments.join(' › ') : undefined;
+        const canPost = canPostCourseAnnouncement(
+          await this.apiService.getUserScopes().catch(() => undefined),
+          courseId
+        );
         target = {
           title: memberName ? `${memberName} — Course messages` : 'Course member messages',
           subtitle,
-          query: { course_id: courseId, course_member_id: memberId, scope: 'course' },
-          createPayload: { course_id: courseId },  // This will fail - lecturer+ only
+          query: { course_id: courseId, scope: 'course' },
+          createPayload: { course_id: courseId },
           sourceRole: 'tutor',
-          wsChannel: `course:${courseId}`
+          wsChannel: `course:${courseId}`,
+          cacheCourseMemberId: memberId,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : COURSE_ANNOUNCEMENT_DENIED_REASON
         } satisfies MessageTargetContext;
       }
 

@@ -132,72 +132,6 @@ body {
   color: var(--c-fg);
 }
 
-/*
- * Scope tag: base .badge shape, outlined, with a per-scope colour below.
- * The chart colours are the palette — there is no --c-* equivalent for
- * "one distinct hue per scope kind".
- */
-.message-scope-tag {
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border: 1px solid;
-  border-radius: var(--radius-sm);
-}
-
-.message-scope-tag.scope-submission_group {
-  background-color: color-mix(in srgb, var(--vscode-charts-blue, #4b9cd3) 15%, transparent);
-  color: var(--vscode-charts-blue);
-  border-color: var(--vscode-charts-blue);
-}
-
-.message-scope-tag.scope-course_content {
-  background-color: color-mix(in srgb, var(--vscode-charts-purple, #b480d7) 15%, transparent);
-  color: var(--vscode-charts-purple);
-  border-color: var(--vscode-charts-purple);
-}
-
-.message-scope-tag.scope-course {
-  background-color: color-mix(in srgb, var(--vscode-charts-green, #89d166) 15%, transparent);
-  color: var(--vscode-charts-green);
-  border-color: var(--vscode-charts-green);
-}
-
-.message-scope-tag.scope-course_group {
-  background-color: color-mix(in srgb, var(--vscode-charts-orange, #ffab70) 15%, transparent);
-  color: var(--vscode-charts-orange);
-  border-color: var(--vscode-charts-orange);
-}
-
-.message-scope-tag.scope-course_member {
-  background-color: color-mix(in srgb, var(--vscode-charts-yellow, #e5c74f) 15%, transparent);
-  color: var(--vscode-charts-yellow);
-  border-color: var(--vscode-charts-yellow);
-}
-
-.message-scope-tag.scope-user {
-  background-color: color-mix(in srgb, var(--vscode-charts-red, #e56c6f) 15%, transparent);
-  color: var(--vscode-charts-red);
-  border-color: var(--vscode-charts-red);
-}
-
-.message-scope-tag.scope-global {
-  background-color: color-mix(in srgb, var(--vscode-symbolIcon-classForeground, #ee9d28) 15%, transparent);
-  color: var(--vscode-symbolIcon-classForeground, #ee9d28);
-  border-color: var(--vscode-symbolIcon-classForeground, #ee9d28);
-}
-
-.message-scope-tag.scope-organization {
-  background-color: color-mix(in srgb, var(--vscode-symbolIcon-namespaceForeground, #b180d7) 15%, transparent);
-  color: var(--vscode-symbolIcon-namespaceForeground, #b180d7);
-  border-color: var(--vscode-symbolIcon-namespaceForeground, #b180d7);
-}
-
-.message-scope-tag.scope-course_family {
-  background-color: color-mix(in srgb, var(--vscode-symbolIcon-interfaceForeground, #75beff) 15%, transparent);
-  color: var(--vscode-symbolIcon-interfaceForeground, #75beff);
-  border-color: var(--vscode-symbolIcon-interfaceForeground, #75beff);
-}
-
 .message-meta-right {
   display: flex;
   gap: var(--sp-2);
@@ -216,6 +150,41 @@ body {
   font-size: var(--font-size);
   font-weight: 600;
   margin: 0;
+}
+
+/*
+ * An announcement is a list item, not a chat line: the subject leads, and
+ * the byline reads as attribution underneath it rather than as a speaker.
+ * Slightly more room between cards so the list scans as discrete notices
+ * instead of a continuous transcript.
+ */
+.message-card.message-announcement {
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+}
+
+/* The type scale is --font-size / -sm / -xs; .message-title already sits one
+   step above the body, so the headline needs breathing room, not a new size. */
+.message-card.message-announcement .message-title {
+  line-height: 1.3;
+}
+
+.message-card.message-announcement .message-meta {
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-xs);
+}
+
+/*
+ * Unread announcement: an accent rail on the leading edge, so the reader can
+ * see at a glance where they left off in the list. Cleared in place once the
+ * card has actually been on screen — not on panel open.
+ */
+.message-card.message-unread {
+  border-left: var(--sp-1) solid var(--c-link);
+}
+
+.message-card.message-unread .message-title {
+  color: var(--c-fg);
 }
 
 .message-body {
@@ -312,21 +281,6 @@ body {
 .date-separator {
   color: var(--c-fg-muted);
   font-size: var(--font-size-sm);
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  font-size: var(--font-size-sm);
-  color: var(--c-fg);
-  cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
 }
 
 .filter-actions {

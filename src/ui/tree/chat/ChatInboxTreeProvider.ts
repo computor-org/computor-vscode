@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
-import { canPostGlobal, canPostToCourseFamily, canPostToOrganization } from '../../../services/MessagePermissions';
+import { kindForScope } from '../../../services/MessagePermissions';
+import { MessageLabelResolver, shortId } from '../../../services/MessageLabelResolver';
+import { buildTargetContext } from '../../../services/messageTargets';
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageList } from '../../../types/generated';
@@ -115,8 +117,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   private readonly wsHandlerId = `chat-inbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   private wsReloadTimer?: ReturnType<typeof setTimeout>;
   private static readonly WS_RELOAD_DEBOUNCE_MS = 250;
-  /** Cap on concurrent mark-read API calls to avoid flooding the backend. */
-  private static readonly MARK_READ_CONCURRENCY = 4;
   /** When we mark messages read locally, suppress WS-driven reloads for this
    *  window — every server-side broadcast otherwise re-paginates the inbox. */
   private static readonly MARK_READ_WS_SUPPRESS_MS = 4000;
@@ -130,13 +130,8 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
    *  this set between empty (all on) and full (all muted). */
   private mutedScopes: Set<MessageScope> = new Set();
 
-  // Label caches keyed by id
-  private readonly orgLabels = new Map<string, string>();
-  private readonly familyLabels = new Map<string, string>();
-  private readonly courseLabels = new Map<string, string>();
-  private readonly contentLabels = new Map<string, { title: string; subtitle?: string }>();
-  private readonly groupLabels = new Map<string, { title: string; subtitle?: string }>();
-  private readonly memberLabels = new Map<string, { title: string; subtitle?: string }>();
+  /** Shared with the messages browser — same lookups, same caches. */
+  private readonly labels: MessageLabelResolver;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -147,6 +142,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     this.context = context;
     this.api = api;
     this.messagesProvider = messagesProvider;
+    this.labels = new MessageLabelResolver(api);
     this.loadPersistedState();
   }
 
@@ -243,6 +239,132 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     void this.persistState();
   }
 
+  /**
+   * Open the messages view for whatever chat row this was invoked on.
+   *
+   * A thread row already names its target, so it opens straight away. A scope
+   * row or a course node does not — "Courses" is nine courses, and
+   * "Submission Groups → Programmierung 1" is every group in that course — so
+   * those ask which one.
+   *
+   * The picker is what makes an *empty* destination reachable. Rows are built
+   * from messages that exist, so a course nobody has posted an announcement
+   * to yet has no row to click, and there was no way to write the first one.
+   * For course scopes the choices come from the user's actual enrolments
+   * rather than from the message list, which covers exactly that case.
+   */
+  async openMessagesFor(item: ChatScopeItem | ChatCourseGroupItem): Promise<void> {
+    const scope = item.scope;
+    const courseId = item instanceof ChatCourseGroupItem ? item.courseId : undefined;
+
+    // Global is the destination; there is nothing to pick.
+    if (scope === 'global') {
+      await this.openScopeTarget(scope, null);
+      return;
+    }
+
+    // A course node under the Courses scope already is the target.
+    if (scope === 'course' && courseId) {
+      await this.openScopeTarget(scope, courseId);
+      return;
+    }
+
+    const choices = await this.targetChoices(scope, courseId);
+    if (choices.length === 0) {
+      notify.info(`No ${scopeLabel(scope).toLowerCase()} you can open here yet.`);
+      return;
+    }
+    if (choices.length === 1) {
+      await this.openScopeTarget(scope, choices[0]!.targetId);
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      choices.map(c => ({
+        label: c.label,
+        description: c.description,
+        targetId: c.targetId
+      })),
+      { title: `Open ${scopeLabel(scope)}`, placeHolder: 'Pick a destination' }
+    );
+    if (!picked) { return; }
+    await this.openScopeTarget(scope, picked.targetId);
+  }
+
+  /** Destinations offerable for a scope, optionally narrowed to one course. */
+  private async targetChoices(
+    scope: MessageScope,
+    courseId?: string
+  ): Promise<Array<{ targetId: string | null; label: string; description?: string }>> {
+    await this.ensureUserScopes();
+
+    // Courses come from enrolment, not from messages — otherwise a course with
+    // no announcements yet is unreachable, which is precisely when someone
+    // wants to write one.
+    if (scope === 'course') {
+      const ids = this.userScopes?.course ? Object.keys(this.userScopes.course) : [];
+      await Promise.all(ids.map(id => this.labels.ensureCourseLabel(id).catch(() => undefined)));
+      return ids.map(id => ({
+        targetId: id,
+        label: this.labels.courseLabel(id) || id
+      }));
+    }
+
+    // Everything else is derived from the messages of that scope. Fetch them
+    // rather than reading `cachedMessages`: the course-grouped scopes are
+    // lazy, so the cache is empty until the user has expanded a course node,
+    // and offering "nothing here" because of that would be a lie. The backend
+    // walks down from `course_id`, so it narrows server-side when we have one.
+    let messages: MessageList[] = [];
+    try {
+      const page = await this.api.listMessagesPage({
+        scope,
+        ...(courseId ? { course_id: courseId } : {}),
+        skip: 0,
+        limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
+      });
+      messages = page.items;
+    } catch (err: any) {
+      notify.error(`Failed to load ${scopeLabel(scope).toLowerCase()}: ${err?.message || err}`);
+      return [];
+    }
+
+    const seen = new Map<string, MessageList[]>();
+    for (const m of messages) {
+      const targetId = this.targetIdFor(scope, m);
+      if (!targetId) { continue; }
+      if (!seen.has(targetId)) { seen.set(targetId, []); }
+      seen.get(targetId)!.push(m);
+    }
+
+    await Promise.all(
+      [...seen.keys()].map(id => this.labels.ensureLabel(scope, id).catch(() => undefined))
+    );
+
+    return [...seen.entries()].map(([targetId, msgs]) => {
+      const label = this.labels.label(scope, targetId, msgs, this.currentUserId);
+      return { targetId, label: label.title, description: label.subtitle };
+    });
+  }
+
+  /** Build the panel target for a scope+target and show it. */
+  private async openScopeTarget(scope: MessageScope, targetId: string | null): Promise<void> {
+    await this.ensureUserScopes();
+    const ctx = await buildTargetContext({
+      scope,
+      targetId,
+      labels: this.labels,
+      userScopes: this.userScopes,
+      userViews: this.userViews,
+      currentUserId: this.currentUserId
+    });
+    if (!ctx) {
+      notify.warning('Cannot open this view: target context unavailable.');
+      return;
+    }
+    await this.messagesProvider.showMessages(ctx);
+  }
+
   async openThread(threadItem: ChatThreadItem): Promise<void> {
     const ctx = await this.buildTargetContext(threadItem.thread);
     if (!ctx) {
@@ -250,13 +372,15 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       return;
     }
 
-    // Optimistically clear unread for this thread. The backend only broadcasts
-    // read:update on submission_group channels, so non-submission-group threads
-    // never receive a WS event when MessagesWebview marks their messages as
-    // read — the badge would otherwise stay until a manual refresh. Mutating
-    // the cached MessageList objects in place updates both the per-thread and
-    // per-scope counts on the next rebuild. The mark-read API call is fired
-    // here too; if MessagesWebview also fires it the call is idempotent.
+    // Optimistically clear unread for this row. Mutating the cached
+    // MessageList objects in place updates both the per-thread and per-scope
+    // counts on the next rebuild. The mark-read API call is fired here too;
+    // if MessagesWebview also fires it the call is idempotent.
+    //
+    // For an announcement row this marks exactly that one notice, because the
+    // row *is* one notice — clicking it is the reader explicitly choosing it,
+    // which is the engagement signal the panel's scroll-into-view marking is
+    // also looking for.
     const unread = threadItem.thread.messages.filter(
       m => !m.is_read && m.author_id !== this.currentUserId
     );
@@ -370,7 +494,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
     this.cachedMessages = flat;
     const grouped = this.groupMessages(this.cachedMessages);
-    await this.resolveLabels(grouped);
+    await this.labels.prefetch(grouped);
     this.scopeItems = this.buildScopeItems(grouped);
   }
 
@@ -454,13 +578,18 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   }
 
   /**
-   * Posts mark-read for many message ids without flooding the backend.
-   * - Caps in-flight requests at MARK_READ_CONCURRENCY (workers).
-   * - Suppresses WS-driven reloads while it runs, so each backend
-   *   read:update broadcast we triggered ourselves doesn't kick off a fresh
-   *   re-paginated GET /messages of the entire inbox.
-   * - Errors per-id are swallowed (best-effort; the optimistic local state
-   *   is already applied, and the next manual refresh will re-confirm).
+   * Posts mark-read for many message ids in a single request.
+   *
+   * This used to fan out one POST per id behind a 4-worker limiter, because
+   * every one of them triggered a server-side read:update broadcast that
+   * looped straight back here and re-paginated the whole inbox. The bulk
+   * endpoint collapses that to one request and one broadcast per channel,
+   * so the limiter is gone.
+   *
+   * The WS suppression window stays: even one broadcast comes back to us,
+   * and we have already applied the state optimistically.
+   *
+   * Errors are swallowed — best-effort, and the next refresh re-confirms.
    */
   private async markMessagesReadOnBackend(ids: string[]): Promise<void> {
     if (ids.length === 0) { return; }
@@ -470,27 +599,12 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       this.wsReloadTimer = undefined;
     }
     try {
-      let cursor = 0;
-      const workers: Promise<void>[] = [];
-      for (let w = 0; w < ChatInboxTreeProvider.MARK_READ_CONCURRENCY; w += 1) {
-        workers.push((async () => {
-          while (true) {
-            const i = cursor;
-            cursor += 1;
-            if (i >= ids.length) { return; }
-            try {
-              await this.api.markMessageRead(ids[i]!);
-            } catch {
-              // best-effort
-            }
-          }
-        })());
-      }
-      await Promise.all(workers);
+      await this.api.markMessagesRead(ids);
+    } catch {
+      // best-effort
     } finally {
-      // Extend the WS suppression window slightly past now so the burst of
-      // server-side read:update broadcasts that lag behind our last request
-      // doesn't immediately trigger a re-pagination.
+      // Extend the window slightly past now so the broadcast that lags
+      // behind our request doesn't immediately trigger a re-pagination.
       this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
     }
   }
@@ -552,7 +666,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       ).size;
       return {
         id,
-        label: this.courseLabels.get(id) || shortId(id),
+        label: this.labels.courseLabel(id) || shortId(id),
         unread,
         threadCount,
         // total === -1 means we haven't fetched yet — show the "click to load" hint
@@ -610,37 +724,13 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
 
     const items: AnyTreeItem[] = [];
-    // Group this course's messages into threads by target id.
     const byTarget = new Map<string, MessageList[]>();
     for (const m of state.messages) {
       const targetId = this.targetIdFor(scope, m) ?? '__none__';
       if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
       byTarget.get(targetId)!.push(m);
     }
-    const threads: ChatThread[] = [];
-    for (const [targetId, msgs] of byTarget) {
-      const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
-      const lastMessage = sortedMessages[sortedMessages.length - 1];
-      const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
-      if (this.unreadOnly && unreadCount === 0) { continue; }
-      const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
-      threads.push({
-        scope,
-        targetId: targetId === '__none__' ? null : targetId,
-        title,
-        subtitle,
-        lastMessage,
-        unreadCount,
-        messageCount: msgs.length,
-        messages: sortedMessages
-      });
-    }
-    threads.sort((a, b) => {
-      if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
-        return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
-      }
-      return compareThreadRecency(b, a);
-    });
+    const threads = this.buildThreadRows(scope, byTarget);
     items.push(...threads.map(t => new ChatThreadItem(t)));
     if (state.fetched < state.total) {
       items.push(new ChatLoadMoreItem(scope, state.fetched, state.total, courseId));
@@ -726,7 +816,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
       // Resolve labels for every accessible course up front, so the
       // ChatCourseGroupItem rows can show real titles instead of short ids.
-      await Promise.all(courseIds.map(id => this.resolveCourseLabelLazy(id).catch(() => undefined)));
+      await Promise.all(courseIds.map(id => this.labels.ensureCourseLabel(id).catch(() => undefined)));
 
       await this.rebuildAssembled();
     } catch (error: any) {
@@ -769,120 +859,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
   }
 
-  private async resolveLabels(grouped: Map<MessageScope, Map<string, MessageList[]>>): Promise<void> {
-    // Best-effort batched lookups; failures fall back to id truncation.
-    const tasks: Promise<unknown>[] = [];
-
-    for (const [scope, byTarget] of grouped) {
-      for (const [targetId, msgs] of byTarget) {
-        if (targetId !== '__none__') {
-          tasks.push(this.ensureLabel(scope, targetId).catch(() => undefined));
-        }
-        // Submission-group threads label themselves from the linked
-        // course_content (see threadLabels). Pre-resolve those content
-        // labels so the title isn't a raw "Submission Group <shortId>".
-        if (scope === 'submission_group') {
-          const seen = new Set<string>();
-          for (const m of msgs) {
-            const contentId = m.course_content_id;
-            if (typeof contentId === 'string' && contentId && !seen.has(contentId)) {
-              seen.add(contentId);
-              tasks.push(this.ensureLabel('course_content', contentId).catch(() => undefined));
-            }
-          }
-        }
-      }
-    }
-    await Promise.all(tasks);
-  }
-
-  private async ensureLabel(scope: MessageScope, targetId: string): Promise<void> {
-    switch (scope) {
-      case 'organization':
-        if (!this.orgLabels.has(targetId)) {
-          const org = await this.api.getOrganization(targetId);
-          this.orgLabels.set(targetId, org?.title || org?.path || shortId(targetId));
-        }
-        break;
-      case 'course_family':
-        if (!this.familyLabels.has(targetId)) {
-          const fam = await this.api.getCourseFamily(targetId);
-          this.familyLabels.set(targetId, fam?.title || fam?.path || shortId(targetId));
-        }
-        break;
-      case 'course':
-        if (!this.courseLabels.has(targetId)) {
-          const course = await this.api.getCourse(targetId);
-          this.courseLabels.set(targetId, course?.title || course?.path || shortId(targetId));
-        }
-        break;
-      case 'course_content':
-        if (!this.contentLabels.has(targetId)) {
-          const content = await this.api.getCourseContent(targetId);
-          if (content) {
-            const courseLabel = content.course_id
-              ? await this.resolveCourseLabelLazy(content.course_id)
-              : undefined;
-            this.contentLabels.set(targetId, {
-              title: content.title || content.path || shortId(targetId),
-              subtitle: courseLabel
-            });
-          } else {
-            this.contentLabels.set(targetId, { title: shortId(targetId) });
-          }
-        }
-        break;
-      case 'course_group':
-        if (!this.groupLabels.has(targetId)) {
-          const group = await this.api.getCourseGroup(targetId);
-          if (group) {
-            const courseLabel = group.course_id
-              ? await this.resolveCourseLabelLazy(group.course_id)
-              : undefined;
-            this.groupLabels.set(targetId, {
-              title: group.title || `Group ${shortId(targetId)}`,
-              subtitle: courseLabel
-            });
-          } else {
-            this.groupLabels.set(targetId, { title: `Group ${shortId(targetId)}` });
-          }
-        }
-        break;
-      case 'course_member':
-        if (!this.memberLabels.has(targetId)) {
-          const member = await this.api.getCourseMember(targetId);
-          if (member) {
-            const user = (member as any).user;
-            const name = user
-              ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || user.username || user.email
-              : `Member ${shortId(targetId)}`;
-            const courseLabel = member.course_id
-              ? await this.resolveCourseLabelLazy(member.course_id)
-              : undefined;
-            this.memberLabels.set(targetId, { title: name, subtitle: courseLabel });
-          } else {
-            this.memberLabels.set(targetId, { title: `Member ${shortId(targetId)}` });
-          }
-        }
-        break;
-      default:
-        // user / submission_group: derived from the message data inline.
-        break;
-    }
-  }
-
-  private async resolveCourseLabelLazy(courseId: string): Promise<string | undefined> {
-    if (this.courseLabels.has(courseId)) { return this.courseLabels.get(courseId); }
-    try {
-      const course = await this.api.getCourse(courseId);
-      const label = course?.title || course?.path || shortId(courseId);
-      this.courseLabels.set(courseId, label);
-      return label;
-    } catch {
-      return undefined;
-    }
-  }
-
   private buildScopeItems(grouped: Map<MessageScope, Map<string, MessageList[]>>): ChatScopeItem[] {
     const result: ChatScopeItem[] = [];
 
@@ -915,52 +891,18 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       const alwaysShow = scope === 'global';
       if ((!byTarget || byTarget.size === 0) && !alwaysShow) { continue; }
 
-      const threads: ChatThread[] = [];
-      for (const [targetId, msgs] of (byTarget ?? new Map<string, MessageList[]>())) {
-        const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
-        const lastMessage = sortedMessages[sortedMessages.length - 1];
-        // Exclude the user's own messages — backend doesn't auto-stamp authors
-        // as readers of their own posts, so without this they'd show as
-        // permanently unread to themselves.
-        const unreadCount = msgs.filter(m => !m.is_read && m.author_id !== this.currentUserId).length;
-        if (this.unreadOnly && unreadCount === 0) { continue; }
-
-        const { title, subtitle } = this.threadLabels(scope, targetId === '__none__' ? null : targetId, msgs);
-        threads.push({
-          scope,
-          targetId: targetId === '__none__' ? null : targetId,
-          title,
-          subtitle,
-          lastMessage,
-          unreadCount,
-          messageCount: msgs.length,
-          messages: sortedMessages
-        });
-      }
+      const threads = this.buildThreadRows(
+        scope,
+        byTarget ?? new Map<string, MessageList[]>()
+      );
 
       if (threads.length === 0 && !alwaysShow) { continue; }
 
-      // Global has no per-target id, so when there are no messages yet the
-      // user wouldn't see a clickable row to open the panel from. Inject a
-      // synthetic placeholder thread so admins / user managers always have an
-      // entry point to compose announcements.
-      if (scope === 'global' && threads.length === 0) {
-        threads.push({
-          scope: 'global',
-          targetId: null,
-          title: 'Global Announcements',
-          unreadCount: 0,
-          messageCount: 0,
-          messages: []
-        });
-      }
-
-      threads.sort((a, b) => {
-        if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
-          return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
-        }
-        return compareThreadRecency(b, a);
-      });
+      // An empty Global used to get a synthetic "Global Announcements" thread
+      // injected, purely so there was something clickable to open the
+      // composer from. It read as a real message that didn't exist. The scope
+      // row opens itself now — see ChatScopeItem, which gives a childless row
+      // its own open command — so the fake row is gone.
 
       const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
       const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
@@ -972,168 +914,107 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     return result;
   }
 
-  private threadLabels(scope: MessageScope, targetId: string | null, msgs: MessageList[]): { title: string; subtitle?: string } {
-    switch (scope) {
-      case 'global':
-        return { title: 'Global Announcements' };
-      case 'organization': {
-        const label = targetId ? this.orgLabels.get(targetId) || shortId(targetId) : 'Organization';
-        return { title: label };
-      }
-      case 'course_family': {
-        const label = targetId ? this.familyLabels.get(targetId) || shortId(targetId) : 'Course Family';
-        return { title: label };
-      }
-      case 'course': {
-        const label = targetId ? this.courseLabels.get(targetId) || shortId(targetId) : 'Course';
-        return { title: label };
-      }
-      case 'course_content': {
-        const info = targetId ? this.contentLabels.get(targetId) : undefined;
-        return { title: info?.title || (targetId ? shortId(targetId) : 'Course Content'), subtitle: info?.subtitle };
-      }
-      case 'course_group': {
-        const info = targetId ? this.groupLabels.get(targetId) : undefined;
-        return { title: info?.title || (targetId ? `Group ${shortId(targetId)}` : 'Course Group'), subtitle: info?.subtitle };
-      }
-      case 'course_member': {
-        const info = targetId ? this.memberLabels.get(targetId) : undefined;
-        return { title: info?.title || (targetId ? `Member ${shortId(targetId)}` : 'Course Member'), subtitle: info?.subtitle };
-      }
-      case 'submission_group': {
-        // Title comes from the linked course_content; the scope label
-        // ("Submission Groups") is already shown by the panel chrome, so we
-        // skip the subtitle to avoid the redundant "Submission group / X".
-        const sample = msgs[0];
-        const contentId = sample?.course_content_id;
-        const contentLabel = contentId ? this.contentLabels.get(contentId)?.title : undefined;
-        return {
-          title: contentLabel || (targetId ? `Submission Group ${shortId(targetId)}` : 'Submission Group')
-        };
-      }
-      case 'user': {
-        // DM target: pick the "other person" from the messages.
-        const other = msgs
-          .map(m => m.author)
-          .find(a => a && this.currentUserId && (a as any).id !== this.currentUserId);
-        if (other) {
-          const name = `${other.given_name || ''} ${other.family_name || ''}`.trim()
-            || (other as any).username
-            || (other as any).email
-            || (targetId ? shortId(targetId) : 'User');
-          return { title: name };
+  /**
+   * Turn a scope's messages, already grouped by target id, into tree rows.
+   *
+   * Conversations get one row per target: a submission group *is* one thread,
+   * and its row shows the latest line with an unread count.
+   *
+   * Announcements get one row per announcement. They all share a target —
+   * every notice in a course carries the same `course_id` — so grouping them
+   * by target collapsed a whole semester into a single row labelled with the
+   * course name and "40 unread". Each notice is its own item, labelled by its
+   * subject, which is what a subject is for.
+   *
+   * Both are sorted unread-first, then most recent first.
+   */
+  private buildThreadRows(
+    scope: MessageScope,
+    byTarget: Map<string, MessageList[]>
+  ): ChatThread[] {
+    const isUnread = (m: MessageList) => !m.is_read && m.author_id !== this.currentUserId;
+    const threads: ChatThread[] = [];
+
+    for (const [rawTargetId, msgs] of byTarget) {
+      const targetId = rawTargetId === '__none__' ? null : rawTargetId;
+
+      if (kindForScope(scope) === 'announcement') {
+        // Replies can't exist on an announcement scope (the backend refuses
+        // them), but a legacy row could still carry a parent — fold those
+        // under their root rather than listing them as notices of their own.
+        const roots = msgs.filter(m => !m.parent_id);
+        const repliesByRoot = new Map<string, MessageList[]>();
+        for (const m of msgs) {
+          if (!m.parent_id) { continue; }
+          if (!repliesByRoot.has(m.parent_id)) { repliesByRoot.set(m.parent_id, []); }
+          repliesByRoot.get(m.parent_id)!.push(m);
         }
-        return { title: targetId ? `User ${shortId(targetId)}` : 'User' };
+
+        for (const root of roots) {
+          const replies = repliesByRoot.get(root.id) ?? [];
+          const messages = [root, ...replies].sort((a, b) => compareCreated(a, b));
+          const unreadCount = messages.filter(isUnread).length;
+          if (this.unreadOnly && unreadCount === 0) { continue; }
+          const { subtitle } = this.labels.label(scope, targetId, msgs, this.currentUserId);
+          threads.push({
+            scope,
+            targetId,
+            // The subject identifies the announcement. Rows predating the
+            // subject requirement fall back to the scope's own label.
+            title: root.title?.trim()
+              || this.labels.label(scope, targetId, [root], this.currentUserId).title,
+            subtitle,
+            lastMessage: root,
+            unreadCount,
+            messageCount: messages.length,
+            messages,
+            anchorMessageId: root.id
+          });
+        }
+        continue;
       }
+
+      const sortedMessages = msgs.slice().sort((a, b) => compareCreated(a, b));
+      const lastMessage = sortedMessages[sortedMessages.length - 1];
+      // Belt and braces on own messages: the backend stamps the author as a
+      // reader at create time (mark_author_as_reader), so is_read is already
+      // true for them — this also covers rows predating that.
+      const unreadCount = msgs.filter(isUnread).length;
+      if (this.unreadOnly && unreadCount === 0) { continue; }
+
+      const { title, subtitle } = this.labels.label(scope, targetId, msgs, this.currentUserId);
+      threads.push({
+        scope,
+        targetId,
+        title,
+        subtitle,
+        lastMessage,
+        unreadCount,
+        messageCount: msgs.length,
+        messages: sortedMessages
+      });
     }
+
+    threads.sort((a, b) => {
+      if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
+        return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+      }
+      return compareThreadRecency(b, a);
+    });
+    return threads;
   }
 
   private async buildTargetContext(thread: ChatThread): Promise<MessageTargetContext | undefined> {
-    const { scope, targetId } = thread;
-
-    // Submission-group titles read from the linked course_content. Lazy-fetch
-    // it now if the label cache hasn't seen it yet (e.g. when opening from a
-    // brand-new WS toast where resolveLabels hasn't run for this content id).
-    if (scope === 'submission_group') {
-      const seen = new Set<string>();
-      for (const m of thread.messages) {
-        const contentId = m.course_content_id;
-        if (typeof contentId === 'string' && contentId && !seen.has(contentId) && !this.contentLabels.has(contentId)) {
-          seen.add(contentId);
-          await this.ensureLabel('course_content', contentId).catch(() => undefined);
-        }
-      }
-    }
-
-    const labels = this.threadLabels(scope, targetId, thread.messages);
-    const titleSegments: string[] = [];
-    if (labels.subtitle) { titleSegments.push(labels.subtitle); }
-    titleSegments.push(labels.title);
-    const title = titleSegments.join(' / ');
-
-    const baseQuery: Record<string, string> = {};
-    const basePayload: Record<string, unknown> = {};
-    let wsChannel: string | undefined;
-    let readOnly = false;
-    let readOnlyReason: string | undefined;
-
     await this.ensureUserScopes();
-
-    // Always pin scope on the panel query — without it the backend matches
-    // every message that shares the target id, which leaks cross-scope
-    // messages (e.g. submission_group messages also carry course_content_id).
-    baseQuery.scope = scope;
-
-    switch (scope) {
-      case 'global':
-        readOnly = !canPostGlobal(this.userScopes, this.userViews.includes('user_manager'));
-        readOnlyReason = readOnly ? 'Only administrators or user managers can post global announcements.' : undefined;
-        // wsChannel intentionally undefined — no per-target channel for global.
-        break;
-      case 'organization':
-        if (!targetId) { return undefined; }
-        baseQuery.organization_id = targetId;
-        basePayload.organization_id = targetId;
-        wsChannel = `organization:${targetId}`;
-        readOnly = !canPostToOrganization(this.userScopes, targetId);
-        readOnlyReason = readOnly ? 'Posting to this organization requires manager or owner role.' : undefined;
-        break;
-      case 'course_family':
-        if (!targetId) { return undefined; }
-        baseQuery.course_family_id = targetId;
-        basePayload.course_family_id = targetId;
-        wsChannel = `course_family:${targetId}`;
-        readOnly = !canPostToCourseFamily(this.userScopes, targetId);
-        readOnlyReason = readOnly ? 'Posting to this course family requires manager or owner role.' : undefined;
-        break;
-      case 'course':
-        if (!targetId) { return undefined; }
-        baseQuery.course_id = targetId;
-        basePayload.course_id = targetId;
-        wsChannel = `course:${targetId}`;
-        break;
-      case 'course_content': {
-        if (!targetId) { return undefined; }
-        baseQuery.course_content_id = targetId;
-        basePayload.course_content_id = targetId;
-        wsChannel = `course_content:${targetId}`;
-        break;
-      }
-      case 'course_group':
-        if (!targetId) { return undefined; }
-        baseQuery.course_group_id = targetId;
-        basePayload.course_group_id = targetId;
-        wsChannel = `course_group:${targetId}`;
-        break;
-      case 'submission_group':
-        if (!targetId) { return undefined; }
-        baseQuery.submission_group_id = targetId;
-        basePayload.submission_group_id = targetId;
-        wsChannel = `submission_group:${targetId}`;
-        break;
-      case 'course_member':
-        if (!targetId) { return undefined; }
-        baseQuery.course_member_id = targetId;
-        basePayload.course_member_id = targetId;
-        wsChannel = `course_member:${targetId}`;
-        break;
-      case 'user':
-        if (!targetId) { return undefined; }
-        baseQuery.user_id = targetId;
-        basePayload.user_id = targetId;
-        wsChannel = `user:${targetId}`;
-        break;
-    }
-
-    return {
-      title,
-      subtitle: scopeLabel(scope),
-      query: baseQuery,
-      createPayload: basePayload,
-      wsChannel,
-      readOnly,
-      readOnlyReason
-    };
+    return buildTargetContext({
+      scope: thread.scope,
+      targetId: thread.targetId,
+      messages: thread.messages,
+      labels: this.labels,
+      userScopes: this.userScopes,
+      userViews: this.userViews,
+      currentUserId: this.currentUserId
+    });
   }
 
   // ----- WebSocket -----
@@ -1299,9 +1180,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   }
 }
 
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
-}
 
 function compareCreated(a: MessageList, b: MessageList): number {
   const ta = a.created_at ? Date.parse(a.created_at) : 0;

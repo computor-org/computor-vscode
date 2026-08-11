@@ -1381,6 +1381,17 @@ class UnifiedController {
           void tree.openThread(item);
         }
       }),
+      // Open the messages view for a scope row or a course node, which name a
+      // destination but not which one — so this asks when it has to. It is
+      // also the only route to a destination nobody has posted to yet, since
+      // those have no row of their own to click.
+      vscode.commands.registerCommand('computor.chat.openMessages', (item: any) => {
+        if (item instanceof ChatThreadItem) {
+          void tree.openThread(item);
+        } else if (item instanceof ChatScopeItem || item instanceof ChatCourseGroupItem) {
+          void tree.openMessagesFor(item);
+        }
+      }),
       vscode.commands.registerCommand('computor.chat.markScopeRead', (item: any) => {
         if (item instanceof ChatScopeItem) {
           void tree.markScopeRead(item);

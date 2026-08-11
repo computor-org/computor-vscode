@@ -28,6 +28,16 @@ export interface ChatThread {
   messageCount: number;
   /** All messages belonging to this thread (kept for the open-thread handler). */
   messages: MessageList[];
+  /**
+   * Set when this row is one individual announcement rather than a whole
+   * conversation.
+   *
+   * Announcements share a target — every notice in a course carries the same
+   * `course_id` — so grouping by target collapsed a semester of them into a
+   * single row labelled with the course name. Each is its own item, and this
+   * is the message it stands for (also what keeps the row ids distinct).
+   */
+  anchorMessageId?: string;
 }
 
 const SCOPE_LABELS: Record<MessageScope, string> = {
@@ -107,13 +117,31 @@ export class ChatScopeItem extends vscode.TreeItem {
       ? `${baseLabel}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
       : `${baseLabel}: ${childCount} ${childKind}(s)`;
     this.tooltip = muted ? `${baseTooltip}\nNotifications muted for this scope.` : baseTooltip;
+
+    // A scope with children expands on click — that is what the arrow is for.
+    // A childless one (Global before anyone has posted) would otherwise do
+    // nothing at all, so it opens instead. This replaces the synthetic
+    // placeholder thread that used to be injected to give it something
+    // clickable; the command is on the context menu either way.
+    if (childCount === 0) {
+      this.command = {
+        command: 'computor.chat.openMessages',
+        title: 'Open Messages',
+        arguments: [this]
+      };
+    }
   }
 }
 
 export class ChatThreadItem extends vscode.TreeItem {
   constructor(public readonly thread: ChatThread) {
     super(thread.title, vscode.TreeItemCollapsibleState.None);
-    this.id = `chat-thread-${thread.scope}-${thread.targetId ?? 'none'}`;
+    const announcement = Boolean(thread.anchorMessageId);
+    // Announcements share a target id, so the anchor is what keeps sibling
+    // rows distinct — without it they would all collide on one tree id.
+    this.id = announcement
+      ? `chat-announcement-${thread.scope}-${thread.anchorMessageId}`
+      : `chat-thread-${thread.scope}-${thread.targetId ?? 'none'}`;
     this.contextValue = thread.unreadCount > 0 ? 'chatThread.unread' : 'chatThread';
 
     if (thread.unreadCount > 0) {
@@ -124,12 +152,16 @@ export class ChatThreadItem extends vscode.TreeItem {
         highlights: [[0, thread.title.length]]
       };
     } else {
-      this.iconPath = new vscode.ThemeIcon('comment');
+      this.iconPath = new vscode.ThemeIcon(announcement ? 'megaphone' : 'comment');
     }
 
     const subtitle = thread.subtitle ? `${thread.subtitle} · ` : '';
-    const preview = thread.lastMessage ? formatPreview(thread.lastMessage) : '';
-    this.description = thread.unreadCount > 0
+    // An announcement's own subject is already the label, so repeating the
+    // body as a preview says nothing; who posted it and when does.
+    const preview = announcement
+      ? formatByline(thread.lastMessage)
+      : (thread.lastMessage ? formatPreview(thread.lastMessage) : '');
+    this.description = thread.unreadCount > 0 && !announcement
       ? `(${thread.unreadCount}) ${subtitle}${preview}`
       : `${subtitle}${preview}`;
 
@@ -137,7 +169,7 @@ export class ChatThreadItem extends vscode.TreeItem {
 
     this.command = {
       command: 'computor.chat.openThread',
-      title: 'Open Conversation',
+      title: announcement ? 'Open Announcement' : 'Open Conversation',
       arguments: [this]
     };
   }
@@ -248,18 +280,35 @@ function formatAuthor(message: MessageList): string {
   return full || (a as any).username || (a as any).email || '';
 }
 
+/** "Ada Lovelace · 11 Aug" — attribution for a single announcement row. */
+function formatByline(message?: MessageList): string {
+  if (!message) { return ''; }
+  const author = formatAuthor(message);
+  let when = '';
+  if (message.created_at) {
+    try {
+      when = new Date(message.created_at).toLocaleDateString();
+    } catch { /* ignore parse errors */ }
+  }
+  return [author, when].filter(Boolean).join(' · ');
+}
+
 function buildTooltip(thread: ChatThread): string {
   const parts: string[] = [thread.title];
   if (thread.subtitle) { parts.push(thread.subtitle); }
   parts.push(`Scope: ${scopeLabel(thread.scope)}`);
-  if (thread.unreadCount > 0) {
+  if (thread.anchorMessageId) {
+    // One announcement — a message count would always read "1".
+    parts.push(thread.unreadCount > 0 ? 'Unread' : 'Read');
+  } else if (thread.unreadCount > 0) {
     parts.push(`Unread: ${thread.unreadCount} of ${thread.messageCount}`);
   } else {
     parts.push(`Messages: ${thread.messageCount}`);
   }
   if (thread.lastMessage?.created_at) {
+    const label = thread.anchorMessageId ? 'Posted' : 'Last activity';
     try {
-      parts.push(`Last activity: ${new Date(thread.lastMessage.created_at).toLocaleString()}`);
+      parts.push(`${label}: ${new Date(thread.lastMessage.created_at).toLocaleString()}`);
     } catch { /* ignore parse errors */ }
   }
   return parts.join('\n');

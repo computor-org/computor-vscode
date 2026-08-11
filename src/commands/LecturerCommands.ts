@@ -31,7 +31,12 @@ import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContent
 import type { OrganizationList } from '../types/generated/organizations';
 import type { CourseDeploymentList } from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
-import { canPostToCourseFamily, canPostToOrganization } from '../services/MessagePermissions';
+import {
+  COURSE_ANNOUNCEMENT_DENIED_REASON,
+  canPostCourseAnnouncement,
+  canPostToCourseFamily,
+  canPostToOrganization
+} from '../services/MessagePermissions';
 import { runLockedWithProgress } from '../utils/progressLock';
 import { canAuthorExamples, canManageAnyCourseFamilyMembers, canManageAnyOrganizationMembers } from '../services/ScopePermissions';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
@@ -1340,13 +1345,19 @@ export class LecturerCommands {
     try {
       let target: MessageTargetContext | undefined;
 
+      // Every query below pins `scope`. Target-id filters walk *down* the
+      // hierarchy by default, so `course_id=X` alone returns everything
+      // reachable through the course — including every student's private
+      // submission-group conversation, flattened into the announcement list
+      // and then swept as read on open. `course_content_id` is the same:
+      // it walks into that assignment's submission groups.
       if (item instanceof OrganizationTreeItem) {
         const scopes = await this.apiService.getUserScopes();
         const canPost = canPostToOrganization(scopes, item.organization.id);
         target = {
           title: item.organization.title || item.organization.path,
           subtitle: 'Organization',
-          query: { organization_id: item.organization.id },
+          query: { scope: 'organization', organization_id: item.organization.id },
           createPayload: { organization_id: item.organization.id },
           sourceRole: 'lecturer',
           wsChannel: `organization:${item.organization.id}`,
@@ -1359,7 +1370,7 @@ export class LecturerCommands {
         target = {
           title: item.courseFamily.title || item.courseFamily.path,
           subtitle: `${item.organization.title || item.organization.path} › Course Family`,
-          query: { course_family_id: item.courseFamily.id },
+          query: { scope: 'course_family', course_family_id: item.courseFamily.id },
           createPayload: { course_family_id: item.courseFamily.id },
           sourceRole: 'lecturer',
           wsChannel: `course_family:${item.courseFamily.id}`,
@@ -1367,36 +1378,50 @@ export class LecturerCommands {
           readOnlyReason: canPost ? undefined : 'Posting to this course family requires manager or owner role.'
         };
       } else if (item instanceof CourseTreeItem) {
+        const scopes = await this.apiService.getUserScopes();
+        const canPost = canPostCourseAnnouncement(scopes, item.course.id);
         target = {
           title: item.course.title || item.course.path,
           subtitle: this.buildCourseSubtitle(item.course, item.courseFamily, item.organization),
-          query: { course_id: item.course.id },
+          query: { scope: 'course', course_id: item.course.id },
           createPayload: { course_id: item.course.id },
           sourceRole: 'lecturer',
           // Course channel only carries course-scoped messages now — the
           // hierarchical cascade (submission_group → course) was dropped
           // along with the single-target invariant. The chat inbox covers
           // cross-scope live updates via the per-user channel.
-          wsChannel: `course:${item.course.id}`
+          wsChannel: `course:${item.course.id}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : COURSE_ANNOUNCEMENT_DENIED_REASON
         };
       } else if (item instanceof CourseGroupTreeItem) {
+        const scopes = await this.apiService.getUserScopes();
+        const canPost = canPostCourseAnnouncement(scopes, item.course.id);
         target = {
           title: item.group.title || `Group ${item.group.id.slice(0, 8)}`,
           subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › Group`,
-          query: { course_group_id: item.group.id },
+          query: { scope: 'course_group', course_group_id: item.group.id },
           createPayload: { course_group_id: item.group.id },
           sourceRole: 'lecturer',
           // Course groups use course_group channel
-          wsChannel: `course_group:${item.group.id}`
+          wsChannel: `course_group:${item.group.id}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : COURSE_ANNOUNCEMENT_DENIED_REASON
         };
       } else if (item instanceof CourseContentTreeItem) {
+        const scopes = await this.apiService.getUserScopes();
+        const canPost = canPostCourseAnnouncement(scopes, item.course.id);
         target = {
           title: item.courseContent.title || item.courseContent.path,
           subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › ${item.courseContent.path}`,
-          query: { course_content_id: item.courseContent.id },
-          createPayload: { course_content_id: item.courseContent.id, course_id: item.course.id },
+          query: { scope: 'course_content', course_content_id: item.courseContent.id },
+          // Only the most-specific target is persisted anyway; sending
+          // course_id alongside it just invited the two to disagree.
+          createPayload: { course_content_id: item.courseContent.id },
           sourceRole: 'lecturer',
-          wsChannel: `course_content:${item.courseContent.id}`
+          wsChannel: `course_content:${item.courseContent.id}`,
+          readOnly: !canPost,
+          readOnlyReason: canPost ? undefined : COURSE_ANNOUNCEMENT_DENIED_REASON
         };
       }
 

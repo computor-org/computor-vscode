@@ -14,9 +14,7 @@
       unread: null,
       datePreset: null,
       created_after: null,
-      created_before: null,
-      tags: null,
-      tags_match_all: false
+      created_before: null
     },
     typingUsers: [], // { userId, userName }
     _scrollToBottom: false,
@@ -25,45 +23,80 @@
 
   const root = () => document.getElementById('app');
 
-  function buildThreads(messages) {
-    const map = new Map();
-    const roots = [];
-    messages.forEach((msg) => {
-      map.set(msg.id, { ...msg, children: [] });
-    });
-    map.forEach((node) => {
-      if (node.parent_id && map.has(node.parent_id)) {
-        map.get(node.parent_id).children.push(node);
-      } else {
-        roots.push(node);
-      }
-    });
+  /**
+   * Announcements and conversations are two different reading experiences,
+   * and this panel used to render both as a chat log.
+   *
+   * A conversation is read forwards: oldest first, newest at the bottom
+   * where you are typing, scrolled to the end, with a typing indicator.
+   * An announcement board is read backwards: the newest one matters most,
+   * nobody is "typing" at you, and being scrolled to the bottom shows you
+   * the oldest notice in the course.
+   *
+   * `kind` comes from the target (server-computed for real messages), so an
+   * empty announcement board still knows not to invite you to "start the
+   * discussion".
+   */
+  const isAnnouncement = () => state.target?.kind === 'announcement';
 
-    const sortFn = (a, b) => {
-      const aTime = a.updated_at || a.created_at || '';
-      const bTime = b.updated_at || b.created_at || '';
-      return aTime.localeCompare(bTime);
-    };
+  /**
+   * Marks an announcement read once the reader has actually seen it.
+   *
+   * A board is worked through item by item, so clearing every notice because
+   * the panel was opened loses the reader's place — and made the panel's own
+   * "Unread" filter self-defeating, since it ran right after the sweep that
+   * emptied it. A card counts as seen when most of it has been on screen for
+   * a moment; ids are batched so a fast scroll is one request, not thirty.
+   */
+  const seenObserver = (() => {
+    if (typeof IntersectionObserver === 'undefined') { return null; }
+    const pending = new Set();
+    const dwelling = new Map();
+    let flushTimer = null;
+    const DWELL_MS = 700;
+    const BATCH_MS = 400;
 
-    function sortNode(node) {
-      node.children.sort(sortFn).forEach(sortNode);
+    function flush() {
+      flushTimer = null;
+      if (pending.size === 0) { return; }
+      const messageIds = [...pending];
+      pending.clear();
+      vscode.postMessage({ command: 'markRead', data: { messageIds } });
     }
 
-    roots.sort(sortFn).forEach(sortNode);
-    return roots;
-  }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const id = entry.target.dataset.messageId;
+        if (!id) { return; }
+        if (!entry.isIntersecting) {
+          clearTimeout(dwelling.get(id));
+          dwelling.delete(id);
+          return;
+        }
+        if (dwelling.has(id)) { return; }
+        dwelling.set(id, setTimeout(() => {
+          dwelling.delete(id);
+          observer.unobserve(entry.target);
+          entry.target.classList.remove('message-unread');
+          pending.add(id);
+          if (!flushTimer) { flushTimer = setTimeout(flush, BATCH_MS); }
+        }, DWELL_MS));
+      });
+    }, { threshold: 0.6 });
 
-  function flattenThreads(threads, depth) {
-    const result = [];
-    threads.forEach((node) => {
-      const d = depth ?? (node.level ?? 0);
-      result.push({ ...node, level: d, children: [] });
-      if (node.children && node.children.length > 0) {
-        result.push(...flattenThreads(node.children, d + 1));
+    return {
+      watch(card) { observer.observe(card); },
+      reset() {
+        observer.disconnect();
+        dwelling.forEach((t) => clearTimeout(t));
+        dwelling.clear();
       }
-    });
-    return result;
-  }
+    };
+  })();
+
+  // Thread assembly and ordering live in shared/messageThreads.js — pure, and
+  // unit-tested there.
+  const { buildThreads, flattenThreads } = window.ComputorWebview.messageThreads;
 
   function renderMarkdown(text) {
     if (!text) {
@@ -166,21 +199,6 @@
     return node;
   }
 
-  function getScopeLabel(scope) {
-    const labels = {
-      'global': 'Global',
-      'organization': 'Organization',
-      'course_family': 'Course Family',
-      'course': 'Course',
-      'course_content': 'Content',
-      'course_group': 'Group',
-      'submission_group': 'Submission',
-      'course_member': 'Member',
-      'user': 'Direct'
-    };
-    return labels[scope] || scope;
-  }
-
   function getAuthorRoleLabel(courseRoleId) {
     if (!courseRoleId) return null;
     const roleLabels = {
@@ -232,11 +250,6 @@
       if (state.filters.created_before) filterData.created_before = state.filters.created_before;
     }
 
-    if (state.filters.tags && state.filters.tags.length > 0) {
-      filterData.tags = state.filters.tags;
-      filterData.tags_match_all = state.filters.tags_match_all;
-    }
-
     setState({ loading: true });
     vscode.postMessage({ command: 'applyFilters', data: filterData });
   }
@@ -247,9 +260,7 @@
         unread: null,
         datePreset: null,
         created_after: null,
-        created_before: null,
-        tags: null,
-        tags_match_all: false
+        created_before: null
       }
     });
     setState({ loading: true });
@@ -261,8 +272,7 @@
       state.filters.unread !== null ||
       state.filters.datePreset !== null ||
       state.filters.created_after !== null ||
-      state.filters.created_before !== null ||
-      (state.filters.tags && state.filters.tags.length > 0)
+      state.filters.created_before !== null
     );
   }
 
@@ -271,13 +281,22 @@
     // A deleted message only reaches the list when it still has live replies,
     // and it is kept solely so those replies keep their context — so mark it
     // as spent rather than letting it read like an ordinary message.
+    const announcement = isAnnouncement();
+    // Unread is only rendered on a board, where it survives being looked at
+    // and tells the reader where they left off. A conversation is read by
+    // opening it, so every card would carry the marker.
+    const unread = announcement && message.is_read === false && !message.is_author;
     const card = createElement('article', {
       className: [
         'message-card',
+        announcement ? 'message-announcement' : '',
+        unread ? 'message-unread' : '',
         level > 0 ? 'message-reply' : '',
         message.is_deleted ? 'message-deleted' : ''
       ].filter(Boolean).join(' '),
-      attributes: { 'data-message-id': message.id }
+      // data-level lets a live arrival find the end of its parent's subtree
+      // without rebuilding the tree (see insertionPointFor).
+      attributes: { 'data-message-id': message.id, 'data-level': String(level) }
     });
 
     const meta = createElement('div', { className: 'message-meta' });
@@ -301,18 +320,10 @@
       metaLeftChildren.push(roleBadge);
     }
 
-    // Add scope tag if available
-    if (message.scope) {
-      const scopeLabel = getScopeLabel(message.scope);
-      const scopeTag = createElement('span', {
-        className: `badge xs message-scope-tag scope-${message.scope}`,
-        textContent: scopeLabel,
-        attributes: {
-          title: `Message Scope: ${scopeLabel}`
-        }
-      });
-      metaLeftChildren.push(scopeTag);
-    }
+    // No per-message scope badge: every panel now pins exactly one scope, so
+    // the chip was identical on every card in the list. It existed back when
+    // a single panel mixed submission-group, course-content and course-wide
+    // messages together and you needed to tell them apart.
 
     const metaLeft = createElement('div', {
       className: 'message-meta-left',
@@ -337,12 +348,20 @@
     meta.appendChild(metaLeft);
     meta.appendChild(metaRight);
 
-    const title = message.title
+    // An announcement is identified by its subject, so it is the headline
+    // and always present — the backend requires one. Legacy rows predating
+    // that rule get a placeholder rather than an untitled card.
+    const title = announcement
       ? createElement('h3', {
           className: 'message-title',
-          textContent: message.title
+          textContent: message.title || '(no subject)'
         })
-      : null;
+      : message.title
+        ? createElement('h3', {
+            className: 'message-title',
+            textContent: message.title
+          })
+        : null;
 
     const body = createElement('div', {
       className: 'message-body markdown-body',
@@ -373,6 +392,11 @@
       );
     }
 
+    // On an announcement the subject leads and the byline follows it; in a
+    // conversation the speaker leads and the body follows.
+    if (announcement && title) {
+      card.appendChild(title);
+    }
     card.appendChild(meta);
 
     // Reply context line — below meta
@@ -386,7 +410,7 @@
       card.appendChild(replyContext);
     }
 
-    if (title) {
+    if (title && !announcement) {
       card.appendChild(title);
     }
     card.appendChild(body);
@@ -394,11 +418,18 @@
       card.appendChild(actions);
     }
 
+    if (unread && seenObserver) {
+      seenObserver.watch(card);
+    }
+
     // Don't nest children — they are rendered flat by flattenThreads
     return card;
   }
 
   function renderMessagesSection(container, prevScroll) {
+    // The old cards are about to be discarded; stop watching them so their
+    // dwell timers can't fire against detached nodes.
+    if (seenObserver) { seenObserver.reset(); }
     container.innerHTML = '';
 
     if (state.loading) {
@@ -425,22 +456,30 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'No messages yet. Use the input panel below to start the discussion.'
+          textContent: emptyStateText()
         })
       );
       return;
     }
 
-    const threads = buildThreads(state.messages);
+    const threads = buildThreads(state.messages, { newestFirst: isAnnouncement() });
     const flat = flattenThreads(threads);
     flat.forEach((msg) => {
       container.appendChild(renderMessageNode(msg, msg.level ?? 0));
     });
 
-    // Render typing indicator if someone is typing
-    if (state.typingUsers && state.typingUsers.length > 0) {
-      const typingIndicator = renderTypingIndicator();
-      container.appendChild(typingIndicator);
+    // Nobody types at a notice board — the indicator only belongs where
+    // someone is composing a reply you are waiting for.
+    if (!isAnnouncement() && state.typingUsers && state.typingUsers.length > 0) {
+      container.appendChild(renderTypingIndicator());
+    }
+
+    if (isAnnouncement()) {
+      // Newest is already at the top; jumping to the bottom would land the
+      // reader on the oldest notice in the course.
+      state._scrollToBottom = false;
+      container.scrollTop = prevScroll > 0 ? prevScroll : 0;
+      return;
     }
 
     if (state._scrollToBottom) {
@@ -452,6 +491,17 @@
     } else if (prevScroll > 0) {
       container.scrollTop = prevScroll;
     }
+  }
+
+  function emptyStateText() {
+    if (isAnnouncement()) {
+      return state.target?.readOnly
+        ? 'No announcements yet.'
+        : 'No announcements yet. Post one from the input panel below.';
+    }
+    return state.target?.readOnly
+      ? 'No messages yet.'
+      : 'No messages yet. Use the input panel below to start the discussion.';
   }
 
   function renderTypingIndicator() {
@@ -528,33 +578,10 @@
     if (state.filtersExpanded) {
       const advancedPanel = createElement('div', { className: 'advanced-filters' });
 
-      // Tags filter row
-      const tagsRow = createElement('div', { className: 'filter-row' });
-      tagsRow.appendChild(createElement('label', { textContent: 'Tags (comma-separated):' }));
-
-      const tagsInput = createElement('input', {
-        className: 'filter-input',
-        attributes: {
-          type: 'text'
-        }
-      });
-      tagsInput.value = state.filters.tags ? state.filters.tags.join(', ') : '';
-      tagsRow.appendChild(tagsInput);
-
-      // Tags match all checkbox
-      const matchAllLabel = createElement('label', { className: 'checkbox-label' });
-      const matchAllCheckbox = createElement('input', {
-        attributes: { type: 'checkbox' }
-      });
-      matchAllCheckbox.checked = state.filters.tags_match_all;
-      matchAllCheckbox.addEventListener('change', () => {
-        state.filters.tags_match_all = matchAllCheckbox.checked;
-      });
-      matchAllLabel.appendChild(matchAllCheckbox);
-      matchAllLabel.appendChild(document.createTextNode(' Match all tags'));
-      tagsRow.appendChild(matchAllLabel);
-
-      advancedPanel.appendChild(tagsRow);
+      // No tag filter: tags were parsed out of the title with a regex, and
+      // the only thing that ever wrote them was the agent's retired
+      // "#ai" / "#ai::response" convention — it identifies itself by
+      // author_id now. The subject line is a human subject again.
 
       // Custom date range row
       const dateRow = createElement('div', { className: 'filter-row' });
@@ -599,14 +626,7 @@
       // Apply button for advanced filters
       const applyRow = createElement('div', { className: 'filter-row filter-actions' });
       applyRow.appendChild(
-        button('Apply Filters', 'btn sm', () => {
-          // Parse tags from input
-          const tagsValue = tagsInput.value.trim();
-          state.filters.tags = tagsValue
-            ? tagsValue.split(',').map(t => t.trim()).filter(t => t.length > 0)
-            : null;
-          applyFilters();
-        })
+        button('Apply Filters', 'btn sm', applyFilters)
       );
       advancedPanel.appendChild(applyRow);
 
@@ -707,6 +727,39 @@
     }
   });
 
+  // Where a newly arrived message belongs in the flat list, expressed as the
+  // node to insert before (null = append). Mirrors buildThreads/flattenThreads
+  // so a live arrival lands exactly where the next full render would put it.
+  function insertionPointFor(container, message) {
+    const typingEl = container.querySelector('.typing-indicator');
+    if (!message.parent_id) {
+      // Newest-first on an announcement board, so a new root goes at the top.
+      if (isAnnouncement()) {
+        return container.querySelector('.message-card');
+      }
+      // A new root goes at the end of the list, before the typing indicator.
+      return typingEl || null;
+    }
+    const parentCard = container.querySelector(
+      `[data-message-id="${message.parent_id}"]`
+    );
+    if (!parentCard) {
+      return typingEl || null;
+    }
+    // Skip past the parent's existing replies (its subtree is contiguous and
+    // every descendant renders deeper than the parent).
+    const parentLevel = Number(parentCard.dataset.level ?? 0);
+    let cursor = parentCard.nextElementSibling;
+    while (
+      cursor &&
+      cursor.classList.contains('message-card') &&
+      Number(cursor.dataset.level ?? 0) > parentLevel
+    ) {
+      cursor = cursor.nextElementSibling;
+    }
+    return cursor || typingEl || null;
+  }
+
   // True when the scroll position is at (or within a small threshold of) the
   // bottom of the list.
   function isNearBottom(container, threshold) {
@@ -717,6 +770,10 @@
   // WebSocket event handlers — patch DOM directly, no full re-render
   function handleWsMessageNew(data) {
     if (!data) return;
+    // The same message can reach us twice — over the socket and again in a
+    // refresh that raced it — and appending blindly rendered it twice until
+    // the next full render.
+    if (state.messages.some((m) => m.id === data.id)) { return; }
     state.messages = [...state.messages, data];
 
     const container = document.querySelector('.messages-container');
@@ -733,17 +790,24 @@
       emptyState.remove();
     }
 
-    // Flat layout: all messages are siblings in the container
-    const typingEl = container.querySelector('.typing-indicator');
+    // Flat layout: all messages are siblings in the container, but a reply
+    // belongs directly after its parent's subtree — appending it to the end
+    // put it in a different place than the next full render would, so the
+    // message visibly jumped on refresh.
     let level = 0;
     if (data.parent_id) {
-      // Find parent's level from state and go one deeper
       const parent = state.messages.find((m) => m.id === data.parent_id);
       level = (parent?.level ?? 0) + 1;
     }
     data.level = level;
     const node = renderMessageNode(data, level);
-    container.insertBefore(node, typingEl || null);
+    container.insertBefore(node, insertionPointFor(container, data));
+
+    // A new announcement lands at the top; scrolling to the bottom would
+    // take the reader away from it.
+    if (isAnnouncement()) {
+      return;
+    }
 
     // Follow the new message to the bottom only if the user was already there.
     if (wasNearBottom) {
@@ -794,7 +858,7 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'No messages yet. Use the input panel below to start the discussion.'
+          textContent: emptyStateText()
         })
       );
     }
@@ -802,6 +866,9 @@
 
   function handleWsTypingUpdate(data) {
     if (!data) return;
+    // Announcement scopes are lecturer-write-only broadcasts; a "someone is
+    // typing" line on a notice board is noise, not presence.
+    if (isAnnouncement()) return;
     const { userId, userName, isTyping } = data;
 
     let typingUsers = [...(state.typingUsers || [])];
