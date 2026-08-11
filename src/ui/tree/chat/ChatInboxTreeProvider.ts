@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
-import { canPostGlobal, canPostToCourseFamily, canPostToOrganization, kindForScope } from '../../../services/MessagePermissions';
+import { kindForScope } from '../../../services/MessagePermissions';
+import { MessageLabelResolver, shortId } from '../../../services/MessageLabelResolver';
+import { buildTargetContext } from '../../../services/messageTargets';
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageList } from '../../../types/generated';
@@ -128,13 +130,8 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
    *  this set between empty (all on) and full (all muted). */
   private mutedScopes: Set<MessageScope> = new Set();
 
-  // Label caches keyed by id
-  private readonly orgLabels = new Map<string, string>();
-  private readonly familyLabels = new Map<string, string>();
-  private readonly courseLabels = new Map<string, string>();
-  private readonly contentLabels = new Map<string, { title: string; subtitle?: string }>();
-  private readonly groupLabels = new Map<string, { title: string; subtitle?: string }>();
-  private readonly memberLabels = new Map<string, { title: string; subtitle?: string }>();
+  /** Shared with the messages browser — same lookups, same caches. */
+  private readonly labels: MessageLabelResolver;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -145,6 +142,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     this.context = context;
     this.api = api;
     this.messagesProvider = messagesProvider;
+    this.labels = new MessageLabelResolver(api);
     this.loadPersistedState();
   }
 
@@ -370,7 +368,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
     this.cachedMessages = flat;
     const grouped = this.groupMessages(this.cachedMessages);
-    await this.resolveLabels(grouped);
+    await this.labels.prefetch(grouped);
     this.scopeItems = this.buildScopeItems(grouped);
   }
 
@@ -542,7 +540,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       ).size;
       return {
         id,
-        label: this.courseLabels.get(id) || shortId(id),
+        label: this.labels.courseLabel(id) || shortId(id),
         unread,
         threadCount,
         // total === -1 means we haven't fetched yet — show the "click to load" hint
@@ -692,7 +690,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
       // Resolve labels for every accessible course up front, so the
       // ChatCourseGroupItem rows can show real titles instead of short ids.
-      await Promise.all(courseIds.map(id => this.resolveCourseLabelLazy(id).catch(() => undefined)));
+      await Promise.all(courseIds.map(id => this.labels.ensureCourseLabel(id).catch(() => undefined)));
 
       await this.rebuildAssembled();
     } catch (error: any) {
@@ -732,120 +730,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       case 'course_family': return m.course_family_id ?? null;
       case 'organization': return m.organization_id ?? null;
       case 'global': return null;
-    }
-  }
-
-  private async resolveLabels(grouped: Map<MessageScope, Map<string, MessageList[]>>): Promise<void> {
-    // Best-effort batched lookups; failures fall back to id truncation.
-    const tasks: Promise<unknown>[] = [];
-
-    for (const [scope, byTarget] of grouped) {
-      for (const [targetId, msgs] of byTarget) {
-        if (targetId !== '__none__') {
-          tasks.push(this.ensureLabel(scope, targetId).catch(() => undefined));
-        }
-        // Submission-group threads label themselves from the linked
-        // course_content (see threadLabels). Pre-resolve those content
-        // labels so the title isn't a raw "Submission Group <shortId>".
-        if (scope === 'submission_group') {
-          const seen = new Set<string>();
-          for (const m of msgs) {
-            const contentId = m.course_content_id;
-            if (typeof contentId === 'string' && contentId && !seen.has(contentId)) {
-              seen.add(contentId);
-              tasks.push(this.ensureLabel('course_content', contentId).catch(() => undefined));
-            }
-          }
-        }
-      }
-    }
-    await Promise.all(tasks);
-  }
-
-  private async ensureLabel(scope: MessageScope, targetId: string): Promise<void> {
-    switch (scope) {
-      case 'organization':
-        if (!this.orgLabels.has(targetId)) {
-          const org = await this.api.getOrganization(targetId);
-          this.orgLabels.set(targetId, org?.title || org?.path || shortId(targetId));
-        }
-        break;
-      case 'course_family':
-        if (!this.familyLabels.has(targetId)) {
-          const fam = await this.api.getCourseFamily(targetId);
-          this.familyLabels.set(targetId, fam?.title || fam?.path || shortId(targetId));
-        }
-        break;
-      case 'course':
-        if (!this.courseLabels.has(targetId)) {
-          const course = await this.api.getCourse(targetId);
-          this.courseLabels.set(targetId, course?.title || course?.path || shortId(targetId));
-        }
-        break;
-      case 'course_content':
-        if (!this.contentLabels.has(targetId)) {
-          const content = await this.api.getCourseContent(targetId);
-          if (content) {
-            const courseLabel = content.course_id
-              ? await this.resolveCourseLabelLazy(content.course_id)
-              : undefined;
-            this.contentLabels.set(targetId, {
-              title: content.title || content.path || shortId(targetId),
-              subtitle: courseLabel
-            });
-          } else {
-            this.contentLabels.set(targetId, { title: shortId(targetId) });
-          }
-        }
-        break;
-      case 'course_group':
-        if (!this.groupLabels.has(targetId)) {
-          const group = await this.api.getCourseGroup(targetId);
-          if (group) {
-            const courseLabel = group.course_id
-              ? await this.resolveCourseLabelLazy(group.course_id)
-              : undefined;
-            this.groupLabels.set(targetId, {
-              title: group.title || `Group ${shortId(targetId)}`,
-              subtitle: courseLabel
-            });
-          } else {
-            this.groupLabels.set(targetId, { title: `Group ${shortId(targetId)}` });
-          }
-        }
-        break;
-      case 'course_member':
-        if (!this.memberLabels.has(targetId)) {
-          const member = await this.api.getCourseMember(targetId);
-          if (member) {
-            const user = (member as any).user;
-            const name = user
-              ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || user.username || user.email
-              : `Member ${shortId(targetId)}`;
-            const courseLabel = member.course_id
-              ? await this.resolveCourseLabelLazy(member.course_id)
-              : undefined;
-            this.memberLabels.set(targetId, { title: name, subtitle: courseLabel });
-          } else {
-            this.memberLabels.set(targetId, { title: `Member ${shortId(targetId)}` });
-          }
-        }
-        break;
-      default:
-        // user / submission_group: derived from the message data inline.
-        break;
-    }
-  }
-
-  private async resolveCourseLabelLazy(courseId: string): Promise<string | undefined> {
-    if (this.courseLabels.has(courseId)) { return this.courseLabels.get(courseId); }
-    try {
-      const course = await this.api.getCourse(courseId);
-      const label = course?.title || course?.path || shortId(courseId);
-      this.courseLabels.set(courseId, label);
-      return label;
-    } catch {
-      return undefined;
     }
   }
 
@@ -954,14 +838,14 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
           const messages = [root, ...replies].sort((a, b) => compareCreated(a, b));
           const unreadCount = messages.filter(isUnread).length;
           if (this.unreadOnly && unreadCount === 0) { continue; }
-          const { subtitle } = this.threadLabels(scope, targetId, msgs);
+          const { subtitle } = this.labels.label(scope, targetId, msgs, this.currentUserId);
           threads.push({
             scope,
             targetId,
             // The subject identifies the announcement. Rows predating the
             // subject requirement fall back to the scope's own label.
             title: root.title?.trim()
-              || this.threadLabels(scope, targetId, [root]).title,
+              || this.labels.label(scope, targetId, [root], this.currentUserId).title,
             subtitle,
             lastMessage: root,
             unreadCount,
@@ -981,7 +865,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       const unreadCount = msgs.filter(isUnread).length;
       if (this.unreadOnly && unreadCount === 0) { continue; }
 
-      const { title, subtitle } = this.threadLabels(scope, targetId, msgs);
+      const { title, subtitle } = this.labels.label(scope, targetId, msgs, this.currentUserId);
       threads.push({
         scope,
         targetId,
@@ -1003,168 +887,17 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     return threads;
   }
 
-  private threadLabels(scope: MessageScope, targetId: string | null, msgs: MessageList[]): { title: string; subtitle?: string } {
-    switch (scope) {
-      case 'global':
-        return { title: 'Global Announcements' };
-      case 'organization': {
-        const label = targetId ? this.orgLabels.get(targetId) || shortId(targetId) : 'Organization';
-        return { title: label };
-      }
-      case 'course_family': {
-        const label = targetId ? this.familyLabels.get(targetId) || shortId(targetId) : 'Course Family';
-        return { title: label };
-      }
-      case 'course': {
-        const label = targetId ? this.courseLabels.get(targetId) || shortId(targetId) : 'Course';
-        return { title: label };
-      }
-      case 'course_content': {
-        const info = targetId ? this.contentLabels.get(targetId) : undefined;
-        return { title: info?.title || (targetId ? shortId(targetId) : 'Course Content'), subtitle: info?.subtitle };
-      }
-      case 'course_group': {
-        const info = targetId ? this.groupLabels.get(targetId) : undefined;
-        return { title: info?.title || (targetId ? `Group ${shortId(targetId)}` : 'Course Group'), subtitle: info?.subtitle };
-      }
-      case 'course_member': {
-        const info = targetId ? this.memberLabels.get(targetId) : undefined;
-        return { title: info?.title || (targetId ? `Member ${shortId(targetId)}` : 'Course Member'), subtitle: info?.subtitle };
-      }
-      case 'submission_group': {
-        // Title comes from the linked course_content; the scope label
-        // ("Submission Groups") is already shown by the panel chrome, so we
-        // skip the subtitle to avoid the redundant "Submission group / X".
-        const sample = msgs[0];
-        const contentId = sample?.course_content_id;
-        const contentLabel = contentId ? this.contentLabels.get(contentId)?.title : undefined;
-        return {
-          title: contentLabel || (targetId ? `Submission Group ${shortId(targetId)}` : 'Submission Group')
-        };
-      }
-      case 'user': {
-        // DM target: pick the "other person" from the messages.
-        const other = msgs
-          .map(m => m.author)
-          .find(a => a && this.currentUserId && (a as any).id !== this.currentUserId);
-        if (other) {
-          const name = `${other.given_name || ''} ${other.family_name || ''}`.trim()
-            || (other as any).username
-            || (other as any).email
-            || (targetId ? shortId(targetId) : 'User');
-          return { title: name };
-        }
-        return { title: targetId ? `User ${shortId(targetId)}` : 'User' };
-      }
-    }
-  }
-
   private async buildTargetContext(thread: ChatThread): Promise<MessageTargetContext | undefined> {
-    const { scope, targetId } = thread;
-
-    // Submission-group titles read from the linked course_content. Lazy-fetch
-    // it now if the label cache hasn't seen it yet (e.g. when opening from a
-    // brand-new WS toast where resolveLabels hasn't run for this content id).
-    if (scope === 'submission_group') {
-      const seen = new Set<string>();
-      for (const m of thread.messages) {
-        const contentId = m.course_content_id;
-        if (typeof contentId === 'string' && contentId && !seen.has(contentId) && !this.contentLabels.has(contentId)) {
-          seen.add(contentId);
-          await this.ensureLabel('course_content', contentId).catch(() => undefined);
-        }
-      }
-    }
-
-    const labels = this.threadLabels(scope, targetId, thread.messages);
-    const titleSegments: string[] = [];
-    if (labels.subtitle) { titleSegments.push(labels.subtitle); }
-    titleSegments.push(labels.title);
-    const title = titleSegments.join(' / ');
-
-    const baseQuery: Record<string, string> = {};
-    const basePayload: Record<string, unknown> = {};
-    let wsChannel: string | undefined;
-    let readOnly = false;
-    let readOnlyReason: string | undefined;
-
     await this.ensureUserScopes();
-
-    // Always pin scope on the panel query — without it the backend matches
-    // every message that shares the target id, which leaks cross-scope
-    // messages (e.g. submission_group messages also carry course_content_id).
-    baseQuery.scope = scope;
-
-    switch (scope) {
-      case 'global':
-        readOnly = !canPostGlobal(this.userScopes, this.userViews.includes('user_manager'));
-        readOnlyReason = readOnly ? 'Only administrators or user managers can post global announcements.' : undefined;
-        // wsChannel intentionally undefined — no per-target channel for global.
-        break;
-      case 'organization':
-        if (!targetId) { return undefined; }
-        baseQuery.organization_id = targetId;
-        basePayload.organization_id = targetId;
-        wsChannel = `organization:${targetId}`;
-        readOnly = !canPostToOrganization(this.userScopes, targetId);
-        readOnlyReason = readOnly ? 'Posting to this organization requires manager or owner role.' : undefined;
-        break;
-      case 'course_family':
-        if (!targetId) { return undefined; }
-        baseQuery.course_family_id = targetId;
-        basePayload.course_family_id = targetId;
-        wsChannel = `course_family:${targetId}`;
-        readOnly = !canPostToCourseFamily(this.userScopes, targetId);
-        readOnlyReason = readOnly ? 'Posting to this course family requires manager or owner role.' : undefined;
-        break;
-      case 'course':
-        if (!targetId) { return undefined; }
-        baseQuery.course_id = targetId;
-        basePayload.course_id = targetId;
-        wsChannel = `course:${targetId}`;
-        break;
-      case 'course_content': {
-        if (!targetId) { return undefined; }
-        baseQuery.course_content_id = targetId;
-        basePayload.course_content_id = targetId;
-        wsChannel = `course_content:${targetId}`;
-        break;
-      }
-      case 'course_group':
-        if (!targetId) { return undefined; }
-        baseQuery.course_group_id = targetId;
-        basePayload.course_group_id = targetId;
-        wsChannel = `course_group:${targetId}`;
-        break;
-      case 'submission_group':
-        if (!targetId) { return undefined; }
-        baseQuery.submission_group_id = targetId;
-        basePayload.submission_group_id = targetId;
-        wsChannel = `submission_group:${targetId}`;
-        break;
-      case 'course_member':
-        if (!targetId) { return undefined; }
-        baseQuery.course_member_id = targetId;
-        basePayload.course_member_id = targetId;
-        wsChannel = `course_member:${targetId}`;
-        break;
-      case 'user':
-        if (!targetId) { return undefined; }
-        baseQuery.user_id = targetId;
-        basePayload.user_id = targetId;
-        wsChannel = `user:${targetId}`;
-        break;
-    }
-
-    return {
-      title,
-      subtitle: scopeLabel(scope),
-      query: baseQuery,
-      createPayload: basePayload,
-      wsChannel,
-      readOnly,
-      readOnlyReason
-    };
+    return buildTargetContext({
+      scope: thread.scope,
+      targetId: thread.targetId,
+      messages: thread.messages,
+      labels: this.labels,
+      userScopes: this.userScopes,
+      userViews: this.userViews,
+      currentUserId: this.currentUserId
+    });
   }
 
   // ----- WebSocket -----
@@ -1330,9 +1063,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   }
 }
 
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
-}
 
 function compareCreated(a: MessageList, b: MessageList): number {
   const ta = a.created_at ? Date.parse(a.created_at) : 0;
