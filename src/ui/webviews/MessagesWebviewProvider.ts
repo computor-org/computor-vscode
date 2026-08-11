@@ -171,9 +171,12 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (this.inputPanel) {
       this.inputPanel.setTarget(target, rawMessages);
       this.inputPanel.setOnMessageCreated(() => this.refreshMessages({ skipIndicatorUpdate: true }));
-      if (target.wsChannel) {
-        this.inputPanel.setWebSocketChannel(target.wsChannel);
-      }
+      // Set unconditionally, including to undefined. Guarding on truthiness
+      // left the previous panel's channel in place when the new one had none,
+      // and the input panel skips its post-send refresh whenever it believes
+      // a channel exists — so a message posted to a channel-less scope was
+      // never shown until a manual refresh.
+      this.inputPanel.setWebSocketChannel(target.wsChannel);
       await this.inputPanel.reveal();
     }
   }

@@ -100,18 +100,37 @@ describe('messageTargets — buildTargetContext', () => {
     expect(ctx!.wsChannel).to.equal('course_group:cg-1');
   });
 
-  it('gives global no channel and no target', async () => {
-    // The backend publishes global messages to the `global` channel, which
-    // every connection is auto-subscribed to.
+  it('puts global on the global channel, with no target', async () => {
+    // Global has no target id but it does have a channel: the backend
+    // publishes there and every connection is auto-subscribed. Leaving it
+    // undefined made global the one scope with no live updates, so a posted
+    // announcement did not appear until a manual refresh.
     const ctx = await buildTargetContext({
       scope: 'global',
       targetId: null,
       labels: fakeLabels(),
       userScopes: scopes({ is_admin: true })
     });
-    expect(ctx!.wsChannel).to.equal(undefined);
+    expect(ctx!.wsChannel).to.equal('global');
     expect(ctx!.createPayload).to.deep.equal({});
     expect(ctx!.readOnly).to.equal(false);
+  });
+
+  it('gives every scope a channel, so none is silently live-update-less', async () => {
+    const cases: Array<[Parameters<typeof buildTargetContext>[0]['scope'], string | null, string]> = [
+      ['global', null, 'global'],
+      ['organization', 'o-1', 'organization:o-1'],
+      ['course_family', 'f-1', 'course_family:f-1'],
+      ['course', 'c-1', 'course:c-1'],
+      ['course_content', 'cc-1', 'course_content:cc-1'],
+      ['course_group', 'cg-1', 'course_group:cg-1'],
+      ['submission_group', 'sg-1', 'submission_group:sg-1'],
+      ['course_member', 'cm-1', 'course_member:cm-1']
+    ];
+    for (const [scope, targetId, expected] of cases) {
+      const ctx = await buildTargetContext({ scope, targetId, labels: fakeLabels() });
+      expect(ctx!.wsChannel, `${scope} channel`).to.equal(expected);
+    }
   });
 
   it('returns nothing for a non-global scope with no target', async () => {

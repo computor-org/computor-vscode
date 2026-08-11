@@ -770,6 +770,10 @@
   // WebSocket event handlers — patch DOM directly, no full re-render
   function handleWsMessageNew(data) {
     if (!data) return;
+    // The same message can reach us twice — over the socket and again in a
+    // refresh that raced it — and appending blindly rendered it twice until
+    // the next full render.
+    if (state.messages.some((m) => m.id === data.id)) { return; }
     state.messages = [...state.messages, data];
 
     const container = document.querySelector('.messages-container');

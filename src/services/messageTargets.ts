@@ -12,6 +12,15 @@ import type { ScopeName } from './MessagePermissions';
 import type { MessageLabelResolver } from './MessageLabelResolver';
 
 /**
+ * The channel global messages are broadcast on.
+ *
+ * Matches GLOBAL_CHANNEL in computor_backend/websocket/broadcast.py; every
+ * connection is auto-subscribed to it on connect, and `_can_subscribe`
+ * always allows it.
+ */
+export const GLOBAL_CHANNEL = 'global';
+
+/**
  * The target id a message carries for a given scope.
  *
  * Under the single-target invariant a message has exactly one target column
@@ -108,8 +117,12 @@ export async function buildTargetContext(
     readOnlyReason = readOnly
       ? 'Only administrators or user managers can post global announcements.'
       : undefined;
-    // No per-target channel for global; the backend publishes to `global`,
-    // which every connection is auto-subscribed to.
+    // Global has no target id, but it does have a channel: the backend
+    // publishes global messages to `global`, and every connection is
+    // auto-subscribed to it. Leaving this undefined made global the one
+    // scope with no live updates at all — a posted announcement did not
+    // appear until a manual refresh.
+    wsChannel = GLOBAL_CHANNEL;
   } else {
     query[`${scope}_id`] = targetId!;
     createPayload[`${scope}_id`] = targetId!;

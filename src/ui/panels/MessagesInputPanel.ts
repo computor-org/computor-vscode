@@ -228,7 +228,15 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     this.wsService = wsService;
   }
 
-  public setWebSocketChannel(channel: string): void {
+  /**
+   * The channel this panel's target is live on, or undefined when it has none.
+   *
+   * Undefined is meaningful, not a no-op: `handleCreateMessage` skips its
+   * post-send refresh when a channel exists, on the assumption the WebSocket
+   * will deliver the message. Keeping a stale channel from a previous target
+   * means neither happens and the message silently doesn't appear.
+   */
+  public setWebSocketChannel(channel: string | undefined): void {
     this.state.wsChannel = channel;
   }
 
@@ -259,8 +267,20 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /**
+   * Typing presence is a conversation feature.
+   *
+   * On an announcement scope there is nobody waiting on your reply, and the
+   * reader side already ignores the event. It matters most on `global`, whose
+   * channel every connected client is subscribed to: broadcasting a keystroke
+   * there would tell the entire platform that an admin is drafting.
+   */
+  private sharesTypingPresence(): boolean {
+    return this.state.target?.kind !== 'announcement';
+  }
+
   public notifyTyping(): void {
-    if (!this.wsService || !this.state.wsChannel) {
+    if (!this.wsService || !this.state.wsChannel || !this.sharesTypingPresence()) {
       return;
     }
 
@@ -284,7 +304,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       this.typingTimeout = undefined;
     }
 
-    if (this.wsService && this.state.wsChannel) {
+    if (this.wsService && this.state.wsChannel && this.sharesTypingPresence()) {
       this.wsService.stopTyping(this.state.wsChannel);
     }
   }
