@@ -104,12 +104,14 @@ export class TutorCommands {
         // Also clear content kinds to be safe
         this.apiService.clearCourseContentKindsCache();
 
-        // Proactively fetch fresh data to trigger API calls
+        // Proactively fetch fresh data, bypassing the warm tier outright so
+        // an explicit Refresh can never serve a stale unread badge
+        // (computor-org/issues#317).
         if (courseId) {
-          await this.apiService.getTutorCourseMembers(courseId, groupId || undefined);
+          await this.apiService.getTutorCourseMembers(courseId, groupId || undefined, { force: true });
         }
         if (courseId && memberId) {
-          await this.apiService.getTutorCourseContents(courseId, memberId);
+          await this.apiService.getTutorCourseContents(courseId, memberId, { force: true });
         }
       } catch (error) {
         console.error('[TutorCommands] Error refreshing tutor data:', error);

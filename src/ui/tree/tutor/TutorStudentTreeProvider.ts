@@ -74,7 +74,34 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
         console.log(`[TutorTree/WS] Course content updated: ${event.course_content_id} (${event.change_type})`);
         this.refresh();
       },
+      // Unread badges (computor-org/issues#317): a student's submission
+      // message reaches the tutor over user:<id>, never the course channel.
+      onMessageNew: (_channel, data) => {
+        const message = ((data as any)?.data ?? data) as { submission_group_id?: string };
+        if (!message?.submission_group_id) {
+          return;
+        }
+        this.scheduleUnreadRefresh();
+      },
+      onReadUpdate: () => this.scheduleUnreadRefresh(),
     });
+  }
+
+  private unreadRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Debounced badge refresh; clears the caches the badge is served from. */
+  private scheduleUnreadRefresh(): void {
+    if (this.unreadRefreshTimer) {
+      clearTimeout(this.unreadRefreshTimer);
+    }
+    this.unreadRefreshTimer = setTimeout(() => {
+      this.unreadRefreshTimer = undefined;
+      const memberId = this.selection.getCurrentMemberId();
+      if (memberId) {
+        this.api.clearTutorMemberCourseContentsCache(memberId);
+      }
+      this.refresh();
+    }, 300);
   }
 
   /**
@@ -912,7 +939,7 @@ class TutorContentItem extends vscode.TreeItem {
       labelParts.push('[📝]');
     }
     if (unread > 0) {
-      labelParts.push('[🔔]');
+      labelParts.push(`[🔔${unread}]`);
     }
     const baseName = this.content.title || this.content.path;
     this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;

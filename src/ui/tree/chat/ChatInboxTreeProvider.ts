@@ -154,6 +154,19 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     // subscription happens at the end of the next reload, when currentUserId
     // is set.
     this.maybeSubscribeUserChannels();
+    // Resolve identity eagerly too: reload() only runs once the Chat view is
+    // rendered, so a user who never opened it got no new-message toasts at
+    // all (computor-org/issues#317).
+    if (!this.currentUserId) {
+      void this.api.getCurrentUser()
+        .then((identity) => {
+          if (identity?.id && !this.currentUserId) {
+            this.currentUserId = identity.id;
+            this.maybeSubscribeUserChannels();
+          }
+        })
+        .catch(() => undefined);
+    }
   }
 
   override refresh(): void {

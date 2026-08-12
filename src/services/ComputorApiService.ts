@@ -2294,8 +2294,13 @@ export class ComputorApiService {
     return await this.getCourseGroups(courseId);
   }
 
-  async getTutorCourseMembers(courseId: string, groupId?: string): Promise<any[]> {
+  async getTutorCourseMembers(courseId: string, groupId?: string, options?: { force?: boolean }): Promise<any[]> {
     try {
+      // An explicit Refresh must actually refetch — the warm tier otherwise
+      // serves up to 5-minute-old unread badges (computor-org/issues#317).
+      if (options?.force) {
+        this.clearTutorCourseMembersCache(courseId, groupId);
+      }
       // Do not retry: this endpoint backs a heavy aggregation on the server.
       // Retries on a slow call amplify DB load without helping the user, so
       // fail fast and rely on backend caching to make the next call cheap.
@@ -2710,8 +2715,12 @@ export class ComputorApiService {
   }
 
   // Tutor: course contents for a specific member in a course
-  async getTutorCourseContents(courseId: string, memberId: string): Promise<any[]> {
+  async getTutorCourseContents(courseId: string, memberId: string, options?: { force?: boolean }): Promise<any[]> {
     const cacheKey = `tutorContents-${memberId}`;
+    if (options?.force) {
+      // An explicit Refresh must actually refetch (computor-org/issues#317).
+      multiTierCache.delete(cacheKey);
+    }
     const cached = multiTierCache.get<any[]>(cacheKey);
     if (cached) return cached.filter(c => !courseId || c.course_id === courseId);
     try {
