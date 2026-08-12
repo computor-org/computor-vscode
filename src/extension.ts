@@ -7,7 +7,8 @@ import { GitCancelledError } from './exceptions/errors/GitExecError';
 import { errorCatalog } from './exceptions/ErrorCatalog';
 import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
 import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
-import { openFile, registerEditorLayout, showOptions } from './ui/editorLayout';
+import { registerEditorLayout, showOptions } from './ui/editorLayout';
+import { ArtifactsPanel } from './ui/panels/ArtifactsPanel';
 import { UiStateService } from './services/UiStateService';
 import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
 import { isRestoringSelection, restoreSelection, trackTree, treeItemId } from './ui/treeRestore';
@@ -630,6 +631,7 @@ class UnifiedController {
   private api?: ComputorApiService;
   private httpClient?: BearerTokenHttpClient;
   private disposables: vscode.Disposable[] = [];
+  private artifactsPanel?: ArtifactsPanel;
   private activeViews: string[] = [];
   private profileWebviewProvider?: UserProfileWebviewProvider;
   private messagesInputPanel?: MessagesInputPanelProvider;
@@ -1052,9 +1054,15 @@ class UnifiedController {
     const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat'];
 
     if (imageExtensions.includes(ext)) {
-      // openFile puts an image in the auxiliary group with the figures, and
-      // keeps it routed to the Computor image preview.
-      await openFile(fileUri, { preview: false });
+      // Figure artifacts get the Figures presentation — fit to view, Close /
+      // Close All — instead of the zooming image preview
+      // (computor-org/issues#315). Images opened from the file tree keep the
+      // image preview; only this test-result path routes here.
+      if (!this.artifactsPanel) {
+        this.artifactsPanel = new ArtifactsPanel(this.context.extensionUri);
+        this.disposables.push(this.artifactsPanel);
+      }
+      await this.artifactsPanel.add(filePath);
     } else if (binaryExtensions.includes(ext)) {
       await vscode.commands.executeCommand('revealFileInOS', fileUri);
       notify.info(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
