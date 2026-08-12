@@ -58,6 +58,7 @@ import { registerResultsPanel } from './ui/results/registerResultsPanel';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
+import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
@@ -1709,6 +1710,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // figures as files and this shows them. Independent of login and of role:
   // the figures come from the student's own code, not from the backend.
   registerFigureViewer(context);
+
+  // MATLAB's `doc` (and anything else wanting "the system browser") drops its
+  // URL into a watched folder; open it as a real tab (computor-org/issues#312).
+  registerOpenUrlWatcher(context);
 
   // Opening a PNG. The built-in image editor cannot show one under code-server
   // in Firefox or older Safari — its picture, stylesheet and script all come
