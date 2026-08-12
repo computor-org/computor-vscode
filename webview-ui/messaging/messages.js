@@ -818,9 +818,12 @@
   }
 
   function handleWsMessageUpdate(data) {
-    if (!data || !data.messageId) return;
+    if (!data) return;
+    // The id may ride along as messageId or as the message's own id.
+    const messageId = data.messageId || data.id;
+    if (!messageId) return;
     state.messages = state.messages.map((msg) => {
-      if (msg.id === data.messageId) {
+      if (msg.id === messageId) {
         return { ...msg, ...data };
       }
       return msg;
@@ -829,11 +832,11 @@
     const container = document.querySelector('.messages-container');
     if (!container) return;
 
-    const oldCard = container.querySelector(`[data-message-id="${data.messageId}"]`);
+    const oldCard = container.querySelector(`[data-message-id="${messageId}"]`);
     if (!oldCard) return;
 
     // Find the updated message in state
-    const updatedMsg = state.messages.find((m) => m.id === data.messageId);
+    const updatedMsg = state.messages.find((m) => m.id === messageId);
     if (!updatedMsg) return;
 
     // Re-render just this card, preserving children (replies)

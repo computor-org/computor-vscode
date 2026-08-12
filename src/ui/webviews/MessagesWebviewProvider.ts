@@ -281,6 +281,14 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     const enrichedMessage = this.enrichMessageGet(messageData);
 
+    // Keep the provider's own copy in step: a later re-render from
+    // currentData must not replay a list that predates this message, and
+    // mark-read needs to find WS-arrived messages in it.
+    const held = (this.currentData as { messages?: MessageGet[] } | undefined)?.messages;
+    if (held && messageData.id && !held.some((m) => m.id === messageData.id)) {
+      held.push(enrichedMessage);
+    }
+
     // Send to webview for display
     this.panel.webview.postMessage({
       command: 'wsMessageNew',
@@ -306,23 +314,38 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     }
   }
 
-  private handleWsMessageUpdate(messageId: string, data: Record<string, unknown>): void {
+  private handleWsMessageUpdate(messageId: string | undefined, data: Record<string, unknown>): void {
     if (!this.panel) {
       return;
     }
     // WebSocket sends { channel, data: MessageGet } - extract the nested data
     const messageData = (data.data ?? data) as unknown as MessageGet;
     const enrichedMessage = this.enrichMessageGet(messageData);
+    // Derive the id from the payload too, so the edit still renders even if
+    // the envelope shape shifts again (computor-org/issues#316).
+    const resolvedId = messageId ?? messageData.id;
+
+    const held = (this.currentData as { messages?: MessageGet[] } | undefined)?.messages;
+    if (held && resolvedId) {
+      const index = held.findIndex((m) => m.id === resolvedId);
+      if (index >= 0) {
+        held[index] = enrichedMessage;
+      }
+    }
 
     this.panel.webview.postMessage({
       command: 'wsMessageUpdate',
-      data: { messageId, ...enrichedMessage }
+      data: { messageId: resolvedId, ...enrichedMessage }
     });
   }
 
-  private handleWsMessageDelete(messageId: string): void {
-    if (!this.panel) {
+  private handleWsMessageDelete(messageId: string | undefined): void {
+    if (!this.panel || !messageId) {
       return;
+    }
+    const holder = this.currentData as { messages?: MessageGet[] } | undefined;
+    if (holder?.messages) {
+      holder.messages = holder.messages.filter((m) => m.id !== messageId);
     }
     this.panel.webview.postMessage({
       command: 'wsMessageDelete',

@@ -425,8 +425,11 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       this.postLoading(true);
       await this.api.updateMessage(data.messageId, updates);
       this.clearReplyAndEdit();
-      // Only refresh via callback if no WebSocket — WS handles the update in real-time
-      if (this.onMessageCreatedCallback && !this.state.wsChannel) {
+      // Always refetch after an explicit Save. The WS echo is supposed to
+      // re-render the edit, but when it is dropped the student's text simply
+      // vanishes from the thread (computor-org/issues#316) — one refetch is
+      // cheap insurance on a deliberate action. Creates still rely on WS.
+      if (this.onMessageCreatedCallback) {
         await this.onMessageCreatedCallback();
       }
     } catch (error: unknown) {

@@ -278,14 +278,17 @@
         if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(mention.items[mention.active]); return; }
       }
     }
-    // Enter sends (reuse the Send button); Shift+Enter inserts a newline.
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Ctrl/Cmd+Enter sends (reuse the Send button); plain Enter inserts a
+    // newline. Enter-to-send kept posting half-written messages — and while
+    // editing, it fired Save mid-thought (computor-org/issues#316). This
+    // matches the comments composer.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       const btn = document.querySelector('.send-button');
       if (btn && !btn.hasAttribute('disabled')) { btn.click(); }
       return;
     }
-    if (e.key === 'Enter' && e.shiftKey) {
+    if (e.key === 'Enter') {
       e.preventDefault();
       insertNewlineAtCaret();
       syncEditorContent();
@@ -637,10 +640,8 @@
           // The placeholder is the only place any of this is documented now
           // that the footer hint is gone — and it costs no layout, since it
           // only shows while the editor is empty and has room to spare.
-          // Enter-sends leads because it is the surprising one: without the
-          // hint, reaching for a new line posts a half-written message.
           'data-placeholder':
-            'Write your message… (Enter to send, Shift+Enter for a new line, Markdown, @ to mention)'
+            'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)'
         }
       });
       // Use saved content or editing message content, rendered as text + chips.
