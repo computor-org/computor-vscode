@@ -1086,6 +1086,7 @@ class UnifiedController {
     // Register filter tree (replaces webview filter panel)
     const tutorSettingsManager = new ComputorSettingsManager(this.context);
     const filterTree = new TutorFilterTreeProvider(api, selection, tutorSettingsManager);
+    if (this.wsService) filterTree.setWebSocketService(this.wsService);
 
     // One way in for "the tutor is now looking at this course", shared by the
     // course node's click, its expand, and picking a member of another course.

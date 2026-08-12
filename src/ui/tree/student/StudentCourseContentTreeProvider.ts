@@ -114,7 +114,43 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 // For structural changes, refresh the whole course
                 this.refreshCourseById(event.course_id);
             },
+            // Unread badges (computor-org/issues#317). Submission messages
+            // reach this client over its user:<id> channel, which every
+            // connection is subscribed to — the course channel never carries
+            // them. Handlers see all events, so filter here.
+            onMessageNew: (_channel, data) => {
+                const message = ((data as any)?.data ?? data) as {
+                    submission_group_id?: string; course_id?: string; course_content_id?: string;
+                };
+                if (!message?.submission_group_id) {
+                    return;
+                }
+                this.scheduleUnreadRefresh(message.course_id, message.course_content_id);
+            },
+            // Reading the thread elsewhere must drop the badge too.
+            onReadUpdate: () => this.scheduleUnreadRefresh(undefined, undefined),
         });
+    }
+
+    private unreadRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+    /** Debounced badge refresh — a burst of messages is one refetch. */
+    private scheduleUnreadRefresh(courseId?: string, courseContentId?: string): void {
+        if (this.unreadRefreshTimer) {
+            clearTimeout(this.unreadRefreshTimer);
+        }
+        this.unreadRefreshTimer = setTimeout(() => {
+            this.unreadRefreshTimer = undefined;
+            this.apiService.clearStudentCourseContentsCache(courseId);
+            if (courseId && courseContentId) {
+                this.refreshContentById(courseId, courseContentId);
+            } else if (courseId) {
+                this.refreshCourseById(courseId);
+            } else {
+                this.courseContentsCache.clear();
+                this.onDidChangeTreeDataEmitter.fire(undefined);
+            }
+        }, 300);
     }
 
     private refreshContentById(courseId: string, courseContentId: string): void {
@@ -614,9 +650,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             
             // Determine if this content is a unit (has descendants)
             const isUnit = contentKind ? contentKind.has_descendants : false;
-            const contentUnread = content.unread_message_count ?? 0;
-            const submissionUnread = submissionGroup?.unread_message_count ?? 0;
-            const totalUnread = contentUnread + submissionUnread;
+            // The backend writes the SAME submission-group unread number into
+            // both the content and the submission group, so summing them
+            // showed every unread message twice (computor-org/issues#317).
+            const totalUnread = submissionGroup?.unread_message_count
+                ?? content.unread_message_count ?? 0;
             
             const node: ContentNode = {
                 name: content.title || content.path.split('.').pop() || content.path,
@@ -655,7 +693,9 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     }
 
     private aggregateUnreadCounts(node: ContentNode): number {
-        const ownUnread = (node.courseContent?.unread_message_count ?? 0) + (node.submissionGroup?.unread_message_count ?? 0);
+        // Same value on both fields — take one, never the sum (see above).
+        const ownUnread = node.submissionGroup?.unread_message_count
+            ?? node.courseContent?.unread_message_count ?? 0;
         let total = ownUnread;
 
         node.children.forEach((child) => {
@@ -1394,7 +1434,8 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // New compact metrics in brackets: Tests, Submissions, Points
         const entries: string[] = [];
 
-        const unreadCount = (this.courseContent?.unread_message_count ?? 0) + (this.submissionGroup?.unread_message_count ?? 0);
+        const unreadCount = this.submissionGroup?.unread_message_count
+            ?? this.courseContent?.unread_message_count ?? 0;
         if (unreadCount > 0) {
             entries.push(`🔔 ${unreadCount}`);
         }
@@ -1430,7 +1471,8 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     
     private setupTooltip(): void {
         const lines: string[] = [];
-        const unreadCount = (this.courseContent?.unread_message_count ?? 0) + (this.submissionGroup?.unread_message_count ?? 0);
+        const unreadCount = this.submissionGroup?.unread_message_count
+            ?? this.courseContent?.unread_message_count ?? 0;
 
         if (this.submissionGroup?.repository) {
             lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);

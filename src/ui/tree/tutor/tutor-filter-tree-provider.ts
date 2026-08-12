@@ -16,6 +16,7 @@ import {
   compareMembersByName
 } from './tutor-filter-tree-items';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import type { WebSocketService } from '../../../services/WebSocketService';
 
 const NO_ORG_KEY = '__no_org__';
 const NO_FAMILY_KEY = '__no_family__';
@@ -111,6 +112,45 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
 
   refreshFilters(): void {
     this.refresh();
+  }
+
+  /**
+   * Live unread badges on members (computor-org/issues#317): a submission
+   * message reaches the tutor over their user:<id> channel, which every
+   * connection is subscribed to — registering a handler bundle with no
+   * channels is enough to see it.
+   */
+  setWebSocketService(wsService: WebSocketService): void {
+    wsService.subscribe([], 'tutor-filter-tree', {
+      onMessageNew: (_channel, data) => {
+        const message = ((data as any)?.data ?? data) as {
+          submission_group_id?: string; course_id?: string;
+        };
+        if (!message?.submission_group_id) {
+          return;
+        }
+        this.scheduleUnreadRefresh(message.course_id ?? undefined);
+      },
+    });
+  }
+
+  private unreadRefreshTimer?: ReturnType<typeof setTimeout>;
+
+  private scheduleUnreadRefresh(courseId?: string): void {
+    if (this.unreadRefreshTimer) {
+      clearTimeout(this.unreadRefreshTimer);
+    }
+    this.unreadRefreshTimer = setTimeout(() => {
+      this.unreadRefreshTimer = undefined;
+      // The roster's unread counts are served from the API's warm tier —
+      // clear it, or the refresh below re-renders the same stale numbers.
+      if (courseId) {
+        this.api.clearTutorCourseMembersCache(courseId);
+      }
+      this.membersCache.clear();
+      this.membersInFlight.clear();
+      this.refresh();
+    }, 300);
   }
 
   private async ensureHierarchyLoaded(): Promise<void> {
