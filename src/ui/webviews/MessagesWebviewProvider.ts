@@ -7,6 +7,7 @@ import { MessageGet, MessageList, MessageQuery } from '../../types/generated';
 import type { MessagesInputPanelProvider } from '../panels/MessagesInputPanel';
 import { WebSocketService } from '../../services/WebSocketService';
 import { notify } from '../../utils/notify';
+import { AUX_COLUMN } from '../editorLayout';
 
 export interface MessageFilters {
   unread?: boolean;
@@ -65,6 +66,9 @@ type EnrichedMessage = MessageList & {
 };
 
 export class MessagesWebviewProvider extends BaseWebviewProvider {
+  // Messages are read alongside the code, like figures and the README.
+  protected override readonly column = AUX_COLUMN;
+
   private apiService: ComputorApiService;
   private inputPanel?: MessagesInputPanelProvider;
   private wsService?: WebSocketService;

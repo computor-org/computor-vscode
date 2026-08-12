@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { renderWebviewPage, getNonce, WebviewPageOptions } from './shared/webviewPage';
+import { AUX_COLUMN, ensureAuxColumn } from '../editorLayout';
 
 export abstract class BaseWebviewProvider {
   protected readonly context: vscode.ExtensionContext;
@@ -19,17 +20,30 @@ export abstract class BaseWebviewProvider {
     ];
   }
 
+  /**
+   * Which editor group this panel belongs in. Subclasses that are auxiliary
+   * surfaces (messages, comments) override with AUX_COLUMN so they join the
+   * figures/README group instead of covering the sources.
+   */
+  protected readonly column: vscode.ViewColumn = vscode.ViewColumn.One;
+
   public async show(title: string, data?: any, opts?: { preserveFocus?: boolean }): Promise<void> {
     // Store current data
     this.currentData = data;
 
+    if (this.column === AUX_COLUMN) {
+      await ensureAuxColumn();
+    }
+
     if (this.panel) {
-      this.panel.reveal(undefined, opts?.preserveFocus ?? false);
+      // An explicit column: reveal(undefined) means "the active group", which
+      // slowly migrated any re-shown panel to wherever focus happened to be.
+      this.panel.reveal(this.column, opts?.preserveFocus ?? false);
     } else {
       this.panel = vscode.window.createWebviewPanel(
         this.viewType,
         title,
-        { viewColumn: vscode.ViewColumn.One, preserveFocus: opts?.preserveFocus ?? false },
+        { viewColumn: this.column, preserveFocus: opts?.preserveFocus ?? false },
         {
           enableScripts: true,
           retainContextWhenHidden: true,
