@@ -4,6 +4,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberCommentList } from '../../types/generated';
 import { CourseMemberCommentsInputPanelProvider } from '../panels/CourseMemberCommentsInputPanel';
 import { notify } from '../../utils/notify';
+import { AUX_COLUMN } from '../editorLayout';
 
 interface CommentsWebviewData {
   courseMemberId: string;
@@ -12,6 +13,9 @@ interface CommentsWebviewData {
 }
 
 export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
+  // Comments are an auxiliary surface — same group as figures and README.
+  protected override readonly column = AUX_COLUMN;
+
   private apiService: ComputorApiService;
   private inputPanel?: CourseMemberCommentsInputPanelProvider;
 

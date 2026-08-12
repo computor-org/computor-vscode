@@ -7,7 +7,7 @@ import {
   FigureFolderWatcher,
   resolveFiguresDirectory
 } from '../../services/FigureFolderWatcher';
-import { AUX_COLUMN } from '../editorLayout';
+import { AUX_COLUMN, ensureAuxColumn } from '../editorLayout';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 
 /** A figure as the webview needs it: the image travels with it. */
@@ -42,8 +42,13 @@ export class FiguresPanel implements vscode.Disposable {
 
   /** Open the panel, or bring it forward if it is already open. */
   async show(preserveFocus: boolean): Promise<void> {
+    // The aux group must exist first, or the panel's column request is
+    // dropped and it lands on top of the sources — and reveal must re-assert
+    // AUX_COLUMN, not the stale column the panel first landed in
+    // (computor-org/issues#286 follow-up).
+    await ensureAuxColumn();
     if (this.panel) {
-      this.panel.reveal(this.panel.viewColumn, preserveFocus);
+      this.panel.reveal(AUX_COLUMN, preserveFocus);
     } else {
       this.create(preserveFocus);
     }

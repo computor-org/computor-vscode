@@ -30,6 +30,30 @@ export const SOURCE_COLUMN = vscode.ViewColumn.One;
 export const AUX_COLUMN = vscode.ViewColumn.Two;
 
 /**
+ * Make sure the auxiliary group exists before a webview panel opens into it.
+ *
+ * VS Code quietly discards a webview panel's requested column when there is
+ * exactly one editor group and it is empty (MainThreadWebviewPanels
+ * getTargetGroupFromShowOptions), so a README or the Figures panel opened
+ * before any source file landed in group 1 — and stayed there. Text documents
+ * do not need this: their open path creates missing groups on its own.
+ *
+ * setEditorLayout keeps the currently active group active, so this does not
+ * steal focus; the guard leaves any richer user layout alone.
+ */
+export async function ensureAuxColumn(): Promise<void> {
+  // Optional chaining: hosts without the tabGroups API (tests) just skip.
+  const groupCount = vscode.window.tabGroups?.all?.length ?? 2;
+  if (groupCount >= 2) {
+    return;
+  }
+  await vscode.commands.executeCommand('vscode.setEditorLayout', {
+    orientation: 0,
+    groups: [{}, {}]
+  });
+}
+
+/**
  * Images are figures. A student's plot arrives as a PNG, and the workspace
  * templates map these extensions to the `computor.imagePreview` editor via
  * `workbench.editorAssociations`, so opening one is the same gesture as

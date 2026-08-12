@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AUX_COLUMN } from '../editorLayout';
+import { AUX_COLUMN, ensureAuxColumn } from '../editorLayout';
 import { renderWebviewPage } from './shared/webviewPage';
 
 export interface MarkdownPreviewOptions {
@@ -39,6 +39,13 @@ export async function showMarkdownPreview(
   // always true when the student is looking at a figure
   // (computor-org/issues#286).
   const column = options.viewColumn ?? AUX_COLUMN;
+
+  // Opened before any source file, a webview panel's column request is
+  // silently dropped when the only group is empty — force the second group
+  // to exist first (computor-org/issues#286 follow-up).
+  if (column === AUX_COLUMN) {
+    await ensureAuxColumn();
+  }
 
   // The resource roots must follow the previewed file: a reused panel would
   // otherwise keep the first file's roots and images from any other
