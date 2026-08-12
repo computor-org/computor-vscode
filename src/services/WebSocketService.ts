@@ -14,14 +14,17 @@ export interface WsMessageNew {
 export interface WsMessageUpdate {
   type: 'message:update';
   channel: string;
-  message_id: string;
+  /** Absent on the wire today — the id arrives nested inside `data`. */
+  message_id?: string;
   data: Record<string, unknown>;
 }
 
 export interface WsMessageDelete {
   type: 'message:delete';
   channel: string;
-  message_id: string;
+  /** Absent on the wire today — the id arrives nested inside `data`. */
+  message_id?: string;
+  data?: { message_id?: string };
 }
 
 export interface WsTypingUpdate {
@@ -149,8 +152,8 @@ export type ChannelScope = 'submission_group' | 'course_content' | 'course';
 
 export interface WebSocketEventHandlers {
   onMessageNew?: (channel: string, data: Record<string, unknown>) => void;
-  onMessageUpdate?: (channel: string, messageId: string, data: Record<string, unknown>) => void;
-  onMessageDelete?: (channel: string, messageId: string) => void;
+  onMessageUpdate?: (channel: string, messageId: string | undefined, data: Record<string, unknown>) => void;
+  onMessageDelete?: (channel: string, messageId: string | undefined) => void;
   onTypingUpdate?: (channel: string, userId: string, userName: string, isTyping: boolean) => void;
   onReadUpdate?: (channel: string, messageId: string, userId: string, read?: boolean) => void;
   onMaintenanceActivated?: (message: string, activatedAt: string) => void;
@@ -474,17 +477,29 @@ export class WebSocketService {
           });
           break;
 
-        case 'message:update':
+        case 'message:update': {
+          // The broadcast payload nests the envelope: message.data is
+          // {channel, message_id, data: MessageGet}. Reading message_id off
+          // the top level yielded undefined, and every handler dropped the
+          // event — an edited message never re-rendered
+          // (computor-org/issues#316). Top level is still read first in case
+          // the backend ever flattens the shape.
+          const inner = (message.data ?? {}) as { message_id?: string; data?: { id?: string } };
+          const messageId = message.message_id ?? inner.message_id ?? inner.data?.id;
           this.eventHandlers.forEach((handlers) => {
-            handlers.onMessageUpdate?.(message.channel, message.message_id, message.data);
+            handlers.onMessageUpdate?.(message.channel, messageId, message.data);
           });
           break;
+        }
 
-        case 'message:delete':
+        case 'message:delete': {
+          const inner = (message.data ?? {}) as { message_id?: string };
+          const messageId = message.message_id ?? inner.message_id;
           this.eventHandlers.forEach((handlers) => {
-            handlers.onMessageDelete?.(message.channel, message.message_id);
+            handlers.onMessageDelete?.(message.channel, messageId);
           });
           break;
+        }
 
         case 'typing:update':
           console.log('[WebSocket] Received typing:update raw message:', JSON.stringify(message));
