@@ -752,11 +752,12 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
     }
 
     const nodeId = `content-${content.id}`;
-    const expandedState = isSubmittable
-      ? vscode.TreeItemCollapsibleState.None
-      : hasChildren
-        ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
-        : vscode.TreeItemCollapsibleState.None;
+    // Units expand into their child contents; submittable leaves (assignments)
+    // expand into the local assignment directory served by
+    // getAssignmentDirectoryChildren, so both need to be collapsible.
+    const expandedState = hasChildren || isSubmittable
+      ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+      : vscode.TreeItemCollapsibleState.None;
 
     return new CourseContentTreeItem({
       courseContent: content,
@@ -1167,7 +1168,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
           const isSubmittable = this.isContentSubmittable(contentType);
           
           const nodeId = `content-${parentContent.id}`;
-          const expandedState = hasChildren ? 
+          const expandedState = hasChildren || isSubmittable ?
             (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
             vscode.TreeItemCollapsibleState.None;
           
