@@ -256,6 +256,15 @@ export class RepositoryTokenManager {
   }
 
   /**
+   * Persist the backend-issued Forgejo clone token. Rotated on every provision
+   * call, so whoever re-provisions must store the fresh one here (same key the
+   * provisioning service writes).
+   */
+  async storeManagedForgejoToken(serverUrl: string, token: string): Promise<void> {
+    await this.context.secrets.store(`forgejo-token-${serverUrl}`, token);
+  }
+
+  /**
    * Store token securely for a GitLab URL
    */
   async storeToken(gitlabUrl: string, token: string): Promise<void> {

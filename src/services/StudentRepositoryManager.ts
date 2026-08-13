@@ -33,6 +33,8 @@ export class StudentRepositoryManager {
   private gitLabTokenManager: RepositoryTokenManager;
   private apiService: ComputorApiService;
   private corruptIndexHandler?: (repoPath: string) => void;
+  /** Repo root → course, so credential refresh can re-provision at push time. */
+  private courseIdByRepoPath = new Map<string, string>();
 
   constructor(
     context: vscode.ExtensionContext,
@@ -338,7 +340,7 @@ export class StudentRepositoryManager {
    * Set up or update a unique repository and link assignments to it
    */
   private async setupUniqueRepository(
-    courseId: string, // Used for logging and upstream URL
+    courseId: string, // Course scope for credential refresh and logging
     fullPath: string, // Repository full_path (e.g., "course/student-123")
     cloneUrl: string,
     repoInfos: RepositoryInfo[],
@@ -351,7 +353,6 @@ export class StudentRepositoryManager {
     onProgress?: (message: string) => void,
     cancellationToken?: vscode.CancellationToken
   ): Promise<string | undefined> {
-    void courseId; // Only used for logging
     const report = onProgress || (() => {});
     let effectiveToken = token;
     // Directory scheme: when this IS the course-level repo, use the same
@@ -370,6 +371,14 @@ export class StudentRepositoryManager {
       }
     }
     const repoName = repoInfos[0]?.assignmentTitle || fullPath;
+    this.courseIdByRepoPath.set(repoPath, courseId);
+
+    // Managed Forgejo: the embedded origin credential can be rotated away by
+    // any provision call elsewhere; let git operations re-mint and retry once
+    // on authentication failures (computor-org/issues#318).
+    const refreshAuth = forgejoManaged
+      ? () => this.refreshForgejoCredentials(courseId, repoPath)
+      : undefined;
 
     const repoExists = await this.directoryExists(repoPath);
 
@@ -389,7 +398,7 @@ export class StudentRepositoryManager {
       report(`Updating ${repoName}...`);
       // Managed Forgejo repos authenticate via the credentials already embedded in
       // their remote, so the (possibly absent) token here is only bookkeeping.
-      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken as string, repoName, report, cancellationToken);
+      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken as string, repoName, report, cancellationToken, refreshAuth);
     }
 
     // Merge new template commits if we resolved an upstream. CTGit.forkUpdate
@@ -397,7 +406,7 @@ export class StudentRepositoryManager {
     if (upstreamUrl) {
       console.log('[StudentRepositoryManager] Checking for template updates');
       report('Checking for template updates...');
-      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, effectiveToken, upstreamAuth);
+      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, effectiveToken, upstreamAuth, refreshAuth);
       if (updated) {
         console.log('[StudentRepositoryManager] Repository updated from template');
         report('Template updates merged.');
@@ -522,7 +531,8 @@ export class StudentRepositoryManager {
     repoPath: string,
     upstreamUrl: string,
     token?: string,
-    upstreamAuth?: { username: string; password: string }
+    upstreamAuth?: { username: string; password: string },
+    refreshAuth?: () => Promise<{ username: string; password: string } | undefined>
   ): Promise<boolean> {
     let authenticatedUpstreamUrl: string;
     if (upstreamAuth) {
@@ -551,12 +561,35 @@ export class StudentRepositoryManager {
         console.log(`[StudentRepositoryManager] Updated from template (${result.behindCount} commit(s) behind upstream/${result.defaultBranch})`);
       }
       return result.updated;
-    } catch (error) {
+    } catch (initialError) {
+      let error = initialError;
       console.error('[StudentRepositoryManager] Failed to sync from template:', error);
 
       if (this.isCorruptIndexError(error) && this.corruptIndexHandler) {
         this.corruptIndexHandler(repoPath);
         return false;
+      }
+
+      // A dead embedded credential (rotated away by a provision call in some
+      // other course or environment) is healed by re-minting and retrying
+      // once (computor-org/issues#318).
+      if (refreshAuth && this.isAuthenticationError(error)) {
+        const creds = await refreshAuth();
+        if (creds) {
+          try {
+            const retry = await new CTGit(repoPath).forkUpdate(
+              addBasicCredentialsToGitUrl(upstreamUrl, creds.username, creds.password),
+              { autoResolveConflicts: true }
+            );
+            if (retry.updated) {
+              console.log(`[StudentRepositoryManager] Updated from template after credential refresh (${retry.behindCount} commit(s) behind upstream/${retry.defaultBranch})`);
+            }
+            return retry.updated;
+          } catch (retryError) {
+            console.error('[StudentRepositoryManager] Template sync still failing after credential refresh:', retryError);
+            error = retryError;
+          }
+        }
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -572,6 +605,55 @@ export class StudentRepositoryManager {
 
       return false;
     }
+  }
+
+  /**
+   * Re-mint the managed-Forgejo clone credential and rewrite origin.
+   *
+   * The backend issues ONE clone token per user and Forgejo server (named
+   * `computor-vscode`), and every provision call — another course, another
+   * environment such as the student's own VS Code — rotates it. The copy
+   * embedded in this clone's origin remote can therefore die at any moment
+   * (computor-org/issues#318). Provisioning is idempotent and always returns
+   * a freshly rotated credential, so an authentication failure is healed by
+   * re-provisioning, rewriting origin, and letting the caller retry once.
+   */
+  private async refreshForgejoCredentials(
+    courseId: string,
+    repoPath: string
+  ): Promise<{ username: string; password: string } | undefined> {
+    try {
+      const repo = await this.apiService.provisionStudentRepository(courseId);
+      if (!repo?.http_url || !repo.clone_username || !repo.clone_token) {
+        console.warn('[StudentRepositoryManager] Re-provisioning returned no clone credential');
+        return undefined;
+      }
+      if (repo.server_url) {
+        await this.gitLabTokenManager.storeManagedForgejoToken(repo.server_url, repo.clone_token);
+      }
+      const authUrl = addBasicCredentialsToGitUrl(repo.http_url, repo.clone_username, repo.clone_token);
+      await execAsyncWithTimeout(`git remote set-url origin "${authUrl}"`, { cwd: repoPath, timeout: 15_000 });
+      console.log(`[StudentRepositoryManager] Refreshed managed Forgejo credentials for ${repoPath}`);
+      return { username: repo.clone_username, password: repo.clone_token };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[StudentRepositoryManager] Could not refresh Forgejo credentials:', redactGitCredentials(message));
+      return undefined;
+    }
+  }
+
+  /** Course for a path inside a repo this session set up (root or subdir). */
+  private courseIdForRepoPath(p: string): string | undefined {
+    const direct = this.courseIdByRepoPath.get(p);
+    if (direct) {
+      return direct;
+    }
+    for (const [root, courseId] of this.courseIdByRepoPath) {
+      if (p.startsWith(root + path.sep)) {
+        return courseId;
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -643,9 +725,10 @@ export class StudentRepositoryManager {
     token: string,
     repoName: string,
     report: (message: string) => void,
-    cancellationToken?: vscode.CancellationToken
+    cancellationToken?: vscode.CancellationToken,
+    refreshAuth?: () => Promise<{ username: string; password: string } | undefined>
   ): Promise<string> {
-    try {
+    const attempt = async (): Promise<void> => {
       await execAsyncWithTimeout('git fetch --all', {
         cwd: repoPath,
         env: {
@@ -671,9 +754,30 @@ export class StudentRepositoryManager {
           cancellationToken
         });
       }
+    };
+
+    try {
+      await attempt();
       return token;
-    } catch (error: any) {
+    } catch (initialError: any) {
+      let error = initialError;
       console.warn(`[StudentRepositoryManager] Failed to update repository at ${repoPath}:`, error);
+
+      // A dead embedded credential (rotated away by a provision call in some
+      // other course or environment) is healed by re-minting and retrying
+      // once (computor-org/issues#318).
+      if (refreshAuth && this.isAuthenticationError(error)) {
+        report(`Refreshing credentials for ${repoName}...`);
+        if (await refreshAuth()) {
+          try {
+            await attempt();
+            return token;
+          } catch (retryError: any) {
+            console.warn(`[StudentRepositoryManager] Update still failing after credential refresh at ${repoPath}:`, retryError);
+            error = retryError;
+          }
+        }
+      }
 
       if (!isHistoryRewriteError(error)) {
         return token;
@@ -763,6 +867,18 @@ export class StudentRepositoryManager {
       const origin = extractOriginFromGitUrl(sanitizedUrl);
       if (!origin) {
         notify.error('Unable to determine GitLab host for this repository.');
+        return false;
+      }
+
+      // Managed Forgejo: students never see their backend-minted token, so
+      // prompting for one is a dead end — re-provision instead
+      // (computor-org/issues#318).
+      if (await this.gitLabTokenManager.getManagedForgejoToken(origin)) {
+        const courseId = this.courseIdForRepoPath(repoPath);
+        if (courseId) {
+          return !!(await this.refreshForgejoCredentials(courseId, repoPath));
+        }
+        notify.error('Your repository access has expired. Use the refresh button in the course view to restore it.');
         return false;
       }
 
