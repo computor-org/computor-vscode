@@ -1088,12 +1088,27 @@ export class LecturerCommands {
         return;
       }
 
-      // Filter out the current type and prepare selection items
+      // Get full content type info for current type to show what we're changing from
+      const currentType = contentTypes.find(ct => ct.id === item.courseContent.course_content_type_id);
+      const currentTypeLabel = currentType ? (currentType.title || currentType.slug) : 'Unknown';
+      const currentKind = item.courseContent.course_content_kind_id
+        || currentType?.course_content_kind_id;
+
+      // Same-kind switches are free; a cross-kind switch (assignment ↔ unit)
+      // is only accepted by the backend while the content is empty — no
+      // children, no assigned example, no submissions (computor-org/issues#320).
+      // Same-kind types come first; cross-kind ones carry a warning so the
+      // repair case stays reachable without inviting the accident back.
       const availableTypes = contentTypes
         .filter(ct => ct.id !== item.courseContent.course_content_type_id)
+        .sort((a, b) =>
+          Number(b.course_content_kind_id === currentKind) - Number(a.course_content_kind_id === currentKind)
+        )
         .map(ct => ({
           label: ct.title || ct.slug,
-          description: ct.course_content_kind_id || 'unknown',
+          description: ct.course_content_kind_id === currentKind
+            ? (ct.course_content_kind_id || 'unknown')
+            : `$(warning) ${ct.course_content_kind_id || 'unknown'} — changes the kind; only possible while the content is empty`,
           id: ct.id,
           contentType: ct
         }));
@@ -1102,10 +1117,6 @@ export class LecturerCommands {
         notify.info('No other content types available to switch to.');
         return;
       }
-
-      // Get full content type info for current type to show what we're changing from
-      const currentType = contentTypes.find(ct => ct.id === item.courseContent.course_content_type_id);
-      const currentTypeLabel = currentType ? (currentType.title || currentType.slug) : 'Unknown';
 
       const selectedType = await vscode.window.showQuickPick(availableTypes, {
         placeHolder: `Change from "${currentTypeLabel}" to...`,
