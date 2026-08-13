@@ -87,7 +87,9 @@ export function showOptions(
  *
  * `preview` is deliberately left alone unless a caller asks: `vscode.open`
  * follows the user's `workbench.editor.enablePreview` setting, and forcing it
- * would pin a tab for every file clicked in the tree.
+ * would pin a tab for every file clicked in the tree. A single tree click is
+ * therefore a preview; the command handler below turns a double click into
+ * `preview: false` (computor-org/issues#319).
  */
 export async function openFile(
   uri: vscode.Uri | string,
@@ -101,11 +103,25 @@ export async function openFile(
 export const OPEN_FILE_COMMAND = 'computor.openFile';
 
 export function registerEditorLayout(context: vscode.ExtensionContext): void {
+  // Tree views have no double-click event — the item's command just fires once
+  // per click. So the handler remembers the last file and time it saw, and a
+  // second click on the same file within the double-click window reopens it
+  // with `preview: false`: same tab, now pinned. Single click stays a preview
+  // that the next click reuses; double click means "keep this one open"
+  // (computor-org/issues#319). Keyed on the uri, not the tree item, because
+  // the uri is the tab's identity and survives tree refreshes in between.
+  const DOUBLE_CLICK_MS = 400;
+  let lastOpen: { key: string; at: number } | undefined;
   context.subscriptions.push(
     vscode.commands.registerCommand(
       OPEN_FILE_COMMAND,
       async (uri: vscode.Uri | string, extra?: vscode.TextDocumentShowOptions) => {
-        await openFile(uri, extra);
+        const target = typeof uri === 'string' ? vscode.Uri.file(uri) : uri;
+        const key = target.toString();
+        const now = Date.now();
+        const pin = lastOpen?.key === key && now - lastOpen.at < DOUBLE_CLICK_MS;
+        lastOpen = { key, at: now };
+        await openFile(target, pin ? { ...extra, preview: false } : extra);
       }
     )
   );

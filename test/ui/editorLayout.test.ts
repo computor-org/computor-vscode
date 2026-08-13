@@ -1,6 +1,13 @@
 import { expect } from 'chai';
 import { commands, Uri, ViewColumn } from '../helpers/vscode-stub';
-import { AUX_COLUMN, columnFor, openFile, showOptions, SOURCE_COLUMN } from '../../src/ui/editorLayout';
+import {
+  AUX_COLUMN,
+  columnFor,
+  openFile,
+  registerEditorLayout,
+  showOptions,
+  SOURCE_COLUMN
+} from '../../src/ui/editorLayout';
 
 /**
  * A file opened from the tree used to land wherever focus happened to be, so
@@ -82,6 +89,75 @@ describe('editorLayout', () => {
     it('sends a source file to the source group', async () => {
       await openFile(Uri.file('/w/math_constants.m') as any);
       expect(calls[0]![2]).to.deep.equal({ viewColumn: SOURCE_COLUMN });
+    });
+  });
+
+  describe('computor.openFile double click', () => {
+    // A single tree click opens a preview tab that the next click reuses, so
+    // opening a second file silently closed the first
+    // (computor-org/issues#319). Tree views have no double-click event, so the
+    // command handler counts a second click on the same file inside the
+    // double-click window as "keep this one open" and pins it.
+    const originalRegister = commands.registerCommand;
+    const originalExecute = commands.executeCommand;
+    const originalNow = Date.now;
+    let handler: (uri: any, extra?: any) => Promise<void>;
+    let calls: any[][];
+    let now: number;
+
+    beforeEach(() => {
+      calls = [];
+      now = 100_000;
+      Date.now = () => now;
+      (commands as any).registerCommand = (_id: string, cb: any) => {
+        handler = cb;
+        return { dispose() {} };
+      };
+      (commands as any).executeCommand = async (...args: any[]) => {
+        calls.push(args);
+        return undefined;
+      };
+      registerEditorLayout({ subscriptions: [] } as any);
+    });
+
+    afterEach(() => {
+      Date.now = originalNow;
+      (commands as any).registerCommand = originalRegister;
+      (commands as any).executeCommand = originalExecute;
+    });
+
+    it('leaves a single click as a preview', async () => {
+      await handler('/w/a.m');
+      expect(calls[0]![2]).to.not.have.property('preview');
+    });
+
+    it('pins on a double click on the same file', async () => {
+      await handler('/w/a.m');
+      now += 200;
+      await handler('/w/a.m');
+      expect(calls[0]![2]).to.not.have.property('preview');
+      expect(calls[1]![2]).to.include({ preview: false });
+    });
+
+    it('does not pin two quick clicks on different files', async () => {
+      await handler('/w/a.m');
+      now += 200;
+      await handler('/w/b.m');
+      expect(calls[1]![2]).to.not.have.property('preview');
+    });
+
+    it('leaves a slow second click as a preview', async () => {
+      await handler('/w/a.m');
+      now += 1000;
+      await handler('/w/a.m');
+      expect(calls[1]![2]).to.not.have.property('preview');
+    });
+
+    it('keeps the column rules on the pinning open', async () => {
+      await handler('/w/fig.png');
+      now += 200;
+      await handler('/w/fig.png');
+      expect(calls[1]![2]).to.include({ preview: false, viewColumn: AUX_COLUMN });
     });
   });
 });
