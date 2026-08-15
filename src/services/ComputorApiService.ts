@@ -82,6 +82,7 @@ import {
   MessageCreate,
   MessageUpdate,
   MessageQuery,
+  MessageCountsGet,
   MessageReadBulkResult,
   MessageMentionRef,
   MentionableQuery,
@@ -3043,6 +3044,23 @@ export class ComputorApiService {
       maxRetries: 2,
       exponentialBackoff: true
     });
+  }
+
+  /**
+   * Aggregated message/unread counts per (scope, resolved course) — powers
+   * the inbox badges at every tree level without paging messages.
+   * Returns undefined against a backend without GET /messages/counts (or on
+   * any error) so the tree can fall back to counting fetched pages.
+   */
+  async getMessageCounts(): Promise<MessageCountsGet | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<MessageCountsGet>('/messages/counts');
+      return response.data;
+    } catch (error) {
+      console.warn('Failed to get message counts (older backend?):', error);
+      return undefined;
+    }
   }
 
   async getMessage(id: string): Promise<MessageGet | undefined> {
