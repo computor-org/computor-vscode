@@ -55,10 +55,6 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         await this.handleCreateChild(message.data);
         break;
 
-      case 'moveContent':
-        await this.handleMoveContent(message.data);
-        break;
-
       case 'deleteContent':
         await this.handleDeleteContent(message.data);
         break;
@@ -114,37 +110,6 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
     }
   }
 
-
-  protected async handleMoveContent(data?: Record<string, unknown>): Promise<void> {
-    if (!data) { return; }
-    try {
-      const courseId = data.courseId as string;
-      const contentId = data.contentId as string;
-      const newPath = data.path as string;
-      const position = data.position as number;
-      const updates = data.updates as Record<string, unknown> | undefined;
-
-      await this.apiService.moveCourseContent(courseId, contentId, newPath, position);
-
-      if (updates && Object.keys(updates).length > 0) {
-        await this.apiService.updateCourseContent(courseId, contentId, updates);
-      }
-
-      notify.info('Content moved successfully');
-
-      if (this.treeDataProvider) {
-        this.treeDataProvider.updateNode('courseContent', contentId, {
-          ...updates,
-          path: newPath,
-          course_id: courseId
-        });
-      }
-
-      await this.handleRefresh({ contentId });
-    } catch (error: any) {
-      notify.error(`Failed to move content: ${error?.message || error}`);
-    }
-  }
 
   protected async handleCreateChild(data?: Record<string, unknown>): Promise<void> {
     await vscode.commands.executeCommand('computor.lecturer.createCourseContent', data);
