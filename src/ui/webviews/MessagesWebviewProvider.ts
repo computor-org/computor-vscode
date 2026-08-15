@@ -191,7 +191,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     if (this.inputPanel) {
       this.inputPanel.setTarget(target, rawMessages);
-      this.inputPanel.setOnMessageCreated(() => this.refreshMessages({ skipIndicatorUpdate: true }));
+      this.inputPanel.setOnMessageCreated(() => {
+        // The inbox tree learns about the new message via WS too, but the
+        // author should see their own post in the tree immediately — and a
+        // WS hiccup must not leave it invisible (issue #322 follow-up).
+        void vscode.commands.executeCommand('computor.chat.refresh');
+        return this.refreshMessages({ skipIndicatorUpdate: true });
+      });
       // Set unconditionally, including to undefined. Guarding on truthiness
       // left the previous panel's channel in place when the new one had none,
       // and the input panel skips its post-send refresh whenever it believes

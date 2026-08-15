@@ -55,15 +55,18 @@ const SCOPE_LABELS: Record<MessageScope, string> = {
   global: 'System announcement'
 };
 
+// Announcement rows carry their origin's icon so a course notice, a group
+// notice and an assignment notice are tellable apart at a glance (issue #322
+// follow-up) — the subtitle names the origin, the icon shapes the scan.
 const SCOPE_ICONS: Record<MessageScope, string> = {
   user: 'mail',
   course_member: 'account',
-  submission_group: 'beaker',
+  submission_group: 'comment',
   course_group: 'organization',
   course_content: 'symbol-file',
-  course: 'mortar-board',
+  course: 'megaphone',
   course_family: 'folder-library',
-  organization: 'organization',
+  organization: 'law',
   global: 'globe'
 };
 
@@ -160,7 +163,9 @@ export class ChatThreadItem extends vscode.TreeItem {
         highlights: [[0, thread.title.length]]
       };
     } else {
-      this.iconPath = new vscode.ThemeIcon(announcement ? 'megaphone' : 'comment');
+      this.iconPath = new vscode.ThemeIcon(
+        announcement ? SCOPE_ICONS[thread.scope] : 'comment'
+      );
     }
 
     const subtitle = thread.subtitle ? `${thread.subtitle} · ` : '';

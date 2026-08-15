@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { kindForScope } from '../../../services/MessagePermissions';
-import { MessageLabelResolver, shortId } from '../../../services/MessageLabelResolver';
+import { MessageLabelResolver, messageContextOf, shortId } from '../../../services/MessageLabelResolver';
 import { buildTargetContext } from '../../../services/messageTargets';
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
@@ -1066,7 +1066,16 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
         byTarget.get(targetId)!.push(m);
       }
-      const threads = this.buildThreadRows(scope, byTarget);
+      let threads = this.buildThreadRows(scope, byTarget);
+      // A tutor's Assignments section is an inbox of open questions, not an
+      // archive: in a course with 100 students × 60 assignments, listing
+      // every conversation ever would drown the ones that need an answer.
+      // Read staff conversations drop out (they stay reachable through the
+      // Tutor view, and mark-as-unread pins one back); a reader's own
+      // conversations always stay — a student has one per assignment.
+      if (kind === 'assignments') {
+        threads = threads.filter(t => t.unreadCount > 0 || this.isThreadMember(t));
+      }
       for (const t of threads) {
         // Under a course node the course name is chrome; say what kind of
         // announcement it is (or which group/assignment it addresses).
@@ -1089,9 +1098,27 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       }
     }
     if (items.length === 0) {
-      items.push(new ChatEmptyItem('No messages.'));
+      const hasHiddenRead = kind === 'assignments'
+        && scopes.some(scope => (this.courseScopeStates.get(scope)?.get(courseId)?.messages.length ?? 0) > 0);
+      items.push(new ChatEmptyItem(
+        hasHiddenRead
+          ? 'No unread conversations. Read ones stay reachable from the Tutor view.'
+          : 'No messages.'
+      ));
     }
     return items;
+  }
+
+  /** Whether the current user belongs to the thread's submission group.
+   *  Without a server context (older backend) the answer is unknowable —
+   *  fail open so nothing silently disappears. */
+  private isThreadMember(thread: ChatThread): boolean {
+    const ctx = messageContextOf(thread.messages);
+    if (!ctx) { return true; }
+    const members = ctx.submission_group_members ?? [];
+    return Boolean(
+      this.currentUserId && members.some(m => m.user_id === this.currentUserId)
+    );
   }
 
   // ----- Internals -----
@@ -1168,6 +1195,34 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         newCourseStates.set(scope, inner);
       }
       this.courseScopeStates = newCourseStates;
+
+      // Re-pull every bucket that has been fetched before. Preserving the old
+      // state alone froze it: a WS-triggered reload refreshed the counts but
+      // an already-expanded section kept its stale page, so a newly posted
+      // announcement never surfaced until the window reloaded. Only sections
+      // the user actually opened refetch, so the fan-out stays bounded.
+      const refreshTasks: Promise<void>[] = [];
+      for (const [scope, inner] of newCourseStates) {
+        for (const [courseId, state] of inner) {
+          if (state.total < 0) { continue; }
+          refreshTasks.push((async () => {
+            try {
+              const page = await this.api.listMessagesPage({
+                scope,
+                course_id: courseId,
+                skip: 0,
+                limit: Math.max(state.fetched, ChatInboxTreeProvider.SCOPE_PAGE_SIZE)
+              });
+              state.messages = page.items;
+              state.fetched = page.items.length;
+              state.total = page.total;
+            } catch {
+              // keep the stale page over showing an error for one bucket
+            }
+          })());
+        }
+      }
+      await Promise.all(refreshTasks);
 
       // A v1 "everything muted" state maps onto the course list only once we
       // know it — finish that migration here.
