@@ -17,6 +17,7 @@ import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '..
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { notify } from '../utils/notify';
+import { pickDescriptionFile } from '../utils/descriptionLanguage';
 interface TutorFilterRefreshable {
   refreshFilters(): void;
 }
@@ -1120,7 +1121,6 @@ export class TutorCommands {
    * Searches recursively in case files are in subdirectories.
    */
   private async openReadmeFromDirectory(dir: string): Promise<void> {
-    let descriptionPath: string | undefined;
     let preferredLanguage: string | null = null;
 
     // Try to get language preference
@@ -1131,7 +1131,7 @@ export class TutorCommands {
       // Ignore language preference errors
     }
 
-    // Pattern matches: README.md, README_en.md, index.md, index_de.md, etc.
+    // Matches README.md, README_en.md, index.md, index_de.md, etc.
     const descriptionPattern = /^(README|index)(_[a-z]{2})?\.md$/i;
 
     // Find all description files recursively
@@ -1153,25 +1153,7 @@ export class TutorCommands {
       return results;
     };
 
-    const allDescriptionFiles = findDescriptionFiles(dir);
-
-    // Check for localized version first (both README_xx.md and index_xx.md)
-    if (preferredLanguage) {
-      const localizedPattern = new RegExp(`(README|index)_${preferredLanguage}\\.md$`, 'i');
-      const localized = allDescriptionFiles.find(f => localizedPattern.test(f));
-      if (localized) {
-        descriptionPath = localized;
-      }
-    }
-
-    // Fall back to finding any description file
-    if (!descriptionPath && allDescriptionFiles.length > 0) {
-      // Prefer non-localized versions (README.md or index.md)
-      const basicFile = allDescriptionFiles.find(f =>
-        f.endsWith('README.md') || f.endsWith('index.md')
-      );
-      descriptionPath = basicFile || allDescriptionFiles[0];
-    }
+    const descriptionPath = pickDescriptionFile(findDescriptionFiles(dir), preferredLanguage);
 
     if (descriptionPath && fs.existsSync(descriptionPath)) {
       // Self-contained preview webview (renders under code-server on

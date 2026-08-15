@@ -793,6 +793,11 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.previewDescriptionLanguage",
+        "title": "Preview Description in Another Language",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.showMessages",
         "title": "Show Messages",
         "icon": "$(comment-discussion)",
@@ -2152,6 +2157,11 @@
           "command": "computor.student.viewSubmissionGroup",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
           "group": "2_details@1"
+        },
+        {
+          "command": "computor.student.previewDescriptionLanguage",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
+          "group": "2_details@2"
         },
         {
           "command": "computor.student.exportCourseExamples",

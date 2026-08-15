@@ -25,6 +25,11 @@ import { redactGitCredentials } from '../utils/gitUrlHelpers';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
 import { notify } from '../utils/notify';
+import {
+  availableDescriptionLanguages,
+  listDescriptionFiles,
+  pickDescriptionFile
+} from '../utils/descriptionLanguage';
 
 // (Deprecated legacy types removed)
 
@@ -116,6 +121,26 @@ export class StudentCommands {
     this.courseContentTreeProvider = provider;
   }
 
+  /**
+   * Language code -> readable name, for the language picker. Falls back to
+   * bare codes when the server cannot be reached — a picker listing "DE" is
+   * still usable, an error instead of a picker is not.
+   */
+  private async languageNames(): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    try {
+      for (const language of await this.apiService.getLanguages()) {
+        const label = language.native_name && language.native_name !== language.name
+          ? `${language.name} (${language.native_name})`
+          : language.name;
+        names.set(language.code.toLowerCase(), label);
+      }
+    } catch (error) {
+      console.warn('[previewDescriptionLanguage] Failed to load language names:', error);
+    }
+    return names;
+  }
+
   private async openReadmeIfExists(dir: string, silent: boolean = false): Promise<boolean> {
     try {
       let readmePath: string | undefined;
@@ -137,24 +162,9 @@ export class StudentCommands {
         console.warn('[openReadmeIfExists] Failed to fetch language preferences:', error);
       }
 
-      if (preferredLanguage) {
-        const localizedPath = path.join(dir, `README_${preferredLanguage}.md`);
-        if (fs.existsSync(localizedPath)) {
-          readmePath = localizedPath;
-        }
-      }
-
-      if (!readmePath) {
-        const files = fs.readdirSync(dir);
-        const readmeFiles = files.filter(f => f.match(/^README(_[a-z]{2})?\.md$/i));
-
-        if (readmeFiles.length === 1) {
-          readmePath = path.join(dir, readmeFiles[0]!);
-        } else if (readmeFiles.includes('README.md')) {
-          readmePath = path.join(dir, 'README.md');
-        } else if (readmeFiles.length > 0) {
-          readmePath = path.join(dir, readmeFiles[0]!);
-        }
+      const chosen = pickDescriptionFile(fs.readdirSync(dir), preferredLanguage);
+      if (chosen) {
+        readmePath = path.join(dir, chosen);
       }
 
       if (readmePath && fs.existsSync(readmePath)) {
@@ -636,6 +646,50 @@ export class StudentCommands {
       } catch (error: any) {
         console.error('Failed to show README preview:', error);
         notify.error(`Failed to show README preview: ${error.message || error}`);
+      }
+    });
+
+    // Read the description in a language other than your own: assignments are
+    // not always translated into everyone's language, and the one you get is
+    // not always the one you can read best (computor-org/issues#328).
+    register('computor.student.previewDescriptionLanguage', async (item?: any) => {
+      try {
+        const directory: string | undefined = item?.courseContent?.directory;
+        if (!directory || !fs.existsSync(directory)) {
+          notify.warning('Assignment not available yet. Its description cannot be shown.');
+          return;
+        }
+
+        const files = fs.readdirSync(directory);
+        const languages = availableDescriptionLanguages(files);
+        const hasDefault = listDescriptionFiles(files).some((entry) => entry.language === undefined);
+        if (languages.length === 0 && !hasDefault) {
+          notify.info('This assignment has no description.');
+          return;
+        }
+
+        const names = await this.languageNames();
+        const picks: Array<vscode.QuickPickItem & { file: string }> = languages.map((code) => ({
+          label: names.get(code) ?? code.toUpperCase(),
+          description: code,
+          file: pickDescriptionFile(files, code)!
+        }));
+        if (hasDefault) {
+          picks.push({
+            label: 'Default',
+            description: 'the description as written, without a language suffix',
+            file: listDescriptionFiles(files).find((entry) => entry.language === undefined)!.file
+          });
+        }
+
+        const chosen = await vscode.window.showQuickPick(picks, {
+          title: 'Preview description in another language'
+        });
+        if (!chosen) { return; }
+        await showMarkdownPreview(this.context, path.join(directory, chosen.file));
+      } catch (error: any) {
+        console.error('Failed to preview description language:', error);
+        notify.error(`Failed to open the description: ${error?.message || error}`);
       }
     });
 
