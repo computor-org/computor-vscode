@@ -1074,6 +1074,11 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.matlab.moveWorkspaceView",
+        "title": "Move MATLAB Workspace to the Secondary Side Bar",
+        "category": "Computor"
+      },
+      {
         "command": "computor.figures.show",
         "title": "Show Figures",
         "icon": "$(graph)",
@@ -1268,6 +1273,10 @@
         {
           "command": "computor.settings",
           "when": "false"
+        },
+        {
+          "command": "computor.matlab.moveWorkspaceView",
+          "when": "computor.matlabExtensionAvailable"
         }
       ],
       "view/title": [

@@ -60,6 +60,7 @@ import { registerResultsPanel } from './ui/results/registerResultsPanel';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
+import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
@@ -1485,27 +1486,15 @@ class UnifiedController {
     // Initial load.
     tree.refresh();
 
-    // VS Code can't declare the secondary (right) sidebar as a default location
-    // for a view container, so we move it there programmatically the first time
-    // a user activates the extension. Wrapped in best-effort: if the workbench
-    // command names ever change, the user can still drag it manually.
-    void this.moveChatToSecondarySidebarOnce();
-  }
-
-  private async moveChatToSecondarySidebarOnce(): Promise<void> {
-    const flagKey = 'computor.chat.movedToSecondarySidebar';
-    if (this.context.globalState.get<boolean>(flagKey)) {
-      return;
-    }
-    try {
-      // Reveal the chat view so the move targets the right element, then move it
-      // to the secondary (auxiliary) sidebar.
-      await vscode.commands.executeCommand('computor.chat.inbox.focus');
-      await vscode.commands.executeCommand('workbench.action.moveViewToAuxiliarySideBar');
-      await this.context.globalState.update(flagKey, true);
-    } catch (err) {
-      console.warn('[ChatInbox] Could not auto-move to secondary sidebar:', err);
-    }
+    // The chat used to try to move itself to the secondary side bar here, by
+    // focusing its view and calling `workbench.action.moveViewToAuxiliarySideBar`.
+    // No such command exists (VS Code 1.123 has only the interactive
+    // `moveFocusedView`), so the call threw on every activation, the
+    // "already moved" flag was never written, and nothing ever moved. Removed
+    // rather than repaired: a container's default home is declarable — the
+    // `secondarySidebar` key of `contributes.viewsContainers` — and that is
+    // where this belongs if we want it, not in a startup side effect that
+    // overrides wherever the user has since put it.
   }
 
   async dispose(): Promise<void> {
@@ -1758,6 +1747,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // MATLAB's `doc` (and anything else wanting "the system browser") drops its
   // URL into a watched folder; open it as a real tab (computor-org/issues#312).
   registerOpenUrlWatcher(context);
+
+  // Offer to get MATLAB's variable browser out of the primary side bar, where
+  // it hides the course tree (computor-org/issues#327).
+  registerMatlabWorkspaceView(context);
 
   // Opening a PNG. The built-in image editor cannot show one under code-server
   // in Firefox or older Safari — its picture, stylesheet and script all come
