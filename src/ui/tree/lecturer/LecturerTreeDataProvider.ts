@@ -1603,6 +1603,44 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
     }
   }
 
+  /**
+   * What a unit dropped on another unit should mean.
+   *
+   * Only genuinely ambiguous when the two are siblings — dragging a unit in
+   * from somewhere else reads as nesting, and an assignment dropped on a unit
+   * always means "into it". Returns 'into' without asking in those cases.
+   */
+  private async resolveUnitDrop(
+    draggedData: { contentId?: string; path?: string; courseId?: string },
+    target: CourseContentTreeItem
+  ): Promise<'into' | 'before' | 'cancelled'> {
+    const draggedPath = draggedData?.path;
+    if (!draggedPath || draggedData.contentId === target.courseContent.id) {
+      return 'into';
+    }
+
+    if (this.getParentPath(draggedPath) !== this.getParentPath(target.courseContent.path)) {
+      return 'into';
+    }
+
+    const allContents = await this.getCourseContents(target.course.id);
+    const dragged = allContents.find(c => c.id === draggedData.contentId);
+    if (!dragged || dragged.is_submittable) {
+      // An assignment dropped on a unit is never ambiguous.
+      return 'into';
+    }
+
+    const targetLabel = target.courseContent.title || target.courseContent.path;
+    const choice = await vscode.window.showQuickPick(
+      [
+        { label: `$(arrow-up) Place before "${targetLabel}"`, value: 'before' as const },
+        { label: `$(folder) Move into "${targetLabel}"`, value: 'into' as const }
+      ],
+      { title: 'Where should this unit go?' }
+    );
+    return choice ? choice.value : 'cancelled';
+  }
+
   public async handleDrop(target: TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
     // Check if we have member data being dropped
     const memberData = dataTransfer.get('application/vnd.code.tree.lecturermember');
@@ -1627,8 +1665,19 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         if (draggedData?.contentId) {
           if (target instanceof CourseContentTreeItem) {
             if (!target.isSubmittable) {
-              // Dropping onto a unit/container: move INTO it
-              await this.handleContentMoveToParent(draggedData, target.courseContent.path, target.course.id);
+              // Dropping onto a unit means "put this inside it" — except when
+              // both are units of the same parent, where it just as plausibly
+              // means "put this before it". Units cannot be reordered by drag
+              // at all if we guess, so ask (computor-org/issues#323).
+              const dropped = await this.resolveUnitDrop(draggedData, target);
+              if (dropped === 'cancelled') {
+                return;
+              }
+              if (dropped === 'before') {
+                await this.handleContentReorder(draggedData, target);
+              } else {
+                await this.handleContentMoveToParent(draggedData, target.courseContent.path, target.course.id);
+              }
             } else {
               // Dropping onto a sibling: reorder alongside it
               await this.handleContentReorder(draggedData, target);

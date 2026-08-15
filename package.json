@@ -1015,6 +1015,40 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.moveContentToTop",
+        "title": "Move to Top",
+        "icon": "$(fold-up)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.moveContentUp",
+        "title": "Move Up",
+        "icon": "$(arrow-up)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.moveContentDown",
+        "title": "Move Down",
+        "icon": "$(arrow-down)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.moveContentToBottom",
+        "title": "Move to Bottom",
+        "icon": "$(fold-down)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.prependContentToUnit",
+        "title": "Move to Start of Unit...",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.appendContentToUnit",
+        "title": "Move to End of Unit...",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.deleteCourseContent",
         "title": "Delete",
         "category": "Computor Lecturer"
@@ -1717,6 +1751,36 @@
           "command": "computor.lecturer.importCourseMembersPreview",
           "when": "view == computor.lecturer.courses && viewItem == course.groups",
           "group": "1_content@2"
+        },
+        {
+          "command": "computor.lecturer.moveContentToTop",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "3_order@1"
+        },
+        {
+          "command": "computor.lecturer.moveContentUp",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "3_order@2"
+        },
+        {
+          "command": "computor.lecturer.moveContentDown",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "3_order@3"
+        },
+        {
+          "command": "computor.lecturer.moveContentToBottom",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "3_order@4"
+        },
+        {
+          "command": "computor.lecturer.prependContentToUnit",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "3_order@5"
+        },
+        {
+          "command": "computor.lecturer.appendContentToUnit",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "3_order@6"
         },
         {
           "command": "computor.lecturer.renameCourseContent",
