@@ -47,7 +47,7 @@ interface MergedExample {
 
 class RootSectionTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly section: 'repositories' | 'examples',
+    public readonly section: 'filters' | 'repositories' | 'examples',
     label: string,
     icon: string,
     collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Expanded
@@ -56,6 +56,40 @@ class RootSectionTreeItem extends vscode.TreeItem {
     this.id = `root-${section}`;
     this.contextValue = `rootSection_${section}`;
     this.iconPath = new vscode.ThemeIcon(icon);
+  }
+}
+
+/**
+ * A filter, shown whether or not it is set.
+ *
+ * Search and the category/tag filters used to exist only as icons in the view's
+ * title bar, and VS Code lets anyone hide those from their right-click menu —
+ * permanently, in workbench storage the extension cannot see or reset. A
+ * lecturer who did that lost both the buttons and any sign of what the tree was
+ * filtered by (computor-org/issues#329). Rows inside the tree cannot be hidden
+ * that way.
+ *
+ * Clicking a row opens its picker, rather than clearing it: the old chips
+ * cleared on click, which is how filters got lost in the first place. Clearing
+ * is the inline × that appears once a filter is actually set.
+ */
+class ExampleFilterTreeItem extends vscode.TreeItem {
+  constructor(
+    kind: 'search' | 'category' | 'tags',
+    label: string,
+    icon: string,
+    value: string | undefined,
+    command: string
+  ) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.id = `example-filter-${kind}`;
+    this.description = value ?? 'none';
+    this.iconPath = new vscode.ThemeIcon(icon);
+    this.contextValue = value ? `exampleFilter_${kind}_active` : `exampleFilter_${kind}`;
+    this.tooltip = value
+      ? `${label}: ${value}\nClick to change, or use the × to clear`
+      : `No ${label.toLowerCase()} filter — click to set one`;
+    this.command = { command, title: label, arguments: [] };
   }
 }
 
@@ -328,6 +362,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   private parentMap = new Map<string, vscode.TreeItem>();
 
   private static readonly REPO_FILTER_STATE_KEY = 'computor.lecturer.examples.repoFilter';
+  private static readonly FILTER_STATE_KEY = 'computor.lecturer.examples.filters';
   private context: vscode.ExtensionContext;
 
   constructor(
@@ -339,6 +374,17 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
     this.apiService = providedApiService || new ComputorApiService(context);
     const storedRepoIds = context.globalState.get<string[]>(LecturerExampleTreeProvider.REPO_FILTER_STATE_KEY, []);
     this.selectedRepositoryIds = new Set(storedRepoIds);
+    // The repository filter already survived a reload; search, category and
+    // tags did not, so half the filters silently reset while the other half
+    // stayed (computor-org/issues#329).
+    const stored = context.globalState.get<{
+      search?: string;
+      category?: string;
+      tags?: string[];
+    }>(LecturerExampleTreeProvider.FILTER_STATE_KEY, {});
+    this.searchQuery = stored.search ?? '';
+    this.selectedCategory = stored.category;
+    this.selectedTags = stored.tags ?? [];
     this.setupFileWatchers(context);
   }
 
@@ -347,6 +393,14 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
       LecturerExampleTreeProvider.REPO_FILTER_STATE_KEY,
       Array.from(this.selectedRepositoryIds)
     );
+  }
+
+  private persistFilters(): void {
+    void this.context.globalState.update(LecturerExampleTreeProvider.FILTER_STATE_KEY, {
+      search: this.searchQuery || undefined,
+      category: this.selectedCategory,
+      tags: this.selectedTags.length > 0 ? this.selectedTags : undefined
+    });
   }
 
   private setupFileWatchers(context: vscode.ExtensionContext): void {
@@ -415,6 +469,9 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
       }
 
       if (element instanceof RootSectionTreeItem) {
+        if (element.section === 'filters') {
+          return this.getFilterItems(element);
+        }
         if (element.section === 'repositories') {
           return this.getRepositoryFilterToggles(element);
         }
@@ -460,51 +517,30 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   private getRootItems(): vscode.TreeItem[] {
     const items: vscode.TreeItem[] = [];
 
-    if (this.searchQuery) {
-      const searchItem = new vscode.TreeItem(`Search: "${this.searchQuery}"`, vscode.TreeItemCollapsibleState.None);
-      searchItem.iconPath = new vscode.ThemeIcon('search');
-      searchItem.contextValue = 'searchFilter';
-      searchItem.tooltip = `Current search filter: ${this.searchQuery}\nClick to clear`;
-      searchItem.command = { command: 'computor.lecturer.clearSearch', title: 'Clear Search', arguments: [] };
-      items.push(searchItem);
-    }
+    const filtersSection = new RootSectionTreeItem(
+      'filters',
+      'Filters',
+      'filter',
+      // Expanded while something is filtered, so the tree says why it is not
+      // showing everything.
+      this.hasActiveFilters()
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed
+    );
+    filtersSection.description = this.filterSummary();
+    items.push(filtersSection);
 
-    if (this.selectedCategory) {
-      const categoryItem = new vscode.TreeItem(`Category: ${this.selectedCategory}`, vscode.TreeItemCollapsibleState.None);
-      categoryItem.iconPath = new vscode.ThemeIcon('filter');
-      categoryItem.contextValue = 'categoryFilter';
-      categoryItem.tooltip = `Current category filter: ${this.selectedCategory}\nClick to clear`;
-      categoryItem.command = { command: 'computor.lecturer.clearCategoryFilter', title: 'Clear Category Filter', arguments: [] };
-      items.push(categoryItem);
-    }
-
-    if (this.selectedTags.length > 0) {
-      const tagsItem = new vscode.TreeItem(`Tags: ${this.selectedTags.join(', ')}`, vscode.TreeItemCollapsibleState.None);
-      tagsItem.iconPath = new vscode.ThemeIcon('tag');
-      tagsItem.contextValue = 'tagsFilter';
-      tagsItem.tooltip = `Current tags filter: ${this.selectedTags.join(', ')}\nClick to clear`;
-      tagsItem.command = { command: 'computor.lecturer.clearTagsFilter', title: 'Clear Tags Filter', arguments: [] };
-      items.push(tagsItem);
-    }
-
-    if (this.selectedRepositoryIds.size > 0) {
-      const repoItem = new vscode.TreeItem(
-        `Repositories: ${this.selectedRepositoryIds.size} selected`,
-        vscode.TreeItemCollapsibleState.None
-      );
-      repoItem.iconPath = new vscode.ThemeIcon('repo');
-      repoItem.contextValue = 'repositoryFilter';
-      repoItem.tooltip = 'Click to clear repository filter';
-      repoItem.command = { command: 'computor.lecturer.clearRepositoriesFilter', title: 'Clear Repositories Filter', arguments: [] };
-      items.push(repoItem);
-    }
-
-    items.push(new RootSectionTreeItem(
+    const repositories = new RootSectionTreeItem(
       'repositories',
       'Repositories',
       'cloud',
       vscode.TreeItemCollapsibleState.Collapsed
-    ));
+    );
+    if (this.selectedRepositoryIds.size > 0) {
+      repositories.description = `${this.selectedRepositoryIds.size} selected`;
+    }
+    items.push(repositories);
+
     items.push(new RootSectionTreeItem(
       'examples',
       'Examples',
@@ -512,6 +548,44 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
       vscode.TreeItemCollapsibleState.Expanded
     ));
 
+    return items;
+  }
+
+  private hasActiveFilters(): boolean {
+    return Boolean(this.searchQuery) || Boolean(this.selectedCategory) || this.selectedTags.length > 0;
+  }
+
+  private filterSummary(): string {
+    return this.hasActiveFilters() ? 'active' : 'none';
+  }
+
+  private getFilterItems(parent: RootSectionTreeItem): vscode.TreeItem[] {
+    const items = [
+      new ExampleFilterTreeItem(
+        'search',
+        'Search',
+        'search',
+        this.searchQuery || undefined,
+        'computor.lecturer.searchExamples'
+      ),
+      new ExampleFilterTreeItem(
+        'category',
+        'Category',
+        'symbol-folder',
+        this.selectedCategory,
+        'computor.lecturer.filterExamplesByCategory'
+      ),
+      new ExampleFilterTreeItem(
+        'tags',
+        'Tags',
+        'tag',
+        this.selectedTags.length > 0 ? this.selectedTags.join(', ') : undefined,
+        'computor.lecturer.filterExamplesByTags'
+      )
+    ];
+    for (const item of items) {
+      if (item.id) { this.parentMap.set(item.id, parent); }
+    }
     return items;
   }
 
@@ -737,6 +811,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   setSearchQuery(query: string): void {
     this.searchQuery = query;
     this.mergedCache = null;
+    this.persistFilters();
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }
   clearSearch(): void { this.setSearchQuery(''); }
@@ -744,6 +819,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   getSelectedCategory(): string | undefined { return this.selectedCategory; }
   setCategory(category: string | undefined): void {
     this.selectedCategory = category;
+    this.persistFilters();
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }
   clearCategoryFilter(): void { this.setCategory(undefined); }
@@ -751,6 +827,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   getSelectedTags(): string[] { return this.selectedTags; }
   setTags(tags: string[]): void {
     this.selectedTags = tags;
+    this.persistFilters();
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }
   clearTagsFilter(): void { this.setTags([]); }
