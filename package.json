@@ -460,6 +460,24 @@
         "category": "Computor Examples"
       },
       {
+        "command": "computor.lecturer.clearSearch",
+        "title": "Clear Search",
+        "icon": "$(close)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.clearCategoryFilter",
+        "title": "Clear Category Filter",
+        "icon": "$(close)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.clearTagsFilter",
+        "title": "Clear Tags Filter",
+        "icon": "$(close)",
+        "category": "Computor Examples"
+      },
+      {
         "command": "computor.lecturer.refreshExamples",
         "title": "Refresh Examples",
         "icon": "$(refresh)",
@@ -1612,6 +1630,26 @@
           "command": "computor.lecturer.createExampleRepository",
           "when": "view == computor.lecturer.examples && viewItem == rootSection_repositories && computor.examples.canAuthor",
           "group": "1_actions@1"
+        },
+        {
+          "command": "computor.lecturer.clearSearch",
+          "when": "view == computor.lecturer.examples && viewItem == exampleFilter_search_active",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.lecturer.clearCategoryFilter",
+          "when": "view == computor.lecturer.examples && viewItem == exampleFilter_category_active",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.lecturer.clearTagsFilter",
+          "when": "view == computor.lecturer.examples && viewItem == exampleFilter_tags_active",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.lecturer.clearRepositoriesFilter",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_repositories",
+          "group": "inline@1"
         },
         {
           "command": "computor.lecturer.createNewExample",
