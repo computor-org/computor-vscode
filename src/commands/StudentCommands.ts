@@ -1447,12 +1447,15 @@ export class StudentCommands {
       if (item?.contextValue) {
         const contextValue = item.contextValue as string;
 
+        // Prefix matches, never equality: an item with a description carries a
+        // `.hasDescription` suffix on its context value, and a unit's Help must
+        // not fall back to the course page because of it.
         if (contextValue.startsWith('studentCourseContent')) {
           // All course content items show assignment help
           helpFileName = 'student-assignment.md';
-        } else if (contextValue === 'studentCourseUnit') {
+        } else if (contextValue.startsWith('studentCourseUnit')) {
           helpFileName = 'student-unit.md';
-        } else if (contextValue === 'studentCourseRoot') {
+        } else if (contextValue.startsWith('studentCourseRoot')) {
           helpFileName = 'student-course.md';
         }
       }

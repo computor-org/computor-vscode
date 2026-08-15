@@ -98,6 +98,41 @@ describe('content descriptions', () => {
       });
     }
 
+    it('is never equality-compared in code, only prefix-matched', () => {
+      // The suffix reaches more than menus: any `contextValue === 'X'` in the
+      // extension source silently stops matching the moment a lecturer writes
+      // a description. The Help command had exactly this bug — a unit with a
+      // description opened the course help page.
+      const srcRoot = path.resolve(__dirname, '../../src');
+      const offenders: string[] = [];
+      const equality = new RegExp(
+        `(?:contextValue\\s*===?\\s*|===?\\s*)['"](?:${suffixed.join('|')}|tutorUnit)['"]`
+      );
+
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+            continue;
+          }
+          if (!entry.name.endsWith('.ts')) {
+            continue;
+          }
+          const lines = fs.readFileSync(full, 'utf8').split('\n');
+          lines.forEach((line, index) => {
+            if (line.includes('contextValue') && equality.test(line)) {
+              offenders.push(`${path.relative(srcRoot, full)}:${index + 1}: ${line.trim()}`);
+            }
+          });
+        }
+      };
+      walk(srcRoot);
+
+      expect(offenders, `equality checks that break once a description exists:\n${offenders.join('\n')}`)
+        .to.deep.equal([]);
+    });
+
     it('does not put a course action on a course group or member', () => {
       const courseOnly = menus.filter(
         (m) => m.command === 'computor.lecturer.showCourseDetails' && m.when
