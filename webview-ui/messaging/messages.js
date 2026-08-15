@@ -86,6 +86,16 @@
 
     return {
       watch(card) { observer.observe(card); },
+      // A card the reader just marked unread must not be re-read by its own
+      // dwell timer — stop watching it until the panel re-renders.
+      unwatch(card) {
+        const id = card.dataset.messageId;
+        if (id && dwelling.has(id)) {
+          clearTimeout(dwelling.get(id));
+          dwelling.delete(id);
+        }
+        observer.unobserve(card);
+      },
       reset() {
         observer.disconnect();
         dwelling.forEach((t) => clearTimeout(t));
@@ -389,6 +399,18 @@
             data: { messageId: message.id, title: message.title }
           })
         )
+      );
+    }
+    // "Read it, no time to answer": flag the message back to unread so the
+    // open question keeps its badge everywhere (issue #322).
+    if (!message.is_author && !message.is_deleted) {
+      actions.appendChild(
+        button('Mark unread', 'btn ghost sm message-unread-button', () => {
+          message.is_read = false;
+          card.classList.add('message-unread');
+          if (seenObserver) { seenObserver.unwatch(card); }
+          vscode.postMessage({ command: 'markUnread', data: { messageId: message.id } });
+        })
       );
     }
 

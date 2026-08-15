@@ -603,6 +603,34 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     await this.markMessagesReadOnBackend(unread.map(m => m.id));
   }
 
+  /**
+   * "Read it, but no time to answer" (issue #322 §5): flip the newest
+   * message the reader didn't write back to unread, so the thread keeps its
+   * badge until they come back. One message is enough — unread is presence,
+   * not a count of guilt.
+   */
+  async markThreadUnread(threadItem: ChatThreadItem): Promise<void> {
+    const candidate = [...threadItem.thread.messages]
+      .reverse()
+      .find(m => m.author_id !== this.currentUserId && m.is_read);
+    if (!candidate) {
+      notify.info('Nothing here to mark as unread.');
+      return;
+    }
+    this.markUnreadLocally([candidate]);
+    this.rebuildFromCache();
+    // Our own read:update broadcast comes straight back — don't let it
+    // re-paginate the inbox we just repainted.
+    this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    try {
+      await this.api.markMessageUnread(candidate.id);
+    } catch (err: any) {
+      notify.error(`Failed to mark as unread: ${err?.message || err}`);
+    } finally {
+      this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    }
+  }
+
   /** Mark every *fetched* unread message under a container row as read —
    *  works for the top Announcements node, a course, a section, and the
    *  flat DM scope rows. */
@@ -636,6 +664,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     if (msgs.length === 0) { return; }
     const affected = msgs.filter(m => !m.is_read);
     const set = new Set(msgs.map(m => m.id));
+    for (const m of msgs) { m.is_read = true; }
     for (const m of this.cachedMessages) {
       if (set.has(m.id)) { m.is_read = true; }
     }
@@ -659,6 +688,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     if (msgs.length === 0) { return; }
     const affected = msgs.filter(m => m.is_read);
     const set = new Set(msgs.map(m => m.id));
+    for (const m of msgs) { m.is_read = false; }
     for (const m of this.cachedMessages) {
       if (set.has(m.id)) { m.is_read = false; }
     }

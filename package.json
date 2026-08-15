@@ -520,6 +520,12 @@
         "category": "Computor Chat"
       },
       {
+        "command": "computor.chat.markThreadUnread",
+        "title": "Mark as Unread",
+        "icon": "$(mail)",
+        "category": "Computor Chat"
+      },
+      {
         "command": "computor.chat.openMessages",
         "title": "Open Messages",
         "icon": "$(comment-discussion)",
@@ -1595,6 +1601,11 @@
         {
           "command": "computor.chat.markThreadRead",
           "when": "view == computor.chat.inbox && viewItem =~ /^chatThread\\..*\\.unread$/",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "computor.chat.markThreadUnread",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatThread\\.[a-z]+$/",
           "group": "1_actions@1"
         },
         {

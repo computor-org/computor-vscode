@@ -1441,6 +1441,11 @@ class UnifiedController {
           void tree.markThreadRead(item);
         }
       }),
+      vscode.commands.registerCommand('computor.chat.markThreadUnread', (item: any) => {
+        if (item instanceof ChatThreadItem) {
+          void tree.markThreadUnread(item);
+        }
+      }),
       vscode.commands.registerCommand('computor.chat.jumpToAssignment', async (item: any) => {
         if (item instanceof ChatThreadItem) {
           const { jumpToAssignment } = await import('./ui/tree/chat/chatJump');
