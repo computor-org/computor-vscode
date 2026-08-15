@@ -60,6 +60,7 @@ import { registerResultsPanel } from './ui/results/registerResultsPanel';
 import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
+import { registerContentDescription } from './ui/contentDescription';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
@@ -1754,6 +1755,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // figures as files and this shows them. Independent of login and of role:
   // the figures come from the student's own code, not from the backend.
   registerFigureViewer(context);
+
+  // The description a lecturer wrote for a course or unit, for everyone who can
+  // see the course (computor-org/issues#324). Role-independent, like the
+  // figures: whether an item offers it depends on the item, not the role.
+  registerContentDescription(context);
 
   // MATLAB's `doc` (and anything else wanting "the system browser") drops its
   // URL into a watched folder; open it as a real tab (computor-org/issues#312).

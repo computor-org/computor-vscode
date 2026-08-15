@@ -30,9 +30,45 @@ export async function showMarkdownPreview(
   filePath: string,
   options: MarkdownPreviewOptions = {}
 ): Promise<void> {
-  const dir = path.dirname(filePath);
-  const markdown = fs.readFileSync(filePath, 'utf8');
-  const title = options.title ?? path.basename(filePath);
+  await renderMarkdownPreview(
+    context,
+    fs.readFileSync(filePath, 'utf8'),
+    path.dirname(filePath),
+    options.title ?? path.basename(filePath),
+    options
+  );
+}
+
+/**
+ * Same preview, for markdown that never was a file — a course or unit
+ * description lives in the database, not on disk (computor-org/issues#324).
+ *
+ * Relative image paths have nothing to resolve against here, so the base is
+ * the extension itself; descriptions that need pictures should link to them
+ * absolutely.
+ */
+export async function showMarkdownTextPreview(
+  context: vscode.ExtensionContext,
+  markdown: string,
+  title: string,
+  options: MarkdownPreviewOptions = {}
+): Promise<void> {
+  await renderMarkdownPreview(
+    context,
+    markdown,
+    context.extensionUri.fsPath,
+    options.title ?? title,
+    options
+  );
+}
+
+async function renderMarkdownPreview(
+  context: vscode.ExtensionContext,
+  markdown: string,
+  dir: string,
+  title: string,
+  options: MarkdownPreviewOptions
+): Promise<void> {
   // A README belongs beside the code, never on top of it. The old
   // "Beside when an editor is active, One otherwise" put the preview in the
   // *source* group whenever focus happened to be on a webview — which is

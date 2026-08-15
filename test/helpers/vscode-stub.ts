@@ -184,6 +184,20 @@ export class ThemeIcon {
 
 export class ThemeColor { constructor(public id: string) {} }
 
+export class MarkdownString {
+  isTrusted?: boolean;
+  supportThemeIcons?: boolean;
+  constructor(public value: string = '') {}
+  appendMarkdown(markdown: string): MarkdownString {
+    this.value += markdown;
+    return this;
+  }
+  appendText(text: string): MarkdownString {
+    this.value += text;
+    return this;
+  }
+}
+
 export const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 } as const;
 
 export const StatusBarAlignment = { Left: 1, Right: 2 } as const;

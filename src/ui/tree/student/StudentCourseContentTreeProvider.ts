@@ -18,6 +18,7 @@ import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../exceptions/errors/GitExecError';
 import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
 
 /** Resolved course-level-git state for one course (cached per session). */
@@ -1063,7 +1064,15 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         const rootId = `course-${courseId}`;
         const orgInfo = course.organization_id ? this.organizationInfoCache.get(course.organization_id) : undefined;
         const familyInfo = course.course_family_id ? this.courseFamilyInfoCache.get(course.course_family_id) : undefined;
-        const courseItem = new CourseRootItem(title, courseId, itemCount, this.getExpandedState(rootId), orgInfo, familyInfo);
+        const courseItem = new CourseRootItem(
+            title,
+            courseId,
+            itemCount,
+            this.getExpandedState(rootId),
+            orgInfo,
+            familyInfo,
+            (course as any).description
+        );
         courseItem.id = rootId;
         this.itemIndex.set(rootId, courseItem);
         return courseItem;
@@ -1098,16 +1107,18 @@ class CourseRootItem extends TreeItem {
         itemCount: number,
         expanded: boolean = true,
         public readonly organizationInfo?: { title: string; path: string },
-        public readonly courseFamilyInfo?: { title: string; path: string }
+        public readonly courseFamilyInfo?: { title: string; path: string },
+        courseDescription?: string | null
     ) {
         super(title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('book');
         this.contextValue = 'studentCourseRoot';
         this.updateCounts(itemCount);
-        this.tooltip = this.buildTooltip();
+        this.tooltip = this.buildTooltip(courseDescription);
+        withDescription(this, title, courseDescription);
     }
 
-    private buildTooltip(): string {
+    private buildTooltip(courseDescription?: string | null): string | vscode.MarkdownString {
         const parts = [`Course: ${this.title}`];
         if (this.courseFamilyInfo) {
             parts.push(`Course Family: ${this.courseFamilyInfo.title}`);
@@ -1115,7 +1126,7 @@ class CourseRootItem extends TreeItem {
         if (this.organizationInfo) {
             parts.push(`Organization: ${this.organizationInfo.title}`);
         }
-        return parts.join('\n');
+        return tooltipWithDescription(parts, courseDescription);
     }
 
     updateCounts(itemCount: number): void {
@@ -1206,8 +1217,9 @@ class CourseContentPathItem extends TreeItem {
         
         this.contextValue = 'studentCourseUnit';
         this.id = node.courseContent ? node.courseContent.id : `unit-${name}`;
-        
+
         this.applyCounts(node);
+        withDescription(this, name, node.courseContent?.description);
     }
 
     public updateFromNode(node: ContentNode): void {
@@ -1247,7 +1259,7 @@ class CourseContentPathItem extends TreeItem {
         if (unread > 0) {
             tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
         }
-        this.tooltip = tooltipLines.join('\n');
+        this.tooltip = tooltipWithDescription(tooltipLines, node.courseContent?.description);
     }
 
     private formatStatus(status: string): string {
