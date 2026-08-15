@@ -6,6 +6,7 @@ import { OfflineRepositoryManager } from '../services/OfflineRepositoryManager';
 import { commandRegistrar } from './commandHelpers';
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 import { notify } from '../utils/notify';
+import { pickDescriptionFile } from '../utils/descriptionLanguage';
 
 /**
  * Commands for the student offline mode
@@ -339,10 +340,9 @@ export class StudentOfflineCommands {
     }
 
     /**
-     * Find README file in directory with priority:
-     * 1. README.md
-     * 2. README_en.md
-     * 3. Any README_*.md
+     * Find the README to show, using the same language order as the online
+     * view (computor-org/issues#328). There is no profile to read offline, so
+     * no language is preferred and English wins over an unlabelled default.
      */
     private async findReadmeFile(directory: string): Promise<string | null> {
         const fs = await import('fs');
@@ -350,26 +350,8 @@ export class StudentOfflineCommands {
         const readdir = promisify(fs.readdir);
 
         try {
-            const files = await readdir(directory);
-
-            // Priority 1: README.md
-            if (files.includes('README.md')) {
-                return path.join(directory, 'README.md');
-            }
-
-            // Priority 2: README_en.md
-            if (files.includes('README_en.md')) {
-                return path.join(directory, 'README_en.md');
-            }
-
-            // Priority 3: Any README_*.md
-            const readmePattern = /^README_.*\.md$/i;
-            const readmeFile = files.find(f => readmePattern.test(f));
-            if (readmeFile) {
-                return path.join(directory, readmeFile);
-            }
-
-            return null;
+            const chosen = pickDescriptionFile(await readdir(directory));
+            return chosen ? path.join(directory, chosen) : null;
         } catch (error) {
             console.error('[StudentOfflineCommands] Error finding README:', error);
             return null;
