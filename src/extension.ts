@@ -1334,7 +1334,13 @@ class UnifiedController {
 
   private async initializeChatView(api: ComputorApiService): Promise<void> {
     const { ChatInboxTreeProvider } = await import('./ui/tree/chat/ChatInboxTreeProvider');
-    const { ChatScopeItem, ChatThreadItem, ChatCourseGroupItem } = await import('./ui/tree/chat/ChatInboxTreeItems');
+    const {
+      ChatScopeItem,
+      ChatThreadItem,
+      ChatTopAnnouncementsItem,
+      ChatCourseItem,
+      ChatCourseSectionItem
+    } = await import('./ui/tree/chat/ChatInboxTreeItems');
 
     // The chat view drives the existing MessagesWebviewProvider + bottom Compose
     // panel, so reuse the input panel + WebSocket service we already instantiated.
@@ -1354,17 +1360,25 @@ class UnifiedController {
       provider: tree,
       options: { showCollapseAll: true },
       onExpand: (event) => {
-        if (event.element instanceof ChatScopeItem) {
-          tree.recordExpanded(event.element.scope, true);
-        } else if (event.element instanceof ChatCourseGroupItem) {
-          tree.recordCourseGroupExpanded(event.element.scope, event.element.courseId, true);
+        if (event.element instanceof ChatCourseItem) {
+          tree.recordCourseExpanded(event.element.courseId, true);
+        } else if (event.element instanceof ChatCourseSectionItem) {
+          tree.recordSectionExpanded(`${event.element.kind}::${event.element.courseId}`, true);
+        } else if (event.element instanceof ChatTopAnnouncementsItem) {
+          tree.recordSectionExpanded('top', true);
+        } else if (event.element instanceof ChatScopeItem) {
+          tree.recordSectionExpanded(`scope::${event.element.scope}`, true);
         }
       },
       onCollapse: (event) => {
-        if (event.element instanceof ChatScopeItem) {
-          tree.recordExpanded(event.element.scope, false);
-        } else if (event.element instanceof ChatCourseGroupItem) {
-          tree.recordCourseGroupExpanded(event.element.scope, event.element.courseId, false);
+        if (event.element instanceof ChatCourseItem) {
+          tree.recordCourseExpanded(event.element.courseId, false);
+        } else if (event.element instanceof ChatCourseSectionItem) {
+          tree.recordSectionExpanded(`${event.element.kind}::${event.element.courseId}`, false);
+        } else if (event.element instanceof ChatTopAnnouncementsItem) {
+          tree.recordSectionExpanded('top', false);
+        } else if (event.element instanceof ChatScopeItem) {
+          tree.recordSectionExpanded(`scope::${event.element.scope}`, false);
         }
       },
       onVisibility: (event) => {
@@ -1398,13 +1412,23 @@ class UnifiedController {
       vscode.commands.registerCommand('computor.chat.openMessages', (item: any) => {
         if (item instanceof ChatThreadItem) {
           void tree.openThread(item);
-        } else if (item instanceof ChatScopeItem || item instanceof ChatCourseGroupItem) {
+        } else if (
+          item instanceof ChatScopeItem
+          || item instanceof ChatTopAnnouncementsItem
+          || item instanceof ChatCourseItem
+          || item instanceof ChatCourseSectionItem
+        ) {
           void tree.openMessagesFor(item);
         }
       }),
       vscode.commands.registerCommand('computor.chat.markScopeRead', (item: any) => {
-        if (item instanceof ChatScopeItem) {
-          void tree.markScopeRead(item);
+        if (
+          item instanceof ChatScopeItem
+          || item instanceof ChatTopAnnouncementsItem
+          || item instanceof ChatCourseItem
+          || item instanceof ChatCourseSectionItem
+        ) {
+          void tree.markContainerRead(item);
         }
       }),
       vscode.commands.registerCommand('computor.chat.markThreadRead', (item: any) => {
@@ -1427,13 +1451,17 @@ class UnifiedController {
         tree.toggleAllNotifications();
       }),
       vscode.commands.registerCommand('computor.chat.scope.mute', (item: any) => {
-        if (item instanceof ChatScopeItem) {
-          tree.toggleScopeMuted(item.scope);
+        if (item instanceof ChatCourseItem) {
+          tree.toggleCourseMuted(item.courseId);
+        } else if (item instanceof ChatTopAnnouncementsItem) {
+          tree.toggleTopAnnouncementsMuted();
         }
       }),
       vscode.commands.registerCommand('computor.chat.scope.unmute', (item: any) => {
-        if (item instanceof ChatScopeItem) {
-          tree.toggleScopeMuted(item.scope);
+        if (item instanceof ChatCourseItem) {
+          tree.toggleCourseMuted(item.courseId);
+        } else if (item instanceof ChatTopAnnouncementsItem) {
+          tree.toggleTopAnnouncementsMuted();
         }
       })
     );
