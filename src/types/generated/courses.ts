@@ -91,6 +91,7 @@ export interface CourseContentLecturerGet {
 export interface CourseContentLecturerList {
   id: string;
   title?: string | null;
+  description?: string | null;
   path: string;
   course_id: string;
   course_content_type_id: string;
@@ -409,6 +410,7 @@ export interface CourseContentGet {
 export interface CourseContentList {
   id: string;
   title?: string | null;
+  description?: string | null;
   path: string;
   course_id: string;
   course_content_type_id: string;
@@ -480,6 +482,7 @@ export interface CourseTutorRepository {
 export interface CourseTutorGet {
   id: string;
   title?: string | null;
+  description?: string | null;
   course_family_id?: string | null;
   organization_id?: string | null;
   path: string;
@@ -489,6 +492,7 @@ export interface CourseTutorGet {
 export interface CourseTutorList {
   id: string;
   title?: string | null;
+  description?: string | null;
   course_family_id?: string | null;
   organization_id?: string | null;
   path: string;
@@ -678,6 +682,7 @@ export interface CourseContentStudentGet {
 export interface CourseContentStudentList {
   id: string;
   title?: string | null;
+  description?: string | null;
   path: string;
   course_id: string;
   course_content_type_id: string;
@@ -983,6 +988,7 @@ export interface CourseFamilyQuery {
 export interface CourseStudentGet {
   id: string;
   title?: string | null;
+  description?: string | null;
   course_family_id?: string | null;
   organization_id?: string | null;
   course_content_types: CourseContentTypeGet[];
@@ -992,6 +998,7 @@ export interface CourseStudentGet {
 export interface CourseStudentList {
   id: string;
   title?: string | null;
+  description?: string | null;
   course_family_id?: string | null;
   organization_id?: string | null;
   path: string;
@@ -1245,6 +1252,7 @@ export interface CourseGet {
 export interface CourseList {
   id: string;
   title?: string | null;
+  description?: string | null;
   course_family_id?: string | null;
   organization_id?: string | null;
   path: string;

@@ -1136,6 +1136,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.showContentDescription",
+        "title": "Show Description",
+        "icon": "$(book)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.figures.show",
         "title": "Show Figures",
         "icon": "$(graph)",
@@ -1781,7 +1787,7 @@
         },
         {
           "command": "computor.lecturer.showMessages",
-          "when": "view == computor.lecturer.courses && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "2_discussion@1"
         },
         {
@@ -1876,7 +1882,7 @@
         },
         {
           "command": "computor.lecturer.updateExampleVersions",
-          "when": "view == computor.lecturer.courses && (viewItem == course || viewItem == course.contents || viewItem =~ /courseContent.*hasChildren/)",
+          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.hasDescription)?$/ || viewItem == course.contents || viewItem =~ /courseContent.*hasChildren/)",
           "group": "4_example@1"
         },
         {
@@ -1891,22 +1897,22 @@
         },
         {
           "command": "computor.lecturer.configureCourseGit",
-          "when": "view == computor.lecturer.courses && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "2_config@1"
         },
         {
           "command": "computor.lecturer.manageCourseMembers",
-          "when": "view == computor.lecturer.courses && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "2_discussion@2"
         },
         {
           "command": "computor.lecturer.showCourseDetails",
-          "when": "view == computor.lecturer.courses && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "5_details@1"
         },
         {
           "command": "computor.lecturer.showCourseProgressOverview",
-          "when": "view == computor.lecturer.courses && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "5_details@2"
         },
         {
@@ -1971,12 +1977,12 @@
         },
         {
           "command": "computor.lecturer.openRemoteRepository",
-          "when": "view == computor.lecturer.courses && (viewItem == course || viewItem == course.member)",
+          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.hasDescription)?$/ || viewItem == course.member)",
           "group": "5_repository@1"
         },
         {
           "command": "computor.lecturer.releaseCourseContent",
-          "when": "view == computor.lecturer.courses && viewItem == course",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "inline@2"
         },
         {
@@ -2196,27 +2202,27 @@
         },
         {
           "command": "computor.student.setupCourseRepository",
-          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot(\\.hasDescription)?$/",
           "group": "inline@0"
         },
         {
           "command": "computor.student.setupCourseRepository",
-          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot(\\.hasDescription)?$/",
           "group": "1_setup@1"
         },
         {
           "command": "computor.student.downloadTemplate",
-          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot(\\.hasDescription)?$/",
           "group": "1_setup@2"
         },
         {
           "command": "computor.student.updateFromTemplate",
-          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot(\\.hasDescription)?$/",
           "group": "1_setup@3"
         },
         {
           "command": "computor.student.showMessages",
-          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot(\\.hasDescription)?$/",
           "group": "2_discussion@1"
         },
         {
@@ -2226,8 +2232,33 @@
         },
         {
           "command": "computor.student.showMessages",
-          "when": "view == computor.student.courses && viewItem == studentCourseUnit",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit(\\.hasDescription)?$/",
           "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.showContentDescription",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot\\.hasDescription$/",
+          "group": "inline@0"
+        },
+        {
+          "command": "computor.showContentDescription",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit\\.hasDescription$/",
+          "group": "inline@0"
+        },
+        {
+          "command": "computor.showContentDescription",
+          "when": "view == computor.tutor.students && viewItem =~ /^tutorUnit\\.hasDescription$/",
+          "group": "inline@0"
+        },
+        {
+          "command": "computor.showContentDescription",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course\\.hasDescription$/",
+          "group": "inline@0"
+        },
+        {
+          "command": "computor.showContentDescription",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent.*\\.hasDescription$/",
+          "group": "inline@0"
         },
         {
           "command": "computor.student.showPreview",
@@ -2276,17 +2307,17 @@
         },
         {
           "command": "computor.student.exportCourseExamples",
-          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot(\\.hasDescription)?$/",
           "group": "2_actions@1"
         },
         {
           "command": "computor.student.help",
-          "when": "view == computor.student.courses && viewItem == studentCourseRoot",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot(\\.hasDescription)?$/",
           "group": "3_help@1"
         },
         {
           "command": "computor.student.help",
-          "when": "view == computor.student.courses && viewItem == studentCourseUnit",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit(\\.hasDescription)?$/",
           "group": "3_help@1"
         },
         {

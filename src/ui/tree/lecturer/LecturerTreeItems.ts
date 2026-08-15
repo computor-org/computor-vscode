@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import {
   OrganizationList,
   CourseFamilyList,
@@ -77,10 +78,14 @@ export class CourseTreeItem extends vscode.TreeItem {
     this.id = `course-${course.id}`;
     this.contextValue = 'course';
     this.iconPath = new vscode.ThemeIcon('book');
-    this.tooltip = `Course: ${courseTitle}\nCourse Family: ${familyTitle}\nOrganization: ${orgTitle}`;
+    this.tooltip = tooltipWithDescription(
+      [`Course: ${courseTitle}`, `Course Family: ${familyTitle}`, `Organization: ${orgTitle}`],
+      (course as any).description
+    );
 
     // Set description to indicate this is a Course
     this.description = 'Course';
+    withDescription(this, courseTitle, (course as any).description);
   }
 }
 
@@ -140,6 +145,11 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     this.iconPath = this.getIcon();
     this.tooltip = this.getTooltip();
     this.description = this.getDescription();
+    withDescription(
+      this,
+      this.courseContent.title || this.courseContent.path,
+      (this.courseContent as any).description
+    );
   }
 
   private getContextValue(): string {
@@ -208,7 +218,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     }
   }
 
-  private getTooltip(): string {
+  private getTooltip(): string | vscode.MarkdownString {
     const parts: string[] = [];
     
     if (this.courseContent.title) {
@@ -253,7 +263,11 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push('Status: not deployed yet');
     }
     
-    return parts.join('\n') || this.courseContent.path;
+    const tooltip = tooltipWithDescription(
+      parts.length > 0 ? parts : [this.courseContent.path],
+      (this.courseContent as any).description
+    );
+    return tooltip;
   }
 
   private getDescription(): string | undefined {

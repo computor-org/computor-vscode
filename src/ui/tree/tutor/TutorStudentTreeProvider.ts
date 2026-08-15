@@ -14,6 +14,7 @@ import { extractGraderName } from '../../../utils/gradingHelpers';
 import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import { tooltipWithDescription, withDescription } from '../../contentDescription';
 
 function getEmbeddedCourseContentType(courseContent: any): any | undefined {
   const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
@@ -836,7 +837,8 @@ class TutorUnitItem extends vscode.TreeItem {
     if (unread > 0) {
       tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
     }
-    this.tooltip = tooltipLines.join('\n');
+    this.tooltip = tooltipWithDescription(tooltipLines, this.node.courseContent?.description);
+    withDescription(this, baseName, this.node.courseContent?.description);
   }
 
   private countItems(node: ContentNode): number {
