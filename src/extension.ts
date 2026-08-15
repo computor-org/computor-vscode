@@ -12,6 +12,8 @@ import { ArtifactsPanel } from './ui/panels/ArtifactsPanel';
 import { UiStateService } from './services/UiStateService';
 import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
 import { isRestoringSelection, restoreSelection, trackTree, treeItemId } from './ui/treeRestore';
+import type { TrackedTree } from './ui/treeRestore';
+import { registerTreeHandle } from './ui/treeRegistry';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -267,6 +269,9 @@ function registerTreeView<T>(
     ...registration.options
   });
   disposables.push(treeView, tracked);
+  // Expose the pair so other features (e.g. the inbox's jump-to-assignment)
+  // can reveal nodes in this view.
+  registerTreeHandle(id, { view: treeView as vscode.TreeView<unknown>, tracked: tracked as TrackedTree<unknown> });
   if (registration.onExpand) disposables.push(treeView.onDidExpandElement(registration.onExpand));
   if (registration.onCollapse) disposables.push(treeView.onDidCollapseElement(registration.onCollapse));
   if (registration.onSelection) disposables.push(treeView.onDidChangeSelection(registration.onSelection));
@@ -1434,6 +1439,12 @@ class UnifiedController {
       vscode.commands.registerCommand('computor.chat.markThreadRead', (item: any) => {
         if (item instanceof ChatThreadItem) {
           void tree.markThreadRead(item);
+        }
+      }),
+      vscode.commands.registerCommand('computor.chat.jumpToAssignment', async (item: any) => {
+        if (item instanceof ChatThreadItem) {
+          const { jumpToAssignment } = await import('./ui/tree/chat/chatJump');
+          void jumpToAssignment(item.thread, tree.getCurrentUserId(), api);
         }
       }),
       vscode.commands.registerCommand('computor.chat.loadMore', (scope: unknown, courseId?: unknown) => {

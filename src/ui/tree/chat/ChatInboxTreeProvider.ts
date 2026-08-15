@@ -238,6 +238,10 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     return this.totalUnread;
   }
 
+  getCurrentUserId(): string | undefined {
+    return this.currentUserId;
+  }
+
   isUnreadOnly(): boolean {
     return this.unreadOnly;
   }
