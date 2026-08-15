@@ -430,9 +430,13 @@ export interface CourseContentList {
 
 /**
  * DTO for updating course content.
+ *
+ * Reordering a content among its siblings is a `position`-only update.
+ * `path` is deliberately absent: changing it here would rename the content
+ * without cascading to its descendants and orphan every child, so path
+ * changes go through `PATCH /course-contents/{content_id}/move`.
  */
 export interface CourseContentUpdate {
-  path?: string | null;
   title?: string | null;
   description?: string | null;
   course_content_type_id?: string | null;

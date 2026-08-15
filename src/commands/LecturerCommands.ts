@@ -29,7 +29,11 @@ import { HttpError } from '../exceptions/errors/HttpError';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
-import type { CourseDeploymentList } from '../types/generated';
+import type {
+  CourseContentLecturerList,
+  CourseContentList,
+  CourseDeploymentList
+} from '../types/generated';
 import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import {
   COURSE_ANNOUNCEMENT_DENIED_REASON,
@@ -43,6 +47,14 @@ import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import {
+  computeInsertPosition,
+  computeReorderPosition,
+  getParentPath,
+  getSlug,
+  sortedSiblings,
+  type Placement
+} from '../utils/contentOrdering';
 
 interface ReleaseScope {
   label?: string;
@@ -237,6 +249,33 @@ export class LecturerCommands {
 
     register('computor.lecturer.unarchiveCourseContent', async (item: CourseContentTreeItem) => {
       await this.unarchiveCourseContent(item);
+    });
+
+    // Rearranging the course. Dragging already worked; these are the same moves
+    // without the mouse gymnastics, and the only way to reorder units at all
+    // (computor-org/issues#323).
+    register('computor.lecturer.moveContentToTop', async (item: CourseContentTreeItem) => {
+      await this.reorderCourseContent(item, 'top');
+    });
+
+    register('computor.lecturer.moveContentUp', async (item: CourseContentTreeItem) => {
+      await this.reorderCourseContent(item, 'up');
+    });
+
+    register('computor.lecturer.moveContentDown', async (item: CourseContentTreeItem) => {
+      await this.reorderCourseContent(item, 'down');
+    });
+
+    register('computor.lecturer.moveContentToBottom', async (item: CourseContentTreeItem) => {
+      await this.reorderCourseContent(item, 'bottom');
+    });
+
+    register('computor.lecturer.prependContentToUnit', async (item: CourseContentTreeItem) => {
+      await this.moveContentToUnit(item, 'prepend');
+    });
+
+    register('computor.lecturer.appendContentToUnit', async (item: CourseContentTreeItem) => {
+      await this.moveContentToUnit(item, 'append');
     });
 
     // Example management
@@ -1547,6 +1586,130 @@ export class LecturerCommands {
     } catch (error) {
       notify.error(`Failed to rename content: ${error}`);
     }
+  }
+
+  /**
+   * Move a content among its siblings.
+   *
+   * Same-parent moves are a position change and nothing else, so they go
+   * through the plain PATCH; the path stays put and the descendants have
+   * nothing to follow. Reaching an end of the list is a no-op, deliberately
+   * quiet — "Move Up" on the first assignment is a misclick, not an error.
+   */
+  private async reorderCourseContent(
+    item: CourseContentTreeItem,
+    placement: Placement
+  ): Promise<void> {
+    if (!item?.courseContent || !item.course) {
+      return;
+    }
+    const courseId = item.course.id;
+    const content = item.courseContent;
+
+    try {
+      const contents = await this.apiService.getLecturerCourseContents(courseId);
+      const siblings = sortedSiblings(contents, getParentPath(content.path));
+      const index = siblings.findIndex((sibling) => sibling.id === content.id);
+      const position = computeReorderPosition(siblings, index, placement);
+      if (position === undefined) {
+        return;
+      }
+
+      await this.apiService.updateCourseContent(courseId, content.id, { position });
+      await this.treeDataProvider.forceRefreshCourse(courseId);
+    } catch (error: any) {
+      const detail = error?.response?.detail || error?.message || error;
+      notify.error(`Failed to move "${content.title || content.path}": ${detail}`);
+    }
+  }
+
+  /**
+   * Move an assignment into another unit, at its start or its end.
+   *
+   * This one changes the path, so it goes through the move endpoint, which
+   * carries any descendants along and refuses placements the course structure
+   * does not allow.
+   */
+  private async moveContentToUnit(
+    item: CourseContentTreeItem,
+    mode: 'prepend' | 'append'
+  ): Promise<void> {
+    if (!item?.courseContent || !item.course) {
+      return;
+    }
+    const courseId = item.course.id;
+    const content = item.courseContent;
+
+    try {
+      const contents = await this.apiService.getLecturerCourseContents(courseId);
+      const currentParent = getParentPath(content.path);
+
+      const units = contents
+        .filter((candidate) => candidate.id !== content.id && this.canHoldContent(candidate))
+        .sort((a, b) => a.path.localeCompare(b.path));
+
+      const picks: Array<vscode.QuickPickItem & { unitPath: string }> = [
+        { label: '$(root-folder) Course root', description: 'not inside any unit', unitPath: '' },
+        ...units.map((unit) => ({
+          label: unit.title || unit.path,
+          description: unit.path,
+          unitPath: unit.path
+        }))
+      ];
+
+      const chosen = await vscode.window.showQuickPick(picks, {
+        title: mode === 'prepend'
+          ? `Move "${content.title || content.path}" to the start of…`
+          : `Move "${content.title || content.path}" to the end of…`
+      });
+      if (!chosen) {
+        return;
+      }
+
+      const slug = getSlug(content.path);
+      const targetPath = chosen.unitPath ? `${chosen.unitPath}.${slug}` : slug;
+      const children = sortedSiblings(contents, chosen.unitPath).filter((c) => c.id !== content.id);
+      const position = computeInsertPosition(children, mode);
+
+      // Staying put: a path change the server would reject as a collision with
+      // the content itself, when all that is wanted is a new position.
+      if (chosen.unitPath === currentParent) {
+        await this.apiService.updateCourseContent(courseId, content.id, { position });
+        await this.treeDataProvider.forceRefreshCourse(courseId);
+        return;
+      }
+
+      // Say which content is in the way before the server does — its message
+      // cannot name the unit the lecturer just picked.
+      const clash = contents.find((c) => c.path === targetPath && c.id !== content.id);
+      if (clash) {
+        notify.error(
+          `"${chosen.label}" already contains something at "${slug}" (${clash.title || clash.path}). ` +
+          'Rename one of them first.'
+        );
+        return;
+      }
+
+      await this.apiService.moveCourseContent(courseId, content.id, targetPath, position);
+      await this.treeDataProvider.forceRefreshCourse(courseId);
+      notify.info(
+        `Moved "${content.title || content.path}" to the ${mode === 'prepend' ? 'start' : 'end'} of ${chosen.label}`
+      );
+    } catch (error: any) {
+      const detail = error?.response?.detail || error?.message || error;
+      notify.error(`Failed to move "${content.title || content.path}": ${detail}`);
+    }
+  }
+
+  /** Whether a content is a kind that other content can live inside. */
+  private canHoldContent(content: CourseContentList | CourseContentLecturerList): boolean {
+    const kind = (content as any).course_content_type?.course_content_kind;
+    if (kind && typeof kind.has_descendants === 'boolean') {
+      return kind.has_descendants;
+    }
+    // Older payloads carry only the denormalised kind id and the submittable
+    // flag; an assignment is the one kind that cannot hold anything.
+    return !content.is_submittable && content.course_content_kind_id !== 'assignment';
   }
 
   private async renameCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
