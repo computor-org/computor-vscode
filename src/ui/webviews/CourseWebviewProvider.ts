@@ -26,7 +26,11 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     }
 
     const { course, courseFamily, organization } = data;
-    const gitlabUrl = (course as any).properties?.gitlab?.url || '';
+    // Shown, not edited. A course's git binding is fixed once the repositories
+    // are materialised, and this field never reached the server anyway —
+    // CourseUpdate carries no git fields, so anything typed here was dropped
+    // (computor-org/issues#326). Configure git via "Configure Course Git".
+    const gitUrl = (course as any).properties?.gitlab?.url || '';
 
     const headerHtml = `
       <h1>${escapeHtml(course.title || course.path)}</h1>
@@ -38,11 +42,11 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       ${infoRowCode('Path', course.path)}
       ${infoRowText('Course Family', courseFamily?.title || courseFamily?.path)}
       ${infoRowText('Organization', organization?.title || organization?.path)}
+      ${gitUrl ? infoRowCode('Git Repository', gitUrl) : ''}
     `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', course.title, { placeholder: 'Course title' }))}
         ${formGroup('Description', textareaInput('description', course.description, { placeholder: 'Course description' }))}
-        ${formGroup('GitLab Repository URL', textInput('gitlabUrl', gitlabUrl, { type: 'url', placeholder: 'https://gitlab.example.com/...' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
           <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
@@ -62,8 +66,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
             courseId: courseId,
             updates: {
               title: document.getElementById('title').value,
-              description: document.getElementById('description').value,
-              gitlabUrl: document.getElementById('gitlabUrl').value
+              description: document.getElementById('description').value
             }
           }
         });
