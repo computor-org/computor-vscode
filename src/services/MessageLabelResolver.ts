@@ -1,10 +1,18 @@
 import { ComputorApiService } from './ComputorApiService';
-import type { MessageList } from '../types/generated';
+import type { MessageContext, MessageList } from '../types/generated';
 import type { ScopeName } from './MessagePermissions';
 
 export interface TargetLabel {
   title: string;
   subtitle?: string;
+}
+
+/** The first server-resolved context found among the messages, if any. */
+export function messageContextOf(messages: MessageList[]): MessageContext | undefined {
+  for (const m of messages) {
+    if (m.context) { return m.context; }
+  }
+  return undefined;
 }
 
 /**
@@ -177,22 +185,29 @@ export class MessageLabelResolver {
         return {
           title: targetId ? this.familyLabels.get(targetId) || shortId(targetId) : 'Course Family'
         };
-      case 'course':
+      case 'course': {
+        const ctx = messageContextOf(messages);
+        const fromContext = ctx?.course_id === targetId ? ctx?.course_title ?? undefined : undefined;
         return {
-          title: targetId ? this.courseLabels.get(targetId) || shortId(targetId) : 'Course'
+          title: targetId ? this.courseLabels.get(targetId) || fromContext || shortId(targetId) : 'Course'
         };
+      }
       case 'course_content': {
         const info = targetId ? this.contentLabels.get(targetId) : undefined;
+        const ctx = messageContextOf(messages);
+        const fromContext = ctx?.course_content_id === targetId ? ctx?.course_content_title ?? undefined : undefined;
         return {
-          title: info?.title || (targetId ? shortId(targetId) : 'Course Content'),
-          subtitle: info?.subtitle
+          title: info?.title || fromContext || (targetId ? shortId(targetId) : 'Course Content'),
+          subtitle: info?.subtitle ?? (fromContext ? ctx?.course_title ?? undefined : undefined)
         };
       }
       case 'course_group': {
         const info = targetId ? this.groupLabels.get(targetId) : undefined;
+        const ctx = messageContextOf(messages);
+        const fromContext = ctx?.course_group_id === targetId ? ctx?.course_group_title ?? undefined : undefined;
         return {
-          title: info?.title || (targetId ? `Group ${shortId(targetId)}` : 'Course Group'),
-          subtitle: info?.subtitle
+          title: info?.title || fromContext || (targetId ? `Group ${shortId(targetId)}` : 'Course Group'),
+          subtitle: info?.subtitle ?? (fromContext ? ctx?.course_title ?? undefined : undefined)
         };
       }
       case 'course_member': {
@@ -203,9 +218,36 @@ export class MessageLabelResolver {
         };
       }
       case 'submission_group': {
-        // Named after the assignment it belongs to. The scope label is
-        // already shown by the surrounding chrome, so no subtitle here —
-        // it would read as "Submission group / X".
+        // Prefer the server-resolved context (issue #322 §1): the reader's
+        // own group is named after the assignment; anyone else — a tutor —
+        // sees who the conversation is with as well.
+        const ctx = messageContextOf(messages);
+        if (ctx) {
+          const contentTitle = ctx.course_content_title
+            || (ctx.course_content_id ? this.contentLabels.get(ctx.course_content_id)?.title : undefined);
+          const members = ctx.submission_group_members ?? [];
+          const isMember = Boolean(
+            currentUserId && members.some(m => m.user_id === currentUserId)
+          );
+          if (isMember && contentTitle) {
+            return { title: contentTitle };
+          }
+          const groupName = ctx.submission_group_display_name
+            || members
+              .map(m => `${m.given_name ?? ''} ${m.family_name ?? ''}`.trim())
+              .find(Boolean);
+          if (!isMember && groupName) {
+            return {
+              title: contentTitle ? `${groupName} — ${contentTitle}` : groupName,
+              subtitle: ctx.course_title ?? undefined
+            };
+          }
+          if (contentTitle) {
+            return { title: contentTitle };
+          }
+        }
+        // Fallback for messages without context (older backend): the linked
+        // course_content, when the single-target invariant left it set.
         const contentId = messages[0]?.course_content_id;
         const contentLabel = contentId ? this.contentLabels.get(contentId)?.title : undefined;
         return {
@@ -240,6 +282,23 @@ export class MessageLabelResolver {
    * "Submission Group <shortId>".
    */
   async prefetch(grouped: Map<ScopeName, Map<string, MessageList[]>>): Promise<void> {
+    // Seed the caches from the server-resolved contexts first — for enriched
+    // messages every name is already on the wire, so the per-target fetches
+    // below become cache hits instead of API calls.
+    for (const [scope, byTarget] of grouped) {
+      for (const [targetId, msgs] of byTarget) {
+        for (const m of msgs) {
+          this.seedFromContext(m.context ?? undefined);
+        }
+        if (targetId !== '__none__') {
+          const courseId = messageContextOf(msgs)?.course_id;
+          if (courseId) {
+            this.parentCourse.set(`${scope}:${targetId}`, courseId);
+          }
+        }
+      }
+    }
+
     const tasks: Promise<unknown>[] = [];
     for (const [scope, byTarget] of grouped) {
       for (const [targetId, msgs] of byTarget) {
@@ -249,6 +308,7 @@ export class MessageLabelResolver {
         if (scope === 'submission_group') {
           const seen = new Set<string>();
           for (const m of msgs) {
+            if (m.context?.course_content_title) { continue; }
             const contentId = m.course_content_id;
             if (typeof contentId === 'string' && contentId && !seen.has(contentId)) {
               seen.add(contentId);
@@ -259,6 +319,32 @@ export class MessageLabelResolver {
       }
     }
     await Promise.all(tasks);
+  }
+
+  /** Copy whatever names a message context carries into the label caches. */
+  private seedFromContext(ctx: MessageContext | undefined): void {
+    if (!ctx) { return; }
+    if (ctx.course_id && ctx.course_title && !this.courseLabels.has(ctx.course_id)) {
+      this.courseLabels.set(ctx.course_id, ctx.course_title);
+    }
+    if (ctx.course_content_id && ctx.course_content_title && !this.contentLabels.has(ctx.course_content_id)) {
+      this.contentLabels.set(ctx.course_content_id, {
+        title: ctx.course_content_title,
+        subtitle: ctx.course_title ?? undefined
+      });
+      if (ctx.course_id) {
+        this.parentCourse.set(`course_content:${ctx.course_content_id}`, ctx.course_id);
+      }
+    }
+    if (ctx.course_group_id && ctx.course_group_title && !this.groupLabels.has(ctx.course_group_id)) {
+      this.groupLabels.set(ctx.course_group_id, {
+        title: ctx.course_group_title,
+        subtitle: ctx.course_title ?? undefined
+      });
+      if (ctx.course_id) {
+        this.parentCourse.set(`course_group:${ctx.course_group_id}`, ctx.course_id);
+      }
+    }
   }
 }
 

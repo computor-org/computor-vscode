@@ -503,13 +503,13 @@
       },
       {
         "command": "computor.chat.scope.mute",
-        "title": "Mute This Scope",
+        "title": "Mute Notifications",
         "icon": "$(bell)",
         "category": "Computor Chat"
       },
       {
         "command": "computor.chat.scope.unmute",
-        "title": "Unmute This Scope",
+        "title": "Unmute Notifications",
         "icon": "$(bell-slash)",
         "category": "Computor Chat"
       },
@@ -517,6 +517,12 @@
         "command": "computor.chat.markThreadRead",
         "title": "Mark Thread as Read",
         "icon": "$(check)",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.markThreadUnread",
+        "title": "Mark as Unread",
+        "icon": "$(mail)",
         "category": "Computor Chat"
       },
       {
@@ -528,6 +534,12 @@
       {
         "command": "computor.chat.openThread",
         "title": "Open Conversation",
+        "category": "Computor Chat"
+      },
+      {
+        "command": "computor.chat.jumpToAssignment",
+        "title": "Open Assignment",
+        "icon": "$(link-external)",
         "category": "Computor Chat"
       },
       {
@@ -1533,12 +1545,12 @@
         },
         {
           "command": "computor.chat.markScopeRead",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\..+\\.unread/",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chat(Scope|Top|Course|Section).*\\.unread/",
           "group": "1_actions@1"
         },
         {
           "command": "computor.chat.scope.mute",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.[^.]+(\\.unread)?$/",
+          "when": "view == computor.chat.inbox && viewItem =~ /^(chatTop\\.announcements|chatCourse)(\\.unread)?$/",
           "group": "inline@5"
         },
         {
@@ -1548,7 +1560,7 @@
         },
         {
           "command": "computor.chat.scope.mute",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\.[^.]+(\\.unread)?$/",
+          "when": "view == computor.chat.inbox && viewItem =~ /^(chatTop\\.announcements|chatCourse)(\\.unread)?$/",
           "group": "1_actions@2"
         },
         {
@@ -1562,23 +1574,38 @@
           "group": "0_open@1"
         },
         {
+          "command": "computor.chat.jumpToAssignment",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatThread\\.assignment/",
+          "group": "inline@1"
+        },
+        {
+          "command": "computor.chat.jumpToAssignment",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatThread\\.assignment/",
+          "group": "0_open@2"
+        },
+        {
           "command": "computor.chat.openMessages",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatScope\\./",
+          "when": "view == computor.chat.inbox && viewItem =~ /^(chatScope|chatTop|chatCourse|chatSection)/",
           "group": "0_open@1"
         },
         {
           "command": "computor.chat.openMessages",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatCourseGroup\\./",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatSection\\./",
           "group": "0_open@1"
         },
         {
           "command": "computor.chat.openMessages",
-          "when": "view == computor.chat.inbox && viewItem =~ /^chatCourseGroup\\./",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatSection\\./",
           "group": "inline@1"
         },
         {
           "command": "computor.chat.markThreadRead",
-          "when": "view == computor.chat.inbox && viewItem == chatThread.unread",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatThread\\..*\\.unread$/",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "computor.chat.markThreadUnread",
+          "when": "view == computor.chat.inbox && viewItem =~ /^chatThread\\.[a-z]+$/",
           "group": "1_actions@1"
         },
         {

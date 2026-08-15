@@ -40,27 +40,33 @@ export interface ChatThread {
   anchorMessageId?: string;
 }
 
+// Human names for scopes, used in tooltips, toasts and the flat DM
+// sections. The old system names ("Submission Groups", "Course Content")
+// told users nothing about who reads such a message (issue #322 §3).
 const SCOPE_LABELS: Record<MessageScope, string> = {
   user: 'Direct Messages',
   course_member: 'Course Member DMs',
-  submission_group: 'Submission Groups',
-  course_group: 'Course Groups',
-  course_content: 'Course Content',
-  course: 'Courses',
-  course_family: 'Course Families',
-  organization: 'Organizations',
-  global: 'Global'
+  submission_group: 'Assignment conversation',
+  course_group: 'Group announcement',
+  course_content: 'Assignment announcement',
+  course: 'Course announcement',
+  course_family: 'Course family announcement',
+  organization: 'Organization announcement',
+  global: 'System announcement'
 };
 
+// Announcement rows carry their origin's icon so a course notice, a group
+// notice and an assignment notice are tellable apart at a glance (issue #322
+// follow-up) — the subtitle names the origin, the icon shapes the scan.
 const SCOPE_ICONS: Record<MessageScope, string> = {
   user: 'mail',
   course_member: 'account',
-  submission_group: 'beaker',
+  submission_group: 'comment',
   course_group: 'organization',
   course_content: 'symbol-file',
-  course: 'mortar-board',
+  course: 'megaphone',
   course_family: 'folder-library',
-  organization: 'organization',
+  organization: 'law',
   global: 'globe'
 };
 
@@ -142,7 +148,12 @@ export class ChatThreadItem extends vscode.TreeItem {
     this.id = announcement
       ? `chat-announcement-${thread.scope}-${thread.anchorMessageId}`
       : `chat-thread-${thread.scope}-${thread.targetId ?? 'none'}`;
-    this.contextValue = thread.unreadCount > 0 ? 'chatThread.unread' : 'chatThread';
+    // The kind is part of the contextValue so menus can target just
+    // assignment threads (jump-to-assignment) or just announcements.
+    const base = thread.scope === 'submission_group'
+      ? 'chatThread.assignment'
+      : announcement ? 'chatThread.announcement' : 'chatThread.dm';
+    this.contextValue = thread.unreadCount > 0 ? `${base}.unread` : base;
 
     if (thread.unreadCount > 0) {
       this.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.blue'));
@@ -152,7 +163,9 @@ export class ChatThreadItem extends vscode.TreeItem {
         highlights: [[0, thread.title.length]]
       };
     } else {
-      this.iconPath = new vscode.ThemeIcon(announcement ? 'megaphone' : 'comment');
+      this.iconPath = new vscode.ThemeIcon(
+        announcement ? SCOPE_ICONS[thread.scope] : 'comment'
+      );
     }
 
     const subtitle = thread.subtitle ? `${thread.subtitle} · ` : '';
@@ -202,39 +215,129 @@ export class ChatErrorItem extends vscode.TreeItem {
   }
 }
 
-export class ChatCourseGroupItem extends vscode.TreeItem {
+/** Real message/unread totals for a tree row, from the counts endpoint or
+ *  (as a fallback) from the pages fetched so far. `undefined` means the
+ *  numbers are genuinely unknown — nothing fetched and no counts API. */
+export interface ChatCounts {
+  total: number;
+  unread: number;
+}
+
+export type ChatSectionKind = 'announcements' | 'assignments';
+
+/** "{unread} unread · {total}" / "{total}" / "no messages" — the one format
+ *  every level of the tree uses, so the numbers always mean the same thing
+ *  (messages and unread messages, never child-node counts — issue #322 §2). */
+export function formatCountsDescription(counts: ChatCounts | undefined): string {
+  if (!counts) { return ''; }
+  if (counts.unread > 0) { return `${counts.unread} unread · ${counts.total}`; }
+  if (counts.total > 0) { return `${counts.total}`; }
+  return 'no messages';
+}
+
+/** Root "Announcements" node: global + organization + course_family notices. */
+export class ChatTopAnnouncementsItem extends vscode.TreeItem {
   constructor(
-    public readonly scope: MessageScope,
+    public readonly threads: ChatThread[],
+    public readonly unreadCount: number,
+    counts: ChatCounts | undefined,
+    expanded: boolean,
+    muted: boolean
+  ) {
+    const label = muted ? '🔕 Announcements' : 'Announcements';
+    const canExpand = threads.length > 0;
+    super(
+      label,
+      canExpand
+        ? (expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+        : vscode.TreeItemCollapsibleState.None
+    );
+    this.id = 'chat-top-announcements';
+    const suffixes: string[] = [];
+    if (unreadCount > 0) { suffixes.push('unread'); }
+    if (muted) { suffixes.push('muted'); }
+    this.contextValue = ['chatTop', 'announcements', ...suffixes].join('.');
+    this.iconPath = new vscode.ThemeIcon('megaphone');
+    this.description = formatCountsDescription(counts);
+    const baseTooltip = 'System, organization and course-family announcements';
+    this.tooltip = muted ? `${baseTooltip}\nNotifications muted.` : baseTooltip;
+    // A childless row would otherwise do nothing on click — open the global
+    // announcements panel instead (also the only route to posting the first).
+    if (!canExpand) {
+      this.command = {
+        command: 'computor.chat.openMessages',
+        title: 'Open Messages',
+        arguments: [this]
+      };
+    }
+  }
+}
+
+/** One node per enrolled course; expands into Announcements + Assignments. */
+export class ChatCourseItem extends vscode.TreeItem {
+  constructor(
     public readonly courseId: string,
     public readonly courseLabel: string,
-    /** Aggregate unread for messages of `scope` belonging to `courseId` that
-     *  have already been pulled. Zero when the course node hasn't been
-     *  expanded yet. */
     public readonly unreadCount: number,
-    /** Number of distinct threads for messages of `scope` × `courseId` that
-     *  have already been pulled. */
-    public readonly threadCount: number,
-    /** Whether the backend reports more messages for (scope, courseId) than
-     *  we've pulled so far — drives the trailing Load more visibility. */
-    public readonly hasMore: boolean,
+    counts: ChatCounts | undefined,
+    expanded: boolean,
+    muted: boolean
+  ) {
+    super(
+      muted ? `🔕 ${courseLabel}` : courseLabel,
+      expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
+    );
+    this.id = `chat-course-${courseId}`;
+    const suffixes: string[] = [];
+    if (unreadCount > 0) { suffixes.push('unread'); }
+    if (muted) { suffixes.push('muted'); }
+    this.contextValue = ['chatCourse', ...suffixes].join('.');
+    this.iconPath = new vscode.ThemeIcon('mortar-board');
+    this.description = formatCountsDescription(counts);
+    const baseTooltip = counts
+      ? `${courseLabel}: ${counts.unread} unread of ${counts.total} message(s)`
+      : courseLabel;
+    this.tooltip = muted ? `${baseTooltip}\nNotifications muted for this course.` : baseTooltip;
+  }
+}
+
+/** "Announcements" / "Assignments" under a course node. */
+export class ChatCourseSectionItem extends vscode.TreeItem {
+  constructor(
+    public readonly kind: ChatSectionKind,
+    public readonly courseId: string,
+    public readonly courseLabel: string,
+    public readonly unreadCount: number,
+    counts: ChatCounts | undefined,
     expanded: boolean
   ) {
-    super(courseLabel, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
-    this.id = `chat-course-group-${scope}-${courseId}`;
-    this.contextValue = unreadCount > 0
-      ? `chatCourseGroup.${scope}.unread`
-      : `chatCourseGroup.${scope}`;
-    this.iconPath = new vscode.ThemeIcon('mortar-board');
-    if (threadCount === 0) {
-      this.description = expanded ? 'no messages' : 'click to load';
-    } else {
-      this.description = unreadCount > 0
-        ? `${unreadCount} unread · ${threadCount}${hasMore ? ' · …' : ''}`
-        : `${threadCount}${hasMore ? ' · …' : ''}`;
+    const label = kind === 'announcements' ? 'Announcements' : 'Assignments';
+    // A section the counts endpoint says is empty renders as a leaf with
+    // "no messages" — never the dead "click to load" (issue #322 §4). With
+    // unknown counts it stays expandable and loads lazily on expand.
+    const knownEmpty = counts !== undefined && counts.total === 0;
+    super(
+      label,
+      knownEmpty
+        ? vscode.TreeItemCollapsibleState.None
+        : (expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
+    );
+    this.id = `chat-section-${kind}-${courseId}`;
+    this.contextValue = unreadCount > 0 ? `chatSection.${kind}.unread` : `chatSection.${kind}`;
+    this.iconPath = new vscode.ThemeIcon(kind === 'announcements' ? 'megaphone' : 'comment-discussion');
+    this.description = formatCountsDescription(counts);
+    this.tooltip = counts
+      ? `${courseLabel} · ${label}: ${counts.unread} unread of ${counts.total} message(s)`
+      : `${courseLabel} · ${label}`;
+    // An empty section still needs a way in — to read nothing is pointless,
+    // but to write the first message is exactly what an empty section is for.
+    if (knownEmpty) {
+      this.command = {
+        command: 'computor.chat.openMessages',
+        title: 'Open Messages',
+        arguments: [this]
+      };
     }
-    this.tooltip = unreadCount > 0
-      ? `${courseLabel}: ${unreadCount} unread of ${threadCount} thread(s)`
-      : `${courseLabel}: ${threadCount} thread(s)`;
   }
 }
 

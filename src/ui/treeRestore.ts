@@ -103,6 +103,26 @@ export function isRestoringSelection(): boolean {
 /** How long after a reveal its selection event may still arrive. */
 const SUPPRESS_WINDOW_MS = 1500;
 
+/**
+ * Run a programmatic reveal with selection side effects standing down.
+ *
+ * Same contract as a restore: the guards in the selection handlers consult
+ * `isRestoringSelection()`, so a reveal wrapped here highlights the node
+ * without setting off the checkout / result-fetch machinery a user click
+ * would. The flag outlives `fn` by the usual suppress window, because the
+ * selection event lands after the reveal resolves.
+ */
+export async function suppressSelectionSideEffects(fn: () => Promise<void>): Promise<void> {
+  restoring = true;
+  try {
+    await fn();
+  } finally {
+    setTimeout(() => {
+      restoring = false;
+    }, SUPPRESS_WINDOW_MS);
+  }
+}
+
 /** How long to keep waiting for the remembered node to be rendered. */
 const RESTORE_TIMEOUT_MS = 30000;
 

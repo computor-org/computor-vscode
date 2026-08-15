@@ -127,6 +127,15 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   private currentUserId?: string;
   private currentUserIdPromise?: Promise<string | undefined>;
 
+  /**
+   * Messages the reader explicitly flagged back to unread (issue #322 §5).
+   * Every auto-read path — the open sweep, the dwell observer batches, the
+   * optimistic normalisation — skips these, or the flag would be erased the
+   * moment it was set. Cleared when the panel switches to another target.
+   */
+  private readonly manuallyUnread = new Set<string>();
+  private currentTargetKey?: string;
+
   private ensureCurrentUserId(): Promise<string | undefined> {
     if (this.currentUserId) {
       return Promise.resolve(this.currentUserId);
@@ -150,6 +159,14 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
   async showMessages(target: MessageTargetContext): Promise<void> {
     target = this.withScopePolicy(target);
+    // Switching to another conversation ends the "keep this unread" hold —
+    // deliberately re-opening the same thread later is the moment the reader
+    // comes back with time to answer, and that re-open reads it again.
+    const targetKey = JSON.stringify(target.query);
+    if (targetKey !== this.currentTargetKey) {
+      this.currentTargetKey = targetKey;
+      this.manuallyUnread.clear();
+    }
     // Resolve identity unconditionally, and before subscribing to the WS
     // channel below: API-token sessions can't read the user id from the
     // token, so GET /user is the only way to learn it. Skipping it left the
@@ -174,7 +191,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     if (this.inputPanel) {
       this.inputPanel.setTarget(target, rawMessages);
-      this.inputPanel.setOnMessageCreated(() => this.refreshMessages({ skipIndicatorUpdate: true }));
+      this.inputPanel.setOnMessageCreated(() => {
+        // The inbox tree learns about the new message via WS too, but the
+        // author should see their own post in the tree immediately — and a
+        // WS hiccup must not leave it invisible (issue #322 follow-up).
+        void vscode.commands.executeCommand('computor.chat.refresh');
+        return this.refreshMessages({ skipIndicatorUpdate: true });
+      });
       // Set unconditionally, including to undefined. Guarding on truthiness
       // left the previous panel's channel in place when the new one had none,
       // and the input panel skips its post-send refresh whenever it believes
@@ -488,6 +511,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       case 'markRead':
         await this.handleMarkRead(message.data);
         break;
+      case 'markUnread':
+        await this.handleMarkUnread(message.data);
+        break;
       case 'showWarning':
         if (message.data) {
           notify.warning(String(message.data));
@@ -541,6 +567,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       if (message.is_read || message.author_id === currentUserId) {
         return message;
       }
+      if (this.manuallyUnread.has(message.id)) {
+        return message;
+      }
       return { ...message, is_read: true } satisfies MessageList;
     });
   }
@@ -567,6 +596,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
     const unreadIds = messages
       .filter((message) => !message.is_read && message.author_id !== currentUserId)
+      .filter((message) => !this.manuallyUnread.has(message.id))
       .map((message) => message.id);
 
     if (unreadIds.length === 0) {
@@ -604,6 +634,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const seen = new Set(ids);
     const toMark = (panelData?.messages ?? []).filter(
       (m) => seen.has(m.id) && !m.is_read && m.author_id !== currentUserId
+        && !this.manuallyUnread.has(m.id)
     );
     if (toMark.length === 0) {
       return;
@@ -617,6 +648,33 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       return;
     }
     this.notifyIndicatorsUpdated(target, toMark);
+  }
+
+  /**
+   * "Read it, but no time to answer" (issue #322 §5): flip one message back
+   * to unread so the open question keeps its badge in every tree. The hold
+   * lasts while the panel stays on this thread; re-opening the conversation
+   * later reads it again — that is the reader returning with time.
+   */
+  private async handleMarkUnread(data: { messageId?: string }): Promise<void> {
+    const messageId = typeof data?.messageId === 'string' ? data.messageId : undefined;
+    if (!messageId) {
+      return;
+    }
+    this.manuallyUnread.add(messageId);
+    const panelData = this.currentData as MessagesWebviewData | undefined;
+    const message = (panelData?.messages ?? []).find((m) => m.id === messageId);
+    if (message) {
+      message.is_read = false;
+    }
+    try {
+      await this.apiService.markMessageUnread(messageId);
+    } catch (error) {
+      console.error(`Failed to mark message ${messageId} as unread:`, error);
+      this.manuallyUnread.delete(messageId);
+      return;
+    }
+    this.notifyIndicatorsUpdated(this.getCurrentTarget(), message ? [message] : []);
   }
 
   private notifyIndicatorsUpdated(target: MessageTargetContext | undefined, messages: MessageList[]): void {

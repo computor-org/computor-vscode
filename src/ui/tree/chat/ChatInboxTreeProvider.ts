@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { kindForScope } from '../../../services/MessagePermissions';
-import { MessageLabelResolver, shortId } from '../../../services/MessageLabelResolver';
+import { MessageLabelResolver, messageContextOf, shortId } from '../../../services/MessageLabelResolver';
 import { buildTargetContext } from '../../../services/messageTargets';
 import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
-import type { MessageList } from '../../../types/generated';
+import type { MessageCountsGet, MessageList } from '../../../types/generated';
 import { notify } from '../../../utils/notify';
 
 const GLOBAL_CHANNEL = 'global';
@@ -13,18 +13,23 @@ import {
   ChatScopeItem,
   ChatThreadItem,
   ChatThread,
+  ChatCounts,
+  ChatCourseItem,
+  ChatCourseSectionItem,
   ChatEmptyItem,
   ChatLoadingItem,
   ChatErrorItem,
   ChatLoadMoreItem,
-  ChatCourseGroupItem,
+  ChatSectionKind,
+  ChatTopAnnouncementsItem,
+  formatCountsDescription,
   MessageScope,
   scopeLabel
 } from './ChatInboxTreeItems';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 
-/** Scopes that are rendered as Course → threads inside the inbox tree.
- *  All other scopes keep the original flat-per-scope rendering. */
+/** Scopes rendered under a course node (lazy-fetched per course).
+ *  Everything else is fetched eagerly per scope. */
 const COURSE_GROUPED_SCOPES = new Set<MessageScope>([
   'submission_group',
   'course',
@@ -35,6 +40,16 @@ const COURSE_GROUPED_SCOPES = new Set<MessageScope>([
 function isCourseGroupedScope(scope: MessageScope): boolean {
   return COURSE_GROUPED_SCOPES.has(scope);
 }
+
+/** Scopes folded into the root "Announcements" node. */
+const TOP_SCOPES: MessageScope[] = ['global', 'organization', 'course_family'];
+
+/** Direct-message scopes — rendered as flat sections, only when non-empty
+ *  (their write path is not implemented on the backend). */
+const DM_SCOPES: MessageScope[] = ['user', 'course_member'];
+
+/** The scopes a course's "Announcements" section merges. */
+const COURSE_ANNOUNCEMENT_SCOPES: MessageScope[] = ['course', 'course_group', 'course_content'];
 
 const SCOPE_ORDER: MessageScope[] = [
   'user',
@@ -50,15 +65,36 @@ const SCOPE_ORDER: MessageScope[] = [
 
 const STATE_KEY = 'computor.chat.inbox.state';
 
-interface PersistedState {
+/** Pre-course-first shape, read once for migration. */
+interface PersistedStateV1 {
   expandedScopes: MessageScope[];
   unreadOnly: boolean;
   mutedScopes?: MessageScope[];
-  /** `${scope}::${courseId}` for each open course node. */
   expandedCourseGroups?: string[];
 }
 
-type AnyTreeItem = ChatScopeItem | ChatThreadItem | ChatEmptyItem | ChatLoadingItem | ChatErrorItem | ChatLoadMoreItem | ChatCourseGroupItem;
+interface PersistedStateV2 {
+  version: 2;
+  unreadOnly: boolean;
+  /** Course ids whose node is open. */
+  expandedCourses: string[];
+  /** 'top', `${kind}::${courseId}` for course sections, `scope::${scope}`
+   *  for the flat DM sections. */
+  expandedSections: string[];
+  mutedCourses: string[];
+  muteTopAnnouncements: boolean;
+}
+
+type AnyTreeItem =
+  | ChatScopeItem
+  | ChatThreadItem
+  | ChatEmptyItem
+  | ChatLoadingItem
+  | ChatErrorItem
+  | ChatLoadMoreItem
+  | ChatTopAnnouncementsItem
+  | ChatCourseItem
+  | ChatCourseSectionItem;
 
 interface ScopeFetchState {
   /** Accumulated messages for this scope; grows on each Load more. */
@@ -81,7 +117,15 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
   private loading = false;
   private loadError: string | undefined;
-  private scopeItems: ChatScopeItem[] = [];
+  private rootItems: AnyTreeItem[] = [];
+  /** Unread total for the view badge — server counts when available (they
+   *  cover unfetched sections too), otherwise summed from fetched pages. */
+  private totalUnread = 0;
+  /** Server-side aggregates keyed `${scope}::${courseId ?? ''}`. Undefined
+   *  against a backend without GET /messages/counts. Mutated locally on
+   *  optimistic read/unread so badges track without a refetch. */
+  private counts?: Map<string, ChatCounts>;
+  private countsTotals?: { total: number; unread: number };
   /** Flat union of every scope's accumulated messages, used by groupMessages
    *  + buildScopeItems and shared by mark-read mutations. Rebuilt from
    *  scopeFetchStates whenever they change. */
@@ -92,9 +136,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   /** Per-(scope, courseId) pagination + accumulation for the course-grouped
    *  scopes (submission_group, course, course_content, course_group). */
   private courseScopeStates: Map<MessageScope, Map<string, ScopeFetchState>> = new Map();
-  /** Course nodes the user has expanded at least once — used both to drive
-   *  initial-collapse-state and to know whether to lazy-fetch on render. */
-  private expandedCourseGroups: Set<string> = new Set();
   /** Page size for every per-scope GET (initial + each Load more click). */
   private static readonly SCOPE_PAGE_SIZE = 200;
   /** Set of scopes whose Load more is in-flight, so a double-click doesn't
@@ -122,13 +163,17 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   private static readonly MARK_READ_WS_SUPPRESS_MS = 4000;
   private suppressWsReloadUntil = 0;
 
-  // Persisted UI state
-  private expandedScopes: Set<MessageScope> = new Set();
+  // Persisted UI state (v2 — course-first)
+  private expandedCourses: Set<string> = new Set();
+  /** 'top', `${kind}::${courseId}`, or `scope::${scope}` for DM sections. */
+  private expandedSections: Set<string> = new Set();
   private unreadOnly = false;
-  /** Scopes whose new-message toasts are suppressed. Per-scope only — there
-   *  is no separate global flag; the global title-bar toggle simply flips
-   *  this set between empty (all on) and full (all muted). */
-  private mutedScopes: Set<MessageScope> = new Set();
+  private mutedCourses: Set<string> = new Set();
+  private muteTopAnnouncements = false;
+  /** Set by the v1→v2 migration when every old scope was muted: the course
+   *  list isn't known yet at load time, so the mute-all lands on first
+   *  reload once it is. */
+  private pendingMuteAllCourses = false;
 
   /** Shared with the messages browser — same lookups, same caches. */
   private readonly labels: MessageLabelResolver;
@@ -190,7 +235,11 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   }
 
   getTotalUnread(): number {
-    return this.scopeItems.reduce((sum, item) => sum + item.unreadCount, 0);
+    return this.totalUnread;
+  }
+
+  getCurrentUserId(): string | undefined {
+    return this.currentUserId;
   }
 
   isUnreadOnly(): boolean {
@@ -202,54 +251,156 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     this.unreadOnly = value;
     void this.persistState();
     void vscode.commands.executeCommand('setContext', 'computor.chat.unreadOnly', value);
-    // Toggle is a pure client-side filter (buildScopeItems already excludes
-    // threads with no unread messages when unreadOnly is on). Rebuilding from
-    // the cached payload avoids re-paginating the entire inbox on every flip.
-    this.rebuildScopeItemsFromCache();
+    // Toggle is a pure client-side filter. Rebuilding from the cached
+    // payload avoids re-paginating the entire inbox on every flip.
+    this.rebuildFromCache();
   }
 
-  /** True when at least one scope is currently un-muted. The title-bar action
-   *  uses this to pick between "mute all" (bell) and "unmute all" (bell-slash). */
+  /** Every course the tree knows about (the enrolment list). */
+  private knownCourseIds(): string[] {
+    const inner = this.courseScopeStates.get('submission_group');
+    return inner ? Array.from(inner.keys()) : [];
+  }
+
+  /** True when anything is still un-muted. The title-bar action uses this to
+   *  pick between "mute all" (bell) and "unmute all" (bell-slash). */
   isAnyScopeUnmuted(): boolean {
-    return SCOPE_ORDER.some(scope => !this.mutedScopes.has(scope));
+    if (!this.muteTopAnnouncements) { return true; }
+    return this.knownCourseIds().some(id => !this.mutedCourses.has(id));
   }
 
-  isScopeMuted(scope: MessageScope): boolean {
-    return this.mutedScopes.has(scope);
+  isCourseMuted(courseId: string): boolean {
+    return this.mutedCourses.has(courseId);
   }
 
-  /** Flip every scope at once. If any scope is currently un-muted, mute all;
-   *  otherwise unmute all. */
+  /** Flip everything at once. If anything is un-muted, mute all; otherwise
+   *  unmute all. */
   toggleAllNotifications(): void {
-    const allMuted = !this.isAnyScopeUnmuted();
-    if (allMuted) {
-      this.mutedScopes.clear();
+    if (this.isAnyScopeUnmuted()) {
+      this.muteTopAnnouncements = true;
+      this.mutedCourses = new Set(this.knownCourseIds());
     } else {
-      this.mutedScopes = new Set(SCOPE_ORDER);
+      this.muteTopAnnouncements = false;
+      this.mutedCourses.clear();
     }
     void this.persistState();
     void this.applyNotificationContextKeys();
-    this.rebuildScopeItemsFromCache();
+    this.rebuildFromCache();
   }
 
-  toggleScopeMuted(scope: MessageScope): void {
-    if (this.mutedScopes.has(scope)) {
-      this.mutedScopes.delete(scope);
+  toggleCourseMuted(courseId: string): void {
+    if (this.mutedCourses.has(courseId)) {
+      this.mutedCourses.delete(courseId);
     } else {
-      this.mutedScopes.add(scope);
+      this.mutedCourses.add(courseId);
     }
     void this.persistState();
     void this.applyNotificationContextKeys();
-    this.rebuildScopeItemsFromCache();
+    this.rebuildFromCache();
   }
 
-  recordExpanded(scope: MessageScope, expanded: boolean): void {
+  toggleTopAnnouncementsMuted(): void {
+    this.muteTopAnnouncements = !this.muteTopAnnouncements;
+    void this.persistState();
+    void this.applyNotificationContextKeys();
+    this.rebuildFromCache();
+  }
+
+  recordCourseExpanded(courseId: string, expanded: boolean): void {
     if (expanded) {
-      this.expandedScopes.add(scope);
+      this.expandedCourses.add(courseId);
     } else {
-      this.expandedScopes.delete(scope);
+      this.expandedCourses.delete(courseId);
     }
     void this.persistState();
+  }
+
+  recordSectionExpanded(key: string, expanded: boolean): void {
+    if (expanded) {
+      this.expandedSections.add(key);
+    } else {
+      this.expandedSections.delete(key);
+    }
+    void this.persistState();
+  }
+
+  // ----- Counts -----
+
+  private static countsKey(scope: MessageScope, courseId: string | null): string {
+    return `${scope}::${courseId ?? ''}`;
+  }
+
+  private applyCounts(response: MessageCountsGet | undefined): void {
+    if (!response) {
+      this.counts = undefined;
+      this.countsTotals = undefined;
+      return;
+    }
+    const map = new Map<string, ChatCounts>();
+    for (const cell of response.counts ?? []) {
+      map.set(ChatInboxTreeProvider.countsKey(cell.scope as MessageScope, cell.course_id ?? null), {
+        total: cell.total ?? 0,
+        unread: cell.unread ?? 0
+      });
+    }
+    this.counts = map;
+    this.countsTotals = { total: response.total ?? 0, unread: response.unread ?? 0 };
+  }
+
+  /** Sum of the server count cells for `scopes` within one course (or the
+   *  course-less cells when `courseId` is null). Undefined without counts. */
+  private countsFor(scopes: MessageScope[], courseId: string | null): ChatCounts | undefined {
+    if (!this.counts) { return undefined; }
+    let total = 0;
+    let unread = 0;
+    for (const scope of scopes) {
+      const cell = this.counts.get(ChatInboxTreeProvider.countsKey(scope, courseId));
+      if (cell) {
+        total += cell.total;
+        unread += cell.unread;
+      }
+    }
+    return { total, unread };
+  }
+
+  /** Sum across every course for one scope (used by the flat DM sections,
+   *  where course_member cells are spread over courses). */
+  private countsForScopeAllCourses(scope: MessageScope): ChatCounts | undefined {
+    if (!this.counts) { return undefined; }
+    let total = 0;
+    let unread = 0;
+    const prefix = `${scope}::`;
+    for (const [key, cell] of this.counts) {
+      if (key.startsWith(prefix)) {
+        total += cell.total;
+        unread += cell.unread;
+      }
+    }
+    return { total, unread };
+  }
+
+  /** The counts cell a message belongs to, for local badge adjustments. */
+  private countsCellFor(m: MessageList): string {
+    const scope = (m.scope || 'global') as MessageScope;
+    const courseless = scope === 'global' || scope === 'organization'
+      || scope === 'course_family' || scope === 'user';
+    const courseId = courseless ? null : (m.context?.course_id ?? m.course_id ?? null);
+    return ChatInboxTreeProvider.countsKey(scope, courseId);
+  }
+
+  /** Shift local unread counters after an optimistic read (+delta unread per
+   *  message; -1 on read, +1 on unread). */
+  private adjustCountsUnread(msgs: MessageList[], delta: number): void {
+    if (!this.counts) { return; }
+    for (const m of msgs) {
+      const cell = this.counts.get(this.countsCellFor(m));
+      if (cell) {
+        cell.unread = Math.max(0, cell.unread + delta);
+      }
+      if (this.countsTotals) {
+        this.countsTotals.unread = Math.max(0, this.countsTotals.unread + delta);
+      }
+    }
   }
 
   /**
@@ -266,21 +417,26 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
    * For course scopes the choices come from the user's actual enrolments
    * rather than from the message list, which covers exactly that case.
    */
-  async openMessagesFor(item: ChatScopeItem | ChatCourseGroupItem): Promise<void> {
-    const scope = item.scope;
-    const courseId = item instanceof ChatCourseGroupItem ? item.courseId : undefined;
-
-    // Global is the destination; there is nothing to pick.
-    if (scope === 'global') {
-      await this.openScopeTarget(scope, null);
+  async openMessagesFor(
+    item: ChatScopeItem | ChatTopAnnouncementsItem | ChatCourseItem | ChatCourseSectionItem
+  ): Promise<void> {
+    // The root Announcements node opens the global feed; a course node or an
+    // announcements section opens the course's own announcements.
+    if (item instanceof ChatTopAnnouncementsItem) {
+      await this.openScopeTarget('global', null);
+      return;
+    }
+    if (item instanceof ChatCourseItem) {
+      await this.openScopeTarget('course', item.courseId);
+      return;
+    }
+    if (item instanceof ChatCourseSectionItem && item.kind === 'announcements') {
+      await this.openScopeTarget('course', item.courseId);
       return;
     }
 
-    // A course node under the Courses scope already is the target.
-    if (scope === 'course' && courseId) {
-      await this.openScopeTarget(scope, courseId);
-      return;
-    }
+    const scope: MessageScope = item instanceof ChatCourseSectionItem ? 'submission_group' : item.scope;
+    const courseId = item instanceof ChatCourseSectionItem ? item.courseId : undefined;
 
     const choices = await this.targetChoices(scope, courseId);
     if (choices.length === 0) {
@@ -398,28 +554,23 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       m => !m.is_read && m.author_id !== this.currentUserId
     );
     if (unread.length > 0) {
-      const ids = unread.map(m => m.id);
-      this.markIdsReadLocally(ids);
-      this.rebuildScopeItemsFromCache();
+      this.markReadLocally(unread);
+      this.rebuildFromCache();
       // Fire-and-forget but throttled — see markMessagesReadOnBackend.
-      void this.markMessagesReadOnBackend(ids);
+      void this.markMessagesReadOnBackend(unread.map(m => m.id));
     }
 
     await this.messagesProvider.showMessages(ctx);
   }
 
   /**
-   * Re-groups + re-builds scope items from the cached message list without
+   * Re-groups + re-builds the tree from the cached message list without
    * re-fetching from the backend. Used when local read state changes
    * optimistically (e.g. opening a thread).
    */
-  private rebuildScopeItemsFromCache(): void {
-    if (this.cachedMessages.length === 0) {
-      this.scopeItems = [];
-    } else {
-      const grouped = this.groupMessages(this.cachedMessages);
-      this.scopeItems = this.buildScopeItems(grouped);
-    }
+  private rebuildFromCache(): void {
+    const grouped = this.groupMessages(this.cachedMessages);
+    this.rootItems = this.buildRootItems(grouped);
     this.onDidChangeTreeDataEmitter.fire(undefined);
     this._onDidChangeUnread.fire(this.getTotalUnread());
   }
@@ -447,28 +598,73 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   async markThreadRead(threadItem: ChatThreadItem): Promise<void> {
     const unread = threadItem.thread.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId);
     if (unread.length === 0) { return; }
-    const ids = unread.map(m => m.id);
-    this.markIdsReadLocally(ids);
-    this.rebuildScopeItemsFromCache();
-    await this.markMessagesReadOnBackend(ids);
+    this.markReadLocally(unread);
+    this.rebuildFromCache();
+    await this.markMessagesReadOnBackend(unread.map(m => m.id));
   }
 
-  async markScopeRead(scopeItem: ChatScopeItem): Promise<void> {
-    const unread = scopeItem.threads.flatMap(t =>
-      t.messages.filter(m => !m.is_read && m.author_id !== this.currentUserId)
-    );
+  /**
+   * "Read it, but no time to answer" (issue #322 §5): flip the newest
+   * message the reader didn't write back to unread, so the thread keeps its
+   * badge until they come back. One message is enough — unread is presence,
+   * not a count of guilt.
+   */
+  async markThreadUnread(threadItem: ChatThreadItem): Promise<void> {
+    const candidate = [...threadItem.thread.messages]
+      .reverse()
+      .find(m => m.author_id !== this.currentUserId && m.is_read);
+    if (!candidate) {
+      notify.info('Nothing here to mark as unread.');
+      return;
+    }
+    this.markUnreadLocally([candidate]);
+    this.rebuildFromCache();
+    // Our own read:update broadcast comes straight back — don't let it
+    // re-paginate the inbox we just repainted.
+    this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    try {
+      await this.api.markMessageUnread(candidate.id);
+    } catch (err: any) {
+      notify.error(`Failed to mark as unread: ${err?.message || err}`);
+    } finally {
+      this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
+    }
+  }
+
+  /** Mark every *fetched* unread message under a container row as read —
+   *  works for the top Announcements node, a course, a section, and the
+   *  flat DM scope rows. */
+  async markContainerRead(
+    item: ChatTopAnnouncementsItem | ChatCourseItem | ChatCourseSectionItem | ChatScopeItem
+  ): Promise<void> {
+    const isUnread = (m: MessageList) => !m.is_read && m.author_id !== this.currentUserId;
+    let candidates: MessageList[] = [];
+    if (item instanceof ChatTopAnnouncementsItem || item instanceof ChatScopeItem) {
+      candidates = item.threads.flatMap(t => t.messages);
+    } else {
+      const scopes = item instanceof ChatCourseSectionItem
+        ? (item.kind === 'assignments' ? ['submission_group'] as MessageScope[] : COURSE_ANNOUNCEMENT_SCOPES)
+        : [...COURSE_ANNOUNCEMENT_SCOPES, 'submission_group' as MessageScope];
+      for (const scope of scopes) {
+        const state = this.courseScopeStates.get(scope)?.get(item.courseId);
+        if (state) { candidates.push(...state.messages); }
+      }
+    }
+    const unread = candidates.filter(isUnread);
     if (unread.length === 0) { return; }
-    const ids = unread.map(m => m.id);
-    this.markIdsReadLocally(ids);
-    this.rebuildScopeItemsFromCache();
-    await this.markMessagesReadOnBackend(ids);
+    this.markReadLocally(unread);
+    this.rebuildFromCache();
+    await this.markMessagesReadOnBackend(unread.map(m => m.id));
   }
 
-  /** Sets is_read=true on every cached copy of the given message ids, across
-   *  cachedMessages and every per-scope / per-course state's messages array. */
-  private markIdsReadLocally(ids: string[]): void {
-    if (ids.length === 0) { return; }
-    const set = new Set(ids);
+  /** Sets is_read=true on every cached copy of the given messages, across
+   *  cachedMessages and every per-scope / per-course state's messages array,
+   *  and shifts the local unread counters to match. */
+  private markReadLocally(msgs: MessageList[]): void {
+    if (msgs.length === 0) { return; }
+    const affected = msgs.filter(m => !m.is_read);
+    const set = new Set(msgs.map(m => m.id));
+    for (const m of msgs) { m.is_read = true; }
     for (const m of this.cachedMessages) {
       if (set.has(m.id)) { m.is_read = true; }
     }
@@ -484,6 +680,31 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         }
       }
     }
+    this.adjustCountsUnread(affected, -1);
+  }
+
+  /** Inverse of markReadLocally — used by mark-as-unread. */
+  markUnreadLocally(msgs: MessageList[]): void {
+    if (msgs.length === 0) { return; }
+    const affected = msgs.filter(m => m.is_read);
+    const set = new Set(msgs.map(m => m.id));
+    for (const m of msgs) { m.is_read = false; }
+    for (const m of this.cachedMessages) {
+      if (set.has(m.id)) { m.is_read = false; }
+    }
+    for (const state of this.scopeFetchStates.values()) {
+      for (const m of state.messages) {
+        if (set.has(m.id)) { m.is_read = false; }
+      }
+    }
+    for (const inner of this.courseScopeStates.values()) {
+      for (const state of inner.values()) {
+        for (const m of state.messages) {
+          if (set.has(m.id)) { m.is_read = false; }
+        }
+      }
+    }
+    this.adjustCountsUnread(affected, +1);
   }
 
   /** Fetches one page for a non-course-grouped scope. Course-grouped scopes
@@ -508,7 +729,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     this.cachedMessages = flat;
     const grouped = this.groupMessages(this.cachedMessages);
     await this.labels.prefetch(grouped);
-    this.scopeItems = this.buildScopeItems(grouped);
+    this.rootItems = this.buildRootItems(grouped);
   }
 
   /** Fetches the next page for one scope and appends to its state. */
@@ -576,20 +797,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
   }
 
-  /** Track expand/collapse for a course node so a refresh can keep the user's
-   *  open courses open. */
-  recordCourseGroupExpanded(scope: MessageScope, courseId: string, expanded: boolean): void {
-    const key = `${scope}::${courseId}`;
-    if (expanded) {
-      this.expandedCourseGroups.add(key);
-    } else {
-      this.expandedCourseGroups.delete(key);
-    }
-    // Scope expansion was persisted and this was not, so open course nodes
-    // survived a refresh but not a reopen (computor-org/issues#285).
-    void this.persistState();
-  }
-
   /**
    * Posts mark-read for many message ids in a single request.
    *
@@ -632,22 +839,36 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     if (!element) {
       if (this.loading) { return [new ChatLoadingItem()]; }
       if (this.loadError) { return [new ChatErrorItem(this.loadError)]; }
-      if (this.scopeItems.length === 0) {
+      if (this.rootItems.length === 0) {
         return [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')];
       }
-      return [...this.scopeItems];
+      return [...this.rootItems];
+    }
+
+    if (element instanceof ChatTopAnnouncementsItem) {
+      const items: AnyTreeItem[] = element.threads.map(t => new ChatThreadItem(t));
+      for (const scope of TOP_SCOPES) {
+        const state = this.scopeFetchStates.get(scope);
+        if (state && state.fetched < state.total) {
+          items.push(new ChatLoadMoreItem(scope, state.fetched, state.total));
+        }
+      }
+      if (items.length === 0) {
+        items.push(new ChatEmptyItem('No announcements.'));
+      }
+      return items;
+    }
+
+    if (element instanceof ChatCourseItem) {
+      return this.buildCourseSections(element);
+    }
+
+    if (element instanceof ChatCourseSectionItem) {
+      return await this.getSectionChildren(element);
     }
 
     if (element instanceof ChatScopeItem) {
-      const items: AnyTreeItem[] = [];
-      if (isCourseGroupedScope(element.scope)) {
-        items.push(...this.buildCourseGroupItems(element.scope));
-        return items;
-      }
-      items.push(...element.threads.map(t => new ChatThreadItem(t)));
-      // Per-scope Load more: shown as the last child when the backend
-      // reports more messages for this scope than we've pulled. Hidden when
-      // the user collapses the scope row.
+      const items: AnyTreeItem[] = element.threads.map(t => new ChatThreadItem(t));
       const state = this.scopeFetchStates.get(element.scope);
       if (state && state.fetched < state.total) {
         items.push(new ChatLoadMoreItem(element.scope, state.fetched, state.total));
@@ -655,36 +876,92 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       return items;
     }
 
-    if (element instanceof ChatCourseGroupItem) {
-      return await this.getCourseGroupChildren(element);
-    }
-
     return [];
   }
 
-  /** One ChatCourseGroupItem per course the user has access to. */
-  private buildCourseGroupItems(scope: MessageScope): ChatCourseGroupItem[] {
-    const inner = this.courseScopeStates.get(scope);
-    if (!inner) { return []; }
-    const courseIds = Array.from(inner.keys());
-    // Sort: courses with unread first, then alphabetical by label.
-    const decorated = courseIds.map(id => {
-      const state = inner.get(id)!;
-      const unread = state.messages.reduce(
-        (acc, m) => acc + ((!m.is_read && m.author_id !== this.currentUserId) ? 1 : 0),
-        0
-      );
-      const threadCount = new Set(
-        state.messages.map(m => this.targetIdFor(scope, m) ?? '__none__')
-      ).size;
+  /** Fetched-page unread count for a set of scopes within one course. */
+  private fetchedCourseUnread(scopes: MessageScope[], courseId: string): number {
+    let unread = 0;
+    for (const scope of scopes) {
+      const state = this.courseScopeStates.get(scope)?.get(courseId);
+      if (!state) { continue; }
+      for (const m of state.messages) {
+        if (!m.is_read && m.author_id !== this.currentUserId) { unread += 1; }
+      }
+    }
+    return unread;
+  }
+
+  /** Fallback counts from fetched pages — defined only once every
+   *  constituent (scope, course) bucket has been fetched. */
+  private fetchedCourseCounts(scopes: MessageScope[], courseId: string): ChatCounts | undefined {
+    let total = 0;
+    for (const scope of scopes) {
+      const state = this.courseScopeStates.get(scope)?.get(courseId);
+      if (!state || state.total < 0) { return undefined; }
+      total += state.total;
+    }
+    return { total, unread: this.fetchedCourseUnread(scopes, courseId) };
+  }
+
+  private sectionCounts(kind: ChatSectionKind, courseId: string): ChatCounts | undefined {
+    const scopes = kind === 'assignments' ? (['submission_group'] as MessageScope[]) : COURSE_ANNOUNCEMENT_SCOPES;
+    return this.countsFor(scopes, courseId) ?? this.fetchedCourseCounts(scopes, courseId);
+  }
+
+  private courseCounts(courseId: string): ChatCounts | undefined {
+    const scopes = [...COURSE_ANNOUNCEMENT_SCOPES, 'submission_group' as MessageScope];
+    return this.countsFor(scopes, courseId) ?? this.fetchedCourseCounts(scopes, courseId);
+  }
+
+  /** Announcements + one node per course (+ DM sections when non-empty). */
+  private buildRootItems(grouped: Map<MessageScope, Map<string, MessageList[]>>): AnyTreeItem[] {
+    const items: AnyTreeItem[] = [];
+    let fetchedUnreadSum = 0;
+
+    // Root Announcements: global + organization + course_family, each notice
+    // one row, labelled by origin.
+    const topThreads: ChatThread[] = [];
+    for (const scope of TOP_SCOPES) {
+      const byTarget = grouped.get(scope);
+      if (!byTarget) { continue; }
+      const rows = this.buildThreadRows(scope, byTarget);
+      for (const t of rows) {
+        t.subtitle = scope === 'global'
+          ? 'System'
+          : this.labels.label(scope, t.targetId, t.messages, this.currentUserId).title;
+      }
+      topThreads.push(...rows);
+    }
+    sortThreads(topThreads);
+    const fetchedTopUnread = topThreads.reduce((acc, t) => acc + t.unreadCount, 0);
+    let topCounts = this.countsFor(TOP_SCOPES, null);
+    if (!topCounts) {
+      let total = 0;
+      for (const scope of TOP_SCOPES) {
+        total += this.scopeFetchStates.get(scope)?.total ?? 0;
+      }
+      topCounts = { total, unread: fetchedTopUnread };
+    }
+    const topUnread = topCounts.unread;
+    fetchedUnreadSum += topUnread;
+    if (!(this.unreadOnly && topUnread === 0)) {
+      const expanded = this.expandedSections.has('top') || topUnread > 0;
+      items.push(new ChatTopAnnouncementsItem(
+        topThreads, topUnread, topCounts, expanded, this.muteTopAnnouncements
+      ));
+    }
+
+    // One node per enrolled course, unread first then alphabetical.
+    const decorated = this.knownCourseIds().map(id => {
+      const counts = this.courseCounts(id);
+      const unread = counts?.unread
+        ?? this.fetchedCourseUnread([...COURSE_ANNOUNCEMENT_SCOPES, 'submission_group'], id);
       return {
         id,
         label: this.labels.courseLabel(id) || shortId(id),
-        unread,
-        threadCount,
-        // total === -1 means we haven't fetched yet — show the "click to load" hint
-        // by reporting hasMore=false until expand triggers a fetch.
-        hasMore: state.total >= 0 && state.fetched < state.total
+        counts,
+        unread
       };
     });
     decorated.sort((a, b) => {
@@ -693,74 +970,164 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       }
       return a.label.localeCompare(b.label);
     });
-    return decorated.map(d => {
-      const expanded = this.expandedCourseGroups.has(`${scope}::${d.id}`) || d.unread > 0;
-      return new ChatCourseGroupItem(
-        scope,
-        d.id,
-        d.label,
-        d.unread,
-        d.threadCount,
-        d.hasMore,
-        expanded
-      );
-    });
+    for (const d of decorated) {
+      fetchedUnreadSum += d.unread;
+      if (this.unreadOnly && d.unread === 0) { continue; }
+      const expanded = this.expandedCourses.has(d.id) || d.unread > 0;
+      items.push(new ChatCourseItem(
+        d.id, d.label, d.unread, d.counts, expanded, this.mutedCourses.has(d.id)
+      ));
+    }
+
+    // Flat DM sections, only when they hold messages.
+    for (const scope of DM_SCOPES) {
+      const byTarget = grouped.get(scope);
+      if (!byTarget || byTarget.size === 0) { continue; }
+      const threads = this.buildThreadRows(scope, byTarget);
+      if (threads.length === 0) { continue; }
+      const counts = this.countsForScopeAllCourses(scope)
+        ?? { total: this.scopeFetchStates.get(scope)?.total ?? 0,
+             unread: threads.reduce((acc, t) => acc + t.unreadCount, 0) };
+      fetchedUnreadSum += counts.unread;
+      if (this.unreadOnly && counts.unread === 0) { continue; }
+      const expanded = this.expandedSections.has(`scope::${scope}`) || counts.unread > 0;
+      const item = new ChatScopeItem(scope, threads, counts.unread, expanded, {});
+      item.description = formatCountsDescription(counts);
+      items.push(item);
+    }
+
+    this.totalUnread = this.countsTotals ? this.countsTotals.unread : fetchedUnreadSum;
+    return items;
   }
 
-  /** Lazy-fetch the first page on first expand, then return threads + a
-   *  per-course Load more. */
-  private async getCourseGroupChildren(element: ChatCourseGroupItem): Promise<AnyTreeItem[]> {
-    const { scope, courseId } = element;
-    const inner = this.courseScopeStates.get(scope);
-    const state = inner?.get(courseId);
-    if (!inner || !state) { return []; }
-    this.expandedCourseGroups.add(`${scope}::${courseId}`);
+  /** The two fixed sections under a course node. */
+  private buildCourseSections(course: ChatCourseItem): ChatCourseSectionItem[] {
+    const sections: ChatCourseSectionItem[] = [];
+    for (const kind of ['announcements', 'assignments'] as ChatSectionKind[]) {
+      const scopes = kind === 'assignments' ? (['submission_group'] as MessageScope[]) : COURSE_ANNOUNCEMENT_SCOPES;
+      const counts = this.sectionCounts(kind, course.courseId);
+      const unread = counts?.unread ?? this.fetchedCourseUnread(scopes, course.courseId);
+      if (this.unreadOnly && unread === 0) { continue; }
+      const expanded = this.expandedSections.has(`${kind}::${course.courseId}`) || unread > 0;
+      sections.push(new ChatCourseSectionItem(
+        kind, course.courseId, course.courseLabel, unread, counts, expanded
+      ));
+    }
+    return sections;
+  }
 
-    // First-time fetch: state.total === -1 means we haven't asked the backend
-    // for this (scope, course) yet. Pull the first page now.
-    if (state.total < 0) {
+  /** Lazy-fetch a section's scopes on first expand, then return its thread
+   *  rows plus per-scope Load more entries. */
+  private async getSectionChildren(element: ChatCourseSectionItem): Promise<AnyTreeItem[]> {
+    const { kind, courseId } = element;
+    const scopes = kind === 'assignments' ? (['submission_group'] as MessageScope[]) : COURSE_ANNOUNCEMENT_SCOPES;
+    this.expandedSections.add(`${kind}::${courseId}`);
+
+    // First-time fetch for any scope not asked for yet (total === -1).
+    const toFetch = scopes.filter(scope => {
+      const state = this.courseScopeStates.get(scope)?.get(courseId);
+      return state !== undefined && state.total < 0;
+    });
+    if (toFetch.length > 0) {
       try {
-        const page = await this.api.listMessagesPage({
-          scope,
-          course_id: courseId,
-          skip: 0,
-          limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
-        });
-        state.messages = page.items;
-        state.fetched = page.items.length;
-        state.total = page.total;
+        await Promise.all(toFetch.map(async scope => {
+          const state = this.courseScopeStates.get(scope)!.get(courseId)!;
+          const page = await this.api.listMessagesPage({
+            scope,
+            course_id: courseId,
+            skip: 0,
+            limit: ChatInboxTreeProvider.SCOPE_PAGE_SIZE
+          });
+          state.messages = page.items;
+          state.fetched = page.items.length;
+          state.total = page.total;
+        }));
         await this.rebuildAssembled();
-        this._onDidChangeUnread.fire(this.getTotalUnread());
+        // Repaint the whole tree once this render pass is over, so the
+        // course/section descriptions above this node pick up the freshly
+        // known numbers (the old tree left "click to load" standing).
+        queueMicrotask(() => {
+          this.onDidChangeTreeDataEmitter.fire(undefined);
+          this._onDidChangeUnread.fire(this.getTotalUnread());
+        });
       } catch (err: any) {
         return [new ChatErrorItem(`Failed to load messages: ${err?.message || err}`)];
       }
     }
 
     const items: AnyTreeItem[] = [];
-    const byTarget = new Map<string, MessageList[]>();
-    for (const m of state.messages) {
-      const targetId = this.targetIdFor(scope, m) ?? '__none__';
-      if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
-      byTarget.get(targetId)!.push(m);
+    const rows: ChatThread[] = [];
+    for (const scope of scopes) {
+      const state = this.courseScopeStates.get(scope)?.get(courseId);
+      if (!state) { continue; }
+      const byTarget = new Map<string, MessageList[]>();
+      for (const m of state.messages) {
+        const targetId = this.targetIdFor(scope, m) ?? '__none__';
+        if (!byTarget.has(targetId)) { byTarget.set(targetId, []); }
+        byTarget.get(targetId)!.push(m);
+      }
+      let threads = this.buildThreadRows(scope, byTarget);
+      // A tutor's Assignments section is an inbox of open questions, not an
+      // archive: in a course with 100 students × 60 assignments, listing
+      // every conversation ever would drown the ones that need an answer.
+      // Read staff conversations drop out (they stay reachable through the
+      // Tutor view, and mark-as-unread pins one back); a reader's own
+      // conversations always stay — a student has one per assignment.
+      if (kind === 'assignments') {
+        threads = threads.filter(t => t.unreadCount > 0 || this.isThreadMember(t));
+      }
+      for (const t of threads) {
+        // Under a course node the course name is chrome; say what kind of
+        // announcement it is (or which group/assignment it addresses).
+        if (kind === 'announcements') {
+          t.subtitle = scope === 'course'
+            ? 'Course'
+            : this.labels.label(scope, t.targetId, t.messages, this.currentUserId).title;
+        } else {
+          t.subtitle = undefined;
+        }
+      }
+      rows.push(...threads);
     }
-    const threads = this.buildThreadRows(scope, byTarget);
-    items.push(...threads.map(t => new ChatThreadItem(t)));
-    if (state.fetched < state.total) {
-      items.push(new ChatLoadMoreItem(scope, state.fetched, state.total, courseId));
+    sortThreads(rows);
+    items.push(...rows.map(t => new ChatThreadItem(t)));
+    for (const scope of scopes) {
+      const state = this.courseScopeStates.get(scope)?.get(courseId);
+      if (state && state.total >= 0 && state.fetched < state.total) {
+        items.push(new ChatLoadMoreItem(scope, state.fetched, state.total, courseId));
+      }
     }
     if (items.length === 0) {
-      items.push(new ChatEmptyItem('No messages.'));
+      const hasHiddenRead = kind === 'assignments'
+        && scopes.some(scope => (this.courseScopeStates.get(scope)?.get(courseId)?.messages.length ?? 0) > 0);
+      items.push(new ChatEmptyItem(
+        hasHiddenRead
+          ? 'No unread conversations. Read ones stay reachable from the Tutor view.'
+          : 'No messages.'
+      ));
     }
     return items;
+  }
+
+  /** Whether the current user belongs to the thread's submission group.
+   *  Without a server context (older backend) the answer is unknowable —
+   *  fail open so nothing silently disappears. */
+  private isThreadMember(thread: ChatThread): boolean {
+    const ctx = messageContextOf(thread.messages);
+    if (!ctx) { return true; }
+    const members = ctx.submission_group_members ?? [];
+    return Boolean(
+      this.currentUserId && members.some(m => m.user_id === this.currentUserId)
+    );
   }
 
   // ----- Internals -----
 
   private async reload(): Promise<void> {
     // Only show the loading spinner on initial load. On subsequent reloads,
-    // keep the current scope items visible so the tree doesn't flicker to
+    // keep the current items visible so the tree doesn't flicker to
     // "Loading…" between the user's click and the new data arriving.
-    const showSpinner = this.scopeItems.length === 0 && !this.loadError;
+    const showSpinner = this.rootItems.length === 0 && !this.loadError;
     this.loading = true;
     this.loadError = undefined;
     if (showSpinner) {
@@ -768,17 +1135,19 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
 
     try {
-      // Identity + scopes once; per-scope inbox pages in parallel. Each scope
-      // has its own pagination, so a Load more click at the end of e.g.
-      // Submission Groups only advances *that* scope's window.
-      const [identity, scopes, views] = await Promise.all([
+      // Identity + scopes + counts once; per-scope inbox pages in parallel.
+      // Each scope has its own pagination, so a Load more click only
+      // advances that scope's window.
+      const [identity, scopes, views, countsResponse] = await Promise.all([
         this.api.getCurrentUser().catch(() => undefined),
         this.api.getUserScopes().catch(() => undefined),
-        this.api.getUserViews().catch(() => [] as string[])
+        this.api.getUserViews().catch(() => [] as string[]),
+        this.api.getMessageCounts()
       ]);
       this.currentUserId = identity?.id;
       this.userScopes = scopes;
       this.userViews = views ?? [];
+      this.applyCounts(countsResponse);
       this.maybeSubscribeUserChannels();
 
       // For non-course-grouped scopes, fetch the first page in parallel.
@@ -827,14 +1196,51 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       }
       this.courseScopeStates = newCourseStates;
 
-      // Resolve labels for every accessible course up front, so the
-      // ChatCourseGroupItem rows can show real titles instead of short ids.
+      // Re-pull every bucket that has been fetched before. Preserving the old
+      // state alone froze it: a WS-triggered reload refreshed the counts but
+      // an already-expanded section kept its stale page, so a newly posted
+      // announcement never surfaced until the window reloaded. Only sections
+      // the user actually opened refetch, so the fan-out stays bounded.
+      const refreshTasks: Promise<void>[] = [];
+      for (const [scope, inner] of newCourseStates) {
+        for (const [courseId, state] of inner) {
+          if (state.total < 0) { continue; }
+          refreshTasks.push((async () => {
+            try {
+              const page = await this.api.listMessagesPage({
+                scope,
+                course_id: courseId,
+                skip: 0,
+                limit: Math.max(state.fetched, ChatInboxTreeProvider.SCOPE_PAGE_SIZE)
+              });
+              state.messages = page.items;
+              state.fetched = page.items.length;
+              state.total = page.total;
+            } catch {
+              // keep the stale page over showing an error for one bucket
+            }
+          })());
+        }
+      }
+      await Promise.all(refreshTasks);
+
+      // A v1 "everything muted" state maps onto the course list only once we
+      // know it — finish that migration here.
+      if (this.pendingMuteAllCourses) {
+        this.pendingMuteAllCourses = false;
+        this.mutedCourses = new Set(courseIds);
+        void this.persistState();
+        void this.applyNotificationContextKeys();
+      }
+
+      // Resolve labels for every accessible course up front, so the course
+      // rows can show real titles instead of short ids.
       await Promise.all(courseIds.map(id => this.labels.ensureCourseLabel(id).catch(() => undefined)));
 
       await this.rebuildAssembled();
     } catch (error: any) {
       this.loadError = `Failed to load messages: ${error?.message || error}`;
-      this.scopeItems = [];
+      this.rootItems = [];
       this.cachedMessages = [];
       this.scopeFetchStates.clear();
       this.courseScopeStates.clear();
@@ -870,61 +1276,6 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       case 'organization': return m.organization_id ?? null;
       case 'global': return null;
     }
-  }
-
-  private buildScopeItems(grouped: Map<MessageScope, Map<string, MessageList[]>>): ChatScopeItem[] {
-    const result: ChatScopeItem[] = [];
-
-    for (const scope of SCOPE_ORDER) {
-      // Course-grouped scopes always render — children are course nodes, not
-      // threads, so the row stays collapsible even when no messages have been
-      // pulled yet.
-      if (isCourseGroupedScope(scope)) {
-        const inner = this.courseScopeStates.get(scope);
-        if (!inner || inner.size === 0) { continue; }
-        let totalUnread = 0;
-        for (const state of inner.values()) {
-          for (const m of state.messages) {
-            if (!m.is_read && m.author_id !== this.currentUserId) { totalUnread += 1; }
-          }
-        }
-        if (this.unreadOnly && totalUnread === 0) { continue; }
-        const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-        result.push(new ChatScopeItem(scope, [], totalUnread, expanded, {
-          courseChildCount: inner.size,
-          muted: this.mutedScopes.has(scope)
-        }));
-        continue;
-      }
-
-      const byTarget = grouped.get(scope);
-      // Global stays visible even with zero messages so users always have a
-      // way to read announcements (and admins always have a place to post
-      // from).
-      const alwaysShow = scope === 'global';
-      if ((!byTarget || byTarget.size === 0) && !alwaysShow) { continue; }
-
-      const threads = this.buildThreadRows(
-        scope,
-        byTarget ?? new Map<string, MessageList[]>()
-      );
-
-      if (threads.length === 0 && !alwaysShow) { continue; }
-
-      // An empty Global used to get a synthetic "Global Announcements" thread
-      // injected, purely so there was something clickable to open the
-      // composer from. It read as a real message that didn't exist. The scope
-      // row opens itself now — see ChatScopeItem, which gives a childless row
-      // its own open command — so the fake row is gone.
-
-      const totalUnread = threads.reduce((acc, t) => acc + t.unreadCount, 0);
-      const expanded = this.expandedScopes.has(scope) || totalUnread > 0;
-      result.push(new ChatScopeItem(scope, threads, totalUnread, expanded, {
-        muted: this.mutedScopes.has(scope)
-      }));
-    }
-
-    return result;
   }
 
   /**
@@ -1008,12 +1359,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       });
     }
 
-    threads.sort((a, b) => {
-      if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
-        return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
-      }
-      return compareThreadRecency(b, a);
-    });
+    sortThreads(threads);
     return threads;
   }
 
@@ -1078,10 +1424,22 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       return;
     }
     const scope = (typeof inner.scope === 'string' ? inner.scope : 'global') as MessageScope;
-    if (this.mutedScopes.has(scope)) {
+    if (this.isMessageMuted(scope, inner)) {
       return;
     }
     void this.showNewMessageToast(inner);
+  }
+
+  /** Whether the mute settings suppress a toast for this broadcast. */
+  private isMessageMuted(scope: MessageScope, message: Record<string, unknown>): boolean {
+    if (TOP_SCOPES.includes(scope)) {
+      return this.muteTopAnnouncements;
+    }
+    const ctx = (message.context ?? undefined) as { course_id?: string | null } | undefined;
+    const courseId = (typeof ctx?.course_id === 'string' && ctx.course_id)
+      || (typeof message.course_id === 'string' && message.course_id)
+      || undefined;
+    return Boolean(courseId && this.mutedCourses.has(courseId));
   }
 
   private scheduleWsReload(): void {
@@ -1109,7 +1467,12 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     const scope = (typeof message.scope === 'string' ? message.scope : 'global') as MessageScope;
     const author = formatToastAuthor(message);
     const preview = formatToastPreview(message);
-    const scopeText = scopeLabel(scope);
+    // "Programming in MATLAB · Assignment conversation" beats a bare scope
+    // name when the broadcast carries the resolved course.
+    const ctx = (message.context ?? undefined) as { course_title?: string | null } | undefined;
+    const scopeText = ctx?.course_title
+      ? `${ctx.course_title} · ${scopeLabel(scope)}`
+      : scopeLabel(scope);
     const text = author
       ? `${author} (${scopeText}): ${preview}`
       : `${scopeText}: ${preview}`;
@@ -1142,20 +1505,30 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
   private loadPersistedState(): void {
     try {
-      const stored = this.context.globalState.get<PersistedState>(STATE_KEY);
-      if (stored) {
-        if (Array.isArray(stored.expandedScopes)) {
-          this.expandedScopes = new Set(stored.expandedScopes);
+      const stored = this.context.globalState.get<PersistedStateV1 | PersistedStateV2>(STATE_KEY);
+      if (stored && 'version' in stored && stored.version === 2) {
+        if (typeof stored.unreadOnly === 'boolean') { this.unreadOnly = stored.unreadOnly; }
+        if (Array.isArray(stored.expandedCourses)) { this.expandedCourses = new Set(stored.expandedCourses); }
+        if (Array.isArray(stored.expandedSections)) { this.expandedSections = new Set(stored.expandedSections); }
+        if (Array.isArray(stored.mutedCourses)) { this.mutedCourses = new Set(stored.mutedCourses); }
+        if (typeof stored.muteTopAnnouncements === 'boolean') { this.muteTopAnnouncements = stored.muteTopAnnouncements; }
+      } else if (stored) {
+        // One-way v1 → v2 migration. The tree shape changed, so old
+        // expansion state is dropped. Mutes carry over where they map:
+        // everything muted stays everything muted (course ids are applied on
+        // first reload, when the enrolment list is known); the three
+        // announcement scopes map onto the top mute; per-scope course mutes
+        // have no course-level equivalent and are dropped.
+        const v1 = stored as PersistedStateV1;
+        if (typeof v1.unreadOnly === 'boolean') { this.unreadOnly = v1.unreadOnly; }
+        const muted = new Set(v1.mutedScopes ?? []);
+        if (SCOPE_ORDER.every(scope => muted.has(scope))) {
+          this.muteTopAnnouncements = true;
+          this.pendingMuteAllCourses = true;
+        } else if (TOP_SCOPES.every(scope => muted.has(scope))) {
+          this.muteTopAnnouncements = true;
         }
-        if (typeof stored.unreadOnly === 'boolean') {
-          this.unreadOnly = stored.unreadOnly;
-        }
-        if (Array.isArray(stored.mutedScopes)) {
-          this.mutedScopes = new Set(stored.mutedScopes);
-        }
-        if (Array.isArray(stored.expandedCourseGroups)) {
-          this.expandedCourseGroups = new Set(stored.expandedCourseGroups);
-        }
+        void this.persistState();
       }
     } catch (err) {
       console.warn('[ChatInbox] Failed to load persisted state:', err);
@@ -1165,11 +1538,13 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   }
 
   private async persistState(): Promise<void> {
-    const state: PersistedState = {
-      expandedScopes: Array.from(this.expandedScopes),
+    const state: PersistedStateV2 = {
+      version: 2,
       unreadOnly: this.unreadOnly,
-      mutedScopes: Array.from(this.mutedScopes),
-      expandedCourseGroups: Array.from(this.expandedCourseGroups)
+      expandedCourses: Array.from(this.expandedCourses),
+      expandedSections: Array.from(this.expandedSections),
+      mutedCourses: Array.from(this.mutedCourses),
+      muteTopAnnouncements: this.muteTopAnnouncements
     };
     try {
       await this.context.globalState.update(STATE_KEY, state);
@@ -1178,18 +1553,18 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
   }
 
-  /** Mirrors the mute set into VS Code context keys so menu `when` clauses
+  /** Mirrors the mute state into VS Code context keys so menu `when` clauses
    *  can pick the right icon variant.
-   *    - `computor.chat.anyScopeUnmuted` — true if at least one scope's
-   *      notifications are still on. The title-bar action shows the bell
-   *      (mute-all) variant when this is true and the bell-slash
-   *      (unmute-all) variant when it is false.
-   *    - `computor.chat.mutedScopes` — space-separated list of muted scope
-   *      ids. Per-scope inline icons swap on the contextValue suffix
-   *      (`.muted`) instead, but this stays available for future use. */
+   *    - `computor.chat.anyScopeUnmuted` — true if anything (top
+   *      announcements or any course) still has notifications on. The
+   *      title-bar action shows the bell (mute-all) variant when true and
+   *      the bell-slash (unmute-all) variant when false.
+   *    - `computor.chat.mutedScopes` — space-separated muted course ids.
+   *      Row-level icons swap on the contextValue suffix (`.muted`)
+   *      instead; kept for future use. */
   private async applyNotificationContextKeys(): Promise<void> {
     await vscode.commands.executeCommand('setContext', 'computor.chat.anyScopeUnmuted', this.isAnyScopeUnmuted());
-    await vscode.commands.executeCommand('setContext', 'computor.chat.mutedScopes', Array.from(this.mutedScopes).join(' '));
+    await vscode.commands.executeCommand('setContext', 'computor.chat.mutedScopes', Array.from(this.mutedCourses).join(' '));
   }
 }
 
@@ -1204,6 +1579,16 @@ function compareThreadRecency(a: ChatThread, b: ChatThread): number {
   const ta = a.lastMessage?.created_at ? Date.parse(a.lastMessage.created_at) : 0;
   const tb = b.lastMessage?.created_at ? Date.parse(b.lastMessage.created_at) : 0;
   return ta - tb;
+}
+
+/** Unread first, then most recent first — the one order every level uses. */
+function sortThreads(threads: ChatThread[]): void {
+  threads.sort((a, b) => {
+    if ((b.unreadCount > 0 ? 1 : 0) !== (a.unreadCount > 0 ? 1 : 0)) {
+      return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+    }
+    return compareThreadRecency(b, a);
+  });
 }
 
 function formatToastAuthor(message: Record<string, unknown>): string {
