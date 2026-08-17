@@ -919,18 +919,12 @@ class UnifiedController {
 
     // No course pre-selection - tree will show all courses
 
-    // Load expanded states to determine which courses need immediate update
-    // Only previously expanded courses will have their repositories updated on startup
-    const settingsManager = new ComputorSettingsManager(this.context);
-    const expandedStates = await settingsManager.getStudentTreeExpandedStates();
-
-    // Extract course IDs from expanded states (format: "course-{courseId}")
-    const expandedCourseIds = new Set<string>();
-    for (const nodeId of Object.keys(expandedStates)) {
-      if (nodeId.startsWith('course-') && expandedStates[nodeId]) {
-        expandedCourseIds.add(nodeId.replace('course-', ''));
-      }
-    }
+    // Load expanded states to determine which courses need immediate update.
+    // Only previously expanded courses will have their repositories updated on
+    // startup. Ask the tree (backed by UiStateService, the one owner of tree
+    // state since #285) — the old ComputorSettingsManager store is no longer
+    // written, so reading it here silently skipped the startup update.
+    const expandedCourseIds = tree.getExpandedCourseIds();
 
     console.log(`[initializeStudentView] Expanded courses for startup update: ${Array.from(expandedCourseIds).join(', ') || '(none)'}`);
 
