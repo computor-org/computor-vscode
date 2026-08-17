@@ -548,20 +548,28 @@ export class StudentCommands {
         cancellable: true
       }, async (progress, token) => {
         // Update repositories only for expanded courses
-        if (this.repositoryManager) {
-          const expandedCourseIds = this.treeDataProvider.getExpandedCourseIds();
-          if (expandedCourseIds.size > 0) {
-            try {
-              await this.repositoryManager.autoSetupRepositories(
-                undefined,
-                (msg) => progress.report({ message: msg }),
-                expandedCourseIds,
-                token
-              );
-            } catch (error) {
-              console.error('[StudentCommands] Failed during repository refresh:', error);
-            }
+        const expandedCourseIds = this.treeDataProvider.getExpandedCourseIds();
+        if (this.repositoryManager && expandedCourseIds.size > 0) {
+          try {
+            await this.repositoryManager.autoSetupRepositories(
+              undefined,
+              (msg) => progress.report({ message: msg }),
+              expandedCourseIds,
+              token
+            );
+          } catch (error) {
+            console.error('[StudentCommands] Failed during repository refresh:', error);
           }
+        }
+
+        // Course-level-git repos (managed Forgejo/GitLab): run the
+        // "[update fork]" merge directly — it must not depend on the legacy
+        // submission-group plumbing above.
+        if (expandedCourseIds.size > 0) {
+          await this.provisioningService.syncClonedManagedRepos(expandedCourseIds, {
+            onProgress: (msg) => progress.report({ message: msg }),
+            cancellationToken: token
+          });
         }
 
         // Refresh the tree view

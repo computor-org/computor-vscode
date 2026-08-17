@@ -9,6 +9,8 @@ import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } f
 import { extractZipBuffer } from '../utils/zipHelpers';
 import { RepositoryTokenManager } from './RepositoryTokenManager';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
+import { CTGit } from '../git/CTGit';
+import { notify } from '../utils/notify';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
 export interface SetUpOptions {
@@ -89,7 +91,7 @@ export class StudentRepositoryProvisioningService {
       if (descriptor.template?.server_type === 'gitlab') {
         return this.provisionAndCloneGitlabManaged(courseId, descriptor, opts);
       }
-      return this.provisionAndCloneForgejo(courseId, opts);
+      return this.provisionAndCloneForgejo(courseId, descriptor, opts);
     }
     if (mode === 'external') {
       return this.provisionAndCloneExternal(courseId, descriptor, opts);
@@ -134,22 +136,36 @@ export class StudentRepositoryProvisioningService {
 
     const targetPath = this.localPathFor(repo);
     const authUrl = addTokenToGitUrl(repo.http_url, token);
+    // The student's PAT has read access on the template, so it also
+    // authenticates the update-fork fetch.
+    const templateUrl = descriptor.template?.clone_url;
+    const authTemplateUrl = templateUrl ? addTokenToGitUrl(templateUrl, token) : undefined;
 
     if (this.isCloned(targetPath)) {
       report('Refreshing repository credentials…');
       await this.updateRemoteUrl(targetPath, authUrl);
+      if (authTemplateUrl) {
+        await this.syncFromTemplate(targetPath, authTemplateUrl, report);
+      }
       return { status: 'already-cloned', path: targetPath, repo };
     }
 
     report('Cloning your repository…');
     await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
     await execGitClone(authUrl, targetPath, { cancellationToken: opts?.cancellationToken });
+    if (authTemplateUrl) {
+      await this.syncFromTemplate(targetPath, authTemplateUrl, report);
+    }
     return { status: 'cloned', path: targetPath, repo };
   }
 
   // --- Mode A — Forgejo (backend-babysat) -----------------------------------
 
-  private async provisionAndCloneForgejo(courseId: string, opts?: SetUpOptions): Promise<SetUpOutcome> {
+  private async provisionAndCloneForgejo(
+    courseId: string,
+    descriptor: CourseGitDescriptor,
+    opts?: SetUpOptions
+  ): Promise<SetUpOutcome> {
     const report = opts?.onProgress ?? (() => {});
 
     report('Provisioning your repository…');
@@ -174,18 +190,33 @@ export class StudentRepositoryProvisioningService {
 
     const targetPath = this.localPathFor(repo);
     const authUrl = addBasicCredentialsToGitUrl(repo.http_url, repo.clone_username, repo.clone_token);
+    // Provisioning grants the student read access on the course template, so
+    // the same rotating clone credential authenticates the update-fork fetch.
+    const templateUrl = descriptor.template?.clone_url;
+    const authTemplateUrl = templateUrl
+      ? addBasicCredentialsToGitUrl(templateUrl, repo.clone_username, repo.clone_token)
+      : undefined;
 
     if (this.isCloned(targetPath)) {
-      // Already cloned — just refresh origin to carry the rotated token so the
-      // next push/pull authenticates.
+      // Already cloned — refresh origin to carry the rotated token so the
+      // next push/pull authenticates, then merge any new template commits
+      // (the GitLab "update fork" behavior).
       report('Refreshing repository credentials…');
       await this.updateRemoteUrl(targetPath, authUrl);
+      if (authTemplateUrl) {
+        await this.syncFromTemplate(targetPath, authTemplateUrl, report);
+      }
       return { status: 'already-cloned', path: targetPath, repo };
     }
 
     report('Cloning your repository…');
     await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
     await execGitClone(authUrl, targetPath, { cancellationToken: opts?.cancellationToken });
+    // The repo on the server may itself be behind the template (it is only a
+    // point-in-time copy from provisioning) — catch up right after the clone.
+    if (authTemplateUrl) {
+      await this.syncFromTemplate(targetPath, authTemplateUrl, report);
+    }
     return { status: 'cloned', path: targetPath, repo };
   }
 
@@ -229,6 +260,23 @@ export class StudentRepositoryProvisioningService {
     if (this.isCloned(targetPath)) {
       report('Refreshing repository credentials…');
       await this.updateRemoteUrl(targetPath, authUrl);
+      // Update-fork: merge new template commits using a freshly-minted
+      // one-time read credential (template tokens rotate per sync).
+      if (descriptor.template?.server_type === 'forgejo') {
+        try {
+          const access = await this.api.getTemplateAccess(courseId);
+          const templateUrl = access.clone_url || descriptor.template?.clone_url;
+          if (access.token && access.username && templateUrl) {
+            await this.syncFromTemplate(
+              targetPath,
+              addBasicCredentialsToGitUrl(templateUrl, access.username, access.token),
+              report
+            );
+          }
+        } catch (error) {
+          console.warn('[StudentRepositoryProvisioningService] Could not get template access for sync:', error);
+        }
+      }
       return { status: 'already-cloned', path: targetPath, repo };
     }
 
@@ -327,6 +375,57 @@ export class StudentRepositoryProvisioningService {
     await run('git push -u origin main');
     if (templateUpstreamUrl) {
       try { await run(`git remote add upstream "${templateUpstreamUrl}"`); } catch { /* best effort — upstream may need template access */ }
+    }
+  }
+
+  /**
+   * The GitLab "[update fork]" behavior for the course-level repo: merge new
+   * template commits into the student's clone and push them back to origin.
+   * {@link CTGit.forkUpdate} owns the whole cycle (upstream remote, stash,
+   * merge + conflict auto-resolution, push, cleanup). A failed sync never
+   * fails provisioning — the student keeps working on the version they have.
+   */
+  private async syncFromTemplate(
+    repoPath: string,
+    authTemplateUrl: string,
+    report: (message: string) => void
+  ): Promise<void> {
+    report('Checking for template updates…');
+    try {
+      const result = await new CTGit(repoPath).forkUpdate(authTemplateUrl, { autoResolveConflicts: true });
+      if (result.updated) {
+        report('Template updates merged.');
+        console.log(
+          `[StudentRepositoryProvisioningService] Merged ${result.behindCount} template commit(s) from upstream/${result.defaultBranch}`
+        );
+      }
+    } catch (error) {
+      console.warn('[StudentRepositoryProvisioningService] Template sync failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      void notify.warning(
+        `Failed to update your repository from the course template. You may be working with an older version. Error: ${redactGitCredentials(message)}`
+      );
+    }
+  }
+
+  /**
+   * Update-fork every given course whose managed course-level repo is already
+   * cloned locally — the "[refresh]" / extension-startup trigger. Skips
+   * courses without a repo record or local clone (nothing to update), so for
+   * managed Forgejo it never prompts; managed GitLab asks for a token only if
+   * the stored one went missing.
+   */
+  async syncClonedManagedRepos(courseIds: Iterable<string>, opts?: SetUpOptions): Promise<void> {
+    for (const courseId of courseIds) {
+      if (opts?.cancellationToken?.isCancellationRequested) { return; }
+      try {
+        const repo = await this.getRepository(courseId);
+        if (repo?.mode === 'managed' && this.isCloned(this.localPathFor(repo))) {
+          await this.setUpRepository(courseId, opts);
+        }
+      } catch (error) {
+        console.warn(`[StudentRepositoryProvisioningService] Template sync for course ${courseId} failed:`, error);
+      }
     }
   }
 
