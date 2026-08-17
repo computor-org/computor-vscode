@@ -51,6 +51,7 @@ import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProv
 
 import { StudentCourseContentTreeProvider } from './ui/tree/student/StudentCourseContentTreeProvider';
 import { StudentRepositoryManager } from './services/StudentRepositoryManager';
+import { StudentRepositoryProvisioningService } from './services/StudentRepositoryProvisioningService';
 import { CourseSelectionService } from './services/CourseSelectionService';
 import { StudentCommands } from './commands/StudentCommands';
 
@@ -937,6 +938,7 @@ class UnifiedController {
     // Courses that were never expanded will be set up lazily when first expanded
     if (expandedCourseIds.size > 0) {
       // Use external progress if available, otherwise show own popup
+      const provisioning = new StudentRepositoryProvisioningService(this.context, api);
       const setupRepositories = async (progressReport: (msg: string) => void, cancellationToken?: vscode.CancellationToken) => {
         progressReport('Preparing repositories...');
         try {
@@ -948,6 +950,13 @@ class UnifiedController {
             console.error('[initializeStudentView] Repository auto-setup failed:', e);
           }
         }
+        // Course-level-git repos (managed Forgejo/GitLab): run the
+        // "[update fork]" merge directly on extension startup — it must not
+        // depend on the legacy submission-group plumbing above.
+        await provisioning.syncClonedManagedRepos(expandedCourseIds, {
+          onProgress: progressReport,
+          cancellationToken
+        });
         tree.refresh();
       };
 
