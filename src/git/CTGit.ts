@@ -34,7 +34,10 @@ export class CTGit {
   }
 
   async fetch(): Promise<void> {
-    await this.simpleGit.fetch(['--all']);
+    // Spelled out as a raw command on purpose: simple-git's `fetch()` drops a
+    // remote name unless a branch is passed with it, so anything but the
+    // trailing-options form silently fetches something else. See forkUpdate.
+    await this.simpleGit.raw(['fetch', '--all']);
   }
 
   async pull(): Promise<void> {
@@ -76,6 +79,18 @@ export class CTGit {
       await this.simpleGit.addRemote(remoteName, remoteUrl);
     } catch {
       await this.simpleGit.remote(['set-url', remoteName, remoteUrl]);
+    }
+  }
+
+  /** Fetch URL currently configured for `remoteName`, or undefined if the
+   * repository has no such remote. */
+  private async remoteFetchUrl(remoteName: string): Promise<string | undefined> {
+    try {
+      const remotes = await this.simpleGit.getRemotes(true);
+      return remotes.find(remote => remote.name === remoteName)?.refs?.fetch || undefined;
+    } catch (error) {
+      console.warn(`[CTGit] Failed to read the URL of remote ${remoteName}:`, error);
+      return undefined;
     }
   }
 
@@ -276,6 +291,34 @@ export class CTGit {
     }
   }
 
+  /**
+   * Undo whatever {@link ensureRemote} did to `remoteName`.
+   *
+   * A remote the repository already owned is kept and only has its URL put
+   * back — `ensureRemote` overwrote it with a credential-carrying one. Repos
+   * seeded from the course template keep the template linked as `upstream`
+   * (see `StudentRepositoryProvisioningService.seedFromTemplateClone`), and
+   * removing the remote would take its remote-tracking refs with it.
+   */
+  private async releaseRemote(
+    remoteName: string,
+    previousUrl: string | undefined,
+    remove: boolean
+  ): Promise<void> {
+    if (previousUrl !== undefined) {
+      try {
+        await this.simpleGit.remote(['set-url', remoteName, previousUrl]);
+      } catch (error) {
+        console.warn(`[CTGit] Failed to restore the URL of remote ${remoteName}:`, error);
+      }
+      return;
+    }
+
+    if (remove) {
+      await this.cleanupRemote(remoteName);
+    }
+  }
+
   async forkUpdate(
     remoteUrl: string,
     options?: { defaultBranch?: string; removeRemote?: boolean; autoResolveConflicts?: boolean }
@@ -290,36 +333,50 @@ export class CTGit {
       try { await this.simpleGit.raw(['merge', '--abort']); } catch { /* best effort */ }
     } catch { /* no merge in progress */ }
 
+    // Remember whether the repository already had this remote: one it owns is
+    // restored rather than deleted once we are done (see releaseRemote).
+    const previousRemoteUrl = await this.remoteFetchUrl(remoteName);
     await this.ensureRemote(remoteName, remoteUrl);
-    await this.simpleGit.fetch(remoteName);
+    // Spelled out as a raw command: `simpleGit.fetch(remoteName)` does NOT
+    // fetch that remote. simple-git only passes the remote through when a
+    // branch is given with it, so it degrades to a bare `git fetch` — origin
+    // gets fetched, `refs/remotes/upstream/*` is never written, and every
+    // comparison below fails.
+    await this.simpleGit.raw(['fetch', remoteName]);
 
     const defaultBranch = options?.defaultBranch
       ?? await this.detectDefaultBranch(remoteName, ['main', 'master']);
     const shouldRemoveRemote = options?.removeRemote ?? true;
 
     if (!defaultBranch) {
-      if (shouldRemoveRemote) {
-        await this.cleanupRemote(remoteName);
-      }
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
       notify.warning('Unable to determine upstream default branch. Skipping fork update.');
-      return { updated: false };  
+      return { updated: false };
     }
 
     const upstreamRef = `${remoteName}/${defaultBranch}`;
 
-    let behindCount = 0;
+    let behindCount: number;
     try {
       const revList = await this.simpleGit.raw(['rev-list', '--count', `HEAD..${upstreamRef}`]);
       behindCount = parseInt(revList.trim(), 10);
     } catch (error) {
-      console.warn('[CTGit] Failed to check commit difference:', error);
+      // NOT "already up to date": the template could not be compared against at
+      // all. Reporting no-update here is exactly what hid the broken fetch
+      // above, so this failure has to reach the caller.
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to compare this repository against ${upstreamRef}: ${message}`);
     }
 
-    if (!Number.isFinite(behindCount) || behindCount <= 0) {
-      if (shouldRemoveRemote) {
-        await this.cleanupRemote(remoteName);
-      }
-      return { updated: false, defaultBranch, behindCount: Number.isFinite(behindCount) ? behindCount : undefined };
+    if (!Number.isFinite(behindCount)) {
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
+      throw new Error(`Failed to read how far behind ${upstreamRef} this repository is.`);
+    }
+
+    if (behindCount <= 0) {
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
+      return { updated: false, defaultBranch, behindCount };
     }
 
     const statusSummary = await this.simpleGit.status();
@@ -376,7 +433,6 @@ export class CTGit {
         }
 
         const resolvedAutomatically = await this.resolveConflictsAutomatically(conflicts);
-        console.log("[][][] " + resolvedAutomatically);
         if (resolvedAutomatically) {
           mergeCompleted = true;
         } else {
@@ -460,9 +516,7 @@ export class CTGit {
         await this.applyLatestStash();
       }
 
-      if (shouldRemoveRemote) {
-        await this.cleanupRemote(remoteName);
-      }
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
     }
 
     return { updated: mergeCompleted, defaultBranch, behindCount };
