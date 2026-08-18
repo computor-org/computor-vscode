@@ -11,6 +11,7 @@ import { registerEditorLayout, showOptions } from './ui/editorLayout';
 import { ArtifactsPanel } from './ui/panels/ArtifactsPanel';
 import { UiStateService } from './services/UiStateService';
 import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
+import { focusViewContainer } from './ui/focusViewContainer';
 import { isRestoringSelection, restoreSelection, trackTree, treeItemId } from './ui/treeRestore';
 import type { TrackedTree } from './ui/treeRestore';
 import { registerTreeHandle } from './ui/treeRegistry';
@@ -826,11 +827,10 @@ class UnifiedController {
       return;
     }
 
-    try {
-      await vscode.commands.executeCommand(target.focusCommand);
+    if (await focusViewContainer(target)) {
       console.log(`Focused ${target.id}${remembered === target.id ? ' (where you left off)' : ''}`);
-    } catch (err) {
-      console.warn(`Failed to focus ${target.id}:`, err);
+    } else {
+      console.warn(`Could not focus ${target.id}: the container never became visible.`);
     }
   }
 
@@ -1607,8 +1607,12 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
     // Set context to show offline view
     await vscode.commands.executeCommand('setContext', 'computor.student.offline.show', true);
 
-    // Focus on offline view
-    await vscode.commands.executeCommand('workbench.view.extension.computor-student-offline');
+    // Focus on offline view. Same context-key race as the post-login focus:
+    // the container is not on screen the instant setContext resolves.
+    const offlineContainer = containerById('computor-student-offline');
+    if (offlineContainer && !(await focusViewContainer(offlineContainer))) {
+      console.warn('Could not focus computor-student-offline: the container never became visible.');
+    }
 
     offlineSession = {
       deactivate: async () => {
