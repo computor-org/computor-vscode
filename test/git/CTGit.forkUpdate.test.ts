@@ -154,4 +154,24 @@ describe('CTGit.forkUpdate', () => {
     expect(git(fixture.student, 'remote').split('\n')).to.include('upstream');
     expect(git(fixture.student, 'remote', 'get-url', 'upstream')).to.equal(fixture.template);
   });
+
+  it('syncs again on a later run, with the repository-owned remote still in place', async function () {
+    this.timeout(30_000);
+    // The offline/legacy-GitLab shape: OfflineRepositoryManager links the
+    // template as a persistent authenticated `upstream`, and
+    // StudentOfflineCommands only syncs when it finds that remote. Deleting it
+    // after the first run left every later pull with nothing to sync.
+    git(fixture.student, 'remote', 'add', 'upstream', fixture.template);
+
+    releaseNewAssignment(fixture);
+    const first = await new CTGit(fixture.student).forkUpdate(fixture.template, { autoResolveConflicts: true });
+
+    commitFile(fixture.template, 'week_3.md', 'Assignment 3\n', 'Release week 3');
+    const second = await new CTGit(fixture.student).forkUpdate(fixture.template, { autoResolveConflicts: true });
+
+    expect([first.updated, second.updated]).to.deep.equal([true, true]);
+    expect(git(fixture.student, 'remote').split('\n')).to.include('upstream');
+    expect(fs.existsSync(path.join(fixture.student, 'week_3.md'))).to.equal(true);
+    expect(git(fixture.origin, 'show', 'main:week_3.md')).to.equal('Assignment 3');
+  });
 });
