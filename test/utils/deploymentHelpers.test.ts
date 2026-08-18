@@ -3,7 +3,9 @@ import {
   hasExampleAssigned,
   getExampleVersionId,
   getDeploymentStatus,
-  getDeploymentInfo
+  getDeploymentInfo,
+  getReleaseState,
+  classifyReleaseContents
 } from '../../src/utils/deploymentHelpers';
 
 // We only need the fields these helpers read, so a thin cast lets us avoid
@@ -99,6 +101,95 @@ describe('deploymentHelpers', () => {
         status: null,
         deployedAt: null
       });
+    });
+  });
+  describe('getReleaseState', () => {
+    it("reports 'update-not-deployed' when pending on top of an earlier release", () => {
+      expect(getReleaseState(asContent({
+        deployment: { deployment_status: 'pending', deployed_at: '2026-04-01T10:00:00Z' }
+      }))).to.equal('update-not-deployed');
+    });
+
+    it("reports 'never-deployed' when pending with nothing ever released", () => {
+      expect(getReleaseState(asContent({
+        deployment: { deployment_status: 'pending', deployed_at: null }
+      }))).to.equal('never-deployed');
+      expect(getReleaseState(asContent({ deployment_status: 'pending' }))).to.equal('never-deployed');
+    });
+
+    it('passes the terminal statuses through unchanged', () => {
+      expect(getReleaseState(asContent({ deployment_status: 'deployed' }))).to.equal('deployed');
+      expect(getReleaseState(asContent({ deployment_status: 'deploying' }))).to.equal('deploying');
+      expect(getReleaseState(asContent({ deployment_status: 'failed' }))).to.equal('failed');
+    });
+
+    it("ignores 'deployed_at' for statuses other than pending", () => {
+      expect(getReleaseState(asContent({
+        deployment: { deployment_status: 'failed', deployed_at: '2026-04-01T10:00:00Z' }
+      }))).to.equal('failed');
+    });
+
+    it('returns undefined when there is no release state to report', () => {
+      expect(getReleaseState(asContent({}))).to.be.undefined;
+      expect(getReleaseState(asContent({ deployment_status: 'unassigned' }))).to.be.undefined;
+    });
+
+    it('prefers an explicitly supplied status over the one on the content', () => {
+      const content = asContent({
+        deployment: { deployment_status: 'pending', deployed_at: '2026-04-01T10:00:00Z' }
+      });
+      expect(getReleaseState(content, 'deploying')).to.equal('deploying');
+    });
+  });
+
+  describe('classifyReleaseContents', () => {
+    // The batch endpoint is only consulted for already-deployed content.
+    const apiStub = (deployments: Record<string, unknown>[] = []) => ({
+      lecturerGetCourseDeployments: async () => ({ deployments })
+    }) as any;
+
+    it("classifies pending-on-top-of-a-release as 'update' and a first release as 'new'", async () => {
+      const candidates = await classifyReleaseContents([
+        asContent({ id: 'stale', deployment: { deployment_status: 'pending', deployed_at: '2026-04-01T10:00:00Z' } }),
+        asContent({ id: 'fresh', deployment: { deployment_status: 'pending', deployed_at: null } })
+      ], apiStub(), 'course-1');
+
+      expect(candidates.map(c => [c.content.id, c.reason])).to.deep.equal([
+        ['stale', 'update'],
+        ['fresh', 'new']
+      ]);
+    });
+
+    it("classifies a failed deployment as 'failed'", async () => {
+      const candidates = await classifyReleaseContents(
+        [asContent({ id: 'broken', deployment_status: 'failed' })],
+        apiStub(),
+        'course-1'
+      );
+      expect(candidates).to.have.lengthOf(1);
+      expect(candidates[0]!.reason).to.equal('failed');
+    });
+
+    it("offers deployed content only when a newer example version exists", async () => {
+      const contents = [asContent({ id: 'live', deployment_status: 'deployed' })];
+
+      expect(await classifyReleaseContents(contents, apiStub(), 'course-1')).to.be.empty;
+
+      const withNewer = await classifyReleaseContents(
+        contents,
+        apiStub([{ course_content_id: 'live', has_newer_version: true }]),
+        'course-1'
+      );
+      expect(withNewer.map(c => c.reason)).to.deep.equal(['update']);
+    });
+
+    it('never offers unassigned or in-flight content', async () => {
+      const candidates = await classifyReleaseContents([
+        asContent({ id: 'none', deployment_status: 'unassigned' }),
+        asContent({ id: 'running', deployment_status: 'deploying' }),
+        asContent({ id: 'blank' })
+      ], apiStub(), 'course-1');
+      expect(candidates).to.be.empty;
     });
   });
 });

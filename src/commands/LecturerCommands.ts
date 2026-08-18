@@ -56,6 +56,20 @@ import {
   type Placement
 } from '../utils/contentOrdering';
 
+/** A webview cannot pass a tree item, so it sends the ids the scope needs. */
+interface ReleaseContentPayload {
+  courseId?: string;
+  contentId?: string;
+  path?: string;
+  title?: string;
+}
+
+type ReleaseTarget =
+  | CourseTreeItem
+  | CourseFolderTreeItem
+  | CourseContentTreeItem
+  | ReleaseContentPayload;
+
 interface ReleaseScope {
   label?: string;
   path?: string;
@@ -2176,7 +2190,7 @@ export class LecturerCommands {
     }
   }
 
-  private async releaseCourseContent(item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
+  private async releaseCourseContent(item: ReleaseTarget): Promise<void> {
     try {
       const scopeInfo = this.buildReleaseScopeFromTreeItem(item);
       if (!scopeInfo) { return; }
@@ -2204,7 +2218,7 @@ export class LecturerCommands {
     }
   }
 
-  private buildReleaseScopeFromTreeItem(item: CourseTreeItem | CourseFolderTreeItem | CourseContentTreeItem): { courseId: string; scope: ReleaseScope } | undefined {
+  private buildReleaseScopeFromTreeItem(item: ReleaseTarget): { courseId: string; scope: ReleaseScope } | undefined {
     if (item instanceof CourseTreeItem) {
       return {
         courseId: item.course.id,
@@ -2241,6 +2255,19 @@ export class LecturerCommands {
       };
     }
 
+    // Webviews cannot hand us a tree item, so they send the ids directly.
+    if (item && !(item instanceof vscode.TreeItem) && item.courseId && item.contentId && item.path) {
+      return {
+        courseId: item.courseId,
+        scope: {
+          parentId: item.contentId,
+          path: item.path,
+          label: item.title || item.path
+        }
+      };
+    }
+
+    notify.warning('Select a course or an assignment in the Lecturer view to release.');
     return undefined;
   }
 

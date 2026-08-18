@@ -4,6 +4,21 @@ import type { ComputorApiService } from '../services/ComputorApiService';
 
 export type ReleaseReason = 'new' | 'update' | 'failed';
 
+/**
+ * What still has to happen before students see the assigned example version.
+ *
+ * The backend reuses `pending` for two very different situations: content that
+ * was never released, and content whose released version is now stale because a
+ * new version was assigned on top of it. Only `deployed_at` tells them apart,
+ * so derive it once here rather than in every view.
+ */
+export type ReleaseState =
+  | 'deployed'
+  | 'deploying'
+  | 'failed'
+  | 'update-not-deployed'   // pending, but an older version is already live
+  | 'never-deployed';       // pending, nothing ever released
+
 export interface ReleaseCandidate {
   content: CourseContentGet | CourseContentList;
   reason: ReleaseReason;
@@ -68,6 +83,39 @@ export function getDeploymentStatus(content: CourseContentGet | CourseContentLis
 }
 
 /**
+ * Resolve the release state of a course content.
+ *
+ * `statusOverride` lets callers that already resolved the status (the lecturer
+ * tree keeps it on its assignment info) pass it in rather than re-reading it.
+ */
+export function getReleaseState(
+  content: CourseContentGet | CourseContentList,
+  statusOverride?: string | null
+): ReleaseState | undefined {
+  const status = statusOverride || getDeploymentStatus(content);
+  if (!status) {
+    return undefined;
+  }
+
+  switch (status) {
+    case 'deployed':
+      return 'deployed';
+    case 'deploying':
+      return 'deploying';
+    case 'failed':
+      return 'failed';
+    case 'pending': {
+      // The one bit that separates "never released" from "released, now stale".
+      const deployedAt = 'deployment' in content ? content.deployment?.deployed_at : undefined;
+      return deployedAt ? 'update-not-deployed' : 'never-deployed';
+    }
+    default:
+      // 'unassigned', and anything the backend does not actually emit.
+      return undefined;
+  }
+}
+
+/**
  * Get deployment info for display
  */
 export function getDeploymentInfo(content: CourseContentGet | CourseContentList): {
@@ -116,20 +164,24 @@ export async function classifyReleaseContents(
   }
 
   for (const content of contents) {
-    const status = getDeploymentStatus(content);
+    const state = getReleaseState(content);
 
-    if (status === 'pending') {
-      const deployedAt = 'deployment' in content ? content.deployment?.deployed_at : undefined;
-      candidates.push({ content, reason: deployedAt ? 'update' : 'new' });
+    if (state === 'update-not-deployed') {
+      candidates.push({ content, reason: 'update' });
       continue;
     }
 
-    if (status === 'failed') {
+    if (state === 'never-deployed') {
+      candidates.push({ content, reason: 'new' });
+      continue;
+    }
+
+    if (state === 'failed') {
       candidates.push({ content, reason: 'failed' });
       continue;
     }
 
-    if (status === 'deployed') {
+    if (state === 'deployed') {
       const dep = deploymentMap.get(content.id);
       if (dep?.has_newer_version) {
         candidates.push({ content, reason: 'update' });
