@@ -693,18 +693,6 @@
         "category": "Computor Examples"
       },
       {
-        "command": "computor.lecturer.fs.rename",
-        "title": "Rename",
-        "icon": "$(edit)",
-        "category": "Computor Files"
-      },
-      {
-        "command": "computor.lecturer.fs.delete",
-        "title": "Delete",
-        "icon": "$(trash)",
-        "category": "Computor Files"
-      },
-      {
         "command": "computor.userManager.refresh",
         "title": "Refresh Users",
         "icon": "$(refresh)",
@@ -2364,16 +2352,6 @@
           "command": "computor.student.offline.showPreview",
           "when": "view == computor.student.offline.view && viewItem == offlineCourse",
           "group": "2_preview@1"
-        },
-        {
-          "command": "computor.lecturer.fs.rename",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^lecturerFs(File|Folder)$/",
-          "group": "inline@1"
-        },
-        {
-          "command": "computor.lecturer.fs.delete",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^lecturerFs(File|Folder)$/",
-          "group": "inline@2"
         }
       ]
     }

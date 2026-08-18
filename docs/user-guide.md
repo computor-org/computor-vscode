@@ -355,6 +355,10 @@ For submittable assignments, you can manage the file structure:
 2. Upload folder contents
 3. Students will see this structure when they clone
 
+Assignments are leaves in the course tree — they do not expand. To browse the files
+you just created, right-click the assignment → `Open Assignment Folder`, or open the
+assignments repository in the workspace explorer.
+
 ---
 
 ## Common Tasks
