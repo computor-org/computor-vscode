@@ -89,6 +89,28 @@ export class CourseTreeItem extends vscode.TreeItem {
   }
 }
 
+/**
+ * The single place that decides whether a lecturer course-content row gets an
+ * expand arrow. A row is collapsible when it has child contents — nothing else.
+ *
+ * Assignments are leaves. They used to expand into their local assignment
+ * directory; that listing is gone, and `isSubmittable` must never re-enter this
+ * decision. The rule flipped three times (c58dc3e made assignments leaves,
+ * 713de01 made them expandable again) because the same expression lived in three
+ * places that drifted apart. They all call this now.
+ */
+export function courseContentCollapsibleState(options: {
+  hasChildren: boolean;
+  expanded?: boolean;
+}): vscode.TreeItemCollapsibleState {
+  if (!options.hasChildren) {
+    return vscode.TreeItemCollapsibleState.None;
+  }
+  return options.expanded
+    ? vscode.TreeItemCollapsibleState.Expanded
+    : vscode.TreeItemCollapsibleState.Collapsed;
+}
+
 export interface CourseContentTreeItemOptions {
   courseContent: CourseContentList | CourseContentLecturerList;
   course: CourseList;
@@ -120,8 +142,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   constructor(options: CourseContentTreeItemOptions) {
     super(
       options.courseContent.title || options.courseContent.path,
-      options.collapsibleState !== undefined ? options.collapsibleState :
-        (options.hasChildren || options.isSubmittable ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
+      options.collapsibleState ?? courseContentCollapsibleState({ hasChildren: options.hasChildren })
     );
 
     this.courseContent = options.courseContent;

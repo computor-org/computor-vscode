@@ -10,7 +10,6 @@ import { errorRecoveryService } from '../../../services/ErrorRecoveryService';
 import { isConsentRequiredError, handleConsentError } from '../../../utils/consentGate';
 import { performanceMonitor } from '../../../services/PerformanceMonitoringService';
 import { UiStateService } from '../../../services/UiStateService';
-import { openFileCommand } from '../../editorLayout';
 import { VirtualScrollingService } from '../../../services/VirtualScrollingService';
 import { DragDropManager } from '../../../services/DragDropManager';
 import { GitWrapper } from '../../../git/GitWrapper';
@@ -18,6 +17,7 @@ import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { notify } from '../../../utils/notify';
 import {
+  courseContentCollapsibleState,
   OrganizationTreeItem,
   CourseFamilyTreeItem,
   CourseTreeItem,
@@ -33,7 +33,6 @@ import {
   compareMembersByName
 } from './LecturerTreeItems';
 import type {
-  CourseContentList,
   CourseContentLecturerList,
   CourseContentCreate,
   CourseContentUpdate,
@@ -58,8 +57,6 @@ type TreeItem =
   | NoGroupTreeItem
   | CourseMemberTreeItem
   | LoadMoreTreeItem
-  | FSFolderItem
-  | FSFileItem
   | InfoItem;
 
 interface NodeUpdateData {
@@ -542,19 +539,14 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       }
 
       if (element instanceof CourseContentTreeItem) {
-        // Show child course contents or, for assignments (leaves), show local repo files
+        // Units expand into their child contents. Assignments are leaves — their
+        // files are reached through "Open Assignment Folder", not the tree.
         const allContents = await this.getCourseContents(element.course.id);
         const childContents = this.getChildContents(element.courseContent as CourseContentLecturerList, allContents);
 
-        const childItems = await Promise.all(childContents.map(content =>
+        return Promise.all(childContents.map(content =>
           this.buildContentTreeItem(content, allContents, element.course, element.courseFamily, element.organization)
         ));
-        
-        if (childItems.length > 0) {
-          return childItems;
-        }
-        
-        return this.getAssignmentDirectoryChildren(element);
       }
 
       if (element instanceof CourseGroupTreeItem) {
@@ -642,12 +634,6 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         }
       }
 
-      // Filesystem folder expansion for lecturer assignment folders
-      if (element instanceof FSFolderItem) {
-        const items = await this.readDirectoryItems(element.absPath, element.course, element.courseContent, element.repositoryRoot);
-        return items;
-      }
-
       return [];
     } catch (error) {
       // Consent gate: show a clear, clickable node (and one throttled prompt)
@@ -663,55 +649,6 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       }
       notify.error(`Failed to load tree data: ${error}`);
       return [];
-    }
-  }
-
-  private async getAssignmentDirectoryChildren(element: CourseContentTreeItem): Promise<TreeItem[]> {
-    if (!element.isSubmittable) {
-      return [];
-    }
-
-    const rawDirectoryName = element.assignmentDirectory || this.resolveAssignmentDirectoryName(element.courseContent as CourseContentLecturerList);
-    if (!rawDirectoryName) {
-      return [new InfoItem('Assignment not initialized in assignments repo', 'info')];
-    }
-
-    const directoryName = this.sanitizeAssignmentDirectoryName(rawDirectoryName);
-    if (!directoryName) {
-      return [new InfoItem('Assignment directory name is invalid', 'warning')];
-    }
-
-    element.assignmentDirectory = directoryName;
-    this.assignmentIdentifierCache.set(element.courseContent.id, directoryName);
-
-    try {
-      const resolution = await this.resolveAssignmentDirectory(element.course, directoryName, true);
-
-      if (element.assignmentInfo) {
-        element.assignmentInfo.directoryName = directoryName;
-        element.assignmentInfo.folderExists = resolution.exists;
-        element.assignmentInfo.statusMessage = resolution.statusMessage;
-      }
-
-      if (!resolution.absolutePath || !resolution.exists) {
-        if (resolution.statusMessage) {
-          return [new InfoItem(resolution.statusMessage.message, resolution.statusMessage.severity)];
-        }
-        return [new InfoItem('Assignment directory not available locally', 'warning')];
-      }
-
-      const repoRoot = resolution.repositoryPath || this.repositoryManager.getAssignmentsRepoRoot(element.course);
-      const children = await this.readDirectoryItems(resolution.absolutePath, element.course, element.courseContent, repoRoot || resolution.absolutePath);
-      if (children.length === 0) {
-        return [new InfoItem('Empty assignment directory', 'info')];
-      }
-      return children;
-    } catch (error) {
-      console.warn('Failed to prepare assignment directory:', error);
-      if (element.assignmentInfo) {
-        element.assignmentInfo.statusMessage = { message: 'Error loading assignment files', severity: 'error' };
-      }
-      return [new InfoItem('Error loading assignment files', 'error')];
     }
   }
 
@@ -752,12 +689,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
     }
 
     const nodeId = `content-${content.id}`;
-    // Units expand into their child contents; submittable leaves (assignments)
-    // expand into the local assignment directory served by
-    // getAssignmentDirectoryChildren, so both need to be collapsible.
-    const expandedState = hasChildren || isSubmittable
-      ? (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
-      : vscode.TreeItemCollapsibleState.None;
+    const expandedState = courseContentCollapsibleState({
+      hasChildren,
+      expanded: this.expandedStates[nodeId] === true
+    });
 
     return new CourseContentTreeItem({
       courseContent: content,
@@ -825,8 +760,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
   private async resolveAssignmentDirectory(
     course: CourseList,
-    directoryName: string,
-    attemptSync: boolean = true
+    directoryName: string
   ): Promise<AssignmentDirectoryResolution> {
     const fullCourse = await this.getFullCourse(course);
     const repoRoot = this.repositoryManager.getAssignmentsRepoRoot(fullCourse);
@@ -850,16 +784,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       };
     }
 
-    let folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
-    let folderExists = folder ? fs.existsSync(folder) : false;
-    let statusMessage: AssignmentDirectoryStatus | undefined;
-
-    if (!folder && attemptSync) {
-      await this.syncAssignmentsRepository(course.id, fullCourse);
-      folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
-      folderExists = folder ? fs.existsSync(folder) : false;
-    }
-
+    // Read-only: this feeds tooltips and context decorations while the tree
+    // renders, so it must never kick off a clone. Syncing is the
+    // "Sync Assignments Repositories" command's job.
+    const folder = this.repositoryManager.getAssignmentFolderPath(fullCourse, sanitizedDirectoryName);
     if (!folder) {
       return {
         absolutePath: null,
@@ -869,15 +797,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       };
     }
 
-    if (!folderExists) {
-      if (attemptSync) {
-        await this.syncAssignmentsRepository(course.id, fullCourse);
-        folderExists = fs.existsSync(folder);
-      }
-      if (!folderExists) {
-        statusMessage = { message: 'Assignment folder missing locally — run "Sync Assignments"', severity: 'warning' };
-      }
-    }
+    const folderExists = fs.existsSync(folder);
+    const statusMessage: AssignmentDirectoryStatus | undefined = folderExists
+      ? undefined
+      : { message: 'Assignment folder missing locally — run "Sync Assignments"', severity: 'warning' };
 
     return {
       absolutePath: folder,
@@ -885,13 +808,6 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       exists: folderExists,
       statusMessage
     };
-  }
-
-  private async syncAssignmentsRepository(courseId: string, course: any): Promise<void> {
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Syncing assignments...' }, async (progress) => {
-      progress.report({ message: `Syncing assignments for ${course.title || course.path}` });
-      await this.repositoryManager.syncAssignmentsForCourse(courseId);
-    });
   }
 
   private async computeAssignmentInfo(
@@ -918,7 +834,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       return info;
     }
 
-    const resolution = await this.resolveAssignmentDirectory(course, directoryName, false);
+    const resolution = await this.resolveAssignmentDirectory(course, directoryName);
     info.folderExists = resolution.exists;
     info.statusMessage = resolution.statusMessage;
 
@@ -1168,9 +1084,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
           const isSubmittable = this.isContentSubmittable(contentType);
           
           const nodeId = `content-${parentContent.id}`;
-          const expandedState = hasChildren || isSubmittable ?
-            (this.expandedStates[nodeId] ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed) :
-            vscode.TreeItemCollapsibleState.None;
+          const expandedState = courseContentCollapsibleState({
+            hasChildren,
+            expanded: this.expandedStates[nodeId] === true
+          });
           
           return new CourseContentTreeItem({
             courseContent: parentContent,
@@ -2040,68 +1957,6 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       notify.error(`Failed to create assignment: ${errorMessage}`);
     }
-  }
-
-  private async readDirectoryItems(dir: string, course: CourseList, courseContent: CourseContentList, repositoryRoot: string): Promise<TreeItem[]> {
-    try {
-      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      const items: TreeItem[] = [];
-      for (const ent of entries) {
-        if (ent.name === '.git') continue;
-        const abs = path.join(dir, ent.name);
-        const rel = ent.name;
-        if (ent.isDirectory()) {
-          items.push(new FSFolderItem(abs, rel, course, courseContent, repositoryRoot));
-        } else {
-          items.push(new FSFileItem(abs, rel, course, courseContent, repositoryRoot));
-        }
-      }
-      // Sort folders first, then files alphabetically
-      items.sort((a: any, b: any) => {
-        const aIsFolder = a instanceof FSFolderItem;
-        const bIsFolder = b instanceof FSFolderItem;
-        if (aIsFolder && !bIsFolder) return -1;
-        if (!aIsFolder && bIsFolder) return 1;
-        return String(a.label).localeCompare(String(b.label));
-      });
-      return items;
-    } catch (e) {
-      console.warn('Failed to read directory:', dir, e);
-      return [new InfoItem('Error reading directory', 'error')];
-    }
-  }
-}
-
-class FSFolderItem extends vscode.TreeItem {
-  constructor(
-    public absPath: string,
-    public relPath: string,
-    public course: CourseList,
-    public courseContent: CourseContentList,
-    public repositoryRoot: string
-  ) {
-    super(path.basename(absPath), vscode.TreeItemCollapsibleState.Collapsed);
-    this.iconPath = new vscode.ThemeIcon('folder');
-    this.resourceUri = vscode.Uri.file(absPath);
-    this.contextValue = 'lecturerFsFolder';
-    this.tooltip = absPath;
-  }
-}
-
-class FSFileItem extends vscode.TreeItem {
-  constructor(
-    public absPath: string,
-    public relPath: string,
-    public course: CourseList,
-    public courseContent: CourseContentList,
-    public repositoryRoot: string
-  ) {
-    super(path.basename(absPath), vscode.TreeItemCollapsibleState.None);
-    this.iconPath = new vscode.ThemeIcon('file');
-    this.resourceUri = vscode.Uri.file(absPath);
-    this.contextValue = 'lecturerFsFile';
-    this.command = openFileCommand(vscode.Uri.file(absPath));
-    this.tooltip = absPath;
   }
 }
 

@@ -44,7 +44,6 @@ import { LecturerBreadcrumbStatusBar } from './ui/LecturerBreadcrumbStatusBar';
 import { LecturerExampleTreeProvider } from './ui/tree/lecturer/LecturerExampleTreeProvider';
 import { LecturerCommands } from './commands/LecturerCommands';
 import { LecturerExampleCommands } from './commands/LecturerExampleCommands';
-import { LecturerFsCommands } from './commands/LecturerFsCommands';
 import { SettingsCommands } from './commands/SettingsCommands';
 import { LogoutCommands } from './commands/LogoutCommands';
 import { UserProfileWebviewProvider } from './ui/webviews/UserProfileWebviewProvider';
@@ -1296,7 +1295,6 @@ class UnifiedController {
 
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
-    new LecturerFsCommands(this.context, api).register();
 
     // Documents tree — file-system mirror over /documents/* with per-entry sync state.
     const { DocumentsTreeProvider } = await import('./ui/tree/lecturer-documents/DocumentsTreeProvider');
