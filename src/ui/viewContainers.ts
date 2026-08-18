@@ -83,6 +83,11 @@ export function containerById(containerId: string): ViewContainer | undefined {
   return CONTAINERS[containerId];
 }
 
+/** The views contributed into a container, in contribution order. */
+export function viewsForContainer(containerId: string): string[] {
+  return VIEWS.filter(view => view.container === containerId).map(view => view.viewId);
+}
+
 /**
  * Is this container reachable for the roles the user actually has?
  *
