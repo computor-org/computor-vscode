@@ -14,9 +14,32 @@ import {
   CourseMemberList
 } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
-import { hasExampleAssigned, getExampleVersionId, getDeploymentStatus } from '../../../utils/deploymentHelpers';
+import { hasExampleAssigned, getExampleVersionId, getReleaseState, ReleaseState } from '../../../utils/deploymentHelpers';
 
 const ASSIGNMENT_KIND_ID = 'assignment';
+
+/**
+ * How each release state reads in the tree.
+ *
+ * 🔄 is reserved for `deploying` — the only state where something is actually
+ * running. The two states that need the lecturer to press "Release Content"
+ * carry ⚠/⏳ instead, so a stale row never looks like a stuck spinner.
+ */
+const RELEASE_STATE_ICONS: Record<ReleaseState, string> = {
+  'deployed': '✅',
+  'deploying': '🔄',
+  'failed': '❌',
+  'update-not-deployed': '⚠',
+  'never-deployed': '⏳'
+};
+
+const RELEASE_STATE_LABELS: Record<ReleaseState, string> = {
+  'deployed': 'deployed',
+  'deploying': 'deploying',
+  'failed': 'failed',
+  'update-not-deployed': 'update not deployed',
+  'never-deployed': 'not deployed yet'
+};
 
 export interface CourseContentAssignmentInfo {
   directoryName?: string;
@@ -239,6 +262,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     }
   }
 
+  private getReleaseState(): ReleaseState | undefined {
+    return getReleaseState(this.courseContent, this.assignmentInfo?.deploymentStatus);
+  }
+
   private getTooltip(): string | vscode.MarkdownString {
     const parts: string[] = [];
     
@@ -277,9 +304,14 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push(`Version tag: ${this.assignmentInfo.versionTag}`);
     }
 
-    const deploymentStatus = this.assignmentInfo?.deploymentStatus || getDeploymentStatus(this.courseContent);
-    if (deploymentStatus) {
-      parts.push(`Status: ${deploymentStatus.replace(/_/g, ' ')}`);
+    const releaseState = this.getReleaseState();
+    if (releaseState) {
+      parts.push(`Status: ${RELEASE_STATE_LABELS[releaseState]}`);
+      // Naming the command matters: the state is cleared by a button the
+      // lecturer has to find, not by waiting for something to finish.
+      if (releaseState === 'update-not-deployed' || releaseState === 'never-deployed') {
+        parts.push('Run "Release Content" to deploy it to students');
+      }
     } else if (hasExampleAssigned(this.courseContent)) {
       parts.push('Status: not deployed yet');
     }
@@ -297,45 +329,10 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     const assignment = this.assignmentInfo;
 
     if (isAssignment) {
-      const statusIcons: Record<string, string> = {
-        pending: '⏳',
-        in_progress: '🔄',
-        deployed: '✅',
-        failed: '❌',
-        pending_release: '📤',
-        assigned: '📎',
-        deploying: '🔄',
-        released: '🚀'
-      };
-      const statusLabels: Record<string, string> = {
-        pending: 'pending',
-        in_progress: 'in progress',
-        deployed: 'deployed',
-        failed: 'failed',
-        pending_release: 'pending release',
-        assigned: 'assigned',
-        deploying: 'deploying',
-        released: 'released'
-      };
-
-      const deploymentStatus = assignment?.deploymentStatus || getDeploymentStatus(this.courseContent);
-      const isDeployed = deploymentStatus === 'deployed' || deploymentStatus === 'released';
-      const wasPreviouslyDeployed = 'deployment' in this.courseContent
-        && this.courseContent.deployment?.deployed_at != null;
-
-      if (isDeployed) {
-        const icon = statusIcons[deploymentStatus!] || '✅';
-        const label = statusLabels[deploymentStatus!] || deploymentStatus!.replace(/_/g, ' ');
-        parts.push(`${icon} ${label}`);
-      } else if (deploymentStatus === 'failed') {
-        parts.push('❌ failed');
-      } else if (deploymentStatus === 'deploying' || deploymentStatus === 'in_progress') {
-        parts.push('🔄 deploying');
-      } else if (wasPreviouslyDeployed) {
-        parts.push('🔄 update pending');
-      } else {
-        parts.push('⏳ not deployed yet');
-      }
+      // Fall back to the never-released wording when the status is missing, so a
+      // content row never loses its badge entirely.
+      const releaseState = this.getReleaseState() ?? 'never-deployed';
+      parts.push(`${RELEASE_STATE_ICONS[releaseState]} ${RELEASE_STATE_LABELS[releaseState]}`);
 
       if (assignment?.hasNewerVersion) {
         parts.push('⬆ update available');

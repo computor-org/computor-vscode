@@ -95,6 +95,8 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
     const scriptHtml = `
       var contentId = ${JSON.stringify(courseContent.id)};
       var courseId = ${JSON.stringify(course.id)};
+      var contentPath = ${JSON.stringify(courseContent.path)};
+      var contentTitle = ${JSON.stringify(courseContent.title || courseContent.path)};
 
       document.getElementById('editForm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -123,7 +125,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       }
 
       function deployAssignment() {
-        vscode.postMessage({ command: 'deployAssignment', data: { courseId: courseId, contentId: contentId } });
+        vscode.postMessage({ command: 'deployAssignment', data: { courseId: courseId, contentId: contentId, path: contentPath, title: contentTitle } });
       }
 
       function deleteContent() {
@@ -147,7 +149,9 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         try {
           await vscode.commands.executeCommand('computor.lecturer.releaseCourseContent', {
             courseId: message.data?.courseId,
-            contentId: message.data?.contentId
+            contentId: message.data?.contentId,
+            path: message.data?.path,
+            title: message.data?.title
           });
         } catch (error) {
           notify.error(`Failed to deploy assignment: ${error}`);
