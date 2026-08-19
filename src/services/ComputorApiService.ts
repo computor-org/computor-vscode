@@ -2004,6 +2004,12 @@ export class ComputorApiService {
         fetch: async () => {
           const client = await this.getHttpClient();
           const params = courseId ? `?course_id=${courseId}` : '';
+          // Deliberately NOT filtered client-side (issue #338). The backend is
+          // the only filter, and it already drops hidden content for students.
+          // Rows that reach here hidden mean the caller is a lecturer or tutor
+          // rehearsing as a student, who must keep seeing them -- marked, not
+          // dropped. A client-side filter would take those away and defeat the
+          // workflow this feature exists for.
           return (await client.get<CourseContentStudentList[]>(`/students/course-contents${params}`)).data;
         },
         retry: { maxRetries: 2 },

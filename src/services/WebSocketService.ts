@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
-import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated } from '../types/generated/websocket';
+import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated } from '../types/generated/websocket';
 import { notify } from '../utils/notify';
 
 // WebSocket message types from server
@@ -111,8 +111,9 @@ export type WsDeploymentStatusChanged = WSDeploymentStatusChanged & { type: 'dep
 export type WsDeploymentAssigned = WSDeploymentAssigned & { type: 'deployment:assigned' };
 export type WsDeploymentUnassigned = WSDeploymentUnassigned & { type: 'deployment:unassigned' };
 export type WsCourseContentUpdated = WSCourseContentUpdated & { type: 'course:content_updated' };
+export type WsCourseUpdated = WSCourseUpdated & { type: 'course:updated' };
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated;
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -165,6 +166,7 @@ export interface WebSocketEventHandlers {
   onDeploymentAssigned?: (event: WsDeploymentAssigned) => void;
   onDeploymentUnassigned?: (event: WsDeploymentUnassigned) => void;
   onCourseContentUpdated?: (event: WsCourseContentUpdated) => void;
+  onCourseUpdated?: (event: WsCourseUpdated) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: string) => void;
@@ -649,6 +651,18 @@ export class WebSocketService {
           console.log(`[WebSocket] Course content updated: ${contentData.course_content_id} change=${contentData.change_type}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onCourseContentUpdated?.({ ...contentData, type: 'course:content_updated' } as WsCourseContentUpdated);
+          });
+          break;
+        }
+
+        case 'course:updated': {
+          // Course-level settings changed. `visible` can move the whole
+          // content tree in or out of view (issue #338), so subscribers
+          // refetch the course rather than patching a single row.
+          const courseData = (message as any).data || message;
+          console.log(`[WebSocket] Course updated: ${courseData.course_id} change=${courseData.change_type}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onCourseUpdated?.({ ...courseData, type: 'course:updated' } as WsCourseUpdated);
           });
           break;
         }

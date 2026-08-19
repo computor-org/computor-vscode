@@ -11,6 +11,7 @@ import {
   submissionBudget,
   testBudget,
 } from '../limitFormatting';
+import { hiddenBadge, isHidden } from '../visibility';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { openFileCommand } from '../../editorLayout';
 import { UiStateService } from '../../../services/UiStateService';
@@ -79,6 +80,11 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       },
       onCourseContentUpdated: (event) => {
         console.log(`[TutorTree/WS] Course content updated: ${event.course_content_id} (${event.change_type})`);
+        this.refresh();
+      },
+      onCourseUpdated: (event) => {
+        // Course-level `visible` (issue #338) re-marks every row beneath it.
+        console.log(`[TutorTree/WS] Course updated: ${event.course_id} (${event.change_type})`);
         this.refresh();
       },
       // Unread badges (computor-org/issues#317): a student's submission
@@ -772,7 +778,7 @@ class MessageItem extends vscode.TreeItem {
 class TutorUnitItem extends vscode.TreeItem {
   constructor(public node: ContentNode) {
     super(node.name || 'Unit', vscode.TreeItemCollapsibleState.Collapsed);
-    this.contextValue = 'tutorUnit';
+    this.contextValue = isHidden(node.courseContent as any) ? 'tutorUnit.hidden' : 'tutorUnit';
     // Try to use a colored circle icon like in the student view
     try {
       const color = this.deriveColor(node) || 'grey';
@@ -822,8 +828,12 @@ class TutorUnitItem extends vscode.TreeItem {
     const baseName = this.node.name || 'Unit';
     this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;
 
-    // Description shows item count
-    this.description = `${count} item${count !== 1 ? 's' : ''}`;
+    // Description shows item count, plus the invisible marker. The unit is
+    // usually the row the lecturer actually hid, so marking only the
+    // assignments beneath it showed the effect and not the cause.
+    const invisible = hiddenBadge(this.node.courseContent as any);
+    const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
+    this.description = invisible ? `${invisible} • ${itemLabel}` : itemLabel;
 
     const tooltipLines = [
       `Unit: ${baseName}`,
@@ -893,6 +903,9 @@ class TutorContentItem extends vscode.TreeItem {
     } else {
       this.contextValue = 'tutorStudentContent.reading';
     }
+    if (isHidden(content as any)) {
+      this.contextValue += '.hidden';
+    }
     // Use a temporary unique ID when startExpanded is true to force VS Code to treat this as a new item
     // and respect the collapsibleState.Expanded. The ID will revert to normal on next refresh.
     this.id = startExpanded ? `${content.id}:expanded:${Date.now()}` : content.id;
@@ -954,6 +967,13 @@ class TutorContentItem extends vscode.TreeItem {
 
     // Build description with test/submission counts like student view
     const descriptionParts: string[] = [];
+
+    // Tutors keep every row a student cannot see, marked (issue #338). First
+    // in the list so it reads before the counters.
+    const hidden = hiddenBadge(this.content as any);
+    if (hidden) {
+      descriptionParts.push(`${hidden} `);
+    }
 
     // Same rule as the student tree: show the pair whenever a limit exists,
     // not only once a count does, so a tutor can see the budgets a student is

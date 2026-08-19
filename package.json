@@ -799,6 +799,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.toggleVisibility",
+        "title": "Toggle Student Visibility",
+        "icon": "$(eye-closed)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.configureCourseGit",
         "title": "Configure Course Git",
         "icon": "$(git-branch)",
@@ -1803,6 +1809,16 @@
           "command": "computor.lecturer.createAssignment",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent\\.nonSubmittable/",
           "group": "1_content@2"
+        },
+        {
+          "command": "computor.lecturer.toggleVisibility",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/ && !(viewItem =~ /\\.hidden/)",
+          "group": "1_content@5"
+        },
+        {
+          "command": "computor.lecturer.toggleVisibility",
+          "when": "view == computor.lecturer.courses && viewItem =~ /\\.hiddenHere/",
+          "group": "1_content@5"
         },
         {
           "command": "computor.lecturer.showMessages",

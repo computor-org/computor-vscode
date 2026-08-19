@@ -26,6 +26,7 @@ import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat }
 import { runLockedWithProgress } from '../utils/progressLock';
 import { notify } from '../utils/notify';
 import { submissionBudget, testBudget } from '../ui/tree/limitFormatting';
+import { isHidden } from '../ui/tree/visibility';
 import {
   availableDescriptionLanguages,
   listDescriptionFiles,
@@ -157,6 +158,44 @@ export class StudentCommands {
           + 'for this assignment. Ask your lecturer if you need another attempt.'
         : `You have used all ${submissions.max} submissions for this assignment. `
           + 'Ask your lecturer if you need another attempt.'
+    );
+    return true;
+  }
+
+  /**
+   * Refuse an action on content the lecturer has hidden (issue #338).
+   *
+   * Same discipline as `budgetBlocks` above, for the same reason: the tree's
+   * counts and flags come from a warm cache that can be five minutes stale, so
+   * a stale "hidden" must never block a legitimate action. We re-read once with
+   * `force` and stop only if fresh data still says hidden.
+   *
+   * The backend refuses this anyway with SUBMIT_012. This exists so the student
+   * gets a sentence that explains what happened, and learns their work is safe,
+   * rather than a bare rejection after a commit and push.
+   */
+  private async visibilityBlocks(item: any): Promise<boolean> {
+    let content = item?.courseContent;
+    if (!content || !isHidden(content)) {
+      return false;
+    }
+
+    try {
+      const fresh = await this.apiService.getStudentCourseContent(content.id, { force: true });
+      if (fresh) {
+        content = fresh;
+      }
+    } catch {
+      // Could not refresh — fall back to what the tree already had.
+    }
+    if (!isHidden(content)) {
+      return false;
+    }
+
+    notify.warning(
+      'This assignment is not currently available — your lecturer has hidden it. '
+      + 'Your files, tests and submissions are untouched and will reappear if it '
+      + 'is made visible again.'
     );
     return true;
   }
@@ -855,11 +894,20 @@ export class StudentCommands {
     // Submit without git (download mode): zip a folder and upload as a submission.
     // The backend content-addresses it (a content hash), so no commit/repo is needed.
     register('computor.student.submitDownload', async (item?: any) => {
+      if (await this.visibilityBlocks(item)) {
+        return;
+      }
       await this.submitDownload(item);
     });
 
     register('computor.student.submitAssignment', async (itemOrSubmissionGroup: any) => {
       try {
+        // Hidden content refuses everything, so check it before the budget:
+        // "not available" is the true reason, a quota message would mislead.
+        if (await this.visibilityBlocks(itemOrSubmissionGroup)) {
+          return;
+        }
+
         // Explain an exhausted submission budget before doing any work.
         if (itemOrSubmissionGroup?.courseContent
           && await this.budgetBlocks(itemOrSubmissionGroup, 'submit')) {
@@ -1319,6 +1367,13 @@ export class StudentCommands {
         return;
       }
 
+      // A commit here is the first step of submitting, so refuse it on hidden
+      // content rather than letting a student push work they cannot submit
+      // (issue #338).
+      if (await this.visibilityBlocks(item)) {
+        return;
+      }
+
       // Get the assignment directory
       const directory = (item.courseContent as any).directory;
       if (!directory || !fs.existsSync(directory)) {
@@ -1428,6 +1483,12 @@ export class StudentCommands {
 
       if (!submissionGroup?.id) {
         notify.error('Submission group information missing; cannot upload for testing.');
+        return;
+      }
+
+      // Hidden content refuses everything — check before the budget so the
+      // student is told the real reason.
+      if (await this.visibilityBlocks(item)) {
         return;
       }
 

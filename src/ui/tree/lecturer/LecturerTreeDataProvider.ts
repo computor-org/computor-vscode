@@ -139,6 +139,11 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         console.log(`[LecturerTree/WS] Course content updated: ${event.course_content_id} (${event.change_type})`);
         void this.forceRefreshCourse(event.course_id);
       },
+      onCourseUpdated: (event) => {
+        // Course-level `visible` (issue #338) re-marks every row beneath it.
+        console.log(`[LecturerTree/WS] Course updated: ${event.course_id} (${event.change_type})`);
+        void this.forceRefreshCourse(event.course_id);
+      },
     });
   }
 
