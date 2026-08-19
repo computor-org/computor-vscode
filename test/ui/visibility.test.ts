@@ -106,3 +106,52 @@ describe('tree visibility', () => {
         });
     });
 });
+
+
+describe('course-level visibility on the Contents folder', () => {
+    // The course toggle deliberately sits on the virtual "Contents" folder, not
+    // on the course row: it hides the course's content tree, not the course.
+    function folder(visible: boolean | null) {
+        const { CourseFolderTreeItem } = require('../../src/ui/tree/lecturer/LecturerTreeItems');
+        return new CourseFolderTreeItem(
+            'contents',
+            { id: 'c1', title: 'Course', path: 'c1', visible },
+            { id: 'f1', path: 'f1' },
+            { id: 'o1', path: 'o1' },
+        );
+    }
+
+    it('marks the folder when the whole course is hidden', () => {
+        const item = folder(false);
+        assert.strictEqual(item.description, INVISIBLE_BADGE);
+        assert.strictEqual(item.contextValue, 'course.contents.hidden');
+    });
+
+    it('leaves the base contextValue intact when visible', () => {
+        // Existing menus match `course.contents`; a replacement rather than a
+        // suffix would silently drop them.
+        for (const v of [null, true] as (boolean | null)[]) {
+            const item = folder(v);
+            assert.strictEqual(item.contextValue, 'course.contents');
+            assert.strictEqual(item.description, undefined);
+        }
+    });
+
+    it('still starts with course.contents when hidden, so prefix menus match', () => {
+        assert.ok(folder(false).contextValue.startsWith('course.contents'));
+    });
+
+    it('does not touch the other two folders', () => {
+        const { CourseFolderTreeItem } = require('../../src/ui/tree/lecturer/LecturerTreeItems');
+        for (const kind of ['contentTypes', 'groups']) {
+            const item = new CourseFolderTreeItem(
+                kind as any,
+                { id: 'c1', title: 'Course', path: 'c1', visible: false },
+                { id: 'f1', path: 'f1' },
+                { id: 'o1', path: 'o1' },
+            );
+            assert.strictEqual(item.contextValue, `course.${kind}`);
+            assert.strictEqual(item.description, undefined);
+        }
+    });
+});

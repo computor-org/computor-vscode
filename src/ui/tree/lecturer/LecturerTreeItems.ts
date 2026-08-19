@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
-import { hiddenBadge, isHidden, isHiddenHere } from '../visibility';
+import { INVISIBLE_BADGE, hiddenBadge, isHidden, isHiddenHere } from '../visibility';
 import {
   OrganizationList,
   CourseFamilyList,
@@ -431,6 +431,21 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
     this.contextValue = `course.${folderType}`;
     this.iconPath = new vscode.ThemeIcon(icons[folderType]);
     this.tooltip = tooltips[folderType];
+
+    // Course-level visibility lives on the Contents folder rather than on the
+    // course row: it hides the course's content tree, not the course itself,
+    // and putting "hide everything" on the course node reads too much like
+    // archiving or removing the course (issue #338).
+    if (folderType === 'contents') {
+      // Only a suffix is added, never a replacement: existing menus match
+      // `course.contents` and must keep working.
+      if (course.visible === false) {
+        this.contextValue = 'course.contents.hidden';
+        this.description = INVISIBLE_BADGE;
+        this.tooltip = 'Students see no content in this course. '
+          + 'Individual units and assignments can also be hidden on their own.';
+      }
+    }
   }
 }
 

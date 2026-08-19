@@ -805,6 +805,12 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.toggleCourseVisibility",
+        "title": "Toggle Student Visibility (whole course)",
+        "icon": "$(eye-closed)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.configureCourseGit",
         "title": "Configure Course Git",
         "icon": "$(git-branch)",
@@ -1811,6 +1817,16 @@
           "group": "1_content@2"
         },
         {
+          "command": "computor.lecturer.toggleCourseVisibility",
+          "when": "view == computor.lecturer.courses && viewItem == course.contents",
+          "group": "1_content@6"
+        },
+        {
+          "command": "computor.lecturer.toggleCourseVisibility",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course\\.contents\\.hidden/",
+          "group": "1_content@6"
+        },
+        {
           "command": "computor.lecturer.toggleVisibility",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/ && !(viewItem =~ /\\.hidden/)",
           "group": "1_content@5"
@@ -1962,7 +1978,7 @@
         },
         {
           "command": "computor.lecturer.updateExampleVersions",
-          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.hasDescription)?$/ || viewItem == course.contents || viewItem =~ /courseContent.*hasChildren/)",
+          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.hasDescription)?$/ || viewItem =~ /^course\\.contents/ || viewItem =~ /courseContent.*hasChildren/)",
           "group": "4_example@1"
         },
         {
@@ -2067,7 +2083,7 @@
         },
         {
           "command": "computor.lecturer.releaseCourseContent",
-          "when": "view == computor.lecturer.courses && viewItem == course.contents",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course\\.contents/",
           "group": "inline@2"
         },
         {

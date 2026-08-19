@@ -184,6 +184,10 @@ export class LecturerCommands {
       await this.toggleVisibility(item);
     });
 
+    register('computor.lecturer.toggleCourseVisibility', async (item: CourseFolderTreeItem) => {
+      await this.toggleCourseVisibility(item);
+    });
+
     // Course content management
     register('computor.lecturer.createUnit', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
       await this.createUnit(item);
@@ -842,6 +846,60 @@ export class LecturerCommands {
     } catch (error) {
       notify.error(
         `Could not change visibility: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Hide or show a whole course's content tree (issue #338).
+   *
+   * Lives on the "Contents" folder rather than the course row: it hides the
+   * course's content, not the course itself, and offering "hide everything" on
+   * the course node reads too much like archiving or removing the course.
+   *
+   * Confirmed before hiding, because this empties the tree for every enrolled
+   * student at once — a much larger blast radius than hiding one unit.
+   */
+  private async toggleCourseVisibility(item?: CourseFolderTreeItem): Promise<void> {
+    const course = item?.course;
+    if (!course?.id) {
+      notify.error('No course selected');
+      return;
+    }
+
+    const hidingNow = course.visible !== false;
+    const label = course.title || course.path;
+
+    if (hidingNow) {
+      const choice = await vscode.window.showWarningMessage(
+        `Hide all content of “${label}” from students?`,
+        {
+          modal: true,
+          detail: 'Every unit and assignment in the course disappears from the '
+            + 'student tree, and students cannot test or submit. Their files, '
+            + 'tests and submissions are untouched and come back when you make '
+            + 'the course visible again.',
+        },
+        'Hide from students'
+      );
+      if (choice !== 'Hide from students') {
+        return;
+      }
+    }
+
+    try {
+      await this.apiService.updateCourse(String(course.id), {
+        visible: hidingNow ? false : null,
+      } as any);
+      notify.info(
+        hidingNow
+          ? `Students now see no content in “${label}”.`
+          : `Students can see “${label}” again.`
+      );
+      await this.treeDataProvider.forceRefreshCourse(String(course.id));
+    } catch (error) {
+      notify.error(
+        `Could not change course visibility: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
