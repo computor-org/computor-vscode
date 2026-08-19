@@ -13,6 +13,7 @@ import {
     submissionBudget,
     testBudget,
 } from '../limitFormatting';
+import { hiddenBadge, isHidden } from '../visibility';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { UiStateService } from '../../../services/UiStateService';
@@ -119,6 +120,13 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             onCourseContentUpdated: (event) => {
                 console.log(`[StudentTree/WS] Course content updated: ${event.course_content_id} (${event.change_type})`);
                 // For structural changes, refresh the whole course
+                this.refreshCourseById(event.course_id);
+            },
+            onCourseUpdated: (event) => {
+                // A course-level change (issue #338: `visible`) can empty or
+                // repopulate the entire tree, so nothing narrower than a full
+                // course refresh is correct here.
+                console.log(`[StudentTree/WS] Course updated: ${event.course_id} (${event.change_type})`);
                 this.refreshCourseById(event.course_id);
             },
             // Unread badges (computor-org/issues#317). Submission messages
@@ -1456,6 +1464,14 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // New compact metrics in brackets: Tests, Submissions, Points
         const entries: string[] = [];
 
+        // A hidden row reaching a student tree means the viewer is staff: the
+        // backend drops these for students. Marked first so it reads before
+        // the counters (issue #338).
+        const hidden = hiddenBadge(this.courseContent as any);
+        if (hidden) {
+            entries.push(`${hidden} `);
+        }
+
         const unreadCount = this.submissionGroup?.unread_message_count
             ?? this.courseContent?.unread_message_count ?? 0;
         if (unreadCount > 0) {
@@ -1567,7 +1583,13 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 
     private setupContextValue(): void {
         const contexts: string[] = ['studentCourseContent'];
-        
+
+        // Only ever true for staff rehearsing as a student (issue #338).
+        // Surfaced so menus can drop actions that would be refused anyway.
+        if (isHidden(this.courseContent as any)) {
+            contexts.push('hidden');
+        }
+
         // Add content type context
         if (this.isAssignment()) {
             contexts.push('assignment');

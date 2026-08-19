@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
+import { hiddenBadge, isHidden, isHiddenHere } from '../visibility';
 import {
   OrganizationList,
   CourseFamilyList,
@@ -238,6 +239,15 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push('archived');
     }
 
+    // 'hidden' marks any hidden row; 'hiddenHere' only the one that can be
+    // shown again, since flipping a row under a hidden parent changes nothing.
+    if (isHidden(this.courseContent as any)) {
+      parts.push('hidden');
+      if (isHiddenHere(this.courseContent as any)) {
+        parts.push('hiddenHere');
+      }
+    }
+
     return parts.join('.');
   }
 
@@ -358,6 +368,14 @@ export class CourseContentTreeItem extends vscode.TreeItem {
 
     if ('archived_at' in this.courseContent && this.courseContent.archived_at) {
       parts.push('📦 Archived');
+    }
+
+    // Students cannot see this (issue #338). Lecturers keep the row -- this is
+    // what tells them their students do not have it. The "above" variant means
+    // a unit further up, or the course itself, is what hid it.
+    const hidden = hiddenBadge(this.courseContent as any);
+    if (hidden) {
+      parts.push(hidden);
     }
 
     return parts.length > 0 ? parts.join(' • ') : undefined;

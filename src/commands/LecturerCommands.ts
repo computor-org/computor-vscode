@@ -180,6 +180,10 @@ export class LecturerCommands {
       await this.configureCourseGit(item);
     });
 
+    register('computor.lecturer.toggleVisibility', async (item: CourseContentTreeItem) => {
+      await this.toggleVisibility(item);
+    });
+
     // Course content management
     register('computor.lecturer.createUnit', async (item: CourseFolderTreeItem | CourseContentTreeItem) => {
       await this.createUnit(item);
@@ -795,6 +799,51 @@ export class LecturerCommands {
         }
       }
     );
+  }
+
+  /**
+   * Flip one unit or assignment between hidden and inherit (issue #338).
+   *
+   * The workflow this serves is a fast flip at the start and end of an exam,
+   * which is why it lives on the tree rather than only in a form.
+   *
+   * Showing again writes `null` (inherit) rather than `true`: `true` would pin
+   * the content visible against a later decision to hide the unit above it,
+   * which is almost never what "show this again" means.
+   *
+   * Only offered on rows that are hidden *here* or not hidden at all — a row
+   * hidden by an ancestor cannot be revealed from below, so the menu gates on
+   * the `hiddenHere` context value.
+   */
+  private async toggleVisibility(item?: CourseContentTreeItem): Promise<void> {
+    const content = item?.courseContent as any;
+    if (!content?.id) {
+      notify.error('No course content selected');
+      return;
+    }
+
+    const hidingNow = content.visible !== false;
+    const label = content.title || content.path;
+
+    try {
+      await this.apiService.updateCourseContent(
+        String(content.course_id),
+        String(content.id),
+        { visible: hidingNow ? false : null } as any
+      );
+      notify.info(
+        hidingNow
+          ? `“${label}” is now hidden from students, along with anything under it.`
+          : `“${label}” is visible to students again.`
+      );
+      // Students are told over the course channel by the backend; this
+      // refreshes the lecturer's own tree so the badge updates immediately.
+      await this.treeDataProvider.forceRefreshCourse(String(content.course_id));
+    } catch (error) {
+      notify.error(
+        `Could not change visibility: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   private async manageCourse(item?: CourseTreeItem): Promise<void> {
