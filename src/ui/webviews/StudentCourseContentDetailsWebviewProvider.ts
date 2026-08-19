@@ -4,6 +4,7 @@ import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeList, SubmissionGroupStudentList, SubmissionGroupStudentGet } from '../../types/generated/courses';
 import { notify } from '../../utils/notify';
+import { revealUri } from '../../utils/reveal';
 
 export interface StudentContentDetailsViewState {
   course?: {
@@ -116,6 +117,9 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       case 'copyCloneUrl':
         await this.handleCopyCloneUrl(message.data?.url);
         break;
+      case 'copyLocalPath':
+        await this.handleCopyLocalPath(message.data?.path);
+        break;
       case 'refresh':
         if (this.currentData) {
           this.panel?.webview.postMessage({ command: 'updateState', data: this.currentData });
@@ -144,7 +148,7 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
 
       const stat = fs.statSync(folderPath);
       const targetUri = vscode.Uri.file(stat.isDirectory() ? folderPath : path.dirname(folderPath));
-      await vscode.commands.executeCommand('revealFileInOS', targetUri);
+      await revealUri(targetUri);
     } catch (error: any) {
       notify.error(`Failed to open folder: ${error?.message || error}`);
     }
@@ -160,6 +164,20 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       await vscode.env.openExternal(vscode.Uri.parse(url));
     } catch (error: any) {
       notify.error(`Failed to open repository: ${error?.message || error}`);
+    }
+  }
+
+  private async handleCopyLocalPath(folderPath?: string): Promise<void> {
+    if (!folderPath) {
+      notify.warning('No local folder available for this content.');
+      return;
+    }
+
+    try {
+      await vscode.env.clipboard.writeText(folderPath);
+      notify.info('Local path copied to clipboard.');
+    } catch (error: any) {
+      notify.error(`Failed to copy local path: ${error?.message || error}`);
     }
   }
 

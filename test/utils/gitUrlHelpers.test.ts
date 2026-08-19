@@ -2,7 +2,8 @@ import { expect } from 'chai';
 import {
   addTokenToGitUrl,
   stripCredentialsFromGitUrl,
-  extractOriginFromGitUrl
+  extractOriginFromGitUrl,
+  hasNonOAuthEmbeddedCredentials
 } from '../../src/utils/gitUrlHelpers';
 
 describe('gitUrlHelpers', () => {
@@ -79,6 +80,30 @@ describe('gitUrlHelpers', () => {
       expect(extractOriginFromGitUrl('git@gitlab.example:foo.git')).to.be.undefined;
       expect(extractOriginFromGitUrl('https://:::::')).to.be.undefined;
       expect(extractOriginFromGitUrl('')).to.be.undefined;
+    });
+  });
+
+  describe('hasNonOAuthEmbeddedCredentials', () => {
+    it('detects a Forgejo clone credential (user:token@)', () => {
+      expect(hasNonOAuthEmbeddedCredentials('http://student42:abc123@computor-git/bpti-2027/x.git')).to.be.true;
+    });
+
+    it('handles percent-encoded usernames', () => {
+      expect(hasNonOAuthEmbeddedCredentials('https://max%40tugraz.at:tok@computor-git/x.git')).to.be.true;
+    });
+
+    it('ignores the oauth2 token shape', () => {
+      expect(hasNonOAuthEmbeddedCredentials('https://oauth2:glpat-abc@gitlab.example/foo.git')).to.be.false;
+    });
+
+    it('ignores URLs without embedded credentials', () => {
+      expect(hasNonOAuthEmbeddedCredentials('https://gitlab.example/foo.git')).to.be.false;
+    });
+
+    it('ignores non-http(s) and malformed URLs', () => {
+      expect(hasNonOAuthEmbeddedCredentials('git@gitlab.example:foo.git')).to.be.false;
+      expect(hasNonOAuthEmbeddedCredentials('ssh://user:pw@host/repo.git')).to.be.false;
+      expect(hasNonOAuthEmbeddedCredentials('')).to.be.false;
     });
   });
 });

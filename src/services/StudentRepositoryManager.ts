@@ -14,6 +14,9 @@ import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
 import type { CourseMemberRepositoryGet } from '../types/courseGit';
 import { notify } from '../utils/notify';
+import { revealUri } from '../utils/reveal';
+import { propagateForgejoCloneCredential } from './ForgejoCredentialFanout';
+import { isGitAuthenticationError } from '../utils/gitErrors';
 
 interface RepositoryInfo {
   cloneUrl: string;
@@ -634,6 +637,17 @@ export class StudentRepositoryManager {
       const authUrl = addBasicCredentialsToGitUrl(repo.http_url, repo.clone_username, repo.clone_token);
       await execAsyncWithTimeout(`git remote set-url origin "${authUrl}"`, { cwd: repoPath, timeout: 15_000 });
       console.log(`[StudentRepositoryManager] Refreshed managed Forgejo credentials for ${repoPath}`);
+      // One token per user and server: the rotation that broke this repo broke
+      // every sibling clone on the server too, so heal them all while we hold
+      // the fresh credential.
+      if (repo.server_url) {
+        await propagateForgejoCloneCredential({
+          serverUrl: repo.server_url,
+          username: repo.clone_username,
+          token: repo.clone_token,
+          excludeRepoPath: repoPath
+        });
+      }
       return { username: repo.clone_username, password: repo.clone_token };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -827,7 +841,7 @@ export class StudentRepositoryManager {
 
       const choice = await notify.warning(message, ...actions);
       if (choice === 'Open Backup Folder' && backupPath) {
-        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(backupPath));
+        await revealUri(vscode.Uri.file(backupPath));
       }
 
       return refreshedToken;
@@ -907,11 +921,7 @@ export class StudentRepositoryManager {
    * Expose authentication error detection for other services.
    */
   public isAuthenticationError(error: any): boolean {
-    const message = error?.message || error?.toString() || '';
-    return message.includes('Authentication failed') ||
-           message.includes('Access denied') ||
-           message.includes('HTTP Basic') ||
-           message.includes('401');
+    return isGitAuthenticationError(error);
   }
 
 }

@@ -8,6 +8,9 @@ import { execAsyncWithTimeout } from '../utils/exec';
 import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } from '../utils/gitUrlHelpers';
 import { extractZipBuffer } from '../utils/zipHelpers';
 import { RepositoryTokenManager } from './RepositoryTokenManager';
+import { propagateForgejoCloneCredential } from './ForgejoCredentialFanout';
+import { isGitAuthenticationError } from '../utils/gitErrors';
+import { URL } from 'url';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
 import { CTGit } from '../git/CTGit';
 import { notify } from '../utils/notify';
@@ -190,6 +193,18 @@ export class StudentRepositoryProvisioningService {
 
     const targetPath = this.localPathFor(repo);
     const authUrl = addBasicCredentialsToGitUrl(repo.http_url, repo.clone_username, repo.clone_token);
+
+    // One token per user and server: this provision just invalidated the
+    // credential embedded in every OTHER clone on the server (issue #332), so
+    // rewrite their origins with the fresh one before they fail a push.
+    if (repo.server_url) {
+      await propagateForgejoCloneCredential({
+        serverUrl: repo.server_url,
+        username: repo.clone_username,
+        token: repo.clone_token,
+        excludeRepoPath: targetPath
+      });
+    }
     // Provisioning grants the student read access on the course template, so
     // the same rotating clone credential authenticates the update-fork fetch.
     const templateUrl = descriptor.template?.clone_url;
@@ -420,13 +435,78 @@ export class StudentRepositoryProvisioningService {
       if (opts?.cancellationToken?.isCancellationRequested) { return; }
       try {
         const repo = await this.getRepository(courseId);
-        if (repo?.mode === 'managed' && this.isCloned(this.localPathFor(repo))) {
-          await this.setUpRepository(courseId, opts);
+        if (!(repo?.mode === 'managed' && this.isCloned(this.localPathFor(repo)))) {
+          continue;
         }
+
+        // Forgejo: provisioning ROTATES the per-user-per-server clone token, so
+        // running it for every course in this loop would invalidate the
+        // credential of every previously-synced sibling (issue #332). Only
+        // provision when the local credential actually stopped working.
+        if (repo.provider_type === 'forgejo') {
+          const repoPath = this.localPathFor(repo);
+          const auth = await this.remoteAuthWorks(repoPath);
+          if (auth === 'ok') {
+            await this.syncForgejoTemplateWithLocalCreds(courseId, repoPath, opts?.onProgress ?? (() => {}));
+            continue;
+          }
+          if (auth === 'unreachable') {
+            console.warn(`[StudentRepositoryProvisioningService] Git server unreachable for course ${courseId}; skipping sync.`);
+            continue;
+          }
+        }
+
+        await this.setUpRepository(courseId, opts);
       } catch (error) {
         console.warn(`[StudentRepositoryProvisioningService] Template sync for course ${courseId} failed:`, error);
       }
     }
+  }
+
+  /** Can the credential embedded in origin still authenticate against the server? */
+  private async remoteAuthWorks(repoPath: string): Promise<'ok' | 'auth-failed' | 'unreachable'> {
+    try {
+      await execAsyncWithTimeout('git ls-remote --heads origin', { cwd: repoPath, timeout: 20_000 });
+      return 'ok';
+    } catch (error) {
+      return isGitAuthenticationError(error) ? 'auth-failed' : 'unreachable';
+    }
+  }
+
+  /**
+   * Template sync using the still-valid credential already embedded in origin —
+   * the no-rotation path of {@link syncClonedManagedRepos}. The clone credential
+   * also reads the template (provisioning grants template read access).
+   */
+  private async syncForgejoTemplateWithLocalCreds(
+    courseId: string,
+    repoPath: string,
+    report: (message: string) => void
+  ): Promise<void> {
+    const descriptor = await this.getDescriptor(courseId);
+    const templateUrl = descriptor.template?.clone_url;
+    if (!templateUrl) {
+      return;
+    }
+    const creds = await this.getOriginCredentials(repoPath);
+    if (!creds) {
+      return;
+    }
+    const authTemplateUrl = addBasicCredentialsToGitUrl(templateUrl, creds.username, creds.password);
+    await this.syncFromTemplate(repoPath, authTemplateUrl, report);
+  }
+
+  private async getOriginCredentials(repoPath: string): Promise<{ username: string; password: string } | undefined> {
+    try {
+      const { stdout } = await execAsyncWithTimeout('git remote get-url origin', { cwd: repoPath, timeout: 15_000 });
+      const url = new URL(stdout.trim());
+      if (url.username && url.password) {
+        return { username: decodeURIComponent(url.username), password: decodeURIComponent(url.password) };
+      }
+    } catch (error: any) {
+      console.warn('[StudentRepositoryProvisioningService] Could not read origin credentials:', redactGitCredentials(error?.message || String(error)));
+    }
+    return undefined;
   }
 
   // --- helpers ---------------------------------------------------------------
