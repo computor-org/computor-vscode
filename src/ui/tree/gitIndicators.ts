@@ -42,10 +42,13 @@ export function assignmentGitTooltipLines(badges: AssignmentGitBadges): string[]
 }
 
 /** Description for a course row, undefined when everything is clean and pushed. */
-export function courseGitIndicator(aheadCount: number, pushFailing: boolean): string | undefined {
+export function courseGitIndicator(dirty: boolean, aheadCount: number, pushFailing: boolean): string | undefined {
   const parts: string[] = [];
   if (pushFailing) {
     parts.push('⚠ push failing');
+  }
+  if (dirty) {
+    parts.push('●');
   }
   if (aheadCount > 0) {
     parts.push(`↑${aheadCount}`);

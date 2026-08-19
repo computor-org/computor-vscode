@@ -159,15 +159,25 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     private async resolveGitContext(courseId: string): Promise<AssignmentGitContext | undefined> {
         const model = this.gitModelCache.get(courseId);
         if (!model?.configured || !model.repoRoot || model.mode === 'download') {
+            console.log(`[StudentTree] git badges skipped for course ${courseId}: ` +
+                (!model ? 'git model not resolved yet' : !model.configured ? 'course not on course-level git' :
+                 model.mode === 'download' ? 'download mode (no git)' : 'no local repo root'));
             return undefined;
         }
         const state = await this.getRepoWorkState(model.repoRoot);
+        console.log(`[StudentTree] git badges for course ${courseId}: ${state.dirtyPaths.length} dirty, ` +
+            `${state.unpushedPaths.length} unpushed file(s), ${state.aheadCount} ahead (${model.repoRoot})`);
         return { repoRoot: model.repoRoot, state, pushFailing: PushHealthRegistry.isFailing(model.repoRoot) };
     }
 
     /** ● / ↑ / ⚠ badges for one leaf node, or undefined when clean. */
     private assignmentBadges(child: ContentNode, ctx?: AssignmentGitContext): AssignmentGitBadges | undefined {
-        if (!ctx || child.contentType?.course_content_kind_id !== 'assignment') {
+        // Same singular/plural recovery as buildContentTree — a leaf without a
+        // resolvable type can never be an assignment.
+        const contentType = child.contentType
+            || (child.courseContent as any)?.course_content_type
+            || (child.courseContent as any)?.course_content_types;
+        if (!ctx || contentType?.course_content_kind_id !== 'assignment') {
             return undefined;
         }
         const dir = (child.courseContent as any)?.directory as string | undefined;
@@ -175,11 +185,13 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             return undefined;
         }
         const relDir = path.relative(ctx.repoRoot, dir);
-        if (!relDir || relDir.startsWith('..')) {
+        if (relDir.startsWith('..')) {
             return undefined;
         }
-        const dirty = pathsTouchDirectory(relDir, ctx.state.dirtyPaths);
-        const unpushed = pathsTouchDirectory(relDir, ctx.state.unpushedPaths);
+        // relDir '' = the assignment IS the repo root (legacy one-repo-per-
+        // assignment layout) — then the whole repo's state is its state.
+        const dirty = relDir ? pathsTouchDirectory(relDir, ctx.state.dirtyPaths) : ctx.state.dirtyPaths.length > 0;
+        const unpushed = relDir ? pathsTouchDirectory(relDir, ctx.state.unpushedPaths) : ctx.state.unpushedPaths.length > 0;
         if (!dirty && !unpushed) {
             return undefined;
         }
@@ -641,11 +653,20 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 // Build and present under course root
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 // Optionally update root item description
+                const prevDescription = element.description;
                 element.updateCounts(courseContents.length);
                 const gitContext = await this.resolveGitContext(selectedCourseId);
                 element.setGitStatus(
-                    gitContext ? courseGitIndicator(gitContext.state.aheadCount, gitContext.pushFailing) : undefined
+                    gitContext
+                        ? courseGitIndicator(gitContext.state.dirtyPaths.length > 0, gitContext.state.aheadCount, gitContext.pushFailing)
+                        : undefined
                 );
+                // The row itself was already rendered before this children query;
+                // a changed badge needs its own item refresh to become visible.
+                // Guarded on an actual change so it cannot loop.
+                if (element.description !== prevDescription) {
+                    this.onDidChangeTreeDataEmitter.fire(element);
+                }
                 return this.createTreeItems(tree, gitContext);
             } catch (e) {
                 console.error('Failed to load children for course root:', e);
@@ -656,7 +677,12 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         // Handle content items (units/folders)
         if (element instanceof CourseContentPathItem) {
             try {
-                const selectedCourseId = this.courseSelection.getCurrentCourseId();
+                // Units know their course through their own content — the course
+                // *selection* may be unset or point at a different course, which
+                // silently dropped the git badges of nested assignments.
+                const nodeContent = element.node.courseContent;
+                const selectedCourseId = (nodeContent ? await this.findCourseIdForContent(nodeContent) : undefined)
+                    ?? this.courseSelection.getCurrentCourseId();
                 if (!selectedCourseId) return this.createTreeItems(element.node);
                 let courseContents = this.courseContentsCache.get(selectedCourseId);
                 const shouldForce = this.forceRefresh;
@@ -1189,6 +1215,15 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         );
         courseItem.id = rootId;
         this.itemIndex.set(rootId, courseItem);
+        // Repo badge from the cached git model — resolving it here would cost
+        // two API calls per course at root render, so before the first course
+        // expansion (which caches the model) the row simply has no badge yet.
+        const gitContext = await this.resolveGitContext(courseId);
+        if (gitContext) {
+            courseItem.setGitStatus(
+                courseGitIndicator(gitContext.state.dirtyPaths.length > 0, gitContext.state.aheadCount, gitContext.pushFailing)
+            );
+        }
         return courseItem;
     }
     

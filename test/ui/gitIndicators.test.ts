@@ -43,17 +43,21 @@ describe('gitIndicators', () => {
   });
 
   describe('courseGitIndicator', () => {
-    it('is undefined when pushed and healthy', () => {
-      expect(courseGitIndicator(0, false)).to.be.undefined;
+    it('is undefined when clean, pushed and healthy', () => {
+      expect(courseGitIndicator(false, 0, false)).to.be.undefined;
+    });
+
+    it('shows uncommitted work', () => {
+      expect(courseGitIndicator(true, 0, false)).to.equal('●');
     });
 
     it('shows the ahead count', () => {
-      expect(courseGitIndicator(3, false)).to.equal('↑3');
+      expect(courseGitIndicator(false, 3, false)).to.equal('↑3');
     });
 
     it('leads with the push failure', () => {
-      expect(courseGitIndicator(2, true)).to.equal('⚠ push failing ↑2');
-      expect(courseGitIndicator(0, true)).to.equal('⚠ push failing');
+      expect(courseGitIndicator(true, 2, true)).to.equal('⚠ push failing ● ↑2');
+      expect(courseGitIndicator(false, 0, true)).to.equal('⚠ push failing');
     });
   });
 });
