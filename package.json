@@ -2395,6 +2395,7 @@
     "@types/mocha": "^10.0.1",
     "@types/node": "^16.18.126",
     "@types/node-fetch": "^2.6.0",
+    "@types/screenshot-desktop": "^1.15.0",
     "@types/semver": "^7.3.12",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
@@ -2418,6 +2419,7 @@
     "js-yaml": "^4.1.0",
     "jszip": "^3.10.1",
     "node-fetch": "^2.6.0",
+    "screenshot-desktop": "^1.15.6",
     "semver": "^7.7.2",
     "simple-git": "^3.28.0",
     "xlsx": "^0.18.5"

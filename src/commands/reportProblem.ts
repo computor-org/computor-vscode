@@ -1,19 +1,11 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
 import * as vscode from 'vscode';
+import screenshotDesktop = require('screenshot-desktop');
 
 import { ComputorApiService } from '../services/ComputorApiService';
 import { performanceMonitor } from '../services/PerformanceMonitoringService';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { notify } from '../utils/notify';
 
-const screenshotTypes: Record<string, string> = {
-  '.gif': 'image/gif',
-  '.jpeg': 'image/jpeg',
-  '.jpg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp'
-};
 const maxScreenshotBytes = 5 * 1024 * 1024;
 
 type ScreenshotAttachment = { buffer: Buffer; fileName: string; contentType: string };
@@ -57,28 +49,34 @@ function diagnosticContext(baseUrl: string): Record<string, unknown> {
   };
 }
 
-async function selectScreenshot(): Promise<ScreenshotAttachment | undefined> {
-  const selected = await vscode.window.showOpenDialog({
-    title: 'Attach a screenshot (optional)',
-    canSelectMany: false,
-    openLabel: 'Attach screenshot',
-    filters: { Images: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }
+async function chooseScreenshot(): Promise<boolean | undefined> {
+  const selected = await vscode.window.showQuickPick([
+    {
+      label: '$(check) Include current screenshot',
+      description: 'Recommended — attach the current desktop screen',
+      value: true
+    },
+    {
+      label: '$(circle-slash) Do not include screenshot',
+      description: 'Opt out for this report',
+      value: false
+    }
+  ], {
+    title: 'Screenshot included by default',
+    placeHolder: 'Choose whether to attach the current screen'
   });
-  const uri = selected?.[0];
-  if (!uri) {
-    return undefined;
-  }
+  return selected?.value;
+}
 
-  const fileName = path.basename(uri.fsPath);
-  const contentType = screenshotTypes[path.extname(fileName).toLowerCase()];
-  if (!contentType) {
-    throw new Error('Unsupported screenshot format');
+async function captureScreenshot(): Promise<ScreenshotAttachment> {
+  const buffer = await screenshotDesktop({ format: 'jpg' });
+  if (!Buffer.isBuffer(buffer)) {
+    throw new Error('The screenshot service did not return an image');
   }
-  const stats = await fs.stat(uri.fsPath);
-  if (stats.size > maxScreenshotBytes) {
+  if (buffer.length > maxScreenshotBytes) {
     throw new Error('Screenshot is larger than 5 MiB');
   }
-  return { buffer: await fs.readFile(uri.fsPath), fileName, contentType };
+  return { buffer, fileName: 'computor-report.jpg', contentType: 'image/jpeg' };
 }
 
 export async function reportProblem(
@@ -88,6 +86,26 @@ export async function reportProblem(
   if (!api) {
     await notify.warning('Sign in to Computor before submitting a problem report.');
     return;
+  }
+
+  const includeScreenshot = await chooseScreenshot();
+  if (includeScreenshot === undefined) {
+    return;
+  }
+
+  let screenshot: ScreenshotAttachment | undefined;
+  if (includeScreenshot) {
+    try {
+      screenshot = await captureScreenshot();
+    } catch (error) {
+      const action = await notify.warning(
+        `Could not capture the current screenshot: ${error instanceof Error ? error.message : String(error)}`,
+        'Submit without screenshot'
+      );
+      if (action !== 'Submit without screenshot') {
+        return;
+      }
+    }
   }
 
   const description = await vscode.window.showInputBox({
@@ -111,14 +129,6 @@ export async function reportProblem(
     prompt: 'How can we reproduce it? Leave blank to skip.',
     ignoreFocusOut: true
   });
-
-  let screenshot: ScreenshotAttachment | undefined;
-  try {
-    screenshot = await selectScreenshot();
-  } catch (error) {
-    await notify.error(`Could not read the screenshot: ${error instanceof Error ? error.message : String(error)}`);
-    return;
-  }
 
   const settings = new ComputorSettingsManager(context);
   const baseUrl = await settings.getBaseUrl();
