@@ -77,12 +77,20 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
 
     <div class="examples-section">
       <h2>Examples <span id="exampleCount" class="count-badge"></span></h2>
-      <div id="exampleList" class="example-list"></div>
+      <div class="example-list">
+        <label id="listHeader" class="example-list-header">
+          <span class="example-checkbox">
+            <input type="checkbox" id="selectAllToggle" aria-label="Select all examples">
+          </span>
+          <span id="selectionSummary" class="selection-summary"></span>
+        </label>
+        <div id="exampleList"></div>
+      </div>
     </div>
 
     <div class="actions">
-      <button id="uploadBtn" class="btn">Upload Changed</button>
-      <button id="uploadSelectedBtn" class="btn-secondary">Upload Selected</button>
+      <button id="uploadBtn" class="btn" disabled>Upload Changed</button>
+      <button id="uploadSelectedBtn" class="btn-secondary" disabled>Upload Selected</button>
     </div>
 
     <div id="summary" class="summary" style="display:none;"></div>`,

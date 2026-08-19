@@ -52,6 +52,25 @@ h2 {
   overflow: hidden;
 }
 
+.example-list-header {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-muted-bg);
+  cursor: pointer;
+}
+.example-list-header:has(input:disabled) {
+  cursor: default;
+}
+
+.selection-summary {
+  font-size: var(--font-size-sm);
+  color: var(--c-fg-muted);
+}
+
 .example-item {
   display: grid;
   grid-template-columns: 32px 1fr auto 40px;
