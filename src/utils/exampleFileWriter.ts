@@ -1,7 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const BINARY_EXTENSIONS = new Set([
+/**
+ * Extensions we treat as binary: never decoded as text, never rewritten by a
+ * text search-and-replace pass.
+ */
+export const BINARY_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg',
   '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.webp'
 ]);
