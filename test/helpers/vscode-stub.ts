@@ -41,6 +41,9 @@ const configurationStub = {
   update: notImplemented('configuration.update')
 };
 
+/** Per-section overrides a test can install; cleared in its own teardown. */
+export const configurationOverrides: Record<string, any> = {};
+
 export const window = {
   showInformationMessage: notImplemented('window.showInformationMessage'),
   showWarningMessage: notImplemented('window.showWarningMessage'),
@@ -134,7 +137,7 @@ export interface FileSystemWatcherStub {
 
 export const workspace = {
   workspaceFolders: undefined as any,
-  getConfiguration: (_section?: string) => configurationStub,
+  getConfiguration: (section?: string) => (section ? configurationOverrides[section] : undefined) ?? configurationStub,
   updateWorkspaceFolders: () => true,
   onDidChangeWorkspaceFolders: () => ({ dispose() {} }),
   openTextDocument: notImplemented('workspace.openTextDocument'),
@@ -211,9 +214,15 @@ export const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } 
 export const EventEmitter = EventEmitterStub;
 export const CancellationTokenSource = CancellationTokenSourceStub;
 
+export const UIKind = { Desktop: 1, Web: 2 } as const;
+
+export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 } as const;
+
 export const env = {
   clipboard: { readText: notImplemented('env.clipboard.readText'), writeText: notImplemented('env.clipboard.writeText') },
-  openExternal: notImplemented('env.openExternal')
+  openExternal: notImplemented('env.openExternal'),
+  uiKind: UIKind.Desktop as number,
+  remoteName: undefined as string | undefined
 };
 
 export class TreeItem {

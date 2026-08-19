@@ -58,9 +58,14 @@ export abstract class HttpClient {
     return this.request<T>('GET', endpoint, undefined, params);
   }
 
+  /**
+   * A download, in bytes. Always raw: a caller asking for a Buffer wants the
+   * file, not the server's opinion about how to decode it. An empty body is
+   * an empty file — `Buffer.from(null)` would throw instead.
+   */
   async getBuffer(endpoint: string, params?: Record<string, any>): Promise<Buffer> {
-    const response = await this.request<ArrayBuffer>('GET', endpoint, undefined, params);
-    return Buffer.from(response.data);
+    const response = await this.request<ArrayBuffer>('GET', endpoint, undefined, params, 'arraybuffer');
+    return response.data ? Buffer.from(response.data) : Buffer.alloc(0);
   }
 
   async post<T>(endpoint: string, data?: any, params?: Record<string, any>): Promise<HttpResponse<T>> {
@@ -90,9 +95,10 @@ export abstract class HttpClient {
     method: HttpMethod,
     endpoint: string,
     data?: any,
-    params?: Record<string, any>
+    params?: Record<string, any>,
+    responseType?: HttpRequestConfig['responseType']
   ): Promise<HttpResponse<T>> {
-    const config = await this.buildRequestConfig(method, endpoint, data, params);
+    const config = await this.buildRequestConfig(method, endpoint, data, params, responseType);
 
     // Check cache for GET requests
     if (this.cacheEnabled && method === 'GET') {
@@ -147,7 +153,8 @@ export abstract class HttpClient {
     method: HttpMethod,
     endpoint: string,
     data?: any,
-    params?: Record<string, any>
+    params?: Record<string, any>,
+    responseType?: HttpRequestConfig['responseType']
   ): Promise<HttpRequestConfig> {
     const url = this.buildUrl(endpoint, params);
     const headers = { ...this.headers, ...this.getAuthHeaders() };
@@ -165,6 +172,7 @@ export abstract class HttpClient {
       data,
       params,
       timeout: this.timeout,
+      responseType,
     };
 
     for (const interceptor of this.requestInterceptors) {
@@ -209,7 +217,7 @@ export abstract class HttpClient {
 
       clearTimeout(timeoutId);
 
-      const responseData = await this.parseResponse<T>(response);
+      const responseData = await this.parseResponse<T>(response, config.responseType);
       const responseHeaders = this.parseHeaders(response.headers);
 
       let httpResponse: HttpResponse<T> = {
@@ -267,7 +275,18 @@ export abstract class HttpClient {
     return `${url}?${searchParams.toString()}`;
   }
 
-  private async parseResponse<T>(response: Response): Promise<T> {
+  private async parseResponse<T>(
+    response: Response,
+    responseType?: HttpRequestConfig['responseType']
+  ): Promise<T> {
+    // A caller that asked for bytes gets bytes, whatever the server labelled
+    // them — before the empty-body checks below, because an empty download is
+    // an empty buffer rather than null. Errors still go through the sniffing,
+    // so a failed download reports the backend's message and not a blob.
+    if (responseType === 'arraybuffer' && response.ok) {
+      return await response.arrayBuffer() as unknown as T;
+    }
+
     // Handle 204 No Content responses - they have no body
     if (response.status === 204) {
       return null as unknown as T;

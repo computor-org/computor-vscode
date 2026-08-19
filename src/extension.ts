@@ -7,7 +7,8 @@ import { GitCancelledError } from './exceptions/errors/GitExecError';
 import { errorCatalog } from './exceptions/ErrorCatalog';
 import { clientErrorCatalog } from './exceptions/ClientErrorCatalog';
 import { ErrorPageWebviewProvider } from './ui/webviews/ErrorPageWebviewProvider';
-import { registerEditorLayout, showOptions } from './ui/editorLayout';
+import { openFile, registerEditorLayout } from './ui/editorLayout';
+import { ensureEditorAssociations } from './ui/editorAssociations';
 import { ArtifactsPanel } from './ui/panels/ArtifactsPanel';
 import { UiStateService } from './services/UiStateService';
 import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
@@ -1065,6 +1066,10 @@ class UnifiedController {
     const ext = filePath.toLowerCase().split('.').pop() || '';
 
     const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+    // Overlaps BINARY_EXTENSIONS in utils/exampleFileWriter, kept separate
+    // because this list is about what an artifact viewer can present, not about
+    // how bytes are written. Note `revealFileInOS` below does nothing under
+    // code-server, where there is no OS to reveal into.
     const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat'];
 
     if (imageExtensions.includes(ext)) {
@@ -1081,8 +1086,7 @@ class UnifiedController {
       await vscode.commands.executeCommand('revealFileInOS', fileUri);
       notify.info(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
     } else {
-      const doc = await vscode.workspace.openTextDocument(fileUri);
-      await vscode.window.showTextDocument(doc, showOptions(fileUri, { preview: false }));
+      await openFile(fileUri, { preview: false });
     }
   }
 
@@ -1772,6 +1776,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // through a service worker that never sees the request (issue #282) — so we
   // bring our own, inlined like every other Computor webview.
   registerImageViewer(context);
+
+  // …and, in the browser only, make it the editor images actually open with.
+  // The contribution is "option" priority, so without an association nothing
+  // reaches it and a code-server lecturer keeps the editor that cannot render.
+  void ensureEditorAssociations(context);
 
   // Which editor group a file opens in. Registered before any tree is built,
   // because every tree item's click binds to computor.openFile.

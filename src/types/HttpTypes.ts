@@ -14,6 +14,14 @@ export interface HttpRequestConfig {
   data?: any;
   params?: Record<string, any>;
   timeout?: number;
+  /**
+   * Ask for the body verbatim instead of letting the response's Content-Type
+   * decide. Without it a download is at the mercy of the header the server
+   * chose: `text/*` comes back decoded as UTF-8 (so any byte that is not valid
+   * UTF-8 is replaced), and `application/json` comes back parsed into an
+   * object. Neither can be turned back into the bytes that were sent.
+   */
+  responseType?: 'arraybuffer';
 }
 
 export interface AuthResult {

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { showOptions } from '../ui/editorLayout';
+import { openFile as openInEditor, OPEN_FILE_COMMAND } from '../ui/editorLayout';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ComputorApiService } from '../services/ComputorApiService';
@@ -109,16 +109,28 @@ export class DocumentsCommands {
 
   // ----- Open / upload / download -----
 
+  /**
+   * A document can be anything a lecturer uploaded — a slide deck, a figure, a
+   * dataset — so the open goes through `computor.openFile` rather than
+   * `showTextDocument`. A text editor is the *only* thing showTextDocument can
+   * produce: asked for a PDF it refuses outright ("File seems to be binary and
+   * cannot be opened as text"), and asked for a PNG it ignores the
+   * `computor.imagePreview` association, because editor associations apply to
+   * the `vscode.open` command alone.
+   *
+   * Going through the command rather than calling `openFile` directly also
+   * gets the Documents tree the click behaviour every other Computor tree has:
+   * a single click previews, a second one pins (computor-org/issues#319).
+   * Hardcoding `preview: false` here used to pin every file on first click.
+   */
   private async openFile(item: any): Promise<void> {
     if (!(item instanceof DocumentsFileItem)) { return; }
     const { scope, entry } = item;
-    if (entry.local && entry.state !== 'remote-only') {
-      await vscode.window.showTextDocument(vscode.Uri.file(entry.local.absPath), showOptions(entry.local.absPath, { preview: false }));
-      return;
-    }
-    const localPath = await this.pullToMirror(scope, entry.relativePath);
+    const localPath = entry.local && entry.state !== 'remote-only'
+      ? entry.local.absPath
+      : await this.pullToMirror(scope, entry.relativePath);
     if (localPath) {
-      await vscode.window.showTextDocument(vscode.Uri.file(localPath), showOptions(localPath, { preview: false }));
+      await vscode.commands.executeCommand(OPEN_FILE_COMMAND, vscode.Uri.file(localPath));
     }
   }
 
@@ -285,7 +297,7 @@ export class DocumentsCommands {
     this.tree.invalidateDirectory(target.scope, target.parentPath);
     const localPath = this.tree.cache.resolveLocalPath(target.scope, relativePath);
     if (localPath && fs.existsSync(localPath)) {
-      await vscode.window.showTextDocument(vscode.Uri.file(localPath), showOptions(localPath, { preview: false }));
+      await openInEditor(localPath, { preview: false });
     }
   }
 

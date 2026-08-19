@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { showOptions } from '../ui/editorLayout';
+import { openFile } from '../ui/editorLayout';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SimpleGit } from 'simple-git';
@@ -7,11 +7,11 @@ import { createSimpleGit } from './simpleGitFactory';
 import { notify } from '../utils/notify';
 
 function openFileInMergeEditor(filePath: string): void {
-  void vscode.workspace.openTextDocument(filePath).then((document) => {
-    // A conflicted file is a file to edit, so it belongs in the source group
-    // rather than wherever focus happened to be (computor-org/issues#286).
-    void vscode.window.showTextDocument(document, showOptions(filePath));
-  });
+  // A conflicted file is a file to edit, so it belongs in the source group
+  // rather than wherever focus happened to be (computor-org/issues#286).
+  // Through `openFile` so a conflicted binary gets the editor its type asks
+  // for instead of a text editor that cannot decode it.
+  void openFile(filePath);
 }
 
 export class CTGit {

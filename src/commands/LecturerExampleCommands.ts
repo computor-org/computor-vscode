@@ -2458,8 +2458,9 @@ export class LecturerExampleCommands {
       } else {
         fs.mkdirSync(path.dirname(targetPath), { recursive: true });
         fs.writeFileSync(targetPath, '', 'utf8');
-        const doc = await vscode.workspace.openTextDocument(targetPath);
-        await vscode.window.showTextDocument(doc, showOptions(targetPath));
+        // The name comes from an input box, so the extension is whatever the
+        // lecturer typed — open it the way the tree does, not as text.
+        await openFile(targetPath);
       }
       this.treeProvider.refresh();
     } catch (error) {
