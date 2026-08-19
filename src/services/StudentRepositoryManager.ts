@@ -627,7 +627,10 @@ export class StudentRepositoryManager {
     repoPath: string
   ): Promise<{ username: string; password: string } | undefined> {
     try {
-      const repo = await this.apiService.provisionStudentRepository(courseId);
+      // rotate: this credential is known-broken, so the stored one the backend
+      // would otherwise hand back is broken too — mint a new one (the fan-out
+      // below then repairs every other clone on the server).
+      const repo = await this.apiService.provisionStudentRepository(courseId, { rotate: true });
       if (!repo?.http_url || !repo.clone_username || !repo.clone_token) {
         console.warn('[StudentRepositoryManager] Re-provisioning returned no clone credential');
         return undefined;

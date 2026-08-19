@@ -61,10 +61,14 @@ export interface CourseMemberRepositoryGet {
  */
 export interface StudentRepositoryProvisioned extends CourseMemberRepositoryGet {
   /**
-   * One-time repo-scoped Forgejo PAT, rotated on every provision call and never
-   * returned by `GET .../repository`. Null until the student has logged into
-   * Forgejo once (account is created on first OIDC login) — re-call provision
-   * after their first Forgejo sign-in to obtain it.
+   * Repo-scoped Forgejo PAT, never returned by `GET .../repository`. Forgejo
+   * keeps ONE per user and server, so the backend mints it once and returns
+   * that same token afterwards — re-minting would invalidate the copy every
+   * already-cloned repo carries in its origin remote (issue #332). Provision
+   * with `rotate: true` to force a fresh one (then update every clone's
+   * remote). Null until the student has logged into Forgejo once (account is
+   * created on first OIDC login) — re-call provision after their first
+   * Forgejo sign-in to obtain it.
    */
   clone_token?: string | null;
   /** Forgejo username to pair with `clone_token`. */
