@@ -29,15 +29,20 @@ import {
 
 let root: string;
 
-beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'student-fs-'));
-});
+/** Per-test temp repo. Called inside each describe: hooks declared at module
+ *  scope become Mocha ROOT hooks and would run for every spec in the suite. */
+function useTempRoot(): void {
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'student-fs-'));
+  });
 
-afterEach(() => {
-  fs.rmSync(root, { recursive: true, force: true });
-});
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+}
 
 describe('validateSegment', () => {
+  useTempRoot();
   it('rejects blank and whitespace-only names', () => {
     expect(validateSegment('')).to.be.a('string');
     expect(validateSegment('   ')).to.be.a('string');
@@ -66,6 +71,7 @@ describe('validateSegment', () => {
 });
 
 describe('isWithinRoot', () => {
+  useTempRoot();
   it('treats the root itself as inside', () => {
     expect(isWithinRoot(root, root)).to.equal(true);
   });
@@ -84,6 +90,7 @@ describe('isWithinRoot', () => {
 });
 
 describe('normalizeRelativePath', () => {
+  useTempRoot();
   it('keeps a nested relative path', () => {
     expect(normalizeRelativePath('src/utils')).to.equal(path.join('src', 'utils'));
   });
@@ -104,6 +111,7 @@ describe('normalizeRelativePath', () => {
 });
 
 describe('protected names', () => {
+  useTempRoot();
   it('protects .git only', () => {
     expect(isProtectedName('.git')).to.equal(true);
     expect(isProtectedName('.gitignore')).to.equal(false);
@@ -123,6 +131,7 @@ describe('protected names', () => {
 });
 
 describe('uniqueName', () => {
+  useTempRoot();
   it('returns the name unchanged when nothing collides', () => {
     expect(uniqueName(root, 'main.py', false)).to.equal('main.py');
   });
@@ -150,6 +159,7 @@ describe('uniqueName', () => {
 });
 
 describe('createFile / createFolder', () => {
+  useTempRoot();
   it('creates an empty file', () => {
     const created = createFile(root, root, 'a.txt');
     expect(fs.readFileSync(created, 'utf8')).to.equal('');
@@ -172,6 +182,7 @@ describe('createFile / createFolder', () => {
 });
 
 describe('renameEntry', () => {
+  useTempRoot();
   it('renames a file', () => {
     const created = createFile(root, root, 'a.txt');
     const renamed = renameEntry(root, created, 'b.txt');
@@ -202,6 +213,7 @@ describe('renameEntry', () => {
 });
 
 describe('deleteEntry', () => {
+  useTempRoot();
   it('deletes a file', () => {
     const created = createFile(root, root, 'a.txt');
     deleteEntry(root, created);
@@ -224,6 +236,7 @@ describe('deleteEntry', () => {
 });
 
 describe('copyEntry', () => {
+  useTempRoot();
   it('copies a file into another folder', () => {
     const src = createFile(root, root, 'a.txt');
     fs.writeFileSync(src, 'hello');
@@ -259,6 +272,7 @@ describe('copyEntry', () => {
 });
 
 describe('moveEntry', () => {
+  useTempRoot();
   it('moves a file', () => {
     const src = createFile(root, root, 'a.txt');
     const dest = createFolder(root, root, 'dest');

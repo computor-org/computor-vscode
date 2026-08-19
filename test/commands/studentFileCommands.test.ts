@@ -44,66 +44,73 @@ function assignmentItem(dir = repoRoot) {
   return { getRepositoryPath: () => dir };
 }
 
-beforeEach(() => {
-  repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'student-cmd-'));
-  handlers = new Map();
-  refreshed = [];
-  inputAnswer = undefined;
-  warningAnswer = undefined;
-  clipboardText = undefined;
-  validationError = undefined;
-  contextKeys = {};
+/** All the per-test setup, called INSIDE the describe. Declared at module
+ *  scope these become Mocha ROOT hooks, and this file patches five vscode
+ *  globals — they would then be patched for every spec in the suite. */
+function useCommandHarness(): void {
+  beforeEach(() => {
+    repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'student-cmd-'));
+    handlers = new Map();
+    refreshed = [];
+    inputAnswer = undefined;
+    warningAnswer = undefined;
+    clipboardText = undefined;
+    validationError = undefined;
+    contextKeys = {};
 
-  original.registerCommand = vscode.commands.registerCommand;
-  original.executeCommand = vscode.commands.executeCommand;
-  original.showInputBox = vscode.window.showInputBox;
-  original.showWarningMessage = vscode.window.showWarningMessage;
-  original.writeText = vscode.env.clipboard.writeText;
+    original.registerCommand = vscode.commands.registerCommand;
+    original.executeCommand = vscode.commands.executeCommand;
+    original.showInputBox = vscode.window.showInputBox;
+    original.showWarningMessage = vscode.window.showWarningMessage;
+    original.writeText = vscode.env.clipboard.writeText;
 
-  (vscode.commands as any).registerCommand = (id: string, handler: Handler) => {
-    handlers.set(id, handler);
-    return { dispose() {} };
-  };
-  (vscode.commands as any).executeCommand = async (cmd: string, ...args: any[]) => {
-    if (cmd === 'setContext') { contextKeys[args[0]] = args[1]; }
-    return undefined;
-  };
-  (vscode.window as any).showInputBox = async (opts: any) => {
-    // VS Code will not resolve a value that fails validateInput, so neither do
-    // we — that makes a refused name observable without the command throwing.
-    if (inputAnswer !== undefined && opts?.validateInput) {
-      const problem = await opts.validateInput(inputAnswer);
-      if (problem) { validationError = problem; return undefined; }
-    }
-    return inputAnswer;
-  };
-  (vscode.window as any).showWarningMessage = async () => warningAnswer;
-  (vscode.env.clipboard as any).writeText = async (text: string) => { clipboardText = text; };
+    (vscode.commands as any).registerCommand = (id: string, handler: Handler) => {
+      handlers.set(id, handler);
+      return { dispose() {} };
+    };
+    (vscode.commands as any).executeCommand = async (cmd: string, ...args: any[]) => {
+      if (cmd === 'setContext') { contextKeys[args[0]] = args[1]; }
+      return undefined;
+    };
+    (vscode.window as any).showInputBox = async (opts: any) => {
+      // VS Code will not resolve a value that fails validateInput, so neither do
+      // we — that makes a refused name observable without the command throwing.
+      if (inputAnswer !== undefined && opts?.validateInput) {
+        const problem = await opts.validateInput(inputAnswer);
+        if (problem) { validationError = problem; return undefined; }
+      }
+      return inputAnswer;
+    };
+    (vscode.window as any).showWarningMessage = async () => warningAnswer;
+    (vscode.env.clipboard as any).writeText = async (text: string) => { clipboardText = text; };
 
-  const provider = { refreshNode: (node: any) => { refreshed.push(node); } };
-  new StudentFileCommands(
-    { subscriptions: [] } as unknown as vscode.ExtensionContext,
-    provider as any
-  ).registerCommands();
-});
+    const provider = { refreshNode: (node: any) => { refreshed.push(node); } };
+    new StudentFileCommands(
+      { subscriptions: [] } as unknown as vscode.ExtensionContext,
+      provider as any
+    ).registerCommands();
+  });
 
-afterEach(() => {
-  (vscode.commands as any).registerCommand = original.registerCommand;
-  (vscode.commands as any).executeCommand = original.executeCommand;
-  (vscode.window as any).showInputBox = original.showInputBox;
-  (vscode.window as any).showWarningMessage = original.showWarningMessage;
-  (vscode.env.clipboard as any).writeText = original.writeText;
-  fs.rmSync(repoRoot, { recursive: true, force: true });
-});
+  afterEach(() => {
+    (vscode.commands as any).registerCommand = original.registerCommand;
+    (vscode.commands as any).executeCommand = original.executeCommand;
+    (vscode.window as any).showInputBox = original.showInputBox;
+    (vscode.window as any).showWarningMessage = original.showWarningMessage;
+    (vscode.env.clipboard as any).writeText = original.writeText;
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  });
+}
 
+/** Invoke a registered command handler by id. */
 function run(command: string, item?: any): Promise<any> {
   const handler = handlers.get(command);
   if (!handler) { throw new Error(`not registered: ${command}`); }
   return handler(item);
 }
 
-
 describe('student file commands', () => {
+  useCommandHarness();
+
   it('registers every contributed command', () => {
     for (const name of [
       'newFile', 'newFolder', 'rename', 'delete', 'duplicate',

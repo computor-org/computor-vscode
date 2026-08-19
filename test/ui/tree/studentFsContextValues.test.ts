@@ -18,15 +18,21 @@ import { FileSystemItem } from '../../../src/ui/tree/student/StudentCourseConten
 
 let workspace: string;
 
-beforeEach(() => {
-  workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'student-ctx-'));
-});
+/** Called inside the describe: module-scope hooks are Mocha ROOT hooks and
+ *  would run for every spec in the suite. */
+function useWorkspace(): void {
+  beforeEach(() => {
+    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'student-ctx-'));
+  });
 
-afterEach(() => {
-  fs.rmSync(workspace, { recursive: true, force: true });
-});
+  afterEach(() => {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  });
+}
 
 describe('FileSystemItem context value', () => {
+  useWorkspace();
+
   it('namespaces the file context value to the student tree', () => {
     const uri = vscode.Uri.file(path.join(workspace, 'main.py'));
     const item = new FileSystemItem('main.py', uri, vscode.FileType.File);
