@@ -315,7 +315,16 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     } else if (hasExampleAssigned(this.courseContent)) {
       parts.push('Status: not deployed yet');
     }
-    
+
+    // Budgets a student works against. Spelled out here because the
+    // description only has room for the compact pair.
+    const maxTestRuns = (this.courseContent as any).max_test_runs;
+    const maxSubmissions = (this.courseContent as any).max_submissions;
+    if (maxTestRuns != null || maxSubmissions != null) {
+      parts.push(`Test runs: ${maxTestRuns ?? 'unlimited'}`);
+      parts.push(`Submissions: ${maxSubmissions ?? 'unlimited'}`);
+    }
+
     const tooltip = tooltipWithDescription(
       parts.length > 0 ? parts : [this.courseContent.path],
       (this.courseContent as any).description
@@ -336,6 +345,14 @@ export class CourseContentTreeItem extends vscode.TreeItem {
 
       if (assignment?.hasNewerVersion) {
         parts.push('⬆ update available');
+      }
+
+      // Make configured limits visible in the tree — a lecturer could
+      // previously only discover them by opening the assignment.
+      const maxTestRuns = (this.courseContent as any).max_test_runs;
+      const maxSubmissions = (this.courseContent as any).max_submissions;
+      if (maxTestRuns != null || maxSubmissions != null) {
+        parts.push(`⛔ ${maxTestRuns ?? '∞'}T/${maxSubmissions ?? '∞'}S`);
       }
     }
 

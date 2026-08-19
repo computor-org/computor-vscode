@@ -15,13 +15,15 @@
   }
 
   function formatCount(current, max) {
+    // A configured limit is worth showing even at zero usage — "0 / 2" tells a
+    // student what they have; a bare "-" hid the limit until it refused them.
+    if (max !== undefined && max !== null) {
+      return `${current ?? 0} / ${max}`;
+    }
     if (current === undefined || current === null) {
       return '-';
     }
-    if (max === undefined || max === null) {
-      return `${current}`;
-    }
-    return `${current} / ${max}`;
+    return `${current}`;
   }
 
   function formatStatus(value) {

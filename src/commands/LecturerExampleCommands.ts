@@ -1618,8 +1618,9 @@ export class LecturerExampleCommands {
         course_id: courseSelection.id,
         course_content_type_id: contentTypeSelection.id,
         // Note: example_id removed - will be assigned after creation
-        max_submissions: 10, // Default values
-        max_test_runs: 100
+        // No max_submissions / max_test_runs: an assignment is unlimited
+        // unless a lecturer sets a limit. These used to be stamped with 10/100,
+        // which silently capped every assignment created from an example.
       };
 
       // Step 1: Create the course content

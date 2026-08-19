@@ -1907,8 +1907,9 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         position: position,
         course_id: courseId,
         course_content_type_id: contentType.id,
-        max_submissions: 10,
-        max_test_runs: 100
+        // No max_submissions / max_test_runs: an assignment is unlimited
+        // unless a lecturer sets a limit. These used to be stamped with 10/100,
+        // which silently capped every assignment created from an example.
       };
 
       const createdContent = await this.apiService.createCourseContent(courseId, contentData);

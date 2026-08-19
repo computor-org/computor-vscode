@@ -5,6 +5,12 @@ import { ComputorApiService } from '../../../services/ComputorApiService';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
+import {
+  formatBudgetCompact,
+  formatBudgetLong,
+  submissionBudget,
+  testBudget,
+} from '../limitFormatting';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { openFileCommand } from '../../editorLayout';
 import { UiStateService } from '../../../services/UiStateService';
@@ -949,16 +955,19 @@ class TutorContentItem extends vscode.TreeItem {
     // Build description with test/submission counts like student view
     const descriptionParts: string[] = [];
 
+    // Same rule as the student tree: show the pair whenever a limit exists,
+    // not only once a count does, so a tutor can see the budgets a student is
+    // working against before anything has been run.
     const testCount = (this.content as any)?.result_count as number | undefined;
-    const maxTests = (this.content as any)?.max_test_runs as number | undefined;
-    if (typeof testCount === 'number') {
-      descriptionParts.push(typeof maxTests === 'number' ? `(${testCount}/${maxTests})` : `(${testCount})`);
-    }
-
     const submitCount = submission?.count as number | undefined;
-    const maxSubmits = submission?.max_submissions as number | undefined;
-    if (typeof submitCount === 'number') {
-      descriptionParts.push(typeof maxSubmits === 'number' ? `(${submitCount}/${maxSubmits})` : `(${submitCount})`);
+    const tests = testBudget(this.content as any, submission as any);
+    const submissions = submissionBudget(this.content as any, submission as any);
+
+    if (tests.max !== null || typeof testCount === 'number') {
+      descriptionParts.push(formatBudgetCompact(tests));
+    }
+    if (submissions.max !== null || typeof submitCount === 'number') {
+      descriptionParts.push(formatBudgetCompact(submissions));
     }
 
     this.description = descriptionParts.length > 0 ? descriptionParts.join('') : undefined;
@@ -990,11 +999,11 @@ class TutorContentItem extends vscode.TreeItem {
     if (friendlyStatus) {
       tooltipLines.push(`Status: ${friendlyStatus}`);
     }
-    if (typeof testCount === 'number') {
-      tooltipLines.push(`Tests: ${typeof maxTests === 'number' ? `${testCount} of ${maxTests}` : `${testCount}`}`);
+    if (tests.max !== null || typeof testCount === 'number') {
+      tooltipLines.push(`Tests: ${formatBudgetLong(tests)}`);
     }
-    if (typeof submitCount === 'number') {
-      tooltipLines.push(`Submissions: ${typeof maxSubmits === 'number' ? `${submitCount} of ${maxSubmits}` : `${submitCount}`}`);
+    if (submissions.max !== null || typeof submitCount === 'number') {
+      tooltipLines.push(`Submissions: ${formatBudgetLong(submissions)}`);
     }
     if (typeof result === 'number') {
       tooltipLines.push(`Result: ${(result * 100).toFixed(2)}%`);
