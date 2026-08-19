@@ -25,6 +25,7 @@ import { redactGitCredentials } from '../utils/gitUrlHelpers';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
 import { notify } from '../utils/notify';
+import { submissionBudget, testBudget } from '../ui/tree/limitFormatting';
 import {
   availableDescriptionLanguages,
   listDescriptionFiles,
@@ -95,6 +96,69 @@ export class StudentCommands {
     return artifacts
       .filter(artifact => !!artifact.latest_result && !!artifact.version_identifier)
       .sort((a, b) => timestampOf(b) - timestampOf(a))[0] ?? null;
+  }
+
+  /**
+   * Advisory budget gate. Returns true when the action should be abandoned.
+   *
+   * Deliberately not a hard gate: the tree's counts come from a view cached
+   * for five minutes, so a stale "exhausted" must never block a legitimate
+   * action. We re-read once with `force` and stop only if fresh data agrees.
+   * The backend remains the authority — this exists so the student gets a
+   * clear explanation instead of a bare rejection.
+   */
+  private async budgetBlocks(
+    item: any,
+    kind: 'test' | 'submit'
+  ): Promise<boolean> {
+    const spent = (content: any, group: any): boolean =>
+      (kind === 'test' ? testBudget(content, group) : submissionBudget(content, group)).exhausted;
+
+    let content = item?.courseContent;
+    let group = item?.submissionGroup ?? content?.submission_group;
+    if (!content || !spent(content, group)) {
+      return false;
+    }
+
+    try {
+      const fresh = await this.apiService.getStudentCourseContent(content.id, { force: true });
+      if (fresh) {
+        content = fresh;
+        group = (fresh as any).submission_group ?? group;
+      }
+    } catch {
+      // Could not refresh — fall back to what the tree already had.
+    }
+    if (!spent(content, group)) {
+      return false;
+    }
+
+    const tests = testBudget(content, group);
+    const submissions = submissionBudget(content, group);
+
+    if (kind === 'test' && !submissions.exhausted) {
+      const remaining = (submissions.max ?? 0) - submissions.used;
+      const choice = await vscode.window.showWarningMessage(
+        `You have used all ${tests.max} test runs for this assignment. `
+        + `Submitting still runs a test, and you have ${remaining} submission`
+        + `${remaining === 1 ? '' : 's'} left.`,
+        'Submit instead',
+        'Cancel'
+      );
+      if (choice === 'Submit instead') {
+        await vscode.commands.executeCommand('computor.student.submitAssignment', item);
+      }
+      return true;
+    }
+
+    notify.warning(
+      kind === 'test'
+        ? `You have used all ${tests.max} test runs and all ${submissions.max} submissions `
+          + 'for this assignment. Ask your lecturer if you need another attempt.'
+        : `You have used all ${submissions.max} submissions for this assignment. `
+          + 'Ask your lecturer if you need another attempt.'
+    );
+    return true;
   }
 
   private async pushWithAuthRetry(repoPath: string): Promise<void> {
@@ -796,6 +860,12 @@ export class StudentCommands {
 
     register('computor.student.submitAssignment', async (itemOrSubmissionGroup: any) => {
       try {
+        // Explain an exhausted submission budget before doing any work.
+        if (itemOrSubmissionGroup?.courseContent
+          && await this.budgetBlocks(itemOrSubmissionGroup, 'submit')) {
+          return;
+        }
+
         // Support invocation from tree item (preferred)
         let directory: string | undefined;
         let assignmentPath: string | undefined;
@@ -1023,10 +1093,14 @@ export class StudentCommands {
           // Run the test and wait for results
           if (testArtifactId && courseContentId) {
             console.log(`[submitAssignment] Submitting test with artifact ID: ${testArtifactId}`);
+            // submit:true marks this run as part of a submission. When the
+            // test budget is already spent the backend lets it through by
+            // spending a submission instead — the only permitted overrun, and
+            // what makes "submit still runs its test" work.
             const testResult = await this.testResultService.submitTestByArtifactAndAwaitResults(
               testArtifactId,
               assignmentTitle || 'Assignment',
-              undefined,
+              true,
               { courseContentId }
             );
 
@@ -1219,12 +1293,14 @@ export class StudentCommands {
         }
       } catch (error: any) {
         console.error('Failed to submit assignment:', error?.response?.data || error);
-        const message = typeof error?.message === 'string'
-          ? error.message
-          : typeof error === 'string'
-            ? error
-            : 'Failed to submit assignment.';
-        notify.error(message);
+        // Pass the error object, not a string: notify.error only routes
+        // Error instances through the catalog, so a string here would drop the
+        // title and severity of e.g. SUBMIT_009 "Maximum Submissions Reached".
+        notify.error(
+          error instanceof Error ? error : new Error(
+            typeof error === 'string' ? error : 'Failed to submit assignment.'
+          )
+        );
       }
     });
 
@@ -1352,6 +1428,11 @@ export class StudentCommands {
 
       if (!submissionGroup?.id) {
         notify.error('Submission group information missing; cannot upload for testing.');
+        return;
+      }
+
+      // Explain an exhausted budget up front rather than after a commit+push.
+      if (await this.budgetBlocks(item, 'test')) {
         return;
       }
 
@@ -1489,8 +1570,13 @@ export class StudentCommands {
         // Anything earlier (commit/push/artifact upload — e.g. the backend
         // rejecting the upload because the content has no testing service) must
         // be shown here, or the command fails silently.
+        // Pass the error object so a coded rejection (e.g. SUBMIT_004
+        // "Maximum Test Runs Exceeded") keeps its catalog title and severity;
+        // a template string would flatten it to plain text.
         if (!reachedTestSubmission) {
-          notify.error(`Could not run the test: ${error?.message || String(error)}`);
+          notify.error(
+            error instanceof Error ? error : new Error(`Could not run the test: ${String(error)}`)
+          );
         }
       }
     });
@@ -1973,9 +2059,12 @@ export class StudentCommands {
         },
         metrics: {
           testsRun: typeof courseContent.result_count === 'number' ? courseContent.result_count : undefined,
+          // The content carries the *effective* limits — the backend has
+          // already folded in any per-group override — so there is nothing to
+          // re-resolve here.
           maxTests: courseContent.max_test_runs ?? null,
-          submissions: submissionGroupCombined?.count ?? null,
-          maxSubmissions: submissionGroupCombined?.max_submissions ?? null,
+          submissions: submissionGroupCombined?.count ?? courseContent.submission_count ?? null,
+          maxSubmissions: courseContent.max_submissions ?? submissionGroupCombined?.max_submissions ?? null,
           submitted: courseContent.submitted ?? null,
           resultPercent: resultValue !== null ? resultValue * 100 : null,
           gradePercent: gradingValue !== null ? gradingValue * 100 : null,
