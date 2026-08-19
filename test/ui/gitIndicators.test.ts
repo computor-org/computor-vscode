@@ -29,12 +29,12 @@ describe('gitIndicators', () => {
   });
 
   describe('assignmentGitTooltipLines', () => {
-    it('explains every shown glyph', () => {
-      const lines = assignmentGitTooltipLines({ dirty: true, unpushed: true, pushFailing: true });
-      expect(lines).to.have.lengthOf(3);
-      expect(lines[0]).to.include('Uncommitted');
-      expect(lines[1]).to.include('not yet pushed');
-      expect(lines[2]).to.include('Fix Repository Authentication');
+    it('names every shown glyph, tersely', () => {
+      expect(assignmentGitTooltipLines({ dirty: true, unpushed: true, pushFailing: true })).to.deep.equal([
+        '● Uncommitted changes',
+        '↑ Unpushed changes',
+        '⚠ Push failing'
+      ]);
     });
 
     it('stays silent for a clean assignment', () => {

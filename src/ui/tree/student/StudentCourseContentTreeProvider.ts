@@ -197,6 +197,37 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         }
         return { dirty, unpushed, pushFailing: ctx.pushFailing };
     }
+
+    /**
+     * OR-combined badges of every assignment in the subtree, so units — and
+     * nested units — carry the glyph of whatever they contain (issue #332).
+     */
+    private subtreeBadges(node: ContentNode, ctx?: AssignmentGitContext): AssignmentGitBadges | undefined {
+        if (!ctx) {
+            return undefined;
+        }
+        let dirty = false;
+        let unpushed = false;
+        const stack: ContentNode[] = [node];
+        while (stack.length > 0 && !(dirty && unpushed)) {
+            const current = stack.pop()!;
+            for (const child of current.children.values()) {
+                stack.push(child);
+            }
+            if (current.isUnit || current === node) {
+                continue;
+            }
+            const badges = this.assignmentBadges(current, ctx);
+            if (badges) {
+                dirty = dirty || badges.dirty;
+                unpushed = unpushed || badges.unpushed;
+            }
+        }
+        if (!dirty && !unpushed) {
+            return undefined;
+        }
+        return { dirty, unpushed, pushFailing: ctx.pushFailing };
+    }
     
     setWebSocketService(wsService: WebSocketService): void {
         this.wsSubscription.setService(wsService);
@@ -700,7 +731,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 if (!targetPath) return this.createTreeItems(element.node, gitContext);
                 const refreshedNode = this.findNodeByPath(tree, targetPath);
                 if (refreshedNode) {
-                    element.updateFromNode(refreshedNode);
+                    element.updateFromNode(refreshedNode, this.subtreeBadges(refreshedNode, gitContext));
                     return this.createTreeItems(refreshedNode, gitContext);
                 }
                 return this.createTreeItems(element.node, gitContext);
@@ -868,7 +899,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 const unitItem = new CourseContentPathItem(
                     child.name || name,
                     child,
-                    this.getExpandedState(nodeId)
+                    this.getExpandedState(nodeId),
+                    this.subtreeBadges(child, gitContext)
                 );
                 if (unitItem.id) this.itemIndex.set(unitItem.id, unitItem);
                 items.push(unitItem);
@@ -1343,7 +1375,8 @@ class CourseContentPathItem extends TreeItem {
     constructor(
         public readonly name: string,
         public node: ContentNode,
-        expanded: boolean = false
+        expanded: boolean = false,
+        private gitBadges?: AssignmentGitBadges
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         
@@ -1378,8 +1411,9 @@ class CourseContentPathItem extends TreeItem {
         withDescription(this, name, node.courseContent?.description);
     }
 
-    public updateFromNode(node: ContentNode): void {
+    public updateFromNode(node: ContentNode, gitBadges?: AssignmentGitBadges): void {
         this.node = node;
+        this.gitBadges = gitBadges;
         this.applyCounts(node);
     }
 
@@ -1408,7 +1442,10 @@ class CourseContentPathItem extends TreeItem {
             ...(unread > 0 ? [`🔔 ${unread}`] : []),
             itemLabel,
         ];
-        this.description = parts.join(' • ');
+        // Git state of the assignments underneath (issue #332) — outside the
+        // bullet list so the glyphs read as one prefix, like on assignments.
+        const gitIndicator = this.gitBadges ? assignmentGitIndicator(this.gitBadges) : '';
+        this.description = (gitIndicator ? `${gitIndicator} ` : '') + parts.join(' • ');
 
         const tooltipLines = [
             `Unit: ${this.name}`,
@@ -1423,6 +1460,9 @@ class CourseContentPathItem extends TreeItem {
         }
         if (unread > 0) {
             tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+        }
+        if (this.gitBadges) {
+            tooltipLines.push(...assignmentGitTooltipLines(this.gitBadges));
         }
         this.tooltip = tooltipWithDescription(tooltipLines, node.courseContent?.description);
     }

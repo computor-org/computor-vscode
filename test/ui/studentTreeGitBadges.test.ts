@@ -78,6 +78,33 @@ describe('student tree git badges', () => {
     expect(String((byId.get('a2') as any).description ?? '')).to.not.match(/[●↑⚠]/);
   });
 
+  it('propagates badges to unit rows, including nested units', () => {
+    const provider = makeProvider();
+    const innerUnit = {
+      children: new Map([['a1', leaf('a1', `${REPO}/w1/a1`)]]),
+      isUnit: true,
+      name: 'Chapter 1',
+      courseContent: { id: 'u-inner', title: 'Chapter 1', path: 'w1.c1', position: 1 },
+    };
+    const outerUnit = {
+      children: new Map([['c1', innerUnit]]),
+      isUnit: true,
+      name: 'Week 1',
+      courseContent: { id: 'u-outer', title: 'Week 1', path: 'w1', position: 1 },
+    };
+    const node = { children: new Map([['w1', outerUnit]]), isUnit: false };
+
+    const items = provider.createTreeItems(node, ctx([`w1/a1/main.m`]));
+    expect(items).to.have.lengthOf(1);
+    const unitRow: any = items[0];
+    expect(String(unitRow.description)).to.match(/^● /);
+    expect(String(unitRow.description)).to.include('item');
+    expect(String(unitRow.tooltip)).to.include('● Uncommitted changes');
+
+    const cleanItems = provider.createTreeItems(node, ctx([`elsewhere/x.m`]));
+    expect(String((cleanItems[0] as any).description)).to.not.match(/[●↑⚠]/);
+  });
+
   it('renders no badges without a git context', () => {
     const provider = makeProvider();
     const node = { children: new Map([['a1', leaf('a1', `${REPO}/a1`)]]), isUnit: false };

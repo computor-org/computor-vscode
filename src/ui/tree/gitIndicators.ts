@@ -26,17 +26,17 @@ export function assignmentGitIndicator(badges: AssignmentGitBadges): string {
   return glyphs.join(' ');
 }
 
-/** Tooltip lines explaining the assignment's glyphs. */
+/** Tooltip lines naming the shown glyphs — deliberately terse, no how-to. */
 export function assignmentGitTooltipLines(badges: AssignmentGitBadges): string[] {
   const lines: string[] = [];
   if (badges.dirty) {
-    lines.push('● Uncommitted changes — commit them via Source Control or the Commit button.');
+    lines.push('● Uncommitted changes');
   }
   if (badges.unpushed) {
-    lines.push('↑ Committed changes not yet pushed to the server.');
+    lines.push('↑ Unpushed changes');
   }
   if (badges.pushFailing && (badges.dirty || badges.unpushed)) {
-    lines.push('⚠ Pushing is currently failing — run "Computor Student: Fix Repository Authentication".');
+    lines.push('⚠ Push failing');
   }
   return lines;
 }
