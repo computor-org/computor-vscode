@@ -71,6 +71,8 @@ import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
 import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
+import { reportProblem } from './commands/reportProblem';
+import { IssueReportStatusBarService } from './ui/IssueReportStatusBarService';
 
 interface StoredAuth {
   accessToken: string;
@@ -1740,6 +1742,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Initialize error catalogs
   errorCatalog.initialize();
   clientErrorCatalog.initialize();
+  context.subscriptions.push(IssueReportStatusBarService.initialize());
 
   const settingsManager = new ComputorSettingsManager(context);
   extensionUpdateService = new ExtensionUpdateService(context, settingsManager);
@@ -1823,6 +1826,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.gettingStarted', async () => {
     await showGettingStarted(context);
+  }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('computor.reportProblem', async () => {
+    await reportProblem(context, ComputorApiService.getInstance());
   }));
 
   // Check backend connection command

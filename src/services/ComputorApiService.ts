@@ -113,6 +113,7 @@ import {
   DocumentGet,
   DocumentDirectoryGet
 } from '../types/generated';
+import type { IssueReportCreated, IssueReportPayload } from '../types/issueReports';
 
 // Query interface for examples (not generated yet)
 interface ExampleQuery {
@@ -326,6 +327,33 @@ export class ComputorApiService {
       console.error('Failed to get instance info:', error);
       return undefined;
     }
+  }
+
+  /** Submit a user report; GitHub credentials remain entirely on the backend. */
+  async submitIssueReport(
+    payload: IssueReportPayload,
+    screenshot?: { buffer: Buffer; fileName: string; contentType: string }
+  ): Promise<IssueReportCreated> {
+    const client = await this.getHttpClient();
+    const form = new FormData();
+    form.append('title', payload.title);
+    form.append('description', payload.description);
+    if (payload.expected) {
+      form.append('expected', payload.expected);
+    }
+    if (payload.steps) {
+      form.append('steps', payload.steps);
+    }
+    form.append('context', JSON.stringify(payload.context));
+    if (screenshot) {
+      form.append('screenshot', screenshot.buffer, {
+        filename: screenshot.fileName,
+        contentType: screenshot.contentType
+      });
+    }
+
+    const response = await client.post<IssueReportCreated>('/issue-reports', form);
+    return response.data;
   }
 
   async getCourseRoles(): Promise<CourseRoleList[]> {

@@ -107,6 +107,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.reportProblem",
+        "title": "Report a Problem",
+        "icon": "$(bug)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.settings",
         "title": "Settings",
         "category": "Computor"
@@ -1425,6 +1431,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "computor.reportProblem",
+          "when": "view =~ /computor\\./",
+          "group": "navigation@99"
+        },
         {
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",
