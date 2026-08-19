@@ -25,6 +25,13 @@ export interface SetUpOptions {
    * if a repo already exists (its recorded mode wins) or if not offered.
    */
   preferredMode?: string;
+  /**
+   * Force a fresh managed-Forgejo clone token instead of the one the backend
+   * remembered. Only for a credential that is known-broken: rotating
+   * invalidates the copy in every other clone on that server, which the
+   * credential fan-out then has to repair (computor-org/issues#332).
+   */
+  rotateCredential?: boolean;
 }
 
 /** Outcome of trying to set up the student's repository for one course. */
@@ -173,9 +180,10 @@ export class StudentRepositoryProvisioningService {
     const report = opts?.onProgress ?? (() => {});
 
     report('Provisioning your repository…');
-    // Idempotent + self-healing: returns the existing repo and a freshly-rotated
-    // one-time clone token on every call.
-    const repo = await this.api.provisionStudentRepository(courseId);
+    // Idempotent + self-healing: returns the existing repo, plus the clone token
+    // the backend minted once and remembered — the same one every other clone on
+    // this server already carries, unless the caller asks to rotate it.
+    const repo = await this.api.provisionStudentRepository(courseId, { rotate: opts?.rotateCredential === true });
 
     if (!repo.http_url) {
       throw new Error('Provisioning did not return a repository URL.');
@@ -458,7 +466,8 @@ export class StudentRepositoryProvisioningService {
             continue;
           }
           try {
-            const outcome = await this.setUpRepository(courseId, opts);
+            // Known-broken credential: rotate rather than accept the stored one.
+            const outcome = await this.setUpRepository(courseId, { ...opts, rotateCredential: true });
             if (outcome.status === 'cloned' || outcome.status === 'already-cloned') {
               PushHealthRegistry.markHealthy(repoPath);
             } else {

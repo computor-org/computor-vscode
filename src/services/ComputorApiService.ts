@@ -1483,14 +1483,25 @@ export class ComputorApiService {
 
   /**
    * Forgejo babysat provisioning: fork the course's student-template into the
-   * student's own repo. Idempotent + self-healing. Returns the repo plus a
-   * one-time `clone_token`/`clone_username` (null until the student's first
-   * Forgejo login — re-call after they sign into Forgejo).
+   * student's own repo. Idempotent + self-healing. Returns the repo plus its
+   * `clone_token`/`clone_username` (null until the student's first Forgejo
+   * login — re-call after they sign into Forgejo).
+   *
+   * The backend mints the clone token once and returns that same one on later
+   * calls, because Forgejo keeps a single token per user and server: re-minting
+   * invalidates the copy every existing clone carries in its origin remote.
+   * Pass `rotate` ONLY when the credential is known-broken — it mints a new
+   * token and so requires updating the remotes of all clones on that server
+   * (see propagateForgejoCloneCredential). Older backends rotate either way.
    */
-  async provisionStudentRepository(courseId: string): Promise<StudentRepositoryProvisioned> {
+  async provisionStudentRepository(
+    courseId: string,
+    opts?: { rotate?: boolean }
+  ): Promise<StudentRepositoryProvisioned> {
     const client = await this.getHttpClient();
+    const query = opts?.rotate ? '?rotate=true' : '';
     const response = await client.post<StudentRepositoryProvisioned>(
-      `/user/courses/${courseId}/provision-repository`,
+      `/user/courses/${courseId}/provision-repository${query}`,
       {}
     );
     return response.data;
