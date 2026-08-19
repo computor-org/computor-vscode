@@ -822,6 +822,64 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.fs.newFile",
+        "title": "New File\u2026",
+        "icon": "$(new-file)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.newFolder",
+        "title": "New Folder\u2026",
+        "icon": "$(new-folder)",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.rename",
+        "title": "Rename\u2026",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.duplicate",
+        "title": "Duplicate",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.cut",
+        "title": "Cut",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.copy",
+        "title": "Copy",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.paste",
+        "title": "Paste",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.revealInOS",
+        "title": "Reveal in File Explorer",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.copyPath",
+        "title": "Copy Path",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Computor Student"
+      },
+      {
+        "command": "computor.student.fs.delete",
+        "title": "Delete",
+        "icon": "$(trash)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.showMessages",
         "title": "Show Messages",
         "icon": "$(comment-discussion)",
@@ -2345,6 +2403,61 @@
           "command": "computor.student.help",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent/",
           "group": "3_help@1"
+        },
+        {
+          "command": "computor.student.fs.newFile",
+          "when": "view == computor.student.courses && viewItem =~ /^(studentCourseContent\\.assignment\\..*\\.cloned(\\..*)?|studentFolder)$/",
+          "group": "4_create@1"
+        },
+        {
+          "command": "computor.student.fs.newFolder",
+          "when": "view == computor.student.courses && viewItem =~ /^(studentCourseContent\\.assignment\\..*\\.cloned(\\..*)?|studentFolder)$/",
+          "group": "4_create@2"
+        },
+        {
+          "command": "computor.student.fs.rename",
+          "when": "view == computor.student.courses && viewItem =~ /^student(File|Folder)$/",
+          "group": "5_modify@1"
+        },
+        {
+          "command": "computor.student.fs.duplicate",
+          "when": "view == computor.student.courses && viewItem =~ /^student(File|Folder)$/",
+          "group": "5_modify@2"
+        },
+        {
+          "command": "computor.student.fs.cut",
+          "when": "view == computor.student.courses && viewItem =~ /^student(File|Folder)$/",
+          "group": "6_clipboard@1"
+        },
+        {
+          "command": "computor.student.fs.copy",
+          "when": "view == computor.student.courses && viewItem =~ /^student(File|Folder)$/",
+          "group": "6_clipboard@2"
+        },
+        {
+          "command": "computor.student.fs.paste",
+          "when": "view == computor.student.courses && viewItem =~ /^(studentCourseContent\\.assignment\\..*\\.cloned(\\..*)?|studentFolder)$/ && computor.student.fs.hasClipboard",
+          "group": "6_clipboard@3"
+        },
+        {
+          "command": "computor.student.fs.revealInOS",
+          "when": "view == computor.student.courses && viewItem =~ /^(studentCourseContent\\.assignment\\..*\\.cloned(\\..*)?|studentFile|studentFolder)$/",
+          "group": "7_path@1"
+        },
+        {
+          "command": "computor.student.fs.copyPath",
+          "when": "view == computor.student.courses && viewItem =~ /^(studentCourseContent\\.assignment\\..*\\.cloned(\\..*)?|studentFile|studentFolder)$/",
+          "group": "7_path@2"
+        },
+        {
+          "command": "computor.student.fs.copyRelativePath",
+          "when": "view == computor.student.courses && viewItem =~ /^(studentCourseContent\\.assignment\\..*\\.cloned(\\..*)?|studentFile|studentFolder)$/",
+          "group": "7_path@3"
+        },
+        {
+          "command": "computor.student.fs.delete",
+          "when": "view == computor.student.courses && viewItem =~ /^student(File|Folder)$/",
+          "group": "8_destructive@1"
         },
         {
           "command": "computor.student.offline.showPreview",

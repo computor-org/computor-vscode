@@ -13,6 +13,7 @@ import {
   DocumentsCourseItem
 } from '../ui/tree/lecturer-documents/DocumentsTreeItems';
 import type { DocumentScope } from '../services/DocumentsCacheService';
+import { validateSegment } from '../utils/studentFsOperations';
 
 /**
  * Wires up commands for the lecturer Documents tree:
@@ -503,10 +504,6 @@ export class DocumentsCommands {
   }
 
   /** Validates a single path segment for the file/folder name inputs. */
-  private readonly validateRelativeSegment = (value: string): string | undefined => {
-    if (!value || !value.trim()) { return 'Name cannot be empty.'; }
-    if (value.includes('/') || value.includes('\\')) { return 'Name cannot contain path separators.'; }
-    if (value === '.' || value === '..') { return 'Reserved name.'; }
-    return undefined;
-  };
+  private readonly validateRelativeSegment = (value: string): string | undefined =>
+    validateSegment(value);
 }

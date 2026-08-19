@@ -55,6 +55,7 @@ import {
   sortedSiblings,
   type Placement
 } from '../utils/contentOrdering';
+import { isWithinRoot, normalizeRelativePath } from '../utils/studentFsOperations';
 
 /** A webview cannot pass a tree item, so it sends the ids the scope needs. */
 interface ReleaseContentPayload {
@@ -1379,26 +1380,11 @@ export class LecturerCommands {
   }
 
   private normalizeRelativePath(input: string): string | undefined {
-    const trimmed = input.trim();
-    if (!trimmed) {
-      return undefined;
-    }
-
-    const segments = trimmed.split(/[/\\]+/).filter(segment => segment.length > 0);
-    if (segments.length === 0) {
-      return undefined;
-    }
-
-    if (segments.some(segment => segment === '.' || segment === '..' || segment.includes(':'))) {
-      return undefined;
-    }
-
-    return path.join(...segments);
+    return normalizeRelativePath(input);
   }
 
   private isWithinAssignmentRoot(base: string, candidate: string): boolean {
-    const relative = path.relative(base, candidate);
-    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    return isWithinRoot(base, candidate);
   }
 
   private isContentTypeSubmittable(type: CourseContentTypeList): boolean {

@@ -362,7 +362,9 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     const fileItem = new FileSystemItem(
                         file,
                         vscode.Uri.file(filePath),
-                        isDirectory ? vscode.FileType.Directory : vscode.FileType.File
+                        isDirectory ? vscode.FileType.Directory : vscode.FileType.File,
+                        element.repoRoot,
+                        element
                     );
                     items.push(fileItem);
                 }
@@ -883,7 +885,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         if (!fs.existsSync(absDir)) {
             return [new MessageItem('Assignment not available yet', 'info')];
         }
-        return this.listAssignmentFiles(absDir);
+        return this.listAssignmentFiles(absDir, repoRoot, element);
     }
 
     /** Provision/clone (managed, external) or download+extract (download) for a
@@ -965,7 +967,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
 
     /** List the files of a cloned/extracted assignment directory (shared by the
      * legacy and new-model paths). */
-    private async listAssignmentFiles(absDir: string): Promise<TreeItem[]> {
+    private async listAssignmentFiles(absDir: string, repoRoot?: string, parent?: TreeItem): Promise<TreeItem[]> {
         try {
             const readdir = promisify(fs.readdir);
             const stat = promisify(fs.stat);
@@ -982,6 +984,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     file,
                     vscode.Uri.file(filePath),
                     isDirectory ? vscode.FileType.Directory : vscode.FileType.File,
+                    repoRoot,
+                    parent,
                 ));
             }
             if (items.length === 0) {
@@ -1612,11 +1616,16 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 }
 
 // File system item for showing files and folders under assignments
-class FileSystemItem extends TreeItem {
+export class FileSystemItem extends TreeItem {
     constructor(
         public readonly name: string,
         public readonly uri: vscode.Uri,
-        public readonly type: vscode.FileType
+        public readonly type: vscode.FileType,
+        /** Repo root that bounds every filesystem action on this node. */
+        public readonly repoRoot?: string,
+        /** Set so a mutation can refresh the containing node; the provider has
+         *  no getParent and trackTree keeps its parent map to itself. */
+        public readonly parent?: vscode.TreeItem
     ) {
         super(
             name,
@@ -1630,7 +1639,7 @@ class FileSystemItem extends TreeItem {
         
         if (type === vscode.FileType.File) {
             this.command = openFileCommand(uri);
-            this.contextValue = 'file';
+            this.contextValue = 'studentFile';
             
             // Set appropriate icon based on file extension
             const ext = path.extname(name).toLowerCase();
@@ -1646,7 +1655,7 @@ class FileSystemItem extends TreeItem {
                 this.iconPath = new vscode.ThemeIcon('file');
             }
         } else {
-            this.contextValue = 'folder';
+            this.contextValue = 'studentFolder';
             this.iconPath = new vscode.ThemeIcon('folder');
         }
         
