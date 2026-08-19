@@ -778,7 +778,7 @@ class MessageItem extends vscode.TreeItem {
 class TutorUnitItem extends vscode.TreeItem {
   constructor(public node: ContentNode) {
     super(node.name || 'Unit', vscode.TreeItemCollapsibleState.Collapsed);
-    this.contextValue = 'tutorUnit';
+    this.contextValue = isHidden(node.courseContent as any) ? 'tutorUnit.hidden' : 'tutorUnit';
     // Try to use a colored circle icon like in the student view
     try {
       const color = this.deriveColor(node) || 'grey';
@@ -828,8 +828,12 @@ class TutorUnitItem extends vscode.TreeItem {
     const baseName = this.node.name || 'Unit';
     this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;
 
-    // Description shows item count
-    this.description = `${count} item${count !== 1 ? 's' : ''}`;
+    // Description shows item count, plus the invisible marker. The unit is
+    // usually the row the lecturer actually hid, so marking only the
+    // assignments beneath it showed the effect and not the cause.
+    const invisible = hiddenBadge(this.node.courseContent as any);
+    const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
+    this.description = invisible ? `${invisible} • ${itemLabel}` : itemLabel;
 
     const tooltipLines = [
       `Unit: ${baseName}`,

@@ -1,8 +1,7 @@
 import * as assert from 'assert';
 
 import {
-    HIDDEN_ABOVE_BADGE,
-    HIDDEN_BADGE,
+    INVISIBLE_BADGE,
     filterVisible,
     hiddenBadge,
     isHidden,
@@ -69,15 +68,19 @@ describe('tree visibility', () => {
             assert.strictEqual(hiddenBadge({ visible_effective: true }), undefined);
         });
 
-        it('distinguishes hidden-here from hidden-above', () => {
+        it('uses one wording however the row came to be hidden', () => {
+            // Hidden here and hidden by an ancestor read the same. The reader
+            // only cares that students do not see it; where the decision was
+            // made still drives behaviour via isHiddenHere, not the label.
             assert.strictEqual(
                 hiddenBadge({ visible: false, visible_effective: false }),
-                HIDDEN_BADGE,
+                INVISIBLE_BADGE,
             );
             assert.strictEqual(
                 hiddenBadge({ visible: null, visible_effective: false }),
-                HIDDEN_ABOVE_BADGE,
+                INVISIBLE_BADGE,
             );
+            assert.strictEqual(INVISIBLE_BADGE, '\u{1F441} invisible');
         });
     });
 

@@ -1233,7 +1233,9 @@ class CourseContentPathItem extends TreeItem {
             this.iconPath = new vscode.ThemeIcon('folder-opened');
         }
         
-        this.contextValue = 'studentCourseUnit';
+        this.contextValue = isHidden(node.courseContent as any)
+            ? 'studentCourseUnit.hidden'
+            : 'studentCourseUnit';
         this.id = node.courseContent ? node.courseContent.id : `unit-${name}`;
 
         this.applyCounts(node);
@@ -1261,7 +1263,16 @@ class CourseContentPathItem extends TreeItem {
         const count = this.countItems(node);
         const unread = node.unreadMessageCount ?? 0;
         const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
-        this.description = unread > 0 ? `🔔 ${unread} • ${itemLabel}` : itemLabel;
+        // Units carry the marker too, not just the assignments under them: the
+        // unit is usually the row the lecturer actually hid, so leaving it
+        // unmarked showed the consequence everywhere except the cause.
+        const invisible = hiddenBadge(node.courseContent as any);
+        const parts = [
+            ...(invisible ? [invisible] : []),
+            ...(unread > 0 ? [`🔔 ${unread}`] : []),
+            itemLabel,
+        ];
+        this.description = parts.join(' • ');
 
         const tooltipLines = [
             `Unit: ${this.name}`,

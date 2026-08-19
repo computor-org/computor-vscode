@@ -24,11 +24,16 @@ export interface VisibilitySource {
     visible?: boolean | null;
 }
 
-/** Marker appended to a hidden row's description in lecturer/tutor trees. */
-export const HIDDEN_BADGE = '👁 hidden';
-
-/** Marker for a row hidden by an ancestor rather than by itself. */
-export const HIDDEN_ABOVE_BADGE = '👁 hidden above';
+/**
+ * Marker shown on every row students cannot see.
+ *
+ * One wording regardless of whether the row was hidden here or by a unit above
+ * it: to the reader the fact that matters is "students do not see this", and
+ * two variants only invited the question of what the difference meant. Where
+ * the decision was made still drives behaviour — see `isHiddenHere` — it just
+ * does not need its own label.
+ */
+export const INVISIBLE_BADGE = '👁 invisible';
 
 /**
  * Whether students can currently see this content.
@@ -57,10 +62,9 @@ export function isHiddenHere(content: VisibilitySource | null | undefined): bool
     return content?.visible === false;
 }
 
-/** The right badge for a hidden row, or undefined when it is visible. */
+/** The badge for a hidden row, or undefined when it is visible. */
 export function hiddenBadge(content: VisibilitySource | null | undefined): string | undefined {
-    if (!isHidden(content)) { return undefined; }
-    return isHiddenHere(content) ? HIDDEN_BADGE : HIDDEN_ABOVE_BADGE;
+    return isHidden(content) ? INVISIBLE_BADGE : undefined;
 }
 
 /**
