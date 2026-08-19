@@ -16,6 +16,7 @@ import type { CourseMemberRepositoryGet } from '../types/courseGit';
 import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
 import { propagateForgejoCloneCredential } from './ForgejoCredentialFanout';
+import { PushHealthRegistry } from './PushHealthRegistry';
 import { isGitAuthenticationError } from '../utils/gitErrors';
 
 interface RepositoryInfo {
@@ -637,6 +638,7 @@ export class StudentRepositoryManager {
       const authUrl = addBasicCredentialsToGitUrl(repo.http_url, repo.clone_username, repo.clone_token);
       await execAsyncWithTimeout(`git remote set-url origin "${authUrl}"`, { cwd: repoPath, timeout: 15_000 });
       console.log(`[StudentRepositoryManager] Refreshed managed Forgejo credentials for ${repoPath}`);
+      PushHealthRegistry.markHealthy(repoPath);
       // One token per user and server: the rotation that broke this repo broke
       // every sibling clone on the server too, so heal them all while we hold
       // the fresh credential.

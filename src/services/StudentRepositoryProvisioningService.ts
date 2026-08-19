@@ -9,6 +9,7 @@ import { addBasicCredentialsToGitUrl, addTokenToGitUrl, redactGitCredentials } f
 import { extractZipBuffer } from '../utils/zipHelpers';
 import { RepositoryTokenManager } from './RepositoryTokenManager';
 import { propagateForgejoCloneCredential } from './ForgejoCredentialFanout';
+import { PushHealthRegistry } from './PushHealthRegistry';
 import { isGitAuthenticationError } from '../utils/gitErrors';
 import { URL } from 'url';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
@@ -442,11 +443,13 @@ export class StudentRepositoryProvisioningService {
         // Forgejo: provisioning ROTATES the per-user-per-server clone token, so
         // running it for every course in this loop would invalidate the
         // credential of every previously-synced sibling (issue #332). Only
-        // provision when the local credential actually stopped working.
+        // provision when the local credential actually stopped working — and
+        // when even that heal fails, escalate: pushes are silently dying.
         if (repo.provider_type === 'forgejo') {
           const repoPath = this.localPathFor(repo);
           const auth = await this.remoteAuthWorks(repoPath);
           if (auth === 'ok') {
+            PushHealthRegistry.markHealthy(repoPath);
             await this.syncForgejoTemplateWithLocalCreds(courseId, repoPath, opts?.onProgress ?? (() => {}));
             continue;
           }
@@ -454,6 +457,18 @@ export class StudentRepositoryProvisioningService {
             console.warn(`[StudentRepositoryProvisioningService] Git server unreachable for course ${courseId}; skipping sync.`);
             continue;
           }
+          try {
+            const outcome = await this.setUpRepository(courseId, opts);
+            if (outcome.status === 'cloned' || outcome.status === 'already-cloned') {
+              PushHealthRegistry.markHealthy(repoPath);
+            } else {
+              this.escalatePushFailure(repoPath);
+            }
+          } catch (error) {
+            this.escalatePushFailure(repoPath);
+            throw error;
+          }
+          continue;
         }
 
         await this.setUpRepository(courseId, opts);
@@ -462,6 +477,30 @@ export class StudentRepositoryProvisioningService {
       }
     }
   }
+
+  /**
+   * A repo whose credential is dead and whose automatic heal failed means every
+   * push — including from the Source Control panel — dies with a bare 401. That
+   * is critical enough for a popup (once per repo and session) on top of the
+   * tree's persistent ⚠ badge.
+   */
+  private escalatePushFailure(repoPath: string): void {
+    PushHealthRegistry.markFailing(repoPath);
+    if (this.pushFailureAlerted.has(repoPath)) {
+      return;
+    }
+    this.pushFailureAlerted.add(repoPath);
+    void notify.error(
+      'Pushing to your course repository is failing and could not be repaired automatically. Committed work stays on this machine until it is fixed.',
+      'Fix Authentication'
+    ).then((choice) => {
+      if (choice === 'Fix Authentication') {
+        void vscode.commands.executeCommand('computor.student.fixRepositoryAuth');
+      }
+    });
+  }
+
+  private readonly pushFailureAlerted = new Set<string>();
 
   /** Can the credential embedded in origin still authenticate against the server? */
   private async remoteAuthWorks(repoPath: string): Promise<'ok' | 'auth-failed' | 'unreachable'> {
