@@ -8,6 +8,7 @@ import { ComputorApiService } from './ComputorApiService';
 import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { notify } from '../utils/notify';
+import { revealUri } from '../utils/reveal';
 
 export class LecturerRepositoryManager {
   private workspaceStructure: WorkspaceStructureManager;
@@ -123,7 +124,7 @@ export class LecturerRepositoryManager {
 
         const choice = await notify.warning(message, ...actions);
         if (choice === 'Open Backup Folder' && backupPath) {
-          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(backupPath));
+          await revealUri(vscode.Uri.file(backupPath));
         }
       }
     }

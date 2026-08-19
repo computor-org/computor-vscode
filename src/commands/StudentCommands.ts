@@ -21,10 +21,13 @@ import { getExampleVersionId } from '../utils/deploymentHelpers';
 import JSZip from 'jszip';
 import { extractZipBuffer } from '../utils/zipHelpers';
 import { commandRegistrar } from './commandHelpers';
-import { redactGitCredentials } from '../utils/gitUrlHelpers';
+import { extractOriginFromGitUrl, redactGitCredentials } from '../utils/gitUrlHelpers';
+import { listStudentRepositories } from '../services/ForgejoCredentialFanout';
+import { execAsyncWithTimeout } from '../utils/exec';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
 import { notify } from '../utils/notify';
+import { revealUri } from '../utils/reveal';
 import { submissionBudget, testBudget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
 import {
@@ -594,7 +597,7 @@ export class StudentCommands {
           if (!dest) { return; }
           await fs.promises.writeFile(dest.fsPath, buffer);
           void notify.info(`Template saved to ${dest.fsPath}`, 'Reveal').then(c => {
-            if (c === 'Reveal') { void vscode.commands.executeCommand('revealFileInOS', dest); }
+            if (c === 'Reveal') { void revealUri(dest); }
           });
           return;
         }
@@ -613,7 +616,7 @@ export class StudentCommands {
           if (c === 'Open Folder') {
             void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(destDir), { forceNewWindow: true });
           } else if (c === 'Reveal') {
-            void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(destDir));
+            void revealUri(vscode.Uri.file(destDir));
           }
         });
       }
@@ -640,6 +643,13 @@ export class StudentCommands {
     // Merge new course-template commits into the student's repository.
     register('computor.student.updateFromTemplate', async (arg?: any) => {
       await this.updateFromTemplate(arg);
+    });
+
+    // Escape hatch when a push from the Source Control panel fails with an
+    // authentication error (issue #332): refresh the credentials of every
+    // cloned course repository.
+    register('computor.student.fixRepositoryAuth', async () => {
+      await this.fixRepositoryAuth();
     });
 
     // Refresh student view
@@ -1768,11 +1778,59 @@ export class StudentCommands {
         // popup open until the user dismisses the success toast.
         void notify.info(summary, 'Reveal').then(choice => {
           if (choice === 'Reveal') {
-            void vscode.commands.executeCommand('revealFileInOS', dest);
+            void revealUri(dest);
           }
         });
       }
     );
+  }
+
+  private async fixRepositoryAuth(): Promise<void> {
+    const manager = this.repositoryManager;
+    if (!manager) {
+      notify.warning('Repository management is not available in this session.');
+      return;
+    }
+    const repoPaths = await listStudentRepositories();
+    if (repoPaths.length === 0) {
+      notify.info('No cloned course repositories found.');
+      return;
+    }
+
+    await notify.progress('Fixing repository authentication…', async (progress) => {
+      // One refresh per git server: a managed-Forgejo refresh re-provisions
+      // (rotating the per-user-per-server token) and fans the fresh credential
+      // out to the server's other clones — refreshing every repo individually
+      // would rotate the token it just wrote.
+      const repoByHost = new Map<string, string>();
+      for (const repoPath of repoPaths) {
+        try {
+          const { stdout } = await execAsyncWithTimeout('git remote get-url origin', { cwd: repoPath, timeout: 15_000 });
+          const host = extractOriginFromGitUrl(stdout.trim());
+          if (host && !repoByHost.has(host)) {
+            repoByHost.set(host, repoPath);
+          }
+        } catch {
+          // No origin remote — nothing to fix for this clone.
+        }
+      }
+
+      let fixed = 0;
+      for (const [host, repoPath] of repoByHost) {
+        progress.report({ message: `Refreshing credentials for ${host}…` });
+        if (await manager.refreshRepositoryAuth(repoPath)) {
+          fixed++;
+        }
+      }
+
+      if (fixed > 0 && fixed === repoByHost.size) {
+        void notify.info('Repository authentication refreshed. Retry your push.');
+      } else if (fixed > 0) {
+        void notify.warning(`Refreshed credentials for ${fixed} of ${repoByHost.size} git server(s). Check the logs for the rest.`);
+      } else {
+        void notify.warning('Could not refresh repository credentials. Check the logs for details.');
+      }
+    });
   }
 
   private async showMessages(item?: any): Promise<void> {

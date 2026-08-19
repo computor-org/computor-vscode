@@ -83,6 +83,14 @@
       copyBtn.addEventListener('click', () => sendMessage('copyCloneUrl', { url: actions.cloneUrl }));
       actionsContainer.appendChild(copyBtn);
     }
+
+    if (actions.localPath) {
+      const copyPathBtn = document.createElement('button');
+      copyPathBtn.className = 'btn ghost';
+      copyPathBtn.textContent = 'Copy Local Path';
+      copyPathBtn.addEventListener('click', () => sendMessage('copyLocalPath', { path: actions.localPath }));
+      actionsContainer.appendChild(copyPathBtn);
+    }
   }
 
   function renderGradingHistory(history) {

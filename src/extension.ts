@@ -31,6 +31,7 @@ import { ExtensionUpdateService } from './services/ExtensionUpdateService';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
+import { revealUri } from './utils/reveal';
 import {
   OrganizationTreeItem as LecturerOrganizationTreeItem,
   CourseFamilyTreeItem as LecturerCourseFamilyTreeItem,
@@ -1068,8 +1069,7 @@ class UnifiedController {
     const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico'];
     // Overlaps BINARY_EXTENSIONS in utils/exampleFileWriter, kept separate
     // because this list is about what an artifact viewer can present, not about
-    // how bytes are written. Note `revealFileInOS` below does nothing under
-    // code-server, where there is no OS to reveal into.
+    // how bytes are written.
     const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat'];
 
     if (imageExtensions.includes(ext)) {
@@ -1083,7 +1083,7 @@ class UnifiedController {
       }
       await this.artifactsPanel.add(filePath);
     } else if (binaryExtensions.includes(ext)) {
-      await vscode.commands.executeCommand('revealFileInOS', fileUri);
+      await revealUri(fileUri);
       notify.info(`Binary file revealed in file explorer: ${filePath.split('/').pop()}`);
     } else {
       await openFile(fileUri, { preview: false });

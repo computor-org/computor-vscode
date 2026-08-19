@@ -27,6 +27,9 @@ import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
+import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
+import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
+import { AssignmentGitBadges, assignmentGitIndicator, assignmentGitTooltipLines, courseGitIndicator, courseGitTooltipLines } from '../gitIndicators';
 
 /** Resolved course-level-git state for one course (cached per session). */
 interface CourseGitModel {
@@ -51,9 +54,16 @@ interface ContentNode {
     unreadMessageCount?: number;
 }
 
-// Interface for repository cloning items  
+// Interface for repository cloning items
 interface CloneRepositoryItem {
     submissionGroup: SubmissionGroupStudentList;
+}
+
+/** Git state of one course repo, threaded into item construction (issue #332). */
+interface AssignmentGitContext {
+    repoRoot: string;
+    state: RepoWorkState;
+    pushFailing: boolean;
 }
 
 
@@ -80,7 +90,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     // Track individual assignments where setup has already been attempted (to avoid repeated popups)
     private assignmentsSetupAttempted: Set<string> = new Set();
     private wsSubscription = new CourseChannelSubscription('student-tree');
-    
+    // Git work state per course repo root (● / ↑ badges); promise-cached so
+    // concurrent renders share one git invocation, cleared by the watcher.
+    private repoWorkStateCache: Map<string, Promise<RepoWorkState>> = new Map();
+    private gitBadgeRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+
     constructor(
         apiService: ComputorApiService,
         courseSelection: CourseSelectionService,
@@ -94,7 +108,125 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             // on the new model; needs the extension context for secret storage.
             this.provisioning = new StudentRepositoryProvisioningService(context, apiService);
             this.loadExpandedStates();
+            this.setupStudentDirWatcher(context);
         }
+    }
+
+    /**
+     * Anything changing under `student/` — edits made outside VS Code, commits
+     * and pushes (both touch `.git`) — re-reads git state so the ● / ↑ badges
+     * track reality (issue #332). Re-render only: API caches stay warm, so a
+     * burst of file events costs local git + fs work, not requests.
+     */
+    private setupStudentDirWatcher(context: vscode.ExtensionContext): void {
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!wsRoot) {
+            return;
+        }
+        const watcher = vscode.workspace.createFileSystemWatcher(
+            new vscode.RelativePattern(vscode.Uri.file(path.join(wsRoot, 'student')), '**/*')
+        );
+        const schedule = () => this.scheduleGitBadgeRefresh();
+        watcher.onDidCreate(schedule);
+        watcher.onDidChange(schedule);
+        watcher.onDidDelete(schedule);
+        context.subscriptions.push(watcher);
+    }
+
+    private scheduleGitBadgeRefresh(): void {
+        if (this.gitBadgeRefreshTimer) {
+            clearTimeout(this.gitBadgeRefreshTimer);
+        }
+        this.gitBadgeRefreshTimer = setTimeout(() => {
+            this.gitBadgeRefreshTimer = undefined;
+            this.repoWorkStateCache.clear();
+            this.onDidChangeTreeDataEmitter.fire(undefined);
+        }, 300);
+    }
+
+    private getRepoWorkState(repoRoot: string): Promise<RepoWorkState> {
+        let cached = this.repoWorkStateCache.get(repoRoot);
+        if (!cached) {
+            cached = fs.existsSync(path.join(repoRoot, '.git'))
+                ? readRepoWorkState(repoRoot)
+                : Promise.resolve(EMPTY_WORK_STATE);
+            this.repoWorkStateCache.set(repoRoot, cached);
+        }
+        return cached;
+    }
+
+    /** Git context for a course's items, or undefined when it has no local repo. */
+    private async resolveGitContext(courseId: string): Promise<AssignmentGitContext | undefined> {
+        const model = this.gitModelCache.get(courseId);
+        if (!model?.configured || !model.repoRoot || model.mode === 'download') {
+            console.log(`[StudentTree] git badges skipped for course ${courseId}: ` +
+                (!model ? 'git model not resolved yet' : !model.configured ? 'course not on course-level git' :
+                 model.mode === 'download' ? 'download mode (no git)' : 'no local repo root'));
+            return undefined;
+        }
+        const state = await this.getRepoWorkState(model.repoRoot);
+        console.log(`[StudentTree] git badges for course ${courseId}: ${state.dirtyPaths.length} dirty, ` +
+            `${state.unpushedPaths.length} unpushed file(s), ${state.aheadCount} ahead (${model.repoRoot})`);
+        return { repoRoot: model.repoRoot, state, pushFailing: PushHealthRegistry.isFailing(model.repoRoot) };
+    }
+
+    /** ● / ↑ / ⚠ badges for one leaf node, or undefined when clean. */
+    private assignmentBadges(child: ContentNode, ctx?: AssignmentGitContext): AssignmentGitBadges | undefined {
+        // Same singular/plural recovery as buildContentTree — a leaf without a
+        // resolvable type can never be an assignment.
+        const contentType = child.contentType
+            || (child.courseContent as any)?.course_content_type
+            || (child.courseContent as any)?.course_content_types;
+        if (!ctx || contentType?.course_content_kind_id !== 'assignment') {
+            return undefined;
+        }
+        const dir = (child.courseContent as any)?.directory as string | undefined;
+        if (!dir || !path.isAbsolute(dir)) {
+            return undefined;
+        }
+        const relDir = path.relative(ctx.repoRoot, dir);
+        if (relDir.startsWith('..')) {
+            return undefined;
+        }
+        // relDir '' = the assignment IS the repo root (legacy one-repo-per-
+        // assignment layout) — then the whole repo's state is its state.
+        const dirty = relDir ? pathsTouchDirectory(relDir, ctx.state.dirtyPaths) : ctx.state.dirtyPaths.length > 0;
+        const unpushed = relDir ? pathsTouchDirectory(relDir, ctx.state.unpushedPaths) : ctx.state.unpushedPaths.length > 0;
+        if (!dirty && !unpushed) {
+            return undefined;
+        }
+        return { dirty, unpushed, pushFailing: ctx.pushFailing };
+    }
+
+    /**
+     * OR-combined badges of every assignment in the subtree, so units — and
+     * nested units — carry the glyph of whatever they contain (issue #332).
+     */
+    private subtreeBadges(node: ContentNode, ctx?: AssignmentGitContext): AssignmentGitBadges | undefined {
+        if (!ctx) {
+            return undefined;
+        }
+        let dirty = false;
+        let unpushed = false;
+        const stack: ContentNode[] = [node];
+        while (stack.length > 0 && !(dirty && unpushed)) {
+            const current = stack.pop()!;
+            for (const child of current.children.values()) {
+                stack.push(child);
+            }
+            if (current.isUnit || current === node) {
+                continue;
+            }
+            const badges = this.assignmentBadges(current, ctx);
+            if (badges) {
+                dirty = dirty || badges.dirty;
+                unpushed = unpushed || badges.unpushed;
+            }
+        }
+        if (!dirty && !unpushed) {
+            return undefined;
+        }
+        return { dirty, unpushed, pushFailing: ctx.pushFailing };
     }
     
     setWebSocketService(wsService: WebSocketService): void {
@@ -216,6 +348,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         this.forceRefresh = true;
         this.courseContentsCache.clear();
         this.gitModelCache.clear();
+        this.repoWorkStateCache.clear();
         this.contentKinds = [];
         this.itemIndex.clear();
         this.orgGrouping.clear();
@@ -551,8 +684,21 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 // Build and present under course root
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 // Optionally update root item description
+                const prevDescription = element.description;
                 element.updateCounts(courseContents.length);
-                return this.createTreeItems(tree);
+                const gitContext = await this.resolveGitContext(selectedCourseId);
+                element.setGitStatus(gitContext ? {
+                    dirty: gitContext.state.dirtyPaths.length > 0,
+                    aheadCount: gitContext.state.aheadCount,
+                    pushFailing: gitContext.pushFailing
+                } : undefined);
+                // The row itself was already rendered before this children query;
+                // a changed badge needs its own item refresh to become visible.
+                // Guarded on an actual change so it cannot loop.
+                if (element.description !== prevDescription) {
+                    this.onDidChangeTreeDataEmitter.fire(element);
+                }
+                return this.createTreeItems(tree, gitContext);
             } catch (e) {
                 console.error('Failed to load children for course root:', e);
                 return [];
@@ -562,7 +708,12 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         // Handle content items (units/folders)
         if (element instanceof CourseContentPathItem) {
             try {
-                const selectedCourseId = this.courseSelection.getCurrentCourseId();
+                // Units know their course through their own content — the course
+                // *selection* may be unset or point at a different course, which
+                // silently dropped the git badges of nested assignments.
+                const nodeContent = element.node.courseContent;
+                const selectedCourseId = (nodeContent ? await this.findCourseIdForContent(nodeContent) : undefined)
+                    ?? this.courseSelection.getCurrentCourseId();
                 if (!selectedCourseId) return this.createTreeItems(element.node);
                 let courseContents = this.courseContentsCache.get(selectedCourseId);
                 const shouldForce = this.forceRefresh;
@@ -574,15 +725,16 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     this.forceRefresh = false;
                 }
                 await this.annotateCourseGit(selectedCourseId, courseContents);
+                const gitContext = await this.resolveGitContext(selectedCourseId);
                 const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
                 const targetPath = element.node.courseContent?.path;
-                if (!targetPath) return this.createTreeItems(element.node);
+                if (!targetPath) return this.createTreeItems(element.node, gitContext);
                 const refreshedNode = this.findNodeByPath(tree, targetPath);
                 if (refreshedNode) {
-                    element.updateFromNode(refreshedNode);
-                    return this.createTreeItems(refreshedNode);
+                    element.updateFromNode(refreshedNode, this.subtreeBadges(refreshedNode, gitContext));
+                    return this.createTreeItems(refreshedNode, gitContext);
                 }
-                return this.createTreeItems(element.node);
+                return this.createTreeItems(element.node, gitContext);
             } catch (e) {
                 console.error('Failed to refresh unit children:', e);
                 return this.createTreeItems(element.node);
@@ -723,7 +875,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         return total;
     }
     
-    private createTreeItems(node: ContentNode): TreeItem[] {
+    private createTreeItems(node: ContentNode, gitContext?: AssignmentGitContext): TreeItem[] {
         const items: TreeItem[] = [];
         
         // Sort children by position if available, then alphabetically
@@ -747,7 +899,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 const unitItem = new CourseContentPathItem(
                     child.name || name,
                     child,
-                    this.getExpandedState(nodeId)
+                    this.getExpandedState(nodeId),
+                    this.subtreeBadges(child, gitContext)
                 );
                 if (unitItem.id) this.itemIndex.set(unitItem.id, unitItem);
                 items.push(unitItem);
@@ -758,7 +911,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     child.submissionGroup,
                     child.contentType,
                     this.courseSelection,
-                    this.getExpandedState(child.courseContent.id)
+                    this.getExpandedState(child.courseContent.id),
+                    this.assignmentBadges(child, gitContext)
                 );
                 if (contentItem.id) this.itemIndex.set(contentItem.id, contentItem);
                 items.push(contentItem);
@@ -1093,6 +1247,17 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         );
         courseItem.id = rootId;
         this.itemIndex.set(rootId, courseItem);
+        // Repo badge from the cached git model — resolving it here would cost
+        // two API calls per course at root render, so before the first course
+        // expansion (which caches the model) the row simply has no badge yet.
+        const gitContext = await this.resolveGitContext(courseId);
+        if (gitContext) {
+            courseItem.setGitStatus({
+                dirty: gitContext.state.dirtyPaths.length > 0,
+                aheadCount: gitContext.state.aheadCount,
+                pushFailing: gitContext.pushFailing
+            });
+        }
         return courseItem;
     }
     
@@ -1119,6 +1284,9 @@ abstract class TreeItem extends vscode.TreeItem {
 }
 
 class CourseRootItem extends TreeItem {
+    private readonly tooltipParts: string[];
+    private readonly courseDescription?: string | null;
+
     constructor(
         public readonly title: string,
         public readonly courseId: string,
@@ -1132,24 +1300,28 @@ class CourseRootItem extends TreeItem {
         this.iconPath = new vscode.ThemeIcon('book');
         this.contextValue = 'studentCourseRoot';
         this.updateCounts(itemCount);
-        this.tooltip = this.buildTooltip(courseDescription);
-        withDescription(this, title, courseDescription);
-    }
-
-    private buildTooltip(courseDescription?: string | null): string | vscode.MarkdownString {
-        const parts = [`Course: ${this.title}`];
+        this.courseDescription = courseDescription;
+        this.tooltipParts = [`Course: ${this.title}`];
         if (this.courseFamilyInfo) {
-            parts.push(`Course Family: ${this.courseFamilyInfo.title}`);
+            this.tooltipParts.push(`Course Family: ${this.courseFamilyInfo.title}`);
         }
         if (this.organizationInfo) {
-            parts.push(`Organization: ${this.organizationInfo.title}`);
+            this.tooltipParts.push(`Organization: ${this.organizationInfo.title}`);
         }
-        return tooltipWithDescription(parts, courseDescription);
+        this.tooltip = tooltipWithDescription(this.tooltipParts, courseDescription);
+        withDescription(this, title, courseDescription);
     }
 
     updateCounts(itemCount: number): void {
         // Intentionally no item count in the root title/description
         this.description = undefined;
+    }
+
+    /** Repo-level git state (issue #332): glyphs in the description, terse lines in the tooltip. */
+    setGitStatus(git?: { dirty: boolean; aheadCount: number; pushFailing: boolean }): void {
+        this.description = git ? courseGitIndicator(git.dirty, git.aheadCount, git.pushFailing) : undefined;
+        const gitLines = git ? courseGitTooltipLines(git.dirty, git.aheadCount, git.pushFailing) : [];
+        this.tooltip = tooltipWithDescription([...this.tooltipParts, ...gitLines], this.courseDescription);
     }
 }
 
@@ -1207,7 +1379,8 @@ class CourseContentPathItem extends TreeItem {
     constructor(
         public readonly name: string,
         public node: ContentNode,
-        expanded: boolean = false
+        expanded: boolean = false,
+        private gitBadges?: AssignmentGitBadges
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         
@@ -1242,8 +1415,9 @@ class CourseContentPathItem extends TreeItem {
         withDescription(this, name, node.courseContent?.description);
     }
 
-    public updateFromNode(node: ContentNode): void {
+    public updateFromNode(node: ContentNode, gitBadges?: AssignmentGitBadges): void {
         this.node = node;
+        this.gitBadges = gitBadges;
         this.applyCounts(node);
     }
 
@@ -1262,17 +1436,21 @@ class CourseContentPathItem extends TreeItem {
     private applyCounts(node: ContentNode): void {
         const count = this.countItems(node);
         const unread = node.unreadMessageCount ?? 0;
-        const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
         // Units carry the marker too, not just the assignments under them: the
         // unit is usually the row the lecturer actually hid, so leaving it
         // unmarked showed the consequence everywhere except the cause.
+        // (No "N items" here — nothing anyone acts on; the count lives in the
+        // tooltip.)
         const invisible = hiddenBadge(node.courseContent as any);
         const parts = [
             ...(invisible ? [invisible] : []),
             ...(unread > 0 ? [`🔔 ${unread}`] : []),
-            itemLabel,
         ];
-        this.description = parts.join(' • ');
+        // Git state of the assignments underneath (issue #332) — outside the
+        // bullet list so the glyphs read as one prefix, like on assignments.
+        const gitIndicator = this.gitBadges ? assignmentGitIndicator(this.gitBadges) : '';
+        const description = [gitIndicator, parts.join(' • ')].filter(Boolean).join(' ');
+        this.description = description || undefined;
 
         const tooltipLines = [
             `Unit: ${this.name}`,
@@ -1287,6 +1465,9 @@ class CourseContentPathItem extends TreeItem {
         }
         if (unread > 0) {
             tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+        }
+        if (this.gitBadges) {
+            tooltipLines.push(...assignmentGitTooltipLines(this.gitBadges));
         }
         this.tooltip = tooltipWithDescription(tooltipLines, node.courseContent?.description);
     }
@@ -1304,7 +1485,8 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         public readonly submissionGroup: SubmissionGroupStudentList | undefined,
         public readonly contentType: CourseContentTypeList | undefined,
         courseSelection: CourseSelectionService,
-        expanded: boolean = false
+        expanded: boolean = false,
+        private readonly gitBadges?: AssignmentGitBadges
     ) {
         void courseSelection; // Not used but required for type consistency
         const label = courseContent.title || courseContent.path;
@@ -1475,6 +1657,14 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // New compact metrics in brackets: Tests, Submissions, Points
         const entries: string[] = [];
 
+        // Git state first (issue #332): ● uncommitted, ↑ unpushed, ⚠ push failing.
+        if (this.gitBadges) {
+            const indicator = assignmentGitIndicator(this.gitBadges);
+            if (indicator) {
+                entries.push(`${indicator} `);
+            }
+        }
+
         // A hidden row reaching a student tree means the viewer is staff: the
         // backend drops these for students. Marked first so it reads before
         // the counters (issue #338).
@@ -1578,7 +1768,11 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
                 lines.push(`  - ${member.full_name || member.username}`);
             }
         }
-        
+
+        if (this.gitBadges) {
+            lines.push(...assignmentGitTooltipLines(this.gitBadges));
+        }
+
         this.tooltip = lines.join('\n');
     }
 

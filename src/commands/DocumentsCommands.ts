@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { ComputorApiService } from '../services/ComputorApiService';
 import type { DocumentsTreeProvider } from '../ui/tree/lecturer-documents/DocumentsTreeProvider';
 import { notify } from '../utils/notify';
+import { revealUri } from '../utils/reveal';
 import {
   DocumentsFileItem,
   DocumentsDirectoryItem,
@@ -211,7 +212,7 @@ export class DocumentsCommands {
       }
     }
     if (!absPath) { return; }
-    await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(absPath));
+    await revealUri(vscode.Uri.file(absPath));
   }
 
   private async copyPath(item: any, relative: boolean): Promise<void> {
@@ -512,7 +513,7 @@ export class DocumentsCommands {
       return;
     }
     await fs.promises.mkdir(root, { recursive: true }).catch(() => undefined);
-    await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(root));
+    await revealUri(vscode.Uri.file(root));
   }
 
   /** Validates a single path segment for the file/folder name inputs. */

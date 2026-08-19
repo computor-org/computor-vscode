@@ -7,6 +7,7 @@ import semver from 'semver';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { ExtensionVersionListItem, ExtensionVersionListResponse } from '../types/generated';
 import { notify } from '../utils/notify';
+import { revealUri } from '../utils/reveal';
 
 /**
  * Handles backend-driven extension updates by polling the Computor backend for new versions.
@@ -263,7 +264,7 @@ export class ExtensionUpdateService {
       'Open Extensions View'
     );
     if (choice === 'Reveal VSIX') {
-      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(savedVsixPath));
+      await revealUri(vscode.Uri.file(savedVsixPath));
     } else if (choice === 'Open Extensions View') {
       await vscode.commands.executeCommand('workbench.view.extensions');
     }

@@ -27,6 +27,29 @@ export function addBasicCredentialsToGitUrl(url: string, username: string, passw
 }
 
 /**
+ * True when an http(s) git URL embeds basic credentials in a shape OTHER than
+ * the `oauth2:<token>@` one produced by {@link addTokenToGitUrl} — i.e. a
+ * Forgejo managed clone credential (`<clone_username>:<clone_token>@`) or
+ * user-supplied basic auth. Callers that rewrite remotes with a GitLab-style
+ * token use this to leave such origins alone (computor-org/issues#332).
+ */
+export function hasNonOAuthEmbeddedCredentials(url: string): boolean {
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return false;
+  }
+  try {
+    const urlObj = new URL(trimmed);
+    if (!urlObj.username && !urlObj.password) {
+      return false;
+    }
+    return urlObj.username !== 'oauth2';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Redact embedded credentials from any text that may carry an authenticated git
  * URL — e.g. an exec/clone error whose `.message`/`.cmd` includes the command
  * (`git clone "https://user:token@host/…"`). Turns the userinfo into `***`. Run

@@ -4,7 +4,7 @@ import * as path from 'path';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { OrganizationList, CourseList } from '../types/generated';
 import { execAsync } from '../utils/exec';
-import { addTokenToGitUrl, extractOriginFromGitUrl, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
+import { addTokenToGitUrl, extractOriginFromGitUrl, hasNonOAuthEmbeddedCredentials, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 import { notify } from '../utils/notify';
 
 /**
@@ -421,6 +421,13 @@ export class RepositoryTokenManager {
           const { stdout: urlOutput } = await execAsync(`git remote get-url ${remote}`, { cwd: repoPath });
           const currentUrl = urlOutput.trim();
           if (!currentUrl) {
+            continue;
+          }
+
+          // A `user:token@` userinfo is a managed Forgejo clone credential (or
+          // user-supplied basic auth) — rewriting it to `oauth2:<token>@` would
+          // trade a working credential for a broken one (issue #332).
+          if (hasNonOAuthEmbeddedCredentials(currentUrl)) {
             continue;
           }
 

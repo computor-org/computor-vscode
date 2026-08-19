@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { revealUri } from '../utils/reveal';
 import { openFile } from '../ui/editorLayout';
 import type { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import {
@@ -90,7 +91,7 @@ export class StudentFileCommands {
     register('computor.student.fs.revealInOS', async (item: any) => {
       const target = this.resolveAnyPath(item);
       if (!target) { return; }
-      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(target.path));
+      await revealUri(vscode.Uri.file(target.path));
     });
     register('computor.student.fs.copyPath', async (item: any) => {
       const target = this.resolveAnyPath(item);

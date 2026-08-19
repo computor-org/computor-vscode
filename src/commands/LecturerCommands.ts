@@ -47,6 +47,7 @@ import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { revealUri } from '../utils/reveal';
 import {
   computeInsertPosition,
   computeReorderPosition,
@@ -401,7 +402,7 @@ export class LecturerCommands {
           if (choice === 'Sync') { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
           return;
         }
-        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
+        await revealUri(vscode.Uri.file(folder));
       } catch (e) {
         notify.error(`Failed to open assignment folder: ${e}`);
       }

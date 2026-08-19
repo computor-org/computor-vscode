@@ -172,6 +172,12 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.fixRepositoryAuth",
+        "title": "Fix Repository Authentication",
+        "icon": "$(key)",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.commitAssignment",
         "title": "Commit Assignment",
         "icon": "$(git-commit)",
