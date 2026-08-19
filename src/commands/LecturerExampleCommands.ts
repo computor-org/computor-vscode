@@ -6,17 +6,20 @@ import * as yaml from 'js-yaml';
 import JSZip from 'jszip';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { ExampleTreeItem, ExampleRepositoryTreeItem, CheckedOutGroupTreeItem, CheckedOutVersionTreeItem, FileSystemTreeItem, RepositoryFilterToggleItem, LecturerExampleTreeProvider } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
+import type { MergedExample } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import { ExampleUploadRequest, ExampleRepositoryCreate, CourseContentCreate, CourseContentList, CourseList, CodeAbilityMeta } from '../types/generated';
 import { writeExampleFiles } from '../utils/exampleFileWriter';
 import { ExampleDetailWebviewProvider } from '../ui/webviews/ExampleDetailWebviewProvider';
 import { TestYamlEditorWebviewProvider } from '../ui/webviews/TestYamlEditorWebviewProvider';
 import { MetaYamlEditorWebviewProvider } from '../ui/webviews/MetaYamlEditorWebviewProvider';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
-import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersionPath, snapshotWorkingToVersion } from '../utils/checkedOutExampleManager';
-import type { CheckoutMetadata } from '../utils/checkedOutExampleManager';
+import { writeCheckoutMetadata, readCheckoutMetadata, getWorkingPath, getVersionPath, snapshotWorkingToVersion, isWorkingCopyDirty } from '../utils/checkedOutExampleManager';
+import type { CheckoutMetadata, CheckedOutExampleGroup } from '../utils/checkedOutExampleManager';
 import { ComputorTestingInstaller } from '../services/ComputorTestingInstaller';
 import { shouldExcludeExampleEntry } from '../utils/exampleExcludePatterns';
 import { computeExampleDiff } from '../utils/exampleDiffHelper';
+import { planReplacements, applyReplacements, totalHits } from '../utils/exampleTextReplace';
+import type { ReplaceOptions, ReplaceTarget } from '../utils/exampleTextReplace';
 import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
@@ -150,8 +153,20 @@ export class LecturerExampleCommands {
     });
 
     // Checkout all filtered examples from repository
-    register('computor.lecturer.checkoutAllFilteredExamples', async (item: ExampleRepositoryTreeItem) => {
-      await this.checkoutAllFilteredExamples(item);
+    register('computor.lecturer.checkoutAllFilteredExamples', async () => {
+      await this.checkoutAllFilteredExamples();
+    });
+
+    register('computor.lecturer.cleanupFilteredExamples', async () => {
+      await this.cleanupFilteredExamples(false);
+    });
+
+    register('computor.lecturer.cleanupAllFilteredExamples', async () => {
+      await this.cleanupFilteredExamples(true);
+    });
+
+    register('computor.lecturer.replaceInFilteredExamples', async () => {
+      await this.replaceInFilteredExamples();
     });
 
     // Checkout the example version bound to a course assignment
@@ -527,112 +542,485 @@ export class LecturerExampleCommands {
     }
   }
 
-  private async checkoutAllFilteredExamples(item: ExampleRepositoryTreeItem): Promise<void> {
-    if (!item?.repository) {
-      notify.error('Invalid repository item');
+  /**
+   * Which of the filtered examples a bulk re-checkout should overwrite
+   * (computor-org/issues#339).
+   *
+   * An absent or provably-clean working copy is fair game; one with edits in
+   * it is not, and is named in the summary instead. Local-only rows are not
+   * candidates at all -- there is no server side to download from.
+   *
+   * Static and free of `fs`/`vscode` so the rule that protects a lecturer's
+   * unsaved work can be tested directly.
+   */
+  static selectForCheckout(
+    merged: MergedExample[],
+    isDirty: (group: CheckedOutExampleGroup) => boolean = isWorkingCopyDirty
+  ): { selected: MergedExample[]; skipped: string[] } {
+    const selected: MergedExample[] = [];
+    const skipped: string[] = [];
+
+    for (const example of merged) {
+      if (!example.remote) { continue; }
+      if (example.local && isDirty(example.local)) {
+        skipped.push(example.identifier);
+      } else {
+        selected.push(example);
+      }
+    }
+
+    return { selected, skipped };
+  }
+
+  /**
+   * Which of the filtered examples a cleanup sweep should delete
+   * (computor-org/issues#340).
+   *
+   * `includeVersions` widens the candidates as well as the deletion: a
+   * snapshot-only example has nothing for the working-copy sweep to do, but is
+   * exactly what the full sweep exists to clear away. Changed work is
+   * protected at both depths.
+   */
+  static selectForCleanup(
+    merged: MergedExample[],
+    includeVersions: boolean,
+    isDirty: (group: CheckedOutExampleGroup) => boolean = isWorkingCopyDirty
+  ): { selected: MergedExample[]; skipped: string[] } {
+    const selected: MergedExample[] = [];
+    const skipped: string[] = [];
+
+    for (const example of merged) {
+      const hasSomethingToDelete = includeVersions
+        ? Boolean(example.local)
+        : Boolean(example.local?.workingVersion);
+      if (!hasSomethingToDelete) { continue; }
+
+      if (isDirty(example.local!)) {
+        skipped.push(example.identifier);
+      } else {
+        selected.push(example);
+      }
+    }
+
+    return { selected, skipped };
+  }
+
+  /**
+   * What the bulk actions are scoped to, in one line and in the same words for
+   * all three, so "according to the filter settings" is never left to guesswork
+   * in the confirmation dialog.
+   */
+  private describeScope(): string {
+    const filters = this.treeProvider.describeActiveFilters();
+    return filters.length > 0
+      ? `Filters: ${filters.join(', ')}`
+      : 'No filters set - this covers every example.';
+  }
+
+  /**
+   * The house form for a bulk result: how much of the batch landed, the first
+   * few errors, and skips reported apart from failures so "skipped" never
+   * reads as "broken".
+   */
+  private reportBulkOutcome(
+    doneLabel: string,
+    failingLabel: string,
+    successCount: number,
+    attempted: number,
+    errors: string[],
+    skipped: string[],
+    skipReason: string
+  ): void {
+    const skippedNote = skipped.length > 0
+      ? ` ${skipped.length} skipped - ${skipReason}.`
+      : '';
+
+    if (errors.length === 0) {
+      notify.info(`${doneLabel} ${successCount} example(s).${skippedNote}`);
       return;
     }
 
+    const shown = errors.length > 3 ? errors.slice(0, 3).join('; ') + '...' : errors.join('; ');
+    if (successCount > 0) {
+      notify.warning(`${doneLabel} ${successCount} of ${attempted}.${skippedNote} Errors: ${shown}`);
+    } else {
+      notify.error(`Failed to ${failingLabel} any example.${skippedNote} ${shown}`);
+    }
+  }
+
+  /**
+   * Checks out the latest version of every example matching the current
+   * filters (computor-org/issues#339).
+   *
+   * An existing local directory is not an error here - that was the complaint
+   * in the issue. A clean working copy is simply replaced, because it is
+   * provably identical to the snapshot it came from and nothing is lost. A
+   * working copy with edits in it is the one thing a bulk re-checkout must not
+   * touch, so it is skipped and named in the summary.
+   */
+  private async checkoutAllFilteredExamples(): Promise<void> {
     const examplesPath = this.getExamplesDir();
     if (!examplesPath) { return; }
     const versionsPath = this.getVersionsDir();
     if (!versionsPath) { return; }
 
-    try {
-      const filteredExamples = await this.treeProvider.getFilteredExamplesForRepository(item.repository);
-      if (filteredExamples.length === 0) {
-        notify.info('No examples match the current filters');
-        return;
+    const merged = await this.treeProvider.getFilteredMergedExamples();
+    if (!merged.some(m => m.remote)) {
+      notify.info('No examples match the current filters.');
+      return;
+    }
+
+    const { selected: toCheckout, skipped } = LecturerExampleCommands.selectForCheckout(merged);
+
+    if (toCheckout.length === 0) {
+      notify.info(
+        `Nothing checked out: all ${skipped.length} matching example(s) have local changes.`
+      );
+      return;
+    }
+
+    const detail = [
+      this.describeScope(),
+      '',
+      `${toCheckout.length} example(s) will be checked out at their latest version, replacing any unmodified local copy.`,
+      skipped.length > 0
+        ? `${skipped.length} will be left alone because they have local changes.`
+        : ''
+    ].filter(Boolean).join('\n');
+
+    const confirmed = await notify.confirm(
+      `Checkout the latest version of ${toCheckout.length} example(s)?`,
+      'Checkout',
+      detail
+    );
+    if (!confirmed) { return; }
+
+    await notify.progress('Checking out examples', async (progress) => {
+      let successCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < toCheckout.length; i++) {
+        const example = toCheckout[i]!;
+        const remote = example.remote!;
+
+        progress.report({
+          increment: 100 / toCheckout.length,
+          message: `(${i + 1}/${toCheckout.length}) ${remote.title}`
+        });
+
+        try {
+          const exampleData = await this.apiService.downloadExample(remote.id, false);
+          if (!exampleData) {
+            errors.push(`${remote.title}: failed to download`);
+            continue;
+          }
+
+          const workingDir = getWorkingPath(examplesPath, remote.directory);
+          if (fs.existsSync(workingDir)) {
+            fs.rmSync(workingDir, { recursive: true, force: true });
+          }
+          fs.mkdirSync(workingDir, { recursive: true });
+          writeExampleFiles(exampleData.files, workingDir);
+
+          const metadata: CheckoutMetadata = {
+            exampleId: remote.id,
+            repositoryId: example.repositoryId ?? '',
+            directory: remote.directory,
+            versionId: exampleData.version_id || '',
+            versionTag: exampleData.version_tag,
+            versionNumber: 0,
+            checkedOutAt: new Date().toISOString()
+          };
+          writeCheckoutMetadata(workingDir, metadata);
+
+          // The snapshot is what the tree diffs the working copy against, so it
+          // has to be refreshed alongside it or every example would come back
+          // looking modified.
+          snapshotWorkingToVersion(examplesPath, versionsPath, remote.directory, exampleData.version_tag);
+
+          successCount++;
+        } catch (error) {
+          errors.push(`${remote.title}: ${error}`);
+        }
       }
 
-      const activeFilters: string[] = [];
-      const searchQuery = this.treeProvider.getSearchQuery();
-      const selectedCategory = this.treeProvider.getSelectedCategory();
-      const selectedTags = this.treeProvider.getSelectedTags();
-      if (searchQuery) activeFilters.push(`search: "${searchQuery}"`);
-      if (selectedCategory) activeFilters.push(`category: ${selectedCategory}`);
-      if (selectedTags.length > 0) activeFilters.push(`tags: ${selectedTags.join(', ')}`);
-      const filterInfo = activeFilters.length > 0 ? ` with filters: ${activeFilters.join(', ')}` : '';
-
-      const confirm = await notify.info(
-        `Checkout ${filteredExamples.length} example(s)${filterInfo} to examples/?`, 'Yes', 'No'
+      this.treeProvider.refresh();
+      this.reportBulkOutcome(
+        'Checked out', 'check out',
+        successCount, toCheckout.length, errors,
+        skipped, 'they have local changes'
       );
-      if (confirm !== 'Yes') { return; }
+    });
+  }
 
-      await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Checking out examples',
-        cancellable: false
-      }, async (progress) => {
-        let successCount = 0;
-        const errors: string[] = [];
+  /**
+   * Removes local example data for the examples matching the current filters
+   * (computor-org/issues#340).
+   *
+   * Two depths, because they answer different needs. The working-copy sweep
+   * clears the editing area while keeping the snapshots, so a later checkout
+   * still has something to diff against. The full sweep also drops
+   * example_versions/, which is the only way an example leaves the tree
+   * altogether -- a snapshot on its own is enough to keep a row alive.
+   *
+   * Neither touches an example showing as changed. That is the one guarantee
+   * the issue asks for, and it holds at both depths.
+   */
+  private async cleanupFilteredExamples(includeVersions: boolean): Promise<void> {
+    const examplesPath = this.getExamplesDir();
+    if (!examplesPath) { return; }
+    const versionsPath = includeVersions ? this.getVersionsDir() : undefined;
+    if (includeVersions && !versionsPath) { return; }
 
-        for (let i = 0; i < filteredExamples.length; i++) {
-          const exampleItem = filteredExamples[i];
-          if (!exampleItem?.example) continue;
+    const merged = await this.treeProvider.getFilteredMergedExamples();
+    const { selected: toDelete, skipped } =
+      LecturerExampleCommands.selectForCleanup(merged, includeVersions);
 
-          progress.report({
-            increment: (100 / filteredExamples.length),
-            message: `(${i + 1}/${filteredExamples.length}) ${exampleItem.example.title}`
-          });
-
-          try {
-            const workingDir = getWorkingPath(examplesPath, exampleItem.example.directory);
-
-            if (fs.existsSync(workingDir)) {
-              errors.push(`${exampleItem.example.title}: already exists`);
-              continue;
-            }
-
-            const exampleData = await this.apiService.downloadExample(exampleItem.example.id, false);
-            if (!exampleData) {
-              errors.push(`${exampleItem.example.title}: Failed to download`);
-              continue;
-            }
-
-            fs.mkdirSync(workingDir, { recursive: true });
-            writeExampleFiles(exampleData.files, workingDir);
-
-            const metadata: CheckoutMetadata = {
-              exampleId: exampleItem.example.id,
-              repositoryId: exampleItem.repository.id,
-              directory: exampleItem.example.directory,
-              versionId: exampleData.version_id || '',
-              versionTag: exampleData.version_tag,
-              versionNumber: 0,
-              checkedOutAt: new Date().toISOString()
-            };
-            writeCheckoutMetadata(workingDir, metadata);
-
-            // Also create version snapshot in example_versions/
-            const versionDir = getVersionPath(versionsPath, exampleItem.example.directory, exampleData.version_tag);
-            if (fs.existsSync(versionDir)) {
-              fs.rmSync(versionDir, { recursive: true, force: true });
-            }
-            fs.mkdirSync(path.dirname(versionDir), { recursive: true });
-            fs.cpSync(workingDir, versionDir, { recursive: true });
-
-            successCount++;
-          } catch (error) {
-            errors.push(`${exampleItem.example.title}: ${error}`);
-          }
-        }
-
-        this.treeProvider.refresh();
-
-        if (successCount === filteredExamples.length) {
-          notify.info(`Checked out ${successCount} example(s)`);
-        } else if (successCount > 0) {
-          const errorMessage = errors.length > 3 ? errors.slice(0, 3).join('; ') + '...' : errors.join('; ');
-          notify.warning(`Checked out ${successCount} of ${filteredExamples.length}. Errors: ${errorMessage}`);
-        } else {
-          notify.error(`Failed to checkout examples. ${errors[0]}`);
-        }
-      });
-    } catch (error) {
-      console.error('Failed to checkout filtered examples:', error);
-      notify.error(`Failed to checkout examples: ${error}`);
+    if (toDelete.length === 0) {
+      notify.info(skipped.length > 0
+        ? `Nothing to clean up: all ${skipped.length} matching example(s) have local changes.`
+        : 'No checked-out examples match the current filters.');
+      return;
     }
+
+    const detail = [
+      this.describeScope(),
+      '',
+      includeVersions
+        ? `${toDelete.length} example(s) will lose their working copy in examples/ and every`
+        : `${toDelete.length} example(s) will have their working copy removed from examples/.`,
+      includeVersions
+        ? 'version snapshot in example_versions/, and will disappear from the tree until'
+        : 'Version snapshots under example_versions/ are kept, so an example that has any',
+      includeVersions
+        ? 'checked out again.'
+        : 'still shows in the tree with its versions under it.',
+      skipped.length > 0
+        ? `${skipped.length} will be kept because they have local changes.`
+        : ''
+    ].filter(Boolean).join('\n');
+
+    const confirmed = await notify.confirm(
+      includeVersions
+        ? `Delete all local data of ${toDelete.length} example(s)?`
+        : `Delete the local working copy of ${toDelete.length} example(s)?`,
+      'Delete',
+      detail
+    );
+    if (!confirmed) { return; }
+
+    let successCount = 0;
+    const errors: string[] = [];
+    for (const example of toDelete) {
+      const group = example.local!;
+      try {
+        const workingDir = group.workingVersion?.fullPath ?? getWorkingPath(examplesPath, group.directory);
+        fs.rmSync(workingDir, { recursive: true, force: true });
+        if (versionsPath) {
+          fs.rmSync(path.join(versionsPath, group.directory), { recursive: true, force: true });
+        }
+        successCount++;
+      } catch (error) {
+        errors.push(`${example.identifier}: ${error}`);
+      }
+    }
+
+    this.treeProvider.refresh();
+    this.reportBulkOutcome(
+      'Cleaned up', 'clean up',
+      successCount, toDelete.length, errors,
+      skipped, 'they have local changes'
+    );
+  }
+
+  /**
+   * Search and replace across every checked-out example matching the current
+   * filters - VS Code's Replace All, widened from one folder to a filtered set
+   * of examples (computor-org/issues#341).
+   *
+   * Only working copies under examples/ are rewritten, never the snapshots
+   * under example_versions/. That is what makes the edited examples light up
+   * as changed in the tree and arrive pre-ticked in Upload All Examples, which
+   * is where the version bump is chosen. Nothing is bumped here.
+   */
+  private async replaceInFilteredExamples(): Promise<void> {
+    const merged = await this.treeProvider.getFilteredMergedExamples();
+    const targets: ReplaceTarget[] = merged
+      .filter(m => m.local?.workingVersion)
+      .map(m => ({ directory: m.identifier, dirPath: m.local!.workingVersion!.fullPath }));
+
+    if (targets.length === 0) {
+      notify.info('No checked-out examples match the current filters. Run "Checkout Latest (Filtered)" first.');
+      return;
+    }
+
+    const options = await this.promptForReplacement(targets.length);
+    if (!options) { return; }
+
+    const plans = await notify.progress(
+      'Searching examples',
+      async () => planReplacements(targets, options)
+    );
+
+    const { files, replacements } = totalHits(plans);
+    if (replacements === 0) {
+      notify.info(`No matches for "${options.find}" in ${targets.length} example(s).`);
+      return;
+    }
+
+    const preview = plans.slice(0, 10)
+      .map(plan => `  ${plan.directory}: ${plan.total} in ${plan.files.length} file(s)`);
+    if (plans.length > 10) {
+      preview.push(`  ...and ${plans.length - 10} more`);
+    }
+
+    const detail = [
+      this.describeScope(),
+      '',
+      ...preview,
+      '',
+      'Only working copies under examples/ are rewritten. Version snapshots are left alone,',
+      'and no version is bumped - choose that in Upload All Examples.'
+    ].join('\n');
+
+    const confirmed = await notify.confirm(
+      `Replace ${replacements} occurrence(s) across ${files} file(s) in ${plans.length} example(s)?`,
+      'Replace',
+      detail
+    );
+    if (!confirmed) { return; }
+
+    const summary = await notify.progress(
+      'Replacing in examples',
+      async () => applyReplacements(plans, options)
+    );
+    this.treeProvider.refresh();
+
+    if (summary.errors.length === 0) {
+      notify.info(
+        `Replaced ${summary.replacements} occurrence(s) in ${summary.files} file(s) across ${summary.examples} example(s).`
+      );
+      return;
+    }
+
+    const shown = summary.errors.length > 3
+      ? summary.errors.slice(0, 3).join('; ') + '...'
+      : summary.errors.join('; ');
+    if (summary.replacements > 0) {
+      notify.warning(
+        `Replaced ${summary.replacements} occurrence(s) in ${summary.files} file(s). Errors: ${shown}`
+      );
+    } else {
+      notify.error(`Failed to replace anything. ${shown}`);
+    }
+  }
+
+  private async promptForReplacement(exampleCount: number): Promise<ReplaceOptions | undefined> {
+    const state = { regex: false, matchCase: false };
+
+    const find = await this.showToggleInput({
+      label: 'Find',
+      prompt: `Text to find across ${exampleCount} checked-out example(s)`,
+      state,
+      validate: (value) => {
+        if (!value) { return 'Enter the text to find.'; }
+        if (!state.regex) { return undefined; }
+        try {
+          new RegExp(value);
+          return undefined;
+        } catch (error) {
+          return `Invalid regular expression: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+    });
+    if (find === undefined) { return undefined; }
+
+    const replace = await this.showToggleInput({
+      label: 'Replace with',
+      prompt: state.regex
+        ? 'Replacement text - $1, $2 refer to capture groups. Empty deletes the matches.'
+        : 'Replacement text. Empty deletes the matches.',
+      state,
+      allowEmpty: true
+    });
+    if (replace === undefined) { return undefined; }
+
+    return { find, replace, regex: state.regex, matchCase: state.matchCase };
+  }
+
+  /**
+   * An input box carrying VS Code's two find toggles.
+   *
+   * Quick-input buttons have no on/off styling of their own, so the current
+   * state is spelled out in the title as well - otherwise a lecturer cannot
+   * tell whether they are about to run a regex across every example.
+   */
+  private showToggleInput(config: {
+    label: string;
+    prompt: string;
+    state: { regex: boolean; matchCase: boolean };
+    allowEmpty?: boolean;
+    validate?: (value: string) => string | undefined;
+  }): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      const input = vscode.window.createInputBox();
+      const caseButton: vscode.QuickInputButton = {
+        iconPath: new vscode.ThemeIcon('case-sensitive'),
+        tooltip: 'Toggle Match Case'
+      };
+      const regexButton: vscode.QuickInputButton = {
+        iconPath: new vscode.ThemeIcon('regex'),
+        tooltip: 'Toggle Use Regular Expression'
+      };
+
+      input.buttons = [caseButton, regexButton];
+      input.prompt = config.prompt;
+      input.placeholder = config.label;
+      input.ignoreFocusOut = true;
+
+      const applyTitle = () => {
+        input.title = `${config.label} - regex: ${config.state.regex ? 'on' : 'off'}, match case: ${config.state.matchCase ? 'on' : 'off'}`;
+      };
+      const revalidate = () => {
+        input.validationMessage = config.validate ? config.validate(input.value) : undefined;
+      };
+
+      let settled = false;
+      const finish = (value: string | undefined) => {
+        if (settled) { return; }
+        settled = true;
+        resolve(value);
+        input.hide();
+      };
+
+      input.onDidTriggerButton((button) => {
+        if (button === regexButton) { config.state.regex = !config.state.regex; }
+        if (button === caseButton) { config.state.matchCase = !config.state.matchCase; }
+        applyTitle();
+        revalidate();
+      });
+      input.onDidChangeValue(revalidate);
+      input.onDidAccept(() => {
+        const value = input.value;
+        if (!value && !config.allowEmpty) {
+          input.validationMessage = `Enter the text to ${config.label.toLowerCase()}.`;
+          return;
+        }
+        const problem = config.validate ? config.validate(value) : undefined;
+        if (problem) {
+          input.validationMessage = problem;
+          return;
+        }
+        finish(value);
+      });
+      input.onDidHide(() => {
+        finish(undefined);
+        input.dispose();
+      });
+
+      applyTitle();
+      input.show();
+    });
   }
 
   private getExamplesDir(): string | undefined {

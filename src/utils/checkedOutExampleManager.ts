@@ -3,6 +3,7 @@ import * as path from 'path';
 import { WorkspaceStructureManager } from './workspaceStructure';
 import { readMetaYamlVersion } from './metaYamlHelpers';
 import { normalizeSemVer } from './versionHelpers';
+import { hasExampleChanged } from './exampleDiffHelper';
 
 const METADATA_FILENAME = '.computor-example.json';
 
@@ -65,6 +66,31 @@ export function snapshotWorkingToVersion(examplesDir: string, versionsDir: strin
   fs.mkdirSync(path.dirname(versionDir), { recursive: true });
   fs.cpSync(workingDir, versionDir, { recursive: true });
   return versionDir;
+}
+
+/**
+ * Has the working copy drifted from the snapshot it was checked out from?
+ *
+ * A missing snapshot counts as dirty. The tree's own badge takes the opposite
+ * view -- no snapshot, nothing to compare, so no dot -- but the callers here
+ * overwrite or delete the working copy, and "we cannot prove this is safe to
+ * discard" has to mean "leave it alone" (computor-org/issues#339, #340).
+ *
+ * A group with no working copy is not dirty: there is nothing to protect.
+ */
+export function isWorkingCopyDirty(group: CheckedOutExampleGroup): boolean {
+  const working = group.workingVersion;
+  if (!working) { return false; }
+
+  let versionsDir: string;
+  try {
+    versionsDir = WorkspaceStructureManager.getInstance().getExampleVersionsPath();
+  } catch {
+    return true;
+  }
+
+  const snapshotDir = getVersionPath(versionsDir, group.directory, working.metadata.versionTag);
+  return hasExampleChanged(working.fullPath, snapshotDir);
 }
 
 export function scanCheckedOutExamples(): CheckedOutExampleGroup[] {

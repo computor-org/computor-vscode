@@ -32,7 +32,7 @@ interface WorkingDiffStatus {
   total: number;
 }
 
-interface MergedExample {
+export interface MergedExample {
   identifier: string;
   title: string;
   repositoryId: string | null;
@@ -599,39 +599,13 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   }
 
   private async getMergedExampleItems(parent: RootSectionTreeItem): Promise<vscode.TreeItem[]> {
-    const merged = await this.getMergedExamples();
-
-    // Apply filters
-    let filtered = merged;
-    if (this.selectedRepositoryIds.size > 0) {
-      filtered = filtered.filter(m =>
-        m.repositoryId !== null && this.selectedRepositoryIds.has(m.repositoryId)
-      );
-    }
-    if (this.searchQuery) {
-      const query = this.searchQuery.toLowerCase();
-      filtered = filtered.filter(m =>
-        m.title.toLowerCase().includes(query) ||
-        m.identifier.toLowerCase().includes(query) ||
-        (m.tags || []).some(t => t.toLowerCase().includes(query))
-      );
-    }
-    if (this.selectedCategory) {
-      filtered = filtered.filter(m => m.category === this.selectedCategory);
-    }
-    if (this.selectedTags.length > 0) {
-      filtered = filtered.filter(m =>
-        m.tags && this.selectedTags.every(tag => m.tags?.includes(tag))
-      );
-    }
+    const filtered = await this.getFilteredMergedExamples();
 
     if (filtered.length === 0) {
       const empty = new vscode.TreeItem('No examples match the current filters', vscode.TreeItemCollapsibleState.None);
       empty.iconPath = new vscode.ThemeIcon('info');
       return [empty];
     }
-
-    filtered.sort((a, b) => a.identifier.localeCompare(b.identifier));
 
     const expandIdentifier = this.expandIdentifier;
     this.expandIdentifier = undefined;
@@ -852,46 +826,59 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
     return Array.from(this.selectedRepositoryIds);
   }
 
-  async getFilteredExamplesForRepository(repository: ExampleRepositoryList): Promise<ExampleTreeItem[]> {
-    const examples = await this.getExamplesForRepository(repository);
-    const localGroups = this.getCheckedOut();
-    const localByExampleId = new Map<string, CheckedOutExampleGroup>();
-    for (const group of localGroups) {
-      const meta = group.versions[0]?.metadata;
-      if (meta?.exampleId) { localByExampleId.set(meta.exampleId, group); }
-    }
+  /**
+   * The examples the tree is currently showing: every filter applied, ordered
+   * the way the rows are.
+   *
+   * The bulk actions on the [Examples] row -- checkout, cleanup, replace --
+   * read from here too, so "according to the filter settings" means exactly
+   * what the lecturer can see. There is deliberately no second notion of
+   * "filtered" for them to drift away from
+   * (computor-org/issues#339, #340, #341).
+   */
+  async getFilteredMergedExamples(): Promise<MergedExample[]> {
+    const merged = await this.getMergedExamples();
 
-    let filtered = examples;
+    let filtered = merged;
+    if (this.selectedRepositoryIds.size > 0) {
+      filtered = filtered.filter(m =>
+        m.repositoryId !== null && this.selectedRepositoryIds.has(m.repositoryId)
+      );
+    }
     if (this.searchQuery) {
       const query = this.searchQuery.toLowerCase();
-      filtered = filtered.filter(ex =>
-        ex.title.toLowerCase().includes(query) ||
-        ex.identifier.toLowerCase().includes(query) ||
-        ex.directory.toLowerCase().includes(query) ||
-        (ex.tags && ex.tags.some(tag => tag.toLowerCase().includes(query)))
+      filtered = filtered.filter(m =>
+        m.title.toLowerCase().includes(query) ||
+        m.identifier.toLowerCase().includes(query) ||
+        (m.tags || []).some(t => t.toLowerCase().includes(query))
       );
     }
     if (this.selectedCategory) {
-      filtered = filtered.filter(ex => ex.category === this.selectedCategory);
+      filtered = filtered.filter(m => m.category === this.selectedCategory);
     }
     if (this.selectedTags.length > 0) {
-      filtered = filtered.filter(ex =>
-        ex.tags && this.selectedTags.every(tag => ex.tags?.includes(tag))
+      filtered = filtered.filter(m =>
+        m.tags && this.selectedTags.every(tag => m.tags?.includes(tag))
       );
     }
 
-    return filtered
-      .sort((a, b) => a.identifier.localeCompare(b.identifier))
-      .map(ex => new ExampleTreeItem({
-        identifier: ex.identifier,
-        title: ex.title,
-        repositoryId: repository.id,
-        repositoryName: repository.name,
-        remote: ex,
-        local: localByExampleId.get(ex.id),
-        category: ex.category,
-        tags: ex.tags
-      }));
+    return filtered.slice().sort((a, b) => a.identifier.localeCompare(b.identifier));
+  }
+
+  /**
+   * The active filters, phrased for a confirmation dialog:
+   * `['search: "matrix"', 'category: Advanced']`. Empty when nothing is
+   * filtered, which the callers read as "this covers every example".
+   */
+  describeActiveFilters(): string[] {
+    const parts: string[] = [];
+    if (this.searchQuery) { parts.push(`search: "${this.searchQuery}"`); }
+    if (this.selectedCategory) { parts.push(`category: ${this.selectedCategory}`); }
+    if (this.selectedTags.length > 0) { parts.push(`tags: ${this.selectedTags.join(', ')}`); }
+    if (this.selectedRepositoryIds.size > 0) {
+      parts.push(`repositories: ${this.selectedRepositoryIds.size} selected`);
+    }
+    return parts;
   }
 
   getExamplesPath(): string | undefined {

@@ -1,6 +1,9 @@
 import { expect } from 'chai';
 
+import * as vscode from 'vscode';
+
 import { LecturerExampleTreeProvider } from '../../../src/ui/tree/lecturer/LecturerExampleTreeProvider';
+import { WorkspaceStructureManager } from '../../../src/utils/workspaceStructure';
 
 /**
  * Search and the category/tag filters lived only as icons in the view's title
@@ -110,5 +113,151 @@ describe('example tree filters', () => {
     first.clearSearch();
 
     expect(makeProvider(state).getSearchQuery()).to.equal('');
+  });
+});
+
+/**
+ * The bulk actions on the [Examples] row -- checkout, cleanup, replace -- are
+ * all specified as acting "according to the filter settings"
+ * (computor-org/issues#339, #340, #341). They read the same list the tree
+ * renders, so the guarantee is structural rather than a second filter
+ * implementation kept in step by hand.
+ */
+
+function example(overrides: Record<string, unknown> = {}): any {
+  return {
+    id: 'ex-1',
+    directory: 'alpha',
+    identifier: 'alpha',
+    title: 'Alpha',
+    category: null,
+    tags: [],
+    example_repository_id: 'repo-1',
+    ...overrides
+  };
+}
+
+function providerWith(examplesByRepo: Record<string, any[]>, state: StoredState = {}): LecturerExampleTreeProvider {
+  const api = {
+    getExampleRepositories: async () =>
+      Object.keys(examplesByRepo).map(id => ({ id, name: `Repo ${id}`, source_type: 'git' })),
+    getExamples: async (repositoryId: string) => examplesByRepo[repositoryId] ?? []
+  };
+  return new LecturerExampleTreeProvider(fakeContext(state), api as any);
+}
+
+async function filteredIdentifiers(provider: LecturerExampleTreeProvider): Promise<string[]> {
+  const merged = await provider.getFilteredMergedExamples();
+  return merged.map(m => m.identifier);
+}
+
+describe('example filters drive the bulk actions', () => {
+  beforeEach(() => {
+    // No workspace: the local scan stays empty, so these cases are purely
+    // about the filter chain over the remote list.
+    (vscode.workspace as any).workspaceFolders = undefined;
+    (WorkspaceStructureManager as any).instance = undefined;
+  });
+
+  it('returns every example when nothing is filtered', async () => {
+    const provider = providerWith({
+      'repo-1': [example(), example({ id: 'ex-2', identifier: 'beta', title: 'Beta', directory: 'beta' })]
+    });
+
+    expect(await filteredIdentifiers(provider)).to.deep.equal(['alpha', 'beta']);
+  });
+
+  it('narrows by search across title, identifier and tags', async () => {
+    const provider = providerWith({
+      'repo-1': [
+        example({ title: 'Matrix multiplication' }),
+        example({ id: 'ex-2', identifier: 'beta', title: 'Beta', directory: 'beta' }),
+        example({ id: 'ex-3', identifier: 'gamma', title: 'Gamma', directory: 'gamma', tags: ['matrix'] })
+      ]
+    });
+
+    provider.setSearchQuery('matrix');
+    expect(await filteredIdentifiers(provider)).to.deep.equal(['alpha', 'gamma']);
+  });
+
+  it('narrows by category', async () => {
+    const provider = providerWith({
+      'repo-1': [
+        example({ category: 'Advanced' }),
+        example({ id: 'ex-2', identifier: 'beta', directory: 'beta', category: 'Basic' })
+      ]
+    });
+
+    provider.setCategory('Advanced');
+    expect(await filteredIdentifiers(provider)).to.deep.equal(['alpha']);
+  });
+
+  it('requires every selected tag, not just one of them', async () => {
+    const provider = providerWith({
+      'repo-1': [
+        example({ tags: ['loops', 'arrays'] }),
+        example({ id: 'ex-2', identifier: 'beta', directory: 'beta', tags: ['loops'] })
+      ]
+    });
+
+    provider.setTags(['loops', 'arrays']);
+    expect(await filteredIdentifiers(provider)).to.deep.equal(['alpha']);
+  });
+
+  it('narrows by repository', async () => {
+    const provider = providerWith({
+      'repo-1': [example()],
+      'repo-2': [example({ id: 'ex-2', identifier: 'beta', directory: 'beta', example_repository_id: 'repo-2' })]
+    });
+
+    provider.toggleRepositoryFilter('repo-2');
+    expect(await filteredIdentifiers(provider)).to.deep.equal(['beta']);
+  });
+
+  it('combines filters rather than letting the last one win', async () => {
+    const provider = providerWith({
+      'repo-1': [
+        example({ category: 'Advanced', tags: ['loops'] }),
+        example({ id: 'ex-2', identifier: 'beta', directory: 'beta', category: 'Advanced', tags: [] }),
+        example({ id: 'ex-3', identifier: 'gamma', directory: 'gamma', category: 'Basic', tags: ['loops'] })
+      ]
+    });
+
+    provider.setCategory('Advanced');
+    provider.setTags(['loops']);
+    expect(await filteredIdentifiers(provider)).to.deep.equal(['alpha']);
+  });
+
+  it('hands the bulk actions exactly the rows the tree is showing', async () => {
+    const provider = providerWith({
+      'repo-1': [
+        example({ category: 'Advanced' }),
+        example({ id: 'ex-2', identifier: 'beta', directory: 'beta', category: 'Basic' })
+      ]
+    });
+    provider.setCategory('Advanced');
+
+    const roots = await provider.getChildren();
+    const section = roots.find((item) => item.id === 'root-examples');
+    const rows = await provider.getChildren(section);
+
+    expect(rows.map((row) => String(row.label))).to.deep.equal(await filteredIdentifiers(provider));
+  });
+
+  it('describes the active filters for the confirmation dialogs', async () => {
+    const provider = providerWith({ 'repo-1': [] });
+    expect(provider.describeActiveFilters()).to.deep.equal([]);
+
+    provider.setSearchQuery('matrix');
+    provider.setCategory('Advanced');
+    provider.setTags(['loops', 'arrays']);
+    provider.toggleRepositoryFilter('repo-1');
+
+    expect(provider.describeActiveFilters()).to.deep.equal([
+      'search: "matrix"',
+      'category: Advanced',
+      'tags: loops, arrays',
+      'repositories: 1 selected'
+    ]);
   });
 });

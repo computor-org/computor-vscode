@@ -420,8 +420,26 @@
       },
       {
         "command": "computor.lecturer.checkoutAllFilteredExamples",
-        "title": "Checkout All Filtered Examples",
+        "title": "Checkout Latest (Filtered)",
         "icon": "$(cloud-download)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.cleanupFilteredExamples",
+        "title": "Clean Up Local Examples (Filtered)",
+        "icon": "$(trash)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.cleanupAllFilteredExamples",
+        "title": "Clean Up All Examples (Filtered)",
+        "icon": "$(clear-all)",
+        "category": "Computor Examples"
+      },
+      {
+        "command": "computor.lecturer.replaceInFilteredExamples",
+        "title": "Replace in All Filtered Examples",
+        "icon": "$(replace-all)",
         "category": "Computor Examples"
       },
       {
@@ -2065,8 +2083,23 @@
         },
         {
           "command": "computor.lecturer.checkoutAllFilteredExamples",
-          "when": "view == computor.lecturer.examples && viewItem == exampleRepository",
-          "group": "1_actions@1"
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "computor.lecturer.replaceInFilteredExamples",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "computor.lecturer.cleanupFilteredExamples",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples",
+          "group": "3_danger@1"
+        },
+        {
+          "command": "computor.lecturer.cleanupAllFilteredExamples",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples",
+          "group": "3_danger@2"
         },
         {
           "command": "computor.lecturer.uploadExample",
