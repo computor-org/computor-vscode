@@ -972,6 +972,10 @@ class UnifiedController {
     const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
     commands.registerCommands();
 
+    // Filesystem actions on the tree's course/unit/assignment/file rows.
+    const { StudentFileCommands } = await import('./commands/StudentFileCommands');
+    new StudentFileCommands(this.context, tree).registerCommands();
+
   }
 
   /**
