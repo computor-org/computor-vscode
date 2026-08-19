@@ -150,7 +150,8 @@ export class BearerTokenHttpClient extends HttpClient {
     method: import('../types/HttpTypes').HttpMethod,
     endpoint: string,
     data?: any,
-    params?: Record<string, any>
+    params?: Record<string, any>,
+    responseType?: import('../types/HttpTypes').HttpRequestConfig['responseType']
   ): Promise<import('../types/HttpTypes').HttpResponse<T>> {
     // Block requests during maintenance mode (except auth and maintenance status endpoints)
     if (this._maintenanceMode && !MAINTENANCE_EXEMPT_PREFIXES.some(p => endpoint.startsWith(p))) {
@@ -177,7 +178,7 @@ export class BearerTokenHttpClient extends HttpClient {
 
     try {
       // Make the request
-      const response = await super.request<T>(method, endpoint, data, params);
+      const response = await super.request<T>(method, endpoint, data, params, responseType);
       return response;
     } catch (error: any) {
       if (error?.status !== 401) {
@@ -190,7 +191,7 @@ export class BearerTokenHttpClient extends HttpClient {
         try {
           await this.refreshAuth();
           console.log('[BearerTokenHttpClient] Token refreshed, retrying request');
-          return await super.request<T>(method, endpoint, data, params);
+          return await super.request<T>(method, endpoint, data, params, responseType);
         } catch (refreshError: any) {
           // Refresh failed (or the retry still 401'd) → the session can't be
           // renewed. Trip the breaker so we stop hammering the backend.

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { showOptions } from '../ui/editorLayout';
+import { openFile } from '../ui/editorLayout';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
@@ -1293,8 +1293,7 @@ export class LecturerCommands {
 
       await fs.promises.writeFile(targetPath, '');
       this.treeDataProvider.refreshNode(item);
-      const document = await vscode.workspace.openTextDocument(targetPath);
-      await vscode.window.showTextDocument(document, showOptions(targetPath, { preview: false }));
+      await openFile(targetPath, { preview: false });
       notify.info(`Created file: ${relativePath}`);
     } catch (error: any) {
       notify.error(`Failed to create file: ${error?.message || error}`);
