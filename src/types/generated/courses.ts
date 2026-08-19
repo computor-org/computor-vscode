@@ -666,6 +666,7 @@ export interface CourseContentStudentGet {
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  max_submissions?: number | null;
   testing_service_id?: string | null;
   unread_message_count?: number;
   result?: ResultStudentGet | null;
@@ -694,6 +695,7 @@ export interface CourseContentStudentList {
   result_count: number;
   submission_count: number;
   max_test_runs?: number | null;
+  max_submissions?: number | null;
   testing_service_id?: string | null;
   directory?: string | null;
   color: string;

@@ -94,6 +94,7 @@ export const ErrorCodes = {
   CONTENT_006: "CONTENT_006", // Deletion Blocked by Student Submissions
   CONTENT_007: "CONTENT_007", // Deletion Blocked by Descendant Submissions
   CONTENT_008: "CONTENT_008", // Content Type Kind Change Blocked
+  CONTENT_009: "CONTENT_009", // Invalid Content Move
   VERSION_001: "VERSION_001", // Example Version Already Exists
   DEPLOY_001: "DEPLOY_001", // Assignment Not Released
   DEPLOY_002: "DEPLOY_002", // Deployment Not Found
@@ -108,6 +109,9 @@ export const ErrorCodes = {
   SUBMIT_006: "SUBMIT_006", // Version Identifier Required
   SUBMIT_007: "SUBMIT_007", // Test Identifier Required
   SUBMIT_008: "SUBMIT_008", // Artifact Already Tested
+  SUBMIT_009: "SUBMIT_009", // Maximum Submissions Reached
+  SUBMIT_010: "SUBMIT_010", // Test and Submission Limits Exhausted
+  SUBMIT_011: "SUBMIT_011", // Submission Cannot Be Withdrawn
   TASK_001: "TASK_001", // Task Not Found
   TASK_002: "TASK_002", // Task Submission Failed
   TASK_003: "TASK_003", // Unsupported Execution Backend
@@ -634,6 +638,20 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     retryAfter: undefined,
     documentationUrl: undefined,
   },
+  CONTENT_009: {
+    code: "CONTENT_009",
+    httpStatus: 400,
+    category: ErrorCategory.VALIDATION,
+    severity: ErrorSeverity.WARNING,
+    title: "Invalid Content Move",
+    message: {
+      plain: "This content cannot be moved to that place in the course. Assignments can only live inside units (or at the course root), and a unit cannot be moved inside an assignment.",
+      markdown: "**Invalid Content Move**\n\nThe target position does not fit the course structure: the parent must exist, it must be a kind that can hold children (a unit), and the moved content must be a kind that may sit inside a parent. Pick a unit as the target, or move the content to the course root.",
+      html: "<strong>Invalid Content Move</strong><p>The target position does not fit the course structure: the parent must exist, it must be a kind that can hold children (a unit), and the moved content must be a kind that may sit inside a parent. Pick a unit as the target, or move the content to the course root.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: undefined,
+  },
   VERSION_001: {
     code: "VERSION_001",
     httpStatus: 409,
@@ -767,9 +785,9 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     severity: ErrorSeverity.WARNING,
     title: "Maximum Test Runs Exceeded",
     message: {
-      plain: "You have reached the maximum number of test runs for this submission.",
-      markdown: "**Maximum Test Runs Exceeded**\n\nYou have reached the maximum number of test runs allowed for this submission.",
-      html: "<strong>Maximum Test Runs Exceeded</strong><p>You have reached the maximum number of test runs allowed.</p>",
+      plain: "You have used all the test runs allowed for this assignment.",
+      markdown: "**Maximum Test Runs Exceeded**\n\nYou have used all the test runs allowed for this assignment. The budget covers the whole assignment, not a single upload.",
+      html: "<strong>Maximum Test Runs Exceeded</strong><p>You have used all the test runs allowed for this assignment.</p>",
     },
     retryAfter: undefined,
     documentationUrl: "/docs/testing#limits",
@@ -829,6 +847,48 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     },
     retryAfter: undefined,
     documentationUrl: "/docs/testing#duplicate-tests",
+  },
+  SUBMIT_009: {
+    code: "SUBMIT_009",
+    httpStatus: 400,
+    category: ErrorCategory.VALIDATION,
+    severity: ErrorSeverity.WARNING,
+    title: "Maximum Submissions Reached",
+    message: {
+      plain: "You have used all the submissions allowed for this assignment.",
+      markdown: "**Maximum Submissions Reached**\n\nYou have used all the submissions allowed for this assignment.",
+      html: "<strong>Maximum Submissions Reached</strong><p>You have used all the submissions allowed for this assignment.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: "/docs/testing#limits",
+  },
+  SUBMIT_010: {
+    code: "SUBMIT_010",
+    httpStatus: 400,
+    category: ErrorCategory.VALIDATION,
+    severity: ErrorSeverity.WARNING,
+    title: "Test and Submission Limits Exhausted",
+    message: {
+      plain: "You have no test runs and no submissions left for this assignment.",
+      markdown: "**Test and Submission Limits Exhausted**\n\nYou have no test runs and no submissions left for this assignment. A submission normally still runs its test even when the test budget is spent, but that requires a submission to be available.",
+      html: "<strong>Test and Submission Limits Exhausted</strong><p>You have no test runs and no submissions left for this assignment.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: "/docs/testing#limits",
+  },
+  SUBMIT_011: {
+    code: "SUBMIT_011",
+    httpStatus: 403,
+    category: ErrorCategory.AUTHORIZATION,
+    severity: ErrorSeverity.WARNING,
+    title: "Submission Cannot Be Withdrawn",
+    message: {
+      plain: "A submission cannot be withdrawn. Ask a tutor if it was made in error.",
+      markdown: "**Submission Cannot Be Withdrawn**\n\nA submission cannot be withdrawn once made. Ask a tutor if it was made in error.",
+      html: "<strong>Submission Cannot Be Withdrawn</strong><p>A submission cannot be withdrawn. Ask a tutor if it was made in error.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: "/docs/testing#limits",
   },
   TASK_001: {
     code: "TASK_001",
