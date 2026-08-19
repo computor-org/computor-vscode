@@ -7,6 +7,12 @@ import { CourseSelectionService } from '../../../services/CourseSelectionService
 import { StudentRepositoryProvisioningService } from '../../../services/StudentRepositoryProvisioningService';
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
+import {
+    formatBudgetCompact,
+    formatBudgetLong,
+    submissionBudget,
+    testBudget,
+} from '../limitFormatting';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { UiStateService } from '../../../services/UiStateService';
@@ -1452,33 +1458,33 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             entries.push(`🔔 ${unreadCount}`);
         }
 
-        const testCount = (this.courseContent as any)?.result_count as number | undefined;
-        const maxTests = (this.courseContent as any)?.max_test_runs as number | undefined;
-        if (typeof testCount === 'number') {
-            entries.push(typeof maxTests === 'number' ? `(${testCount}/${maxTests})` : `(${testCount})`);
+        // Render each counter whenever the content has a count *or* a limit, so
+        // a capped assignment reads "(0/2)" before the first run instead of
+        // appearing unlimited until it refuses one.
+        const tests = testBudget(this.courseContent as any, this.submissionGroup as any);
+        if (tests.max !== null || typeof (this.courseContent as any)?.result_count === 'number') {
+            entries.push(formatBudgetCompact(tests));
         }
 
-        const submitCount = this.submissionGroup?.count as number | undefined;
-        const maxSubmits = this.submissionGroup?.max_submissions as number | undefined;
-        if (typeof submitCount === 'number') {
-            entries.push(typeof maxSubmits === 'number' ? `(${submitCount}/${maxSubmits})` : `(${submitCount})`);
+        const submissions = submissionBudget(this.courseContent as any, this.submissionGroup as any);
+        if (submissions.max !== null || typeof this.submissionGroup?.count === 'number') {
+            entries.push(formatBudgetCompact(submissions));
         }
 
-        this.description = entries.length > 0 ? entries.join('') : undefined;
-
+        // Built as a list rather than appended to, because `description` was
+        // being set to undefined and then `+=`-ed onto — which rendered the
+        // literal text "undefined 100%" whenever there were no counters.
         const testResult = (this.courseContent?.result?.result) as number | undefined;
         if (typeof testResult === 'number') {
-            const pts = Math.round(testResult * 100);
-            // entries.push(`${pts}%`);
-            this.description += ` ${pts}%`;
+            entries.push(` ${Math.round(testResult * 100)}%`);
         }
 
         const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof rawGrade === 'number') {
-            const pts = Math.round(rawGrade * 100);
-            // entries.push(`${pts}%`);
-            this.description += ` ${pts}%`;
+            entries.push(` ${Math.round(rawGrade * 100)}%`);
         }
+
+        this.description = entries.length > 0 ? entries.join('') : undefined;
     }
     
     private setupTooltip(): void {
@@ -1503,16 +1509,14 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
 
         // Attempts and points
-        const testCount = (this.courseContent as any)?.result_count as number | undefined;
-        const maxTests = (this.courseContent as any)?.max_test_runs as number | undefined;
-        if (typeof testCount === 'number') {
-            lines.push(`Tests: ${typeof maxTests === 'number' ? `${testCount} of ${maxTests}` : `${testCount}`}`);
+        const tests = testBudget(this.courseContent as any, this.submissionGroup as any);
+        if (tests.max !== null || typeof (this.courseContent as any)?.result_count === 'number') {
+            lines.push(`Tests: ${formatBudgetLong(tests)}`);
         }
 
-        const submitCount = this.submissionGroup?.count as number | undefined;
-        const maxSubmits = this.submissionGroup?.max_submissions as number | undefined;
-        if (typeof submitCount === 'number') {
-            lines.push(`Submissions: ${typeof maxSubmits === 'number' ? `${submitCount} of ${maxSubmits}` : `${submitCount}`}`);
+        const submissions = submissionBudget(this.courseContent as any, this.submissionGroup as any);
+        if (submissions.max !== null || typeof this.submissionGroup?.count === 'number') {
+            lines.push(`Submissions: ${formatBudgetLong(submissions)}`);
         }
 
         // Show result percentage (0..1 -> percent) above grading
