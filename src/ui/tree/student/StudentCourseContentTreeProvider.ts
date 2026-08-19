@@ -29,7 +29,7 @@ import { tooltipWithDescription, withDescription } from '../../contentDescriptio
 import { notify } from '../../../utils/notify';
 import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
 import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
-import { AssignmentGitBadges, assignmentGitIndicator, assignmentGitTooltipLines, courseGitIndicator } from '../gitIndicators';
+import { AssignmentGitBadges, assignmentGitIndicator, assignmentGitTooltipLines, courseGitIndicator, courseGitTooltipLines } from '../gitIndicators';
 
 /** Resolved course-level-git state for one course (cached per session). */
 interface CourseGitModel {
@@ -687,11 +687,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 const prevDescription = element.description;
                 element.updateCounts(courseContents.length);
                 const gitContext = await this.resolveGitContext(selectedCourseId);
-                element.setGitStatus(
-                    gitContext
-                        ? courseGitIndicator(gitContext.state.dirtyPaths.length > 0, gitContext.state.aheadCount, gitContext.pushFailing)
-                        : undefined
-                );
+                element.setGitStatus(gitContext ? {
+                    dirty: gitContext.state.dirtyPaths.length > 0,
+                    aheadCount: gitContext.state.aheadCount,
+                    pushFailing: gitContext.pushFailing
+                } : undefined);
                 // The row itself was already rendered before this children query;
                 // a changed badge needs its own item refresh to become visible.
                 // Guarded on an actual change so it cannot loop.
@@ -1252,9 +1252,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         // expansion (which caches the model) the row simply has no badge yet.
         const gitContext = await this.resolveGitContext(courseId);
         if (gitContext) {
-            courseItem.setGitStatus(
-                courseGitIndicator(gitContext.state.dirtyPaths.length > 0, gitContext.state.aheadCount, gitContext.pushFailing)
-            );
+            courseItem.setGitStatus({
+                dirty: gitContext.state.dirtyPaths.length > 0,
+                aheadCount: gitContext.state.aheadCount,
+                pushFailing: gitContext.pushFailing
+            });
         }
         return courseItem;
     }
@@ -1282,6 +1284,9 @@ abstract class TreeItem extends vscode.TreeItem {
 }
 
 class CourseRootItem extends TreeItem {
+    private readonly tooltipParts: string[];
+    private readonly courseDescription?: string | null;
+
     constructor(
         public readonly title: string,
         public readonly courseId: string,
@@ -1295,19 +1300,16 @@ class CourseRootItem extends TreeItem {
         this.iconPath = new vscode.ThemeIcon('book');
         this.contextValue = 'studentCourseRoot';
         this.updateCounts(itemCount);
-        this.tooltip = this.buildTooltip(courseDescription);
-        withDescription(this, title, courseDescription);
-    }
-
-    private buildTooltip(courseDescription?: string | null): string | vscode.MarkdownString {
-        const parts = [`Course: ${this.title}`];
+        this.courseDescription = courseDescription;
+        this.tooltipParts = [`Course: ${this.title}`];
         if (this.courseFamilyInfo) {
-            parts.push(`Course Family: ${this.courseFamilyInfo.title}`);
+            this.tooltipParts.push(`Course Family: ${this.courseFamilyInfo.title}`);
         }
         if (this.organizationInfo) {
-            parts.push(`Organization: ${this.organizationInfo.title}`);
+            this.tooltipParts.push(`Organization: ${this.organizationInfo.title}`);
         }
-        return tooltipWithDescription(parts, courseDescription);
+        this.tooltip = tooltipWithDescription(this.tooltipParts, courseDescription);
+        withDescription(this, title, courseDescription);
     }
 
     updateCounts(itemCount: number): void {
@@ -1315,9 +1317,11 @@ class CourseRootItem extends TreeItem {
         this.description = undefined;
     }
 
-    /** Repo-level git badge (`⚠ push failing ↑n`), or undefined when clean (issue #332). */
-    setGitStatus(indicator: string | undefined): void {
-        this.description = indicator;
+    /** Repo-level git state (issue #332): glyphs in the description, terse lines in the tooltip. */
+    setGitStatus(git?: { dirty: boolean; aheadCount: number; pushFailing: boolean }): void {
+        this.description = git ? courseGitIndicator(git.dirty, git.aheadCount, git.pushFailing) : undefined;
+        const gitLines = git ? courseGitTooltipLines(git.dirty, git.aheadCount, git.pushFailing) : [];
+        this.tooltip = tooltipWithDescription([...this.tooltipParts, ...gitLines], this.courseDescription);
     }
 }
 
@@ -1432,20 +1436,21 @@ class CourseContentPathItem extends TreeItem {
     private applyCounts(node: ContentNode): void {
         const count = this.countItems(node);
         const unread = node.unreadMessageCount ?? 0;
-        const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
         // Units carry the marker too, not just the assignments under them: the
         // unit is usually the row the lecturer actually hid, so leaving it
         // unmarked showed the consequence everywhere except the cause.
+        // (No "N items" here — nothing anyone acts on; the count lives in the
+        // tooltip.)
         const invisible = hiddenBadge(node.courseContent as any);
         const parts = [
             ...(invisible ? [invisible] : []),
             ...(unread > 0 ? [`🔔 ${unread}`] : []),
-            itemLabel,
         ];
         // Git state of the assignments underneath (issue #332) — outside the
         // bullet list so the glyphs read as one prefix, like on assignments.
         const gitIndicator = this.gitBadges ? assignmentGitIndicator(this.gitBadges) : '';
-        this.description = (gitIndicator ? `${gitIndicator} ` : '') + parts.join(' • ');
+        const description = [gitIndicator, parts.join(' • ')].filter(Boolean).join(' ');
+        this.description = description || undefined;
 
         const tooltipLines = [
             `Unit: ${this.name}`,

@@ -41,6 +41,21 @@ export function assignmentGitTooltipLines(badges: AssignmentGitBadges): string[]
   return lines;
 }
 
+/** Tooltip lines for a course row, matching the order of its description glyphs. */
+export function courseGitTooltipLines(dirty: boolean, aheadCount: number, pushFailing: boolean): string[] {
+  const lines: string[] = [];
+  if (pushFailing) {
+    lines.push('⚠ Push failing');
+  }
+  if (dirty) {
+    lines.push('● Uncommitted changes');
+  }
+  if (aheadCount > 0) {
+    lines.push(`↑ ${aheadCount} unpushed commit${aheadCount === 1 ? '' : 's'}`);
+  }
+  return lines;
+}
+
 /** Description for a course row, undefined when everything is clean and pushed. */
 export function courseGitIndicator(dirty: boolean, aheadCount: number, pushFailing: boolean): string | undefined {
   const parts: string[] = [];

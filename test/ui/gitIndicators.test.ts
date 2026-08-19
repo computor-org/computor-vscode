@@ -2,7 +2,8 @@ import { expect } from 'chai';
 import {
   assignmentGitIndicator,
   assignmentGitTooltipLines,
-  courseGitIndicator
+  courseGitIndicator,
+  courseGitTooltipLines
 } from '../../src/ui/tree/gitIndicators';
 
 describe('gitIndicators', () => {
@@ -58,6 +59,21 @@ describe('gitIndicators', () => {
     it('leads with the push failure', () => {
       expect(courseGitIndicator(true, 2, true)).to.equal('⚠ push failing ● ↑2');
       expect(courseGitIndicator(false, 0, true)).to.equal('⚠ push failing');
+    });
+  });
+
+  describe('courseGitTooltipLines', () => {
+    it('names each glyph in description order', () => {
+      expect(courseGitTooltipLines(true, 2, true)).to.deep.equal([
+        '⚠ Push failing',
+        '● Uncommitted changes',
+        '↑ 2 unpushed commits'
+      ]);
+      expect(courseGitTooltipLines(false, 1, false)).to.deep.equal(['↑ 1 unpushed commit']);
+    });
+
+    it('is empty when clean, pushed and healthy', () => {
+      expect(courseGitTooltipLines(false, 0, false)).to.deep.equal([]);
     });
   });
 });

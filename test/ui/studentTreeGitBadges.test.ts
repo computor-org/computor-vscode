@@ -97,12 +97,13 @@ describe('student tree git badges', () => {
     const items = provider.createTreeItems(node, ctx([`w1/a1/main.m`]));
     expect(items).to.have.lengthOf(1);
     const unitRow: any = items[0];
-    expect(String(unitRow.description)).to.match(/^● /);
-    expect(String(unitRow.description)).to.include('item');
+    expect(String(unitRow.description)).to.match(/^●/);
+    // "N items" is deliberately absent from unit descriptions.
+    expect(String(unitRow.description)).to.not.include('item');
     expect(String(unitRow.tooltip)).to.include('● Uncommitted changes');
 
     const cleanItems = provider.createTreeItems(node, ctx([`elsewhere/x.m`]));
-    expect(String((cleanItems[0] as any).description)).to.not.match(/[●↑⚠]/);
+    expect(String((cleanItems[0] as any).description ?? '')).to.not.match(/[●↑⚠]/);
   });
 
   it('renders no badges without a git context', () => {
