@@ -4,6 +4,7 @@ import screenshotDesktop = require('screenshot-desktop');
 import { ComputorApiService } from '../services/ComputorApiService';
 import { performanceMonitor } from '../services/PerformanceMonitoringService';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
+import { IssueReportStatusBarService } from '../ui/IssueReportStatusBarService';
 import { notify } from '../utils/notify';
 
 const maxScreenshotBytes = 5 * 1024 * 1024;
@@ -79,12 +80,42 @@ async function captureScreenshot(): Promise<ScreenshotAttachment> {
   return { buffer, fileName: 'computor-report.jpg', contentType: 'image/jpeg' };
 }
 
+/** Turn a submission failure into something the user can act on. */
+function reportFailureMessage(error: unknown): string {
+  const status = (error as { status?: number } | undefined)?.status;
+  if (status === 429) {
+    return 'You have already sent a problem report. Please wait a few minutes before sending another.';
+  }
+  if (status === 503) {
+    return 'Problem reporting is temporarily unavailable. Please try again later.';
+  }
+  if (status === 404) {
+    return 'This Computor deployment does not accept problem reports.';
+  }
+  return `Could not submit the problem report: ${error instanceof Error ? error.message : String(error)}`;
+}
+
 export async function reportProblem(
   context: vscode.ExtensionContext,
   api: ComputorApiService | undefined
 ): Promise<void> {
   if (!api) {
     await notify.warning('Sign in to Computor before submitting a problem report.');
+    return;
+  }
+
+  const reporting = IssueReportStatusBarService.current();
+  if (!reporting?.enabled) {
+    await notify.warning('This Computor deployment does not accept problem reports.');
+    return;
+  }
+
+  // A public tracker is one the user can post to themselves, and doing so with
+  // their own GitHub account gets them the notifications and the follow-up
+  // conversation. Only a private board — which they must not reach — is worth
+  // proxying through the backend.
+  if (reporting.visibility === 'public' && reporting.issues_url) {
+    await vscode.env.openExternal(vscode.Uri.parse(reporting.issues_url));
     return;
   }
 
@@ -144,11 +175,22 @@ export async function reportProblem(
     const result = await notify.progress('Submitting problem report…', () =>
       api.submitIssueReport(payload, screenshot)
     );
-    const action = await notify.info(`Problem report submitted as #${result.issue_number}.`, 'Open issue');
-    if (action === 'Open issue') {
-      await vscode.env.openExternal(vscode.Uri.parse(result.issue_url));
+    // The backend withholds the URL when the tracker is private, which is the
+    // normal case here — the reporter gets a number to quote instead.
+    if (result.issue_url) {
+      const action = await notify.info(
+        `Problem report submitted as #${result.issue_number}.`,
+        'Open issue'
+      );
+      if (action === 'Open issue') {
+        await vscode.env.openExternal(vscode.Uri.parse(result.issue_url));
+      }
+    } else {
+      await notify.info(
+        `Problem report submitted as #${result.issue_number}. Quote that number when following up.`
+      );
     }
   } catch (error) {
-    await notify.error(`Could not submit the problem report: ${error instanceof Error ? error.message : String(error)}`);
+    await notify.error(reportFailureMessage(error));
   }
 }
