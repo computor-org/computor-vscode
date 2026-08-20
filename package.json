@@ -1422,6 +1422,10 @@
           "when": "false"
         },
         {
+          "command": "computor.reportProblem",
+          "when": "computor.issueReporting.enabled"
+        },
+        {
           "command": "computor.settings",
           "when": "false"
         },
@@ -1433,7 +1437,7 @@
       "view/title": [
         {
           "command": "computor.reportProblem",
-          "when": "view =~ /computor\\./",
+          "when": "view =~ /computor\\./ && computor.issueReporting.enabled",
           "group": "navigation@99"
         },
         {

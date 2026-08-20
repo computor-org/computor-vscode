@@ -332,6 +332,7 @@ function createActiveSession(context: vscode.ExtensionContext, controller: Unifi
       await vscode.commands.executeCommand('setContext', 'computor.student.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.tutor.show', false);
       await vscode.commands.executeCommand('setContext', 'computor.chat.show', false);
+      await IssueReportStatusBarService.apply(undefined);
       // Deliberately does NOT clear the tutor selection any more. deactivate()
       // runs on window close, so this destroyed the one selection that had a
       // working restore path exactly when it needed to survive
@@ -800,6 +801,12 @@ class UnifiedController {
 
     await setViewContextKeys(views, ['student', 'tutor', 'lecturer', 'user_manager']);
     await vscode.commands.executeCommand('setContext', 'computor.chat.show', true);
+
+    // Problem reporting exists only where the deployment configured an issue
+    // tracker and the backend can reach it, so ask before offering it. Failing
+    // to answer leaves it hidden — better than a button that always errors.
+    const instanceInfo = await api.getInstanceInfo();
+    await IssueReportStatusBarService.apply(instanceInfo?.issue_reporting ?? undefined);
   }
 
   /**
@@ -1742,6 +1749,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Initialize error catalogs
   errorCatalog.initialize();
   clientErrorCatalog.initialize();
+  // Created hidden: whether this deployment offers reporting at all is only
+  // known once an authenticated session reads /instance-info.
   context.subscriptions.push(IssueReportStatusBarService.initialize());
 
   const settingsManager = new ComputorSettingsManager(context);
