@@ -27,7 +27,7 @@
       },
       {
         "command": "computor.tutor.assignment.grading",
-        "title": "Grading\u2026",
+        "title": "Grading…",
         "category": "Computor Tutor"
       },
       {
@@ -104,6 +104,12 @@
       {
         "command": "computor.checkBackendConnection",
         "title": "Check Backend Connection",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.reportProblem",
+        "title": "Report a Problem",
+        "icon": "$(bug)",
         "category": "Computor"
       },
       {
@@ -215,7 +221,7 @@
       },
       {
         "command": "computor.student.exportCourseExamples",
-        "title": "Export Course Examples\u2026",
+        "title": "Export Course Examples…",
         "icon": "$(file-zip)",
         "category": "Computor Student"
       },
@@ -302,13 +308,13 @@
       },
       {
         "command": "computor.lecturer.documents.newFile",
-        "title": "New File\u2026",
+        "title": "New File…",
         "icon": "$(new-file)",
         "category": "Computor Documents"
       },
       {
         "command": "computor.lecturer.documents.newFolder",
-        "title": "New Folder\u2026",
+        "title": "New Folder…",
         "icon": "$(new-folder)",
         "category": "Computor Documents"
       },
@@ -384,7 +390,7 @@
       },
       {
         "command": "computor.lecturer.compareWithWorking",
-        "title": "Compare with Working: Pick File\u2026",
+        "title": "Compare with Working: Pick File…",
         "icon": "$(diff)",
         "category": "Computor Examples"
       },
@@ -841,19 +847,19 @@
       },
       {
         "command": "computor.student.fs.newFile",
-        "title": "New File\u2026",
+        "title": "New File…",
         "icon": "$(new-file)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.newFolder",
-        "title": "New Folder\u2026",
+        "title": "New Folder…",
         "icon": "$(new-folder)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.rename",
-        "title": "Rename\u2026",
+        "title": "Rename…",
         "category": "Computor Student"
       },
       {
@@ -1416,6 +1422,10 @@
           "when": "false"
         },
         {
+          "command": "computor.reportProblem",
+          "when": "computor.issueReporting.enabled"
+        },
+        {
           "command": "computor.settings",
           "when": "false"
         },
@@ -1425,6 +1435,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "computor.reportProblem",
+          "when": "view =~ /computor\\./ && computor.issueReporting.enabled",
+          "group": "navigation@99"
+        },
         {
           "command": "computor.lecturer.refreshExamples",
           "when": "view == computor.lecturer.examples",

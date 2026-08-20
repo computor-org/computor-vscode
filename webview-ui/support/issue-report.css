@@ -1,0 +1,94 @@
+/* Layout for the problem-report form. Primitives (.section, .form-field,
+   .notice, .btn, .badge) come from shared/base.css — nothing is restyled here. */
+
+.report-intro {
+  color: var(--c-fg-muted);
+  margin-bottom: var(--sp-4);
+}
+
+/* The privacy warnings are the point of this form, not decoration: they sit
+   directly above the control they are about, at full body size. */
+.report-warning strong {
+  display: block;
+  margin-bottom: var(--sp-1);
+}
+
+.report-warning ul {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-5);
+}
+
+.report-warning li + li {
+  margin-top: var(--sp-1);
+}
+
+.report-hint {
+  color: var(--c-fg-muted);
+  font-size: var(--font-size-sm);
+  margin-top: var(--sp-1);
+}
+
+.report-required {
+  color: var(--c-error);
+}
+
+.dropzone {
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-5);
+  text-align: center;
+  color: var(--c-fg-muted);
+}
+
+.dropzone.dragover {
+  border-color: var(--c-focus);
+  background: var(--c-info-bg);
+}
+
+.dropzone-actions {
+  margin-top: var(--sp-3);
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: center;
+}
+
+.screenshot-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: flex-start;
+}
+
+.screenshot-preview img {
+  max-width: 100%;
+  max-height: 320px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+
+.screenshot-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.report-result dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.report-result dt {
+  color: var(--c-fg-muted);
+}
+
+.report-result dd {
+  margin: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.is-hidden {
+  display: none;
+}
