@@ -546,7 +546,7 @@ You can assign custom keyboard shortcuts to frequently used commands:
 
 - **Check this documentation**: Most common questions are answered here
 - **Contact your administrator**: For account or access issues
-- **Report bugs**: Click **Report problem** in the status bar or run `Computor: Report a Problem`; a screenshot of the current desktop is included by default, with an opt-out choice for each report. The configured Computor backend submits the report to the maintainers.
+- **Report bugs**: Click **Report problem** in the status bar or run `Computor: Report a Problem`. A form opens where you describe the problem; the backend files it with the maintainers for you, and your name is not part of the issue. A screenshot is optional and never taken automatically — take one yourself, crop out anything personal, then paste or drop it into the form. Whatever you write or attach becomes part of the issue, so leave out names, email addresses, student numbers and grades. The button only appears on deployments that have problem reporting configured.
 - **Feature requests**: Suggest improvements through your organization
 
 ---
