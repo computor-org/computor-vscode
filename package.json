@@ -27,7 +27,7 @@
       },
       {
         "command": "computor.tutor.assignment.grading",
-        "title": "Grading\u2026",
+        "title": "Grading…",
         "category": "Computor Tutor"
       },
       {
@@ -221,7 +221,7 @@
       },
       {
         "command": "computor.student.exportCourseExamples",
-        "title": "Export Course Examples\u2026",
+        "title": "Export Course Examples…",
         "icon": "$(file-zip)",
         "category": "Computor Student"
       },
@@ -308,13 +308,13 @@
       },
       {
         "command": "computor.lecturer.documents.newFile",
-        "title": "New File\u2026",
+        "title": "New File…",
         "icon": "$(new-file)",
         "category": "Computor Documents"
       },
       {
         "command": "computor.lecturer.documents.newFolder",
-        "title": "New Folder\u2026",
+        "title": "New Folder…",
         "icon": "$(new-folder)",
         "category": "Computor Documents"
       },
@@ -390,7 +390,7 @@
       },
       {
         "command": "computor.lecturer.compareWithWorking",
-        "title": "Compare with Working: Pick File\u2026",
+        "title": "Compare with Working: Pick File…",
         "icon": "$(diff)",
         "category": "Computor Examples"
       },
@@ -847,19 +847,19 @@
       },
       {
         "command": "computor.student.fs.newFile",
-        "title": "New File\u2026",
+        "title": "New File…",
         "icon": "$(new-file)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.newFolder",
-        "title": "New Folder\u2026",
+        "title": "New Folder…",
         "icon": "$(new-folder)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.rename",
-        "title": "Rename\u2026",
+        "title": "Rename…",
         "category": "Computor Student"
       },
       {
@@ -2583,7 +2583,6 @@
     "@types/mocha": "^10.0.1",
     "@types/node": "^16.18.126",
     "@types/node-fetch": "^2.6.0",
-    "@types/screenshot-desktop": "^1.15.0",
     "@types/semver": "^7.3.12",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
@@ -2607,7 +2606,6 @@
     "js-yaml": "^4.1.0",
     "jszip": "^3.10.1",
     "node-fetch": "^2.6.0",
-    "screenshot-desktop": "^1.15.6",
     "semver": "^7.7.2",
     "simple-git": "^3.28.0",
     "xlsx": "^0.18.5"
