@@ -4,6 +4,8 @@ export interface IssueReportCreated {
   issue_number: number;
   /** Link to the created issue; null when the tracker is private. */
   issue_url?: string | null;
+  /** False when a screenshot was sent but could not be stored. */
+  screenshot_attached?: boolean;
 }
 
 export interface IssueReportPayload {

@@ -97,7 +97,10 @@ export class IssueReportWebviewProvider extends BaseWebviewProvider {
       this.post('submitted', {
         reportId: result.report_id,
         issueNumber: result.issue_number,
-        issueUrl: result.issue_url ?? null
+        issueUrl: result.issue_url ?? null,
+        // A screenshot can be dropped while the report itself goes through, so
+        // say which happened rather than let them assume it arrived.
+        screenshotDropped: !!screenshot && result.screenshot_attached === false
       });
     } catch (error) {
       this.postError(submitFailureMessage(error));

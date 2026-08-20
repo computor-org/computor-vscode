@@ -222,10 +222,15 @@
       ? '<dt>Issue</dt><dd><a href="' + CW.escapeHtml(data.issueUrl) + '">#' +
         CW.escapeHtml(String(data.issueNumber)) + '</a></dd>'
       : '';
+    var dropped = data && data.screenshotDropped
+      ? '<p class="report-hint">Your screenshot could not be attached — the report was sent ' +
+        'without it. Mention it when you follow up if it matters.</p>'
+      : '';
     result.innerHTML =
       '<strong>Thank you — your report was submitted.</strong>' +
       '<dl><dt>Reference</dt><dd>' + CW.escapeHtml(String(data.reportId)) + '</dd>' + link + '</dl>' +
-      '<p class="report-hint">Quote that reference if you follow up with your lecturer.</p>';
+      '<p class="report-hint">Quote that reference if you follow up with your lecturer.</p>' +
+      dropped;
     result.classList.remove('is-hidden');
   });
 })();
