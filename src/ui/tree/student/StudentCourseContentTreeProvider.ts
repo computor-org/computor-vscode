@@ -1737,13 +1737,24 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // Built as a list rather than appended to, because `description` was
         // being set to undefined and then `+=`-ed onto — which rendered the
         // literal text "undefined 100%" whenever there were no counters.
+        //
+        // Two positional slots: the test result first, the grading second. A
+        // grade without a test run keeps its place by rendering the test slot
+        // as "-%", so the second percentage always *is* the grade — a lone
+        // number was being read as a test result whichever of the two it
+        // happened to be (issue #354). Nothing is shown when neither exists.
         const testResult = (this.courseContent?.result?.result) as number | undefined;
-        if (typeof testResult === 'number') {
+        const rawGrade = this.submissionGroup?.grading as number | undefined;
+        const hasTestResult = typeof testResult === 'number';
+        const hasGrade = typeof rawGrade === 'number';
+
+        if (hasTestResult) {
             entries.push(` ${Math.round(testResult * 100)}%`);
+        } else if (hasGrade) {
+            entries.push(' -%');
         }
 
-        const rawGrade = this.submissionGroup?.grading as number | undefined;
-        if (typeof rawGrade === 'number') {
+        if (hasGrade) {
             entries.push(` ${Math.round(rawGrade * 100)}%`);
         }
 
@@ -1784,12 +1795,15 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
 
         // Show result percentage (0..1 -> percent) above grading
         const resultVal = this.courseContent?.result?.result as number | undefined;
+        const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof resultVal === 'number') {
             lines.push(`Result: ${(resultVal * 100).toFixed(2)}%`);
+        } else if (typeof rawGrade === 'number') {
+            // Names what the row's "-%" stands for.
+            lines.push('Result: not tested yet');
         }
 
         // Show grading percentage (0..1 -> percent)
-        const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof rawGrade === 'number') {
             lines.push(`Grading: ${(rawGrade * 100).toFixed(2)}%`);
         }
