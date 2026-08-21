@@ -1047,16 +1047,25 @@ export class LecturerExampleCommands {
     }
   }
 
+  // Callers are the examples tree (`ExampleTreeItem`) and the example-details
+  // webview, which posts a plain `{ example, repository }` payload instead of a
+  // tree item. A local-only row — "Create New Example" that was never pushed —
+  // has no remote at all, so the checked-out working copy is the only source of
+  // directory / repository / example id.
   private async uploadExample(item: ExampleTreeItem): Promise<void> {
-    if (!item?.example) {
-      notify.error('Invalid example item');
-      return;
-    }
+    const local = item?.merged?.local;
+    const remote = item?.merged ? item.merged.remote : item?.example;
 
     const examplesPath = this.getExamplesDir();
     if (!examplesPath) { return; }
 
-    const workingDir = getWorkingPath(examplesPath, item.example.directory);
+    const directory = local?.directory || remote?.directory;
+    if (!directory) {
+      notify.error('Invalid example item');
+      return;
+    }
+
+    const workingDir = local?.workingVersion?.fullPath || getWorkingPath(examplesPath, directory);
     if (!fs.existsSync(workingDir)) {
       notify.error(`No working copy found. Check out the example first.`);
       return;
@@ -1064,8 +1073,10 @@ export class LecturerExampleCommands {
 
     const metadata = readCheckoutMetadata(workingDir);
     await this.uploadFromDirectory(
-      workingDir, metadata?.directory || item.example.directory,
-      item.repository.id, item.example.title, metadata?.exampleId || item.example.id
+      workingDir, metadata?.directory || directory,
+      item.repository?.id || metadata?.repositoryId || '',
+      remote?.title || directory,
+      metadata?.exampleId || remote?.id || ''
     );
   }
 
@@ -1254,6 +1265,7 @@ export class LecturerExampleCommands {
                   writeCheckoutMetadata(versionDir, {
                     ...existingMeta,
                     exampleId: returnedExampleId,
+                    repositoryId,
                     versionTag: uploadVersion,
                     versionId: uploadedVersion.id,
                     versionNumber: uploadedVersion.version_number,
@@ -1269,6 +1281,7 @@ export class LecturerExampleCommands {
                 writeCheckoutMetadata(snapshotDir, {
                   ...existingMeta,
                   exampleId: returnedExampleId,
+                  repositoryId,
                   versionTag: uploadVersion,
                   checkedOutAt: new Date().toISOString()
                 });
@@ -1284,6 +1297,7 @@ export class LecturerExampleCommands {
             writeCheckoutMetadata(dirPath, {
               ...existingMeta,
               exampleId: returnedExampleId,
+              repositoryId,
               versionTag: uploadVersion,
               versionId: uploadedVersionId || existingMeta.versionId,
               versionNumber: uploadedVersionNumber || existingMeta.versionNumber,

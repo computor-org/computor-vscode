@@ -2293,7 +2293,12 @@
         {
           "command": "computor.lecturer.uploadExample",
           "when": "view == computor.lecturer.examples && viewItem == checkedOutWorking && computor.examples.canAuthor",
-          "group": "3_upload@1"
+          "group": "2_upload@1"
+        },
+        {
+          "command": "computor.lecturer.uploadExample",
+          "when": "view == computor.lecturer.examples && (viewItem == exampleCheckedOut || viewItem == exampleLocalOnly) && computor.examples.canAuthor",
+          "group": "1_actions@3"
         },
         {
           "command": "computor.lecturer.revealCheckedOutInExplorer",
