@@ -544,6 +544,41 @@ export class StudentRepositoryProvisioningService {
     await this.syncFromTemplate(repoPath, authTemplateUrl, report);
   }
 
+  /**
+   * Put back the course-template files this student deleted (issue #352).
+   *
+   * Explicitly user-triggered only — {@link syncClonedManagedRepos} keeps
+   * merging and nothing else, so a file someone meant to delete never
+   * reappears behind their back on a refresh.
+   *
+   * Returns the restored paths, or undefined when there was nothing to work
+   * with (no clone, no template, or no usable credential).
+   */
+  async restoreMissingTemplateFiles(
+    courseId: string,
+    report: (message: string) => void = () => {}
+  ): Promise<string[] | undefined> {
+    const repoPath = await this.localRepoPath(courseId);
+    if (!repoPath || !this.isCloned(repoPath)) {
+      return undefined;
+    }
+
+    const descriptor = await this.getDescriptor(courseId);
+    const templateUrl = descriptor.template?.clone_url;
+    if (!templateUrl) {
+      return undefined;
+    }
+
+    const creds = await this.getOriginCredentials(repoPath);
+    const authTemplateUrl = creds
+      ? addBasicCredentialsToGitUrl(templateUrl, creds.username, creds.password)
+      : templateUrl;
+
+    report('Looking for files missing from the template…');
+    const result = await new CTGit(repoPath).restoreMissingFromTemplate(authTemplateUrl);
+    return result.restored;
+  }
+
   private async getOriginCredentials(repoPath: string): Promise<{ username: string; password: string } | undefined> {
     try {
       const { stdout } = await execAsyncWithTimeout('git remote get-url origin', { cwd: repoPath, timeout: 15_000 });
@@ -555,6 +590,16 @@ export class StudentRepositoryProvisioningService {
       console.warn('[StudentRepositoryProvisioningService] Could not read origin credentials:', redactGitCredentials(error?.message || String(error)));
     }
     return undefined;
+  }
+
+  /**
+   * Where this course's repository is cloned locally, or undefined when the
+   * student has no repository record yet. The one public way to ask — the tree,
+   * the course-level commit and the details view must not re-derive it.
+   */
+  async localRepoPath(courseId: string): Promise<string | undefined> {
+    const repo = await this.getRepository(courseId);
+    return repo ? this.localPathFor(repo) : undefined;
   }
 
   // --- helpers ---------------------------------------------------------------

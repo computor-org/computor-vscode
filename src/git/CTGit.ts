@@ -521,4 +521,93 @@ export class CTGit {
 
     return { updated: mergeCompleted, defaultBranch, behindCount };
   }
+
+  /**
+   * Put back every file the course template still has and this repository no
+   * longer does, then commit and push.
+   *
+   * A merge cannot do this. Once a student deletes a template file and commits,
+   * the merge base has it, our side dropped it and upstream never touched it —
+   * git resolves that cleanly to "still deleted". And when the template has no
+   * new commits at all, {@link forkUpdate} returns before it even touches the
+   * working tree. So restoring is a separate pass, deliberately independent of
+   * how far behind the template we are (computor-org/issues#352).
+   *
+   * Only *missing* paths are checked out, so work in every surviving file is
+   * left exactly as it is. A student who wants a fresh copy of a file deletes
+   * it and runs this.
+   */
+  async restoreMissingFromTemplate(
+    remoteUrl: string,
+    options?: { defaultBranch?: string; removeRemote?: boolean }
+  ): Promise<{ restored: string[]; defaultBranch?: string; pushed: boolean }> {
+    const remoteName = 'upstream';
+    const previousRemoteUrl = await this.remoteFetchUrl(remoteName);
+    const shouldRemoveRemote = options?.removeRemote ?? true;
+
+    await this.ensureRemote(remoteName, remoteUrl);
+    // Raw command: `simpleGit.fetch(remoteName)` does not fetch that remote.
+    await this.simpleGit.raw(['fetch', remoteName]);
+
+    const defaultBranch = options?.defaultBranch
+      ?? await this.detectDefaultBranch(remoteName, ['main', 'master']);
+    if (!defaultBranch) {
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
+      throw new Error('Could not determine the course template’s default branch.');
+    }
+
+    const upstreamRef = `${remoteName}/${defaultBranch}`;
+
+    try {
+      // `-z` so paths with non-ASCII or quoting-worthy characters come back raw
+      // rather than C-quoted, which would not resolve on disk.
+      const listing = await this.simpleGit.raw(['ls-tree', '-r', '--name-only', '-z', upstreamRef]);
+      const missing = listing
+        .split('\0')
+        .filter(line => line.length > 0)
+        .filter(relPath => !fs.existsSync(path.join(this.repoPath, relPath)));
+
+      if (missing.length === 0) {
+        return { restored: [], defaultBranch, pushed: false };
+      }
+
+      // Batched: a course template can carry more paths than a single command
+      // line holds, and `checkout -- <paths>` is all-or-nothing per invocation.
+      for (const batch of chunk(missing, 100)) {
+        await this.simpleGit.raw(['checkout', upstreamRef, '--', ...batch]);
+        await this.stagePaths(batch);
+      }
+      await this.simpleGit.commit(`vscode: Restored ${missing.length} file(s) from the course template`);
+
+      // Push whatever branch is actually checked out — the student may be on a
+      // branch of their own, and pushing the template's default branch instead
+      // would publish a ref they never touched.
+      const current = (await this.simpleGit.status()).current;
+      let pushed = false;
+      if (!current || current === 'DETACHED') {
+        notify.warning('Restored files were committed but not pushed: the repository has no branch checked out.');
+      } else {
+        try {
+          await this.simpleGit.push('origin', current);
+          pushed = true;
+        } catch (pushError) {
+          console.warn('[CTGit] Failed to push the restored files to origin:', pushError);
+          notify.warning('Restored files could not be pushed to your repository. Please push manually.');
+        }
+      }
+
+      return { restored: missing, defaultBranch, pushed };
+    } finally {
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
+    }
+  }
+}
+
+/** Split `items` into runs of at most `size`. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
 }

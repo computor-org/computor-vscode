@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import { commandRegistrar } from './commandHelpers';
+import { copyToClipboard } from '../utils/clipboard';
 import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
 import { openFile } from '../ui/editorLayout';
@@ -15,6 +16,7 @@ import {
   findRepoRoot,
   isProtectedName,
   isReservedAtAssignmentRoot,
+  isWithinRoot,
   moveEntry,
   renameEntry,
   uniqueName,
@@ -23,6 +25,10 @@ import {
 
 /** Set while an entry is on the clipboard, so Paste can be hidden otherwise. */
 const CLIPBOARD_CONTEXT_KEY = 'computor.student.fs.hasClipboard';
+
+/** How deep Copy/Move To looks for destination folders. Assignments are small;
+ *  this only keeps a pathological tree from stalling the quick pick. */
+const MAX_DESTINATION_DEPTH = 6;
 
 /** A directory a New/Paste can write into, plus the root that bounds it. */
 interface Container {
@@ -73,8 +79,20 @@ export class StudentFileCommands {
     register('computor.student.fs.rename', async (item: any) => {
       await this.rename(item);
     });
-    register('computor.student.fs.delete', async (item: any) => {
+    // Two ids for one operation, so the menu entries can read "Delete File"
+    // and "Delete Folder": a menu contribution cannot override a command's
+    // title, and "Delete" alone was not what the issue asked for.
+    register('computor.student.fs.deleteFile', async (item: any) => {
       await this.delete(item);
+    });
+    register('computor.student.fs.deleteFolder', async (item: any) => {
+      await this.delete(item);
+    });
+    register('computor.student.fs.copyTo', async (item: any) => {
+      await this.transferTo(item, 'copy');
+    });
+    register('computor.student.fs.moveTo', async (item: any) => {
+      await this.transferTo(item, 'move');
     });
     register('computor.student.fs.duplicate', async (item: any) => {
       await this.duplicate(item);
@@ -95,14 +113,20 @@ export class StudentFileCommands {
     });
     register('computor.student.fs.copyPath', async (item: any) => {
       const target = this.resolveAnyPath(item);
-      if (!target) { return; }
-      await vscode.env.clipboard.writeText(target.path);
+      if (!target) {
+        void notify.warning('This item has no path on disk yet.');
+        return;
+      }
+      await copyToClipboard(target.path, 'Path');
     });
     register('computor.student.fs.copyRelativePath', async (item: any) => {
       const target = this.resolveAnyPath(item);
-      if (!target) { return; }
+      if (!target) {
+        void notify.warning('This item has no path on disk yet.');
+        return;
+      }
       const relative = path.relative(target.root, target.path);
-      await vscode.env.clipboard.writeText(relative || path.basename(target.path));
+      await copyToClipboard(relative || path.basename(target.path), 'Relative path');
     });
   }
 
@@ -140,7 +164,11 @@ export class StudentFileCommands {
     // invisible.
     if (typeof item?.getRepositoryPath === 'function') {
       const dir = item.getRepositoryPath();
-      if (dir) { return { dir, root: dir, refresh: item }; }
+      // Bound by the REPOSITORY, not the assignment folder: file rows are
+      // bounded that way too, and a mismatch made Copy Relative Path answer a
+      // bare basename on the assignment row and a repo-relative path one level
+      // down (computor-org/issues#353).
+      if (dir) { return { dir, root: findRepoRoot(dir) ?? dir, refresh: item }; }
     }
     return undefined;
   }
@@ -239,10 +267,14 @@ export class StudentFileCommands {
     if (!entry) { return; }
 
     const name = path.basename(entry.path);
+    const detail = [
+      entry.isDirectory ? 'This removes everything inside it.' : undefined,
+      'Anything that came from the course template can be brought back with "Update Repository from Template".'
+    ].filter(Boolean).join(' ');
     const confirmed = await notify.confirm(
       `Delete ${entry.isDirectory ? 'folder' : 'file'} "${name}"?`,
       'Delete',
-      entry.isDirectory ? 'This removes everything inside it.' : undefined
+      detail
     );
     if (!confirmed) { return; }
 
@@ -321,5 +353,123 @@ export class StudentFileCommands {
     }
 
     this.treeDataProvider.refreshNode(target.refresh);
+  }
+
+  /**
+   * One-step Copy File… / Move File…: pick a destination folder inside the
+   * same assignment and act, with no clipboard round trip. The issue asked for
+   * actions that "just work locally in the pertinent assignment"
+   * (computor-org/issues#353); Cut/Copy/Paste stays for anyone who prefers it.
+   */
+  private async transferTo(item: any, op: 'copy' | 'move'): Promise<void> {
+    const entry = this.resolveEntry(item);
+    if (!entry) {
+      void notify.warning('Select a file or folder inside an assignment first.');
+      return;
+    }
+
+    const assignmentRoot = this.assignmentRootFor(item) ?? entry.root;
+    const choices = this.destinationChoices(assignmentRoot, entry);
+    if (choices.length === 0) {
+      void notify.info('This assignment has no other folder to move into yet. Create one with "New Folder…" first.');
+      return;
+    }
+
+    const name = path.basename(entry.path);
+    const picked = await vscode.window.showQuickPick(choices, {
+      title: op === 'copy' ? `Copy "${name}" to…` : `Move "${name}" to…`,
+      placeHolder: 'Destination folder in this assignment',
+      ignoreFocusOut: true
+    });
+    if (!picked) { return; }
+
+    let finalName = name;
+    let overwrite = false;
+    if (fs.existsSync(path.join(picked.dir, name))) {
+      const choice = await notify.modal(
+        'warning',
+        `"${name}" already exists in the destination.`,
+        { actions: ['Keep Both', 'Overwrite'] }
+      );
+      if (choice === 'Keep Both') {
+        finalName = uniqueName(picked.dir, name, entry.isDirectory);
+      } else if (choice === 'Overwrite') {
+        overwrite = true;
+      } else {
+        return;
+      }
+    }
+
+    if (op === 'move') {
+      moveEntry(entry.root, entry.path, picked.dir, {
+        overwrite,
+        name: finalName,
+        srcRoot: entry.root
+      });
+    } else {
+      copyEntry(entry.root, entry.path, picked.dir, { overwrite, name: finalName });
+    }
+
+    // Both ends of the tree changed and the destination node may not even be
+    // rendered, so this is the one filesystem action that refreshes wholesale.
+    this.treeDataProvider.refreshNode(undefined);
+  }
+
+  /**
+   * The assignment folder that owns `item`, found by walking the tree parents
+   * up to the row that can answer `getRepositoryPath`. `FileSystemItem` carries
+   * only the repository root, and the repository holds every assignment in the
+   * course — bounding a destination pick by it would let a student move work
+   * into a different assignment.
+   */
+  private assignmentRootFor(item: any): string | undefined {
+    let node = item;
+    for (let hops = 0; node && hops < 64; hops++) {
+      if (typeof node.getRepositoryPath === 'function') {
+        const dir = node.getRepositoryPath();
+        if (dir) { return dir; }
+      }
+      node = node.parent;
+    }
+    return undefined;
+  }
+
+  /** Folders under `root` that `entry` may be copied or moved into. */
+  private destinationChoices(
+    root: string,
+    entry: Entry
+  ): Array<vscode.QuickPickItem & { dir: string }> {
+    const found: string[] = [];
+    const walk = (dir: string, depth: number): void => {
+      if (depth > MAX_DESTINATION_DEPTH) { return; }
+      let names: string[];
+      try {
+        names = fs.readdirSync(dir);
+      } catch {
+        return;
+      }
+      for (const name of names) {
+        if (name.startsWith('.')) { continue; }
+        const abs = path.join(dir, name);
+        try {
+          if (!fs.statSync(abs).isDirectory()) { continue; }
+        } catch {
+          continue;
+        }
+        found.push(abs);
+        walk(abs, depth + 1);
+      }
+    };
+    walk(root, 1);
+
+    const currentDir = path.dirname(entry.path);
+    return [root, ...found]
+      .filter(dir => dir !== currentDir)
+      // A folder can neither contain itself nor land inside its own subtree.
+      .filter(dir => !(entry.isDirectory && isWithinRoot(entry.path, dir)))
+      .map(dir => ({
+        label: dir === root ? '$(root-folder) Assignment root' : `$(folder) ${path.relative(root, dir)}`,
+        dir
+      }));
   }
 }

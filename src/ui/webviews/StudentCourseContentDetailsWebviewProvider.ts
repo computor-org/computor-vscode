@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeList, SubmissionGroupStudentList, SubmissionGroupStudentGet } from '../../types/generated/courses';
+import { copyToClipboard } from '../../utils/clipboard';
 import { notify } from '../../utils/notify';
 import { revealUri } from '../../utils/reveal';
 
@@ -117,8 +118,8 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       case 'copyCloneUrl':
         await this.handleCopyCloneUrl(message.data?.url);
         break;
-      case 'copyLocalPath':
-        await this.handleCopyLocalPath(message.data?.path);
+      case 'copyPath':
+        await this.handleCopyPath(message.data?.path);
         break;
       case 'refresh':
         if (this.currentData) {
@@ -167,18 +168,13 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
     }
   }
 
-  private async handleCopyLocalPath(folderPath?: string): Promise<void> {
+  /** Named to match the tree's "Copy Path" — same action, same words. */
+  private async handleCopyPath(folderPath?: string): Promise<void> {
     if (!folderPath) {
       notify.warning('No local folder available for this content.');
       return;
     }
-
-    try {
-      await vscode.env.clipboard.writeText(folderPath);
-      notify.info('Local path copied to clipboard.');
-    } catch (error: any) {
-      notify.error(`Failed to copy local path: ${error?.message || error}`);
-    }
+    await copyToClipboard(folderPath, 'Path');
   }
 
   private async handleCopyCloneUrl(url?: string): Promise<void> {
@@ -187,11 +183,6 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       return;
     }
 
-    try {
-      await vscode.env.clipboard.writeText(url);
-      notify.info('Clone URL copied to clipboard.');
-    } catch (error: any) {
-      notify.error(`Failed to copy clone URL: ${error?.message || error}`);
-    }
+    await copyToClipboard(url, 'Clone URL');
   }
 }

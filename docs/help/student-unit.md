@@ -8,6 +8,7 @@
   - [Tooltip Information](#tooltip-information)
   - [Description in Tree](#description-in-tree)
 - [Available Actions](#available-actions)
+  - [Show Description](#show-description)
   - [Show Messages](#show-messages)
   - [Help](#help)
 - [Understanding Unit Organization](#understanding-unit-organization)
@@ -71,7 +72,12 @@ Next to the unit name, you'll see a compact summary:
 
 ## Available Actions
 
-Right-click on a unit to access:
+Right-click on a unit to access everything it offers; the icons on the row are
+shortcuts to the same actions.
+
+### Show Description
+Opens the description your lecturer wrote for this unit. The entry appears only
+when there is one.
 
 ### Show Messages
 View announcements and discussions specific to this unit. Instructors may post unit-specific information, clarifications, or updates here.

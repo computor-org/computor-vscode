@@ -18,6 +18,7 @@
   - [Test Assignment](#-test-assignment-inline-icon-only-if-cloned)
   - [Commit Assignment](#-commit-assignment-inline-icon-only-if-cloned)
   - [Submit Assignment](#-submit-assignment-inline-icon-only-if-cloned)
+  - [File Actions](#-file-actions)
   - [Show Test Results](#-show-test-results)
   - [View Details](#-view-details)
   - [Show Messages](#-show-messages)
@@ -28,7 +29,15 @@
 - [Understanding Icons and Badges](#understanding-icons-and-badges)
   - [Assignment Icons](#assignment-icons)
   - [Inline Action Icons](#inline-action-icons)
-- [File and Folder Expansion](#file-and-folder-expansion)
+- [Working with Files](#working-with-files)
+  - [Creating](#creating)
+  - [Copying and Moving](#copying-and-moving)
+  - [Deleting](#deleting)
+  - [Renaming and Duplicating](#renaming-and-duplicating)
+  - [Cut, Copy and Paste](#cut-copy-and-paste)
+  - [Paths](#paths)
+  - [What You Cannot Change](#what-you-cannot-change)
+- [Getting a File Back from the Template](#getting-a-file-back-from-the-template)
 - [Common Scenarios](#common-scenarios)
   - [Starting a New Assignment](#starting-a-new-assignment)
   - [Debugging Test Failures](#debugging-test-failures)
@@ -42,6 +51,7 @@
   - [Read Messages](#read-messages)
   - [Understand the Metrics](#understand-the-metrics)
 - [Troubleshooting](#troubleshooting)
+  - ["I deleted a file I needed"](#i-deleted-a-file-i-needed)
   - ["Cannot clone repository"](#cannot-clone-repository)
   - ["Tests won't run"](#tests-wont-run)
   - ["Submission failed"](#submission-failed)
@@ -169,6 +179,10 @@ Save your progress to the Git repository regularly.
 2. Enter a descriptive commit message (e.g., "Implemented sorting function")
 3. Changes are committed and pushed to your remote repository
 
+**Committing everything at once:** all the assignments of a course share one
+repository, so right-clicking the **course** and choosing **Commit Course** saves
+every assignment you have worked on in a single step.
+
 **Why commit often:**
 - Saves your progress remotely (backup)
 - Allows instructors to see your work-in-progress
@@ -233,7 +247,9 @@ Runs automated tests on your local code.
 **Note:** Uses one test attempt (if limited)
 
 ### 📝 Commit Assignment (inline icon, only if cloned)
-Commits and pushes your changes to the remote repository.
+Commits and pushes the changes in this assignment to the remote repository. To
+save every assignment of the course at once, use **Commit Course** on the course
+row instead.
 
 **When to use:**
 - After completing a feature or section
@@ -249,6 +265,11 @@ Creates an official submission for grading.
 - Before the deadline
 
 **Warning:** Limited submissions - use wisely!
+
+### 📁 File Actions
+Right-click an assignment for **New File…** and **New Folder…**, and right-click
+any file or folder inside it for the full set — see
+[Working with Files](#working-with-files).
 
 ### 📋 Show Test Results
 Opens the detailed test results panel.
@@ -323,9 +344,9 @@ Icons that appear to the right of the assignment name:
 4. **☁️ Upload icon** - Submit assignment (only if cloned)
 5. **☁️ Download icon** - Clone repository (only if not cloned)
 
-## File and Folder Expansion
+## Working with Files
 
-After cloning, you can expand assignments to see their file structure:
+Expand an assignment to see its files:
 
 ```
 🟦 Lab 1: Hello World
@@ -337,9 +358,82 @@ After cloning, you can expand assignments to see their file structure:
 └── 📄 README.md
 ```
 
-**Actions on files:**
-- **Click file** - Opens in editor
-- **Right-click file** - Context menu with file operations
+Click a file to open it. Right-click a file, a folder, or the assignment itself
+for the actions below. Everything here happens **only on your own computer** —
+nothing is uploaded until you commit.
+
+### Creating
+
+- **New File…** — right-click the assignment or a folder, type a name
+- **New Folder…** — the same, for a folder
+
+The new file opens straight away.
+
+### Copying and Moving
+
+- **Copy File…** — pick a destination folder; the original stays where it is
+- **Move File…** — pick a destination folder; the file is moved there
+
+Both offer only folders **inside the same assignment**, so you cannot move your
+work into a different exercise by mistake. If a file of that name is already
+there, you are asked whether to **Keep Both** or **Overwrite**.
+
+### Deleting
+
+- **Delete File**
+- **Delete Folder** — removes everything inside it
+
+You are always asked to confirm first.
+
+Deleting is not as final as it sounds: anything that came with the assignment can
+be brought back — see [Getting a File Back from the Template](#getting-a-file-back-from-the-template).
+
+### Renaming and Duplicating
+
+- **Rename…** — give the file or folder a new name
+- **Duplicate** — make a copy next to it, named `main copy.py`
+
+### Cut, Copy and Paste
+
+The familiar two-step alternative to *Copy File…* / *Move File…*: **Cut** or
+**Copy** a file, then **Paste** into a folder or onto the assignment. **Paste**
+only appears once something is waiting.
+
+### Paths
+
+- **Copy Path** — the full path of the selected file, folder or assignment
+- **Copy Relative Path** — its path within the repository
+- **Reveal in File Explorer** — shows it in the file manager, or in the VS Code
+  Explorer when you are working in the browser
+
+If your browser refuses to let Computor write to the clipboard, the path is shown
+in a box instead so you can copy it with Ctrl/Cmd+C.
+
+### What You Cannot Change
+
+A few things are managed by Computor and are hidden or protected:
+
+- `.git` — the repository's own data
+- `README.md`, `README_de.md` and `mediaFiles` at the top of an assignment — the
+  assignment description, which your lecturer maintains
+
+You can create and edit READMEs in sub-folders as much as you like.
+
+## Getting a File Back from the Template
+
+If you have ruined a file that came with the assignment — a data file, a figure,
+or the starter code — you can get a fresh copy:
+
+1. **Copy anything you want to keep first** (right-click → *Copy File…*).
+2. **Delete** the file.
+3. Right-click the **course** and choose **Update Repository from Template**.
+
+Every file the course material has and your folder does not is restored. Files
+you still have are left untouched, so this never overwrites your work — which is
+also why deleting the file first is a required step, not a shortcut.
+
+The same action brings in new material your lecturer has released since you
+started.
 
 ## Common Scenarios
 
@@ -410,6 +504,10 @@ After cloning, you can expand assignments to see their file structure:
 - These may differ - grading is the official score
 
 ## Troubleshooting
+
+### "I deleted a file I needed"
+- Right-click the course → **Update Repository from Template**
+- See [Getting a File Back from the Template](#getting-a-file-back-from-the-template)
 
 ### "Cannot clone repository"
 - Ensure you have a workspace directory selected

@@ -87,8 +87,8 @@
     if (actions.localPath) {
       const copyPathBtn = document.createElement('button');
       copyPathBtn.className = 'btn ghost';
-      copyPathBtn.textContent = 'Copy Local Path';
-      copyPathBtn.addEventListener('click', () => sendMessage('copyLocalPath', { path: actions.localPath }));
+      copyPathBtn.textContent = 'Copy Path';
+      copyPathBtn.addEventListener('click', () => sendMessage('copyPath', { path: actions.localPath }));
       actionsContainer.appendChild(copyPathBtn);
     }
   }

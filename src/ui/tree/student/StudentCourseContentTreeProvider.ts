@@ -1222,6 +1222,28 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         return fallback;
     }
 
+    /**
+     * Git mode + clone state for a course row's context value. Falls back to
+     * "unknown, not cloned" on any failure so the repair actions stay reachable
+     * rather than a hiccup silently emptying the menu.
+     */
+    private async resolveCourseGitBinding(courseId: string): Promise<CourseGitBinding> {
+        try {
+            const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const model = await this.resolveCourseGit(wsRoot, courseId);
+            if (!model.configured) {
+                return { cloned: false };
+            }
+            return {
+                mode: model.mode,
+                cloned: !!model.repoRoot && fs.existsSync(model.repoRoot)
+            };
+        } catch (error) {
+            console.warn(`[StudentTree] Could not resolve the git binding for course ${courseId}:`, error);
+            return { cloned: false };
+        }
+    }
+
     private async buildCourseRootItem(course: any, shouldForce: boolean): Promise<CourseRootItem> {
         const courseId = course.id;
         const title = (course.title || course.name || course.path || `Course ${courseId}`) as string;
@@ -1243,13 +1265,14 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             this.getExpandedState(rootId),
             orgInfo,
             familyInfo,
-            (course as any).description
+            (course as any).description,
+            await this.resolveCourseGitBinding(courseId)
         );
         courseItem.id = rootId;
         this.itemIndex.set(rootId, courseItem);
-        // Repo badge from the cached git model — resolving it here would cost
-        // two API calls per course at root render, so before the first course
-        // expansion (which caches the model) the row simply has no badge yet.
+        // Repo badge from the git model the context value above just resolved
+        // and cached, so the row carries its ●/↑/⚠ from the first render rather
+        // than only after the course has been expanded once.
         const gitContext = await this.resolveGitContext(courseId);
         if (gitContext) {
             courseItem.setGitStatus({
@@ -1274,6 +1297,12 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     }
 }
 
+/** What the course row needs to know about its repository to gate its menu. */
+interface CourseGitBinding {
+    mode?: string;
+    cloned: boolean;
+}
+
 abstract class TreeItem extends vscode.TreeItem {
     constructor(
         label: string,
@@ -1294,11 +1323,24 @@ class CourseRootItem extends TreeItem {
         expanded: boolean = true,
         public readonly organizationInfo?: { title: string; path: string },
         public readonly courseFamilyInfo?: { title: string; path: string },
-        courseDescription?: string | null
+        courseDescription?: string | null,
+        gitBinding?: CourseGitBinding
     ) {
         super(title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('book');
-        this.contextValue = 'studentCourseRoot';
+        // Course rows carry their git binding so the menu can hide the actions
+        // that do not apply — "Set up Repository" once a clone exists, or
+        // "Download Template" outside download mode (computor-org/issues#353).
+        // Built here rather than in a setter because `withDescription` below
+        // appends `.hasDescription`, and that suffix has to stay last.
+        this.contextValue = [
+            'studentCourseRoot',
+            gitBinding?.mode === 'managed' ? 'gitManaged'
+                : gitBinding?.mode === 'external' ? 'gitExternal'
+                : gitBinding?.mode === 'download' ? 'gitDownload'
+                : 'gitUnknown',
+            gitBinding?.cloned ? 'cloned' : 'notCloned'
+        ].join('.');
         this.updateCounts(itemCount);
         this.courseDescription = courseDescription;
         this.tooltipParts = [`Course: ${this.title}`];
