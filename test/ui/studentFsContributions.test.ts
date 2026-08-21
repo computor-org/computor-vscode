@@ -22,9 +22,11 @@ const pkg = JSON.parse(
 const STUDENT_VIEW = 'computor.student.courses';
 
 const FS_COMMANDS = [
-  'newFile', 'newFolder', 'rename', 'delete', 'duplicate',
-  'cut', 'copy', 'paste', 'revealInOS', 'copyPath', 'copyRelativePath'
+  'newFile', 'newFolder', 'copyTo', 'moveTo', 'deleteFile', 'deleteFolder',
+  'rename', 'duplicate', 'cut', 'copy', 'paste',
+  'revealInOS', 'copyPath', 'copyRelativePath'
 ].map(name => `computor.student.fs.${name}`);
+
 
 interface MenuEntry { command: string; when?: string; group?: string }
 
@@ -83,6 +85,17 @@ describe('student filesystem contributions', () => {
     }
   });
 
+  it('keeps the argument-hungry filesystem commands out of the palette', () => {
+    // Every one of these needs a tree node; from the palette they would be
+    // invoked with nothing and silently do nothing.
+    const palette: MenuEntry[] = pkg.contributes.menus.commandPalette || [];
+    for (const command of FS_COMMANDS) {
+      const entry = palette.find(e => e.command === command);
+      expect(entry, `${command} is still in the command palette`).to.not.equal(undefined);
+      expect(entry!.when).to.equal('false');
+    }
+  });
+
   it('shows Paste only while something is on the clipboard', () => {
     for (const when of whensFor('computor.student.fs.paste')) {
       expect(when).to.contain('computor.student.fs.hasClipboard');
@@ -125,8 +138,8 @@ describe('student filesystem when-clauses', () => {
     });
   }
 
-  it('acts on filesystem rows only for rename/delete/duplicate/cut/copy', () => {
-    const entryCommands = ['rename', 'delete', 'duplicate', 'cut', 'copy']
+  it('acts on filesystem rows only for rename/duplicate/cut/copy/copyTo/moveTo', () => {
+    const entryCommands = ['rename', 'duplicate', 'cut', 'copy', 'copyTo', 'moveTo']
       .map(n => `computor.student.fs.${n}`);
     for (const command of entryCommands) {
       const when = whensFor(command)[0]!;
@@ -137,7 +150,27 @@ describe('student filesystem when-clauses', () => {
         matchesViewItem(when, 'studentCourseContent.assignment.withRepository.cloned'),
         command
       ).to.equal(false);
-      expect(matchesViewItem(when, 'studentCourseRoot'), command).to.equal(false);
+      expect(matchesViewItem(when, 'studentCourseRoot.gitManaged.cloned'), command).to.equal(false);
+    }
+  });
+
+  it('splits Delete into the file and folder entries the menu shows', () => {
+    const file = whensFor('computor.student.fs.deleteFile')[0]!;
+    expect(matchesViewItem(file, 'studentFile')).to.equal(true);
+    expect(matchesViewItem(file, 'studentFolder')).to.equal(false);
+
+    const folder = whensFor('computor.student.fs.deleteFolder')[0]!;
+    expect(matchesViewItem(folder, 'studentFolder')).to.equal(true);
+    expect(matchesViewItem(folder, 'studentFile')).to.equal(false);
+  });
+
+  it('keeps the explorer actions in one contiguous block', () => {
+    // The issue asked for Copy/Move/Delete to sit with New File and New Folder;
+    // a different group name would render them as a separate section.
+    for (const name of ['newFile', 'newFolder', 'copyTo', 'moveTo', 'deleteFile', 'deleteFolder']) {
+      for (const entry of studentEntries(`computor.student.fs.${name}`)) {
+        expect(entry.group || '', name).to.match(/^4_explorer@/);
+      }
     }
   });
 
@@ -154,25 +187,67 @@ describe('student filesystem when-clauses', () => {
   });
 });
 
-describe('course and unit rows keep their own menus untouched', () => {
-  // The filesystem work deliberately left these context values alone; if a
-  // later change starts appending suffixes, these $-anchored clauses are what
-  // will silently stop matching.
-  const ROOT_COMMANDS = [
-    'computor.student.setupCourseRepository',
-    'computor.student.downloadTemplate',
-    'computor.student.updateFromTemplate',
+describe('course row menus follow the repository state', () => {
+  // The course row now carries its git binding, so the menu can drop the
+  // actions that do not apply. These are the shapes CourseRootItem emits.
+  const MANAGED_CLONED = 'studentCourseRoot.gitManaged.cloned';
+  const MANAGED_CLONED_DESC = 'studentCourseRoot.gitManaged.cloned.hasDescription';
+  const MANAGED_FRESH = 'studentCourseRoot.gitManaged.notCloned';
+  const EXTERNAL_CLONED = 'studentCourseRoot.gitExternal.cloned';
+  const DOWNLOAD = 'studentCourseRoot.gitDownload.cloned';
+  const UNKNOWN = 'studentCourseRoot.gitUnknown.notCloned';
+  const EVERY_ROOT = [MANAGED_CLONED, MANAGED_CLONED_DESC, MANAGED_FRESH, EXTERNAL_CLONED, DOWNLOAD, UNKNOWN];
+
+  const ALWAYS_AVAILABLE = [
     'computor.student.exportCourseExamples',
-    'computor.student.help'
+    'computor.student.help',
+    'computor.student.showMessages'
   ];
 
-  it('still offers every course-root command on a plain root', () => {
-    for (const command of ROOT_COMMANDS) {
+  it('keeps the always-available course commands on every course row', () => {
+    for (const command of ALWAYS_AVAILABLE) {
       const whens = whensFor(command).filter(w => w.includes('studentCourseRoot'));
       expect(whens.length, `${command} lost its root entry`).to.be.greaterThan(0);
       for (const when of whens) {
-        expect(matchesViewItem(when, 'studentCourseRoot'), command).to.equal(true);
-        expect(matchesViewItem(when, 'studentCourseRoot.hasDescription'), command).to.equal(true);
+        for (const value of EVERY_ROOT) {
+          expect(matchesViewItem(when, value), `${command} on ${value}`).to.equal(true);
+        }
+      }
+    }
+  });
+
+  it('offers Set up Repository only where there is no clone yet', () => {
+    for (const when of whensFor('computor.student.setupCourseRepository')) {
+      expect(matchesViewItem(when, MANAGED_FRESH)).to.equal(true);
+      expect(matchesViewItem(when, UNKNOWN)).to.equal(true);
+      expect(matchesViewItem(when, MANAGED_CLONED)).to.equal(false);
+      // Download-mode courses are served by Download Template instead.
+      expect(matchesViewItem(when, DOWNLOAD)).to.equal(false);
+    }
+  });
+
+  it('offers Download Template only to download-mode courses', () => {
+    for (const when of whensFor('computor.student.downloadTemplate')) {
+      expect(matchesViewItem(when, DOWNLOAD)).to.equal(true);
+      expect(matchesViewItem(when, MANAGED_CLONED)).to.equal(false);
+      expect(matchesViewItem(when, MANAGED_FRESH)).to.equal(false);
+    }
+  });
+
+  it('offers the git actions only on a cloned git-backed course', () => {
+    for (const command of [
+      'computor.student.updateFromTemplate',
+      'computor.student.commitCourse',
+      'computor.student.fixRepositoryAuth'
+    ]) {
+      const whens = whensFor(command);
+      expect(whens.length, `${command} has no course-root entry`).to.be.greaterThan(0);
+      for (const when of whens) {
+        expect(matchesViewItem(when, MANAGED_CLONED), command).to.equal(true);
+        expect(matchesViewItem(when, MANAGED_CLONED_DESC), command).to.equal(true);
+        expect(matchesViewItem(when, EXTERNAL_CLONED), command).to.equal(true);
+        expect(matchesViewItem(when, MANAGED_FRESH), command).to.equal(false);
+        expect(matchesViewItem(when, DOWNLOAD), command).to.equal(false);
       }
     }
   });
@@ -180,11 +255,35 @@ describe('course and unit rows keep their own menus untouched', () => {
   it('offers no filesystem command on a course or unit row', () => {
     for (const command of FS_COMMANDS) {
       for (const when of whensFor(command)) {
-        expect(matchesViewItem(when, 'studentCourseRoot'), command).to.equal(false);
-        expect(matchesViewItem(when, 'studentCourseRoot.hasDescription'), command).to.equal(false);
+        for (const value of EVERY_ROOT) {
+          expect(matchesViewItem(when, value), `${command} on ${value}`).to.equal(false);
+        }
         expect(matchesViewItem(when, 'studentCourseUnit'), command).to.equal(false);
         expect(matchesViewItem(when, 'studentCourseUnit.hasDescription'), command).to.equal(false);
       }
+    }
+  });
+});
+
+describe('every inline icon has a context-menu twin', () => {
+  // "All actions which can be used from an icon should also be part of the
+  // context menu" (computor-org/issues#353): an icon is easy to miss, and the
+  // context menu is where students look for the full set.
+  it('pairs each inline student entry with a non-inline one', () => {
+    const inline = contextMenus.filter(
+      entry => (entry.when || '').includes(`view == ${STUDENT_VIEW}`)
+        && (entry.group || '').startsWith('inline')
+    );
+    expect(inline.length).to.be.greaterThan(0);
+    for (const entry of inline) {
+      // Matched by command, not by clause: `showMessages` is inline on
+      // assignments and in the menu under a clause that covers every content
+      // row, which is the same action reaching the same node.
+      const twin = contextMenus.find(other =>
+        other.command === entry.command
+        && (other.when || '').includes(`view == ${STUDENT_VIEW}`)
+        && !(other.group || '').startsWith('inline'));
+      expect(twin, `${entry.command} is inline only`).to.not.equal(undefined);
     }
   });
 });

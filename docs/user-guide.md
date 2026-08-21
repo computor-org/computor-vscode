@@ -88,8 +88,37 @@ As a student, you can browse courses, work on assignments, run tests, and submit
 1. Make your code changes
 2. Click the **git commit** icon next to the assignment
    - Or right-click → `Commit Assignment`
-3. Enter a commit message
-4. Changes are committed and pushed to your repository
+3. Changes are committed and pushed to your repository
+
+All the assignments of a course share one repository, so `Commit Course` on the
+course row saves everything you have worked on in one step.
+
+#### Managing Files in an Assignment
+
+Right-click an assignment or any file inside it:
+
+- `New File…` / `New Folder…`
+- `Copy File…` / `Move File…` — pick a destination inside the same assignment
+- `Delete File` / `Delete Folder`
+- `Rename…`, `Duplicate`, `Cut` / `Copy` / `Paste`
+- `Copy Path`, `Copy Relative Path`, `Reveal in File Explorer`
+
+Everything happens locally until you commit. `.git` and the assignment's own
+`README.md` / `mediaFiles` are managed by Computor and cannot be changed.
+
+#### Restoring Material You Deleted
+
+Right-click the course → `Update Repository from Template`. It merges any newly
+released material and restores every file the course template has that your
+folder does not. Files you still have are left untouched, so to get a fresh copy
+of a ruined file you delete it first (copy it elsewhere if you want to keep your
+version).
+
+#### Keeping a Copy of Your Work
+
+Right-click the course → `Export Course Examples…` packs the assignments on disk
+into a ZIP. In the browser it is saved under `exports/` in your workspace and
+downloaded to your computer, so your work outlives your enrolment.
 
 #### Submit Assignment
 
@@ -107,7 +136,7 @@ As a student, you can browse courses, work on assignments, run tests, and submit
 
 ### Tips for Students
 
-- **Commit often**: Use `Commit Assignment` regularly to save your progress
+- **Commit often**: Use `Commit Course` or `Commit Assignment` regularly to save your progress
 - **Test before submitting**: Always run tests locally before final submission
 - **Check messages**: Lecturers and tutors may post important updates
 - **Multiple courses**: You can work on multiple courses; each assignment is isolated

@@ -24,6 +24,11 @@ let refreshed: any[];
 let inputAnswer: string | undefined;
 let warningAnswer: string | undefined;
 let clipboardText: string | undefined;
+/** Set to make the clipboard write silently not stick, as browsers do. */
+let clipboardRefuses: boolean;
+let manualCopyOffered: string | undefined;
+let quickPickLabel: string | undefined;
+let quickPickChoices: string[];
 let validationError: string | undefined;
 let contextKeys: Record<string, any>;
 
@@ -55,6 +60,10 @@ function useCommandHarness(): void {
     inputAnswer = undefined;
     warningAnswer = undefined;
     clipboardText = undefined;
+    clipboardRefuses = false;
+    manualCopyOffered = undefined;
+    quickPickLabel = undefined;
+    quickPickChoices = [];
     validationError = undefined;
     contextKeys = {};
 
@@ -62,7 +71,10 @@ function useCommandHarness(): void {
     original.executeCommand = vscode.commands.executeCommand;
     original.showInputBox = vscode.window.showInputBox;
     original.showWarningMessage = vscode.window.showWarningMessage;
+    original.showInformationMessage = vscode.window.showInformationMessage;
+    original.showQuickPick = vscode.window.showQuickPick;
     original.writeText = vscode.env.clipboard.writeText;
+    original.readText = vscode.env.clipboard.readText;
 
     (vscode.commands as any).registerCommand = (id: string, handler: Handler) => {
       handlers.set(id, handler);
@@ -72,7 +84,21 @@ function useCommandHarness(): void {
       if (cmd === 'setContext') { contextKeys[args[0]] = args[1]; }
       return undefined;
     };
+    (vscode.window as any).showInformationMessage = async () => undefined;
+    (vscode.window as any).showQuickPick = async (items: any[]) => {
+      const resolved = await items;
+      quickPickChoices = resolved.map((item: any) => item.label);
+      return quickPickLabel === undefined
+        ? undefined
+        : resolved.find((item: any) => item.label === quickPickLabel);
+    };
     (vscode.window as any).showInputBox = async (opts: any) => {
+      // The clipboard fallback shows the text in a pre-filled box; record it
+      // rather than treating it as a name prompt.
+      if (typeof opts?.title === 'string' && opts.title.includes('press Ctrl/Cmd+C')) {
+        manualCopyOffered = opts.value;
+        return undefined;
+      }
       // VS Code will not resolve a value that fails validateInput, so neither do
       // we — that makes a refused name observable without the command throwing.
       if (inputAnswer !== undefined && opts?.validateInput) {
@@ -82,7 +108,10 @@ function useCommandHarness(): void {
       return inputAnswer;
     };
     (vscode.window as any).showWarningMessage = async () => warningAnswer;
-    (vscode.env.clipboard as any).writeText = async (text: string) => { clipboardText = text; };
+    (vscode.env.clipboard as any).writeText = async (text: string) => {
+      if (!clipboardRefuses) { clipboardText = text; }
+    };
+    (vscode.env.clipboard as any).readText = async () => clipboardText;
 
     const provider = { refreshNode: (node: any) => { refreshed.push(node); } };
     new StudentFileCommands(
@@ -96,7 +125,10 @@ function useCommandHarness(): void {
     (vscode.commands as any).executeCommand = original.executeCommand;
     (vscode.window as any).showInputBox = original.showInputBox;
     (vscode.window as any).showWarningMessage = original.showWarningMessage;
+    (vscode.window as any).showInformationMessage = original.showInformationMessage;
+    (vscode.window as any).showQuickPick = original.showQuickPick;
     (vscode.env.clipboard as any).writeText = original.writeText;
+    (vscode.env.clipboard as any).readText = original.readText;
     fs.rmSync(repoRoot, { recursive: true, force: true });
   });
 }
@@ -113,8 +145,9 @@ describe('student file commands', () => {
 
   it('registers every contributed command', () => {
     for (const name of [
-      'newFile', 'newFolder', 'rename', 'delete', 'duplicate',
-      'cut', 'copy', 'paste', 'revealInOS', 'copyPath', 'copyRelativePath'
+      'newFile', 'newFolder', 'rename', 'duplicate',
+      'cut', 'copy', 'paste', 'revealInOS', 'copyPath', 'copyRelativePath',
+      'copyTo', 'moveTo', 'deleteFile', 'deleteFolder'
     ]) {
       expect(handlers.has(`computor.student.fs.${name}`), name).to.equal(true);
     }
@@ -194,14 +227,14 @@ describe('student file commands', () => {
     it('removes the entry once confirmed', async () => {
       fs.writeFileSync(path.join(repoRoot, 'a.txt'), 'x');
       warningAnswer = 'Delete';
-      await run('computor.student.fs.delete', fsItem('a.txt', false));
+      await run('computor.student.fs.deleteFile', fsItem('a.txt', false));
       expect(fs.existsSync(path.join(repoRoot, 'a.txt'))).to.equal(false);
     });
 
     it('keeps the entry when the confirmation is declined', async () => {
       fs.writeFileSync(path.join(repoRoot, 'a.txt'), 'x');
       warningAnswer = undefined;
-      await run('computor.student.fs.delete', fsItem('a.txt', false));
+      await run('computor.student.fs.deleteFile', fsItem('a.txt', false));
       expect(fs.existsSync(path.join(repoRoot, 'a.txt'))).to.equal(true);
     });
 
@@ -209,7 +242,7 @@ describe('student file commands', () => {
       fs.mkdirSync(path.join(repoRoot, 'src'));
       fs.writeFileSync(path.join(repoRoot, 'src', 'main.py'), '');
       warningAnswer = 'Delete';
-      await run('computor.student.fs.delete', fsItem('src', true));
+      await run('computor.student.fs.deleteFolder', fsItem('src', true));
       expect(fs.existsSync(path.join(repoRoot, 'src'))).to.equal(false);
     });
   });
@@ -336,6 +369,143 @@ describe('student file commands', () => {
     it('falls back to the folder name at the root itself', async () => {
       await run('computor.student.fs.copyRelativePath', assignmentItem());
       expect(clipboardText).to.equal(path.basename(repoRoot));
+    });
+
+    it('makes an assignment row relative to its repository, like a file row', async () => {
+      // The assignment used to be its own root, so Copy Relative Path answered
+      // a bare basename there and a repo-relative path one level down
+      // (computor-org/issues#353).
+      fs.mkdirSync(path.join(repoRoot, '.git'));
+      const assignmentDir = path.join(repoRoot, 'week_1');
+      fs.mkdirSync(assignmentDir);
+
+      await run('computor.student.fs.copyRelativePath', assignmentItem(assignmentDir));
+
+      expect(clipboardText).to.equal('week_1');
+    });
+
+    it('offers the path by hand when the browser refuses the clipboard', async () => {
+      // Under code-server the write can be refused without throwing, leaving
+      // whatever was copied last in place — which is what made Copy Path look
+      // like it copied the wrong thing.
+      fs.writeFileSync(path.join(repoRoot, 'a.txt'), '');
+      clipboardText = 'something copied earlier';
+      clipboardRefuses = true;
+
+      await run('computor.student.fs.copyPath', fsItem('a.txt', false));
+
+      expect(manualCopyOffered).to.equal(path.join(repoRoot, 'a.txt'));
+    });
+  });
+
+  describe('copy to / move to', () => {
+    /** A file row two levels down, with the tree parents the commands walk. */
+    function nestedFile(): { assignmentDir: string; item: any } {
+      const assignmentDir = path.join(repoRoot, 'week_1');
+      fs.mkdirSync(path.join(assignmentDir, 'src'), { recursive: true });
+      fs.mkdirSync(path.join(assignmentDir, 'out'));
+      fs.writeFileSync(path.join(assignmentDir, 'src', 'main.py'), 'print(1)\n');
+
+      const assignment = assignmentItem(assignmentDir);
+      const srcFolder = fsItem('week_1/src', true, assignment);
+      return { assignmentDir, item: fsItem('week_1/src/main.py', false, srcFolder) };
+    }
+
+    it('offers only folders inside the owning assignment', async () => {
+      // A course repository holds every assignment; bounding the pick by it
+      // would let a student move work into someone else's exercise.
+      fs.mkdirSync(path.join(repoRoot, 'week_2'), { recursive: true });
+      const { item } = nestedFile();
+
+      await run('computor.student.fs.moveTo', item);
+
+      expect(quickPickChoices).to.deep.equal([
+        '$(root-folder) Assignment root',
+        '$(folder) out'
+      ]);
+    });
+
+    it('moves the file into the chosen folder', async () => {
+      const { assignmentDir, item } = nestedFile();
+      quickPickLabel = '$(folder) out';
+
+      await run('computor.student.fs.moveTo', item);
+
+      expect(fs.existsSync(path.join(assignmentDir, 'src', 'main.py'))).to.equal(false);
+      expect(fs.readFileSync(path.join(assignmentDir, 'out', 'main.py'), 'utf-8')).to.equal('print(1)\n');
+    });
+
+    it('copies the file and leaves the original in place', async () => {
+      const { assignmentDir, item } = nestedFile();
+      quickPickLabel = '$(root-folder) Assignment root';
+
+      await run('computor.student.fs.copyTo', item);
+
+      expect(fs.existsSync(path.join(assignmentDir, 'src', 'main.py'))).to.equal(true);
+      expect(fs.readFileSync(path.join(assignmentDir, 'main.py'), 'utf-8')).to.equal('print(1)\n');
+    });
+
+    it('does nothing when the destination pick is dismissed', async () => {
+      const { assignmentDir, item } = nestedFile();
+      quickPickLabel = undefined;
+
+      await run('computor.student.fs.moveTo', item);
+
+      expect(fs.existsSync(path.join(assignmentDir, 'src', 'main.py'))).to.equal(true);
+    });
+
+    it('keeps both copies when a name collides and the student says so', async () => {
+      const { assignmentDir, item } = nestedFile();
+      fs.writeFileSync(path.join(assignmentDir, 'out', 'main.py'), 'theirs\n');
+      quickPickLabel = '$(folder) out';
+      warningAnswer = 'Keep Both';
+
+      await run('computor.student.fs.copyTo', item);
+
+      expect(fs.readFileSync(path.join(assignmentDir, 'out', 'main.py'), 'utf-8')).to.equal('theirs\n');
+      expect(fs.readFileSync(path.join(assignmentDir, 'out', 'main copy.py'), 'utf-8')).to.equal('print(1)\n');
+    });
+
+    it('never offers a folder its own subtree, or where it already is', async () => {
+      const assignmentDir = path.join(repoRoot, 'week_1');
+      fs.mkdirSync(path.join(assignmentDir, 'src', 'nested'), { recursive: true });
+      fs.mkdirSync(path.join(assignmentDir, 'out'));
+      const assignment = assignmentItem(assignmentDir);
+      const srcFolder = fsItem('week_1/src', true, assignment);
+
+      await run('computor.student.fs.moveTo', srcFolder);
+
+      // Not the assignment root (src is already there), not src, not
+      // src/nested — a folder cannot be moved inside itself.
+      expect(quickPickChoices).to.deep.equal(['$(folder) out']);
+    });
+
+    it('says so instead of opening an empty pick when there is nowhere to go', async () => {
+      const assignmentDir = path.join(repoRoot, 'week_1');
+      fs.mkdirSync(path.join(assignmentDir, 'src'), { recursive: true });
+      const assignment = assignmentItem(assignmentDir);
+      const srcFolder = fsItem('week_1/src', true, assignment);
+
+      await run('computor.student.fs.moveTo', srcFolder);
+
+      expect(quickPickChoices).to.deep.equal([]);
+      expect(fs.existsSync(path.join(assignmentDir, 'src'))).to.equal(true);
+    });
+  });
+
+  describe('delete', () => {
+    it('deletes a file through the file-specific entry', async () => {
+      fs.writeFileSync(path.join(repoRoot, 'a.txt'), '');
+      warningAnswer = 'Delete';
+      await run('computor.student.fs.deleteFile', fsItem('a.txt', false));
+      expect(fs.existsSync(path.join(repoRoot, 'a.txt'))).to.equal(false);
+    });
+
+    it('deletes a folder through the folder-specific entry', async () => {
+      fs.mkdirSync(path.join(repoRoot, 'out'));
+      warningAnswer = 'Delete';
+      await run('computor.student.fs.deleteFolder', fsItem('out', true));
+      expect(fs.existsSync(path.join(repoRoot, 'out'))).to.equal(false);
     });
   });
 });

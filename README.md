@@ -115,8 +115,13 @@ You're now ready to use Computor!
 
 1. **Browse Courses**: Access available courses in the Student view
 2. **Clone Assignments**: Download assignment repositories to your workspace
-3. **Run Tests**: Execute tests locally to verify your solution
-4. **Submit Solutions**: Push your code and create submissions for grading
+3. **Work on Files**: Create, copy, move, rename and delete files from the tree
+4. **Run Tests**: Execute tests locally to verify your solution
+5. **Commit**: Save a single assignment, or the whole course in one step
+6. **Restore Material**: Delete a ruined file and run *Update Repository from
+   Template* to get a fresh copy
+7. **Submit Solutions**: Push your code and create submissions for grading
+8. **Export Your Work**: Pack the course into a ZIP you keep after enrolment ends
 
 ### For Tutors
 

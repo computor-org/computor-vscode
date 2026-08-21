@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { notify } from './notify';
+import { copyToClipboard } from './clipboard';
 
 /**
  * Reveal a file or folder for the user: the OS file manager on desktop, the
@@ -24,8 +24,11 @@ export async function revealUri(uri: vscode.Uri): Promise<void> {
     return;
   }
 
-  await vscode.env.clipboard.writeText(uri.fsPath);
-  notify.info(`Cannot open the system file manager in the browser. Path copied to clipboard: ${uri.fsPath}`);
+  await copyToClipboard(
+    uri.fsPath,
+    'Path',
+    `Cannot open the system file manager in the browser. Path copied to clipboard: ${uri.fsPath}`
+  );
 }
 
 function isInsideWorkspace(uri: vscode.Uri): boolean {

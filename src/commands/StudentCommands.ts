@@ -15,6 +15,7 @@ import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/Me
 import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
+import { downloadFileInBrowser } from '../ui/webviews/browserDownload';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
@@ -38,6 +39,15 @@ import {
 
 // (Deprecated legacy types removed)
 
+
+/** Workspace folder the browser-side export lands in before it is downloaded. */
+const EXPORT_DIR_NAME = 'exports';
+
+/** A few paths for a toast, with a count instead of a wall of text. */
+function summarizePaths(paths: string[], shown = 3): string {
+  const head = paths.slice(0, shown).join(', ');
+  return paths.length > shown ? `${head} and ${paths.length - shown} more` : head;
+}
 
 export class StudentCommands {
   private context: vscode.ExtensionContext;
@@ -351,27 +361,8 @@ export class StudentCommands {
    * pick one, then runs the provisioning flow (Mode A / Forgejo for now).
    */
   private async setupCourseRepository(arg?: any): Promise<void> {
-    let courseId: string | undefined =
-      (typeof arg === 'string' ? arg : undefined) ||
-      arg?.courseId || arg?.course?.id || arg?.course_id;
-
-    if (!courseId) {
-      const courses = await this.apiService.getStudentCourses();
-      if (!courses.length) {
-        notify.info('No student courses found.');
-        return;
-      }
-      const picked = await vscode.window.showQuickPick(
-        courses.map((c: any) => ({
-          label: c.title || c.path || c.id,
-          description: (c.title && c.path) ? c.path : undefined,
-          courseId: c.id as string
-        })),
-        { title: 'Set up repository — pick a course', ignoreFocusOut: true }
-      );
-      if (!picked) { return; }
-      courseId = picked.courseId;
-    }
+    const courseId = await this.resolveCourseIdArg(arg, 'Set up repository — pick a course');
+    if (!courseId) { return; }
 
     const cid = courseId;
 
@@ -440,38 +431,109 @@ export class StudentCommands {
   }
 
   /**
-   * Merge new course-template commits into the student's repository for one
-   * course — the same sync that runs on refresh (clone/pull + template merge),
-   * but targeted and explicitly user-triggered.
+   * Commit and push everything in one course's repository.
+   *
+   * The course-level git model puts every assignment of a course in a single
+   * repository, so a push already carries whatever else was committed there —
+   * which made the assignment-only commit button misleading. This is the
+   * honest version of it: stage the whole repository, once, from the course row
+   * (computor-org/issues#353).
    */
-  private async updateFromTemplate(arg?: any): Promise<void> {
-    let courseId: string | undefined =
-      (typeof arg === 'string' ? arg : undefined) ||
-      arg?.courseId || arg?.course?.id || arg?.course_id;
+  private async commitCourse(arg?: any): Promise<void> {
+    const courseId = await this.resolveCourseIdArg(arg, 'Commit course — pick a course');
+    if (!courseId) { return; }
 
-    if (!courseId) {
-      const courses = await this.apiService.getStudentCourses();
-      if (!courses.length) {
-        notify.info('No student courses found.');
-        return;
-      }
-      const picked = await vscode.window.showQuickPick(
-        courses.map((c: any) => ({
-          label: c.title || c.path || c.id,
-          description: (c.title && c.path) ? c.path : undefined,
-          courseId: c.id as string
-        })),
-        { title: 'Update repository from template — pick a course', ignoreFocusOut: true }
-      );
-      if (!picked) { return; }
-      courseId = picked.courseId;
-    }
+    const courseTitle: string = typeof arg?.title === 'string' && arg.title.trim().length > 0
+      ? arg.title
+      : 'course';
 
-    const manager = this.repositoryManager;
-    if (!manager) {
-      notify.warning('Repository manager is not available.');
+    const repoPath = await this.provisioningService.localRepoPath(courseId);
+    if (!repoPath || !fs.existsSync(repoPath)) {
+      notify.warning('This course has no local repository yet. Use "Set up Repository" first.');
       return;
     }
+
+    try {
+      await this.saveAllFilesInDirectory(repoPath);
+
+      if (!(await this.gitService.hasChanges(repoPath))) {
+        notify.info('No changes to commit in this course.');
+        return;
+      }
+
+      const timestamp = new Date().toISOString().replace('T', ' ').split('.')[0];
+      const commitMessage = `Update ${courseTitle} - ${timestamp}`;
+
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Committing and pushing ${courseTitle}...`,
+        cancellable: false
+      }, async (progress) => {
+        progress.report({ increment: 0, message: 'Staging changes...' });
+        await this.gitService.stageAll(repoPath);
+
+        if (!(await this.gitService.hasStagedFiles(repoPath))) {
+          throw new Error('No changes to commit in this course');
+        }
+
+        progress.report({ increment: 40, message: 'Committing changes...' });
+        await this.gitService.commitChanges(repoPath, commitMessage);
+
+        progress.report({ increment: 60, message: 'Pushing to remote...' });
+        await this.pushWithAuthRetry(repoPath);
+
+        progress.report({ increment: 100, message: 'Done' });
+      });
+
+      notify.info(`Successfully committed and pushed ${courseTitle}`);
+      this.treeDataProvider.refreshNode(arg);
+    } catch (error: any) {
+      const message = redactGitCredentials(error?.message || String(error));
+      console.error('[StudentCommands] Failed to commit course:', message);
+      notify.error(`Failed to commit course: ${message}`);
+    }
+  }
+
+  /**
+   * The course a course-row command should act on: taken from the tree item
+   * when one was clicked, otherwise picked from the student's enrolments (the
+   * Command Palette route). Shared by every course-scoped student command.
+   */
+  private async resolveCourseIdArg(arg: any, title: string): Promise<string | undefined> {
+    const fromArg: string | undefined =
+      (typeof arg === 'string' ? arg : undefined) ||
+      arg?.courseId || arg?.course?.id || arg?.course_id;
+    if (fromArg) { return fromArg; }
+
+    const courses = await this.apiService.getStudentCourses();
+    if (!courses.length) {
+      notify.info('No student courses found.');
+      return undefined;
+    }
+    const picked = await vscode.window.showQuickPick(
+      courses.map((c: any) => ({
+        label: c.title || c.path || c.id,
+        description: (c.title && c.path) ? c.path : undefined,
+        courseId: c.id as string
+      })),
+      { title, ignoreFocusOut: true }
+    );
+    return picked?.courseId;
+  }
+
+  /**
+   * Bring one course's repository up to date with the course template.
+   *
+   * Two halves: the same merge that runs on refresh, and then a restore of
+   * every template file the student no longer has. The restore is deliberately
+   * only here — a refresh or a startup sync must never resurrect a file someone
+   * meant to delete, whereas asking for this action is asking for exactly that
+   * (computor-org/issues#352).
+   */
+  private async updateFromTemplate(arg?: any): Promise<void> {
+    const courseId = await this.resolveCourseIdArg(arg, 'Update repository from template — pick a course');
+    if (!courseId) { return; }
+
     const cid = courseId;
 
     await vscode.window.withProgress({
@@ -479,9 +541,38 @@ export class StudentCommands {
       title: 'Updating repository from course template...',
       cancellable: true
     }, async (progress, token) => {
+      const report = (message: string) => progress.report({ message });
       try {
-        await manager.autoSetupRepositories(cid, (m) => progress.report({ message: m }), undefined, token);
+        // Legacy submission-group repositories.
+        if (this.repositoryManager) {
+          await this.repositoryManager.autoSetupRepositories(cid, report, undefined, token);
+        }
+
+        // Course-level git: the merge lives here, not in the legacy manager,
+        // and this command used to skip it entirely — so on a course-level-git
+        // course it did nothing at all (computor-org/issues#352).
+        await this.provisioningService.syncClonedManagedRepos([cid], {
+          onProgress: report,
+          cancellationToken: token
+        });
+
+        if (token.isCancellationRequested) { return; }
+
+        // Then put back whatever the student deleted. A merge never does this.
+        const restored = await this.provisioningService.restoreMissingTemplateFiles(cid, report);
+
         this.treeDataProvider.refresh();
+
+        if (restored === undefined) {
+          notify.info('Repository updated from the course template.');
+        } else if (restored.length === 0) {
+          notify.info('Repository updated from the course template. No files were missing.');
+        } else {
+          notify.info(
+            `Repository updated from the course template. Restored ${restored.length} missing file(s): `
+            + summarizePaths(restored)
+          );
+        }
       } catch (error: any) {
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Template update failed:', message);
@@ -542,27 +633,8 @@ export class StudentCommands {
    * needs no git credentials.
    */
   private async downloadCourseTemplate(arg?: any): Promise<void> {
-    let courseId: string | undefined =
-      (typeof arg === 'string' ? arg : undefined) ||
-      arg?.courseId || arg?.course?.id || arg?.course_id;
-
-    if (!courseId) {
-      const courses = await this.apiService.getStudentCourses();
-      if (!courses.length) {
-        notify.info('No student courses found.');
-        return;
-      }
-      const picked = await vscode.window.showQuickPick(
-        courses.map((c: any) => ({
-          label: c.title || c.path || c.id,
-          description: (c.title && c.path) ? c.path : undefined,
-          courseId: c.id as string
-        })),
-        { title: 'Download template — pick a course', ignoreFocusOut: true }
-      );
-      if (!picked) { return; }
-      courseId = picked.courseId;
-    }
+    const courseId = await this.resolveCourseIdArg(arg, 'Download template — pick a course');
+    if (!courseId) { return; }
     const cid = courseId;
 
     const how = await vscode.window.showQuickPick(
@@ -1453,6 +1525,10 @@ export class StudentCommands {
       }
     });
 
+    register('computor.student.commitCourse', async (item?: any) => {
+      await this.commitCourse(item);
+    });
+
     // Test assignment (includes commit, push, and test submission)
     register('computor.student.testAssignment', async (item: any) => {
       console.log('[TestAssignment] Item received:', item);
@@ -1724,11 +1800,7 @@ export class StudentCommands {
     }
 
     const defaultFile = `${sanitizeContentDirName(courseTitle)}.${formatPick.value}.zip`;
-    const dest = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file(path.join(workspaceRoot, defaultFile)),
-      filters: { 'ZIP Archives': ['zip'] },
-      saveLabel: 'Export'
-    });
+    const dest = await this.chooseExportDestination(workspaceRoot, defaultFile);
     if (!dest) { return; }
 
     await runLockedWithProgress(
@@ -1769,6 +1841,7 @@ export class StudentCommands {
           compression: 'DEFLATE',
           compressionOptions: { level: 6 }
         });
+        await fs.promises.mkdir(path.dirname(dest.fsPath), { recursive: true });
         await fs.promises.writeFile(dest.fsPath, buffer);
 
         const summary = result.missing.length > 0
@@ -1776,12 +1849,56 @@ export class StudentCommands {
           : `Exported ${result.packaged} assignment(s).`;
         // Fire-and-forget: awaiting this would keep the "Exporting…" progress
         // popup open until the user dismisses the success toast.
-        void notify.info(summary, 'Reveal').then(choice => {
-          if (choice === 'Reveal') {
-            void revealUri(dest);
-          }
-        });
+        void this.deliverExport(dest, summary);
       }
+    );
+  }
+
+  /**
+   * Where the export archive is written.
+   *
+   * On the desktop the native save dialog is exactly right. Under code-server
+   * it is not: it browses the *server's* filesystem, and its "save to my
+   * computer" branch is refused by the browser — the dead end students reported
+   * (computor-org/issues#353). There we pick the location ourselves and hand
+   * the finished file to the browser afterwards.
+   */
+  private async chooseExportDestination(
+    workspaceRoot: string,
+    defaultFile: string
+  ): Promise<vscode.Uri | undefined> {
+    if (vscode.env.uiKind === vscode.UIKind.Web) {
+      return vscode.Uri.file(path.join(workspaceRoot, EXPORT_DIR_NAME, defaultFile));
+    }
+    return vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(path.join(workspaceRoot, defaultFile)),
+      filters: { 'ZIP Archives': ['zip'] },
+      saveLabel: 'Export'
+    });
+  }
+
+  /** Get the finished archive to the student, browser sandbox included. */
+  private async deliverExport(dest: vscode.Uri, summary: string): Promise<void> {
+    if (vscode.env.uiKind !== vscode.UIKind.Web) {
+      const choice = await notify.info(summary, 'Reveal');
+      if (choice === 'Reveal') {
+        void revealUri(dest);
+      }
+      return;
+    }
+
+    const name = path.basename(dest.fsPath);
+    if (await downloadFileInBrowser(this.context.extensionUri, dest.fsPath)) {
+      void notify.info(`${summary} ${name} is downloading to your computer.`);
+      return;
+    }
+
+    // Too large for the in-page hand-off, or the browser refused it. The file
+    // is still on disk, and the Explorer's own Download action can fetch it.
+    await revealUri(dest);
+    void notify.info(
+      `${summary} The archive is saved in your workspace at ${EXPORT_DIR_NAME}/${name}. `
+      + 'To keep a copy on your own computer, right-click it in the Explorer and choose "Download…".'
     );
   }
 
@@ -2111,7 +2228,7 @@ export class StudentCommands {
       }
 
       if (!localPath) {
-        localPath = this.resolveLocalRepositoryPath(courseContentSummary, submissionGroupSummary);
+        localPath = await this.resolveLocalRepositoryPath(courseContentSummary, currentCourseId);
         if (localPath) {
           isCloned = fs.existsSync(localPath);
         }
@@ -2365,44 +2482,33 @@ export class StudentCommands {
 
 
 
-  private resolveLocalRepositoryPath(
+  /**
+   * The assignment's folder on disk, for content rows that reach the details
+   * view without a tree item to ask.
+   *
+   * `directory` is repository-relative until the tree rewrites it, so the rest
+   * has to come from where the course is actually cloned. The previous guess —
+   * `<workspace>/<repository name>/<directory>` — predates the course-level git
+   * model and pointed at a path that never exists, which is how the details
+   * view came to show something other than the assignment (issue #353).
+   */
+  private async resolveLocalRepositoryPath(
     courseContent: CourseContentStudentList | CourseContentStudentGet,
-    submissionGroup?: SubmissionGroupStudentList
-  ): string | undefined {
+    courseId?: string
+  ): Promise<string | undefined> {
     const directory = (courseContent as any)?.directory as string | undefined;
     if (!directory) {
       return undefined;
     }
-
     if (path.isAbsolute(directory)) {
       return directory;
     }
 
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceRoot) {
+    const owningCourseId = courseId || (courseContent as any)?.course_id;
+    if (!owningCourseId) {
       return undefined;
     }
-
-    const repo = submissionGroup?.repository as any;
-    let repoName: string | undefined;
-    if (repo) {
-      if (typeof repo.full_path === 'string' && repo.full_path.length > 0) {
-        const parts = repo.full_path.split('/');
-        repoName = parts[parts.length - 1] || undefined;
-      } else if (typeof repo.clone_url === 'string' && repo.clone_url.length > 0) {
-        const clean = repo.clone_url.replace(/\.git$/, '');
-        const parts = clean.split('/');
-        repoName = parts[parts.length - 1] || undefined;
-      } else if (typeof repo.web_url === 'string' && repo.web_url.length > 0) {
-        const parts = repo.web_url.split('/');
-        repoName = parts[parts.length - 1] || undefined;
-      }
-    }
-
-    if (repoName) {
-      return path.join(workspaceRoot, repoName, directory);
-    }
-
-    return path.join(workspaceRoot, directory);
+    const repoRoot = await this.provisioningService.localRepoPath(owningCourseId);
+    return repoRoot ? path.join(repoRoot, directory) : undefined;
   }
 }
