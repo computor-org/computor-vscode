@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
-import { openFile } from '../ui/editorLayout';
 import * as fs from 'fs';
-import * as path from 'path';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
 import type { GitServerGet, CourseGitBindingUpsert } from '../types/courseGit';
@@ -27,14 +25,13 @@ import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../exceptions/errors/HttpError';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
-import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseContentGet, CourseTaskRequest } from '../types/generated/courses';
+import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
 import type {
   CourseContentLecturerList,
   CourseContentList,
   CourseDeploymentList
 } from '../types/generated';
-import { LecturerRepositoryManager } from '../services/LecturerRepositoryManager';
 import {
   COURSE_ANNOUNCEMENT_DENIED_REASON,
   canPostCourseAnnouncement,
@@ -56,7 +53,6 @@ import {
   sortedSiblings,
   type Placement
 } from '../utils/contentOrdering';
-import { isWithinRoot, normalizeRelativePath } from '../utils/studentFsOperations';
 
 /** A webview cannot pass a tree item, so it sends the ids the scope needs. */
 interface ReleaseContentPayload {
@@ -378,34 +374,43 @@ export class LecturerCommands {
       }
     });
 
-    register('computor.lecturer.createAssignmentFolder', async (item: CourseContentTreeItem) => {
-      await this.createAssignmentFolder(item);
-    });
-
-    register('computor.lecturer.createAssignmentFile', async (item: CourseContentTreeItem) => {
-      await this.createAssignmentFile(item);
-    });
-
-    // Open local assignment folder for a content
+    // Reveal what was actually deployed for this assignment: its folder in the
+    // local, read-only clone of the course's assignments repository. It was
+    // called "Open Assignment Folder", which read like an editing entry point
+    // for a folder that is only ever pulled (computor-org/issues#356).
     register('computor.lecturer.openAssignmentFolder', async (item: CourseContentTreeItem) => {
       if (!item || !item.courseContent?.id || !item.course?.id) { notify.warning('Select an assignment'); return; }
       try {
         const course = await this.apiService.getCourse(item.course.id);
         const content = await this.apiService.getCourseContent(item.courseContent.id, true);
         const deploymentPath = (content as any)?.deployment?.deployment_path || (content as any)?.deployment?.example_identifier || '';
-        if (!course || !deploymentPath) { notify.warning('Assignment not initialized in assignments repo yet.'); return; }
+        if (!course || !deploymentPath) {
+          notify.warning('Nothing is deployed for this assignment yet, so there are no files to reveal.');
+          return;
+        }
         const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
         const mgr = new LecturerRepositoryManager(this.context, this.apiService);
         const folder = mgr.getAssignmentFolderPath(course, deploymentPath);
         if (!folder || !fs.existsSync(folder)) {
-          const choice = await notify.warning('Assignment folder missing locally. Sync assignments now?', 'Sync', 'Cancel');
+          const choice = await notify.warning(
+            'The local copy of the assignments repository does not have this assignment yet. Sync it now?',
+            'Sync', 'Cancel'
+          );
           if (choice === 'Sync') { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
           return;
         }
         await revealUri(vscode.Uri.file(folder));
       } catch (e) {
-        notify.error(`Failed to open assignment folder: ${e}`);
+        notify.error(`Failed to reveal the deployed files: ${e}`);
       }
+    });
+
+    register('computor.lecturer.setMaxTestRuns', async (item: CourseContentTreeItem) => {
+      await this.setSubmissionLimit(item, 'max_test_runs');
+    });
+
+    register('computor.lecturer.setMaxSubmissions', async (item: CourseContentTreeItem) => {
+      await this.setSubmissionLimit(item, 'max_submissions');
     });
 
     register('computor.lecturer.renameCourseGroup', async (item: CourseGroupTreeItem) => {
@@ -1314,184 +1319,52 @@ export class LecturerCommands {
     }
   }
 
-  private async createAssignmentFolder(item: CourseContentTreeItem): Promise<void> {
-    try {
-      const context = await this.resolveAssignmentEditingContext(item);
-      if (!context) {
-        return;
-      }
-
-      const folderInput = await vscode.window.showInputBox({
-        title: 'New folder inside assignment',
-        prompt: 'Enter folder name (relative to assignment root)',
-        placeHolder: 'e.g. src/utils',
-        ignoreFocusOut: true
-      });
-      if (!folderInput) {
-        return;
-      }
-
-      const relativePath = this.normalizeRelativePath(folderInput);
-      if (!relativePath) {
-        notify.error('Invalid folder name. Use relative paths without . or .. segments.');
-        return;
-      }
-
-      const targetPath = path.join(context.assignmentRoot, relativePath);
-      if (!this.isWithinAssignmentRoot(context.assignmentRoot, targetPath)) {
-        notify.error('Target folder must remain inside the assignment directory.');
-        return;
-      }
-
-      if (fs.existsSync(targetPath)) {
-        notify.info(`Folder already exists: ${relativePath}`);
-        return;
-      }
-
-      await fs.promises.mkdir(targetPath, { recursive: true });
-      this.treeDataProvider.refreshNode(item);
-      notify.info(`Created folder: ${relativePath}`);
-    } catch (error: any) {
-      notify.error(`Failed to create folder: ${error?.message || error}`);
-    }
-  }
-
-  private async createAssignmentFile(item: CourseContentTreeItem): Promise<void> {
-    try {
-      const context = await this.resolveAssignmentEditingContext(item);
-      if (!context) {
-        return;
-      }
-
-      const fileInput = await vscode.window.showInputBox({
-        title: 'New file inside assignment',
-        prompt: 'Enter file name (relative to assignment root)',
-        placeHolder: 'e.g. src/index.ts',
-        ignoreFocusOut: true
-      });
-      if (!fileInput) {
-        return;
-      }
-
-      const relativePath = this.normalizeRelativePath(fileInput);
-      if (!relativePath) {
-        notify.error('Invalid file name. Use relative paths without . or .. segments.');
-        return;
-      }
-
-      const targetPath = path.join(context.assignmentRoot, relativePath);
-      if (!this.isWithinAssignmentRoot(context.assignmentRoot, targetPath)) {
-        notify.error('Target file must remain inside the assignment directory.');
-        return;
-      }
-
-      const targetDirectory = path.dirname(targetPath);
-      await fs.promises.mkdir(targetDirectory, { recursive: true });
-
-      if (fs.existsSync(targetPath)) {
-        const overwrite = await vscode.window.showQuickPick(['Overwrite', 'Cancel'], {
-          title: 'File already exists',
-          placeHolder: `${relativePath} already exists.`,
-          ignoreFocusOut: true
-        });
-        if (overwrite !== 'Overwrite') {
-          return;
-        }
-      }
-
-      await fs.promises.writeFile(targetPath, '');
-      this.treeDataProvider.refreshNode(item);
-      await openFile(targetPath, { preview: false });
-      notify.info(`Created file: ${relativePath}`);
-    } catch (error: any) {
-      notify.error(`Failed to create file: ${error?.message || error}`);
-    }
-  }
-
-  private async resolveAssignmentEditingContext(item: CourseContentTreeItem): Promise<{ course: CourseList; content: CourseContentGet; directoryName: string; assignmentRoot: string } | undefined> {
-    if (!item?.course?.id || !item.courseContent?.id) {
+  /**
+   * Set one of the two per-assignment budgets straight from the tree. Both were
+   * reachable only through the details view (computor-org/issues#356).
+   *
+   * An empty answer clears the limit; `0` is kept as a real zero rather than
+   * being folded into "unlimited", which is what the details form's
+   * `parseInt(...) || null` did to it.
+   */
+  private async setSubmissionLimit(
+    item: CourseContentTreeItem,
+    field: 'max_test_runs' | 'max_submissions'
+  ): Promise<void> {
+    if (!item?.courseContent?.id || !item.course?.id) {
       notify.warning('Select an assignment first.');
-      return undefined;
-    }
-
-    const kindId = item.courseContent.course_content_kind_id || item.contentType?.course_content_kind_id;
-    if (kindId !== 'assignment') {
-      notify.warning('This action is only available for assignments.');
-      return undefined;
-    }
-
-    const course = await this.apiService.getCourse(item.course.id);
-    const content = await this.apiService.getCourseContent(item.courseContent.id, true) as CourseContentGet | undefined;
-    if (!course || !content) {
-      notify.error('Failed to load assignment details.');
-      return undefined;
-    }
-
-    const directoryName = this.getAssignmentDirectoryName(content);
-    if (!directoryName) {
-      notify.warning('Assignment deployment path is not configured yet.');
-      return undefined;
-    }
-
-    const repoManager = new LecturerRepositoryManager(this.context, this.apiService);
-    await this.ensureAssignmentsRepo(course, repoManager);
-
-    const assignmentRoot = repoManager.getAssignmentFolderPath(course, directoryName);
-    if (!assignmentRoot) {
-      notify.warning('Assignments repository is not configured for this course.');
-      return undefined;
-    }
-
-    try {
-      await fs.promises.mkdir(assignmentRoot, { recursive: true });
-    } catch (error: any) {
-      notify.error(`Failed to prepare assignment directory: ${error?.message || error}`);
-      return undefined;
-    }
-
-    return { course, content, directoryName, assignmentRoot };
-  }
-
-  private async ensureAssignmentsRepo(course: CourseList, repoManager: LecturerRepositoryManager): Promise<void> {
-    const repoRoot = repoManager.getAssignmentsRepoRoot(course);
-    if (repoRoot && fs.existsSync(repoRoot)) {
       return;
     }
 
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Syncing assignments repository...' }, async (progress) => {
-      progress.report({ message: `Syncing assignments for ${course.title || course.path}` });
-      await repoManager.syncAssignmentsForCourse(course.id);
+    const label = field === 'max_test_runs' ? 'Max Test Runs' : 'Max Submissions';
+    const current = (item.courseContent as any)[field] as number | null | undefined;
+
+    const answer = await vscode.window.showInputBox({
+      title: `Set ${label}`,
+      prompt: `How many ${field === 'max_test_runs' ? 'test runs' : 'submissions'} may a student use for "${item.courseContent.title || item.courseContent.path}"? Leave empty for unlimited.`,
+      value: typeof current === 'number' ? String(current) : '',
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (trimmed.length === 0) { return undefined; }
+        if (!/^\d+$/.test(trimmed)) { return 'Enter a whole number, or leave empty for unlimited.'; }
+        return undefined;
+      }
     });
-  }
 
-  private getAssignmentDirectoryName(content: CourseContentGet): string | undefined {
-    const deployment = (content as any)?.deployment;
-    const deploymentPath = typeof deployment?.deployment_path === 'string' && deployment.deployment_path.trim().length > 0
-      ? deployment.deployment_path.trim()
-      : undefined;
-    const exampleIdentifier = typeof deployment?.example_identifier === 'string' && deployment.example_identifier.trim().length > 0
-      ? deployment.example_identifier.trim()
-      : undefined;
-    return deploymentPath || exampleIdentifier || this.extractSlugFromPath(content.path);
-  }
+    if (answer === undefined) { return; }
 
-  private extractSlugFromPath(pathValue: string | undefined): string | undefined {
-    if (!pathValue) {
-      return undefined;
+    const trimmed = answer.trim();
+    const value = trimmed.length === 0 ? null : Number.parseInt(trimmed, 10);
+    if (value === (current ?? null)) { return; }
+
+    try {
+      await this.treeDataProvider.updateCourseContent(item, { [field]: value } as any);
+      await this.treeDataProvider.refresh();
+      notify.info(value === null ? `${label}: unlimited` : `${label}: ${value}`);
+    } catch (error: any) {
+      notify.error(`Failed to set ${label}: ${error?.message || error}`);
     }
-    const segments = pathValue.split('.').filter(Boolean);
-    if (segments.length === 0) {
-      return undefined;
-    }
-    return segments[segments.length - 1];
-  }
-
-  private normalizeRelativePath(input: string): string | undefined {
-    return normalizeRelativePath(input);
-  }
-
-  private isWithinAssignmentRoot(base: string, candidate: string): boolean {
-    return isWithinRoot(base, candidate);
   }
 
   private isContentTypeSubmittable(type: CourseContentTypeList): boolean {
@@ -1673,10 +1546,17 @@ export class LecturerCommands {
     return `${orgName} / ${familyName} / ${courseName}`;
   }
 
+  /**
+   * Renames the *title* — the label shown in the tree. It deliberately does not
+   * touch the content's path, its deployment directory or the example's
+   * meta.yaml; the command was simply called "Rename", which left lecturers
+   * guessing which of those it meant (computor-org/issues#356).
+   */
   private async renameCourseContent(item: CourseContentTreeItem): Promise<void> {
     const currentTitle = item.courseContent.title || '';
     const newTitle = await vscode.window.showInputBox({
-      prompt: 'Enter new title',
+      title: 'Rename Title',
+      prompt: 'New title shown in the tree. The path, the deployment folder and meta.yaml stay as they are.',
       value: currentTitle
     });
 
@@ -1887,7 +1767,12 @@ export class LecturerCommands {
       await this.apiService.archiveCourseContent(item.course.id, item.courseContent.id);
       this.apiService.clearCourseCache(item.course.id);
       this.treeDataProvider.refresh();
-      notify.info(`Archived "${title}" successfully`);
+      // "Archived successfully" said nothing about where the content went, and
+      // it goes nowhere: it stays right here, marked, and vanishes for students
+      // (computor-org/issues#356).
+      notify.info(
+        `"${title}" is no longer visible to students. It stays in your tree marked "Archived" — use Unarchive to bring it back.`
+      );
     } catch (error: any) {
       notify.error(`Failed to archive "${title}": ${error.message || error}`);
     }

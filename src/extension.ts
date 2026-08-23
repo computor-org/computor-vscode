@@ -1296,11 +1296,27 @@ class UnifiedController {
           notify.warning('No example assigned to this content.');
           return;
         }
-        const found = await exampleTree.revealExample({
+        const params = {
           identifier,
           id,
           repositoryId: item?.exampleInfo?.example_repository_id
-        });
+        };
+
+        // An example that was never checked out has no row to reveal, and the
+        // command used to simply do nothing. Offer the checkout that creates
+        // one — it reveals the row itself afterwards (computor-org/issues#356).
+        const match = await exampleTree.findMergedExample(params);
+        if (match && !match.local) {
+          const choice = await notify.info(
+            `"${match.title}" is not checked out yet. Check it out now?`,
+            'Checkout', 'Cancel'
+          );
+          if (choice !== 'Checkout') { return; }
+          await vscode.commands.executeCommand('computor.lecturer.checkoutAssignmentExample', item);
+          return;
+        }
+
+        const found = await exampleTree.revealExample(params);
         if (!found) {
           notify.warning('Example not found in the examples tree.');
         }

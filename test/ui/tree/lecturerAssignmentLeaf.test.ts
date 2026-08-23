@@ -58,7 +58,7 @@ describe('lecturer course content collapsible state', () => {
       });
 
       expect(item.collapsibleState).to.equal(vscode.TreeItemCollapsibleState.None);
-      // The menus key off these — `createAssignmentFolder` and friends must survive.
+      // The menus key off these — `openAssignmentFolder` and friends must survive.
       expect(item.contextValue).to.contain('submittable');
       expect(item.contextValue).to.contain('assignment');
     });

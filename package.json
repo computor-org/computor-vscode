@@ -1002,7 +1002,7 @@
       },
       {
         "command": "computor.lecturer.openAssignmentFolder",
-        "title": "Open Assignment Folder",
+        "title": "Reveal Deployed Files",
         "icon": "$(folder-opened)",
         "category": "Computor Lecturer"
       },
@@ -1010,18 +1010,6 @@
         "command": "computor.lecturer.syncAssignments",
         "title": "Sync Assignments Repositories",
         "icon": "$(sync)",
-        "category": "Computor Lecturer"
-      },
-      {
-        "command": "computor.lecturer.createAssignmentFolder",
-        "title": "New Folder",
-        "icon": "$(new-folder)",
-        "category": "Computor Lecturer"
-      },
-      {
-        "command": "computor.lecturer.createAssignmentFile",
-        "title": "New File",
-        "icon": "$(new-file)",
         "category": "Computor Lecturer"
       },
       {
@@ -1139,7 +1127,7 @@
       },
       {
         "command": "computor.lecturer.renameCourseContent",
-        "title": "Rename",
+        "title": "Rename Title...",
         "category": "Computor Lecturer"
       },
       {
@@ -1184,6 +1172,16 @@
       {
         "command": "computor.lecturer.deleteCourseContent",
         "title": "Delete",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.setMaxTestRuns",
+        "title": "Set Max Test Runs...",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.setMaxSubmissions",
+        "title": "Set Max Submissions...",
         "category": "Computor Lecturer"
       },
       {
@@ -1946,16 +1944,6 @@
           "group": "1_files@0"
         },
         {
-          "command": "computor.lecturer.createAssignmentFolder",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
-          "group": "1_files@1"
-        },
-        {
-          "command": "computor.lecturer.createAssignmentFile",
-          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
-          "group": "1_files@2"
-        },
-        {
           "command": "computor.lecturer.changeCourseContentType",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "2_edit@2"
@@ -2044,6 +2032,16 @@
           "command": "computor.lecturer.renameCourseContentType",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContentType/",
           "group": "2_edit@1"
+        },
+        {
+          "command": "computor.lecturer.setMaxTestRuns",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "computor.lecturer.setMaxSubmissions",
+          "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "2_edit@4"
         },
         {
           "command": "computor.lecturer.archiveCourseContent",
