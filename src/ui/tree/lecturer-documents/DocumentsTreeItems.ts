@@ -155,13 +155,20 @@ function stateContextSuffix(state: DocumentSyncState): string {
   }
 }
 
+/**
+ * Every badge here compares one place against another, so it only means
+ * something once you know which two: the published documents store on the
+ * server, and this workspace's copy of it. "· remote" said neither
+ * (computor-org/issues#361) — and on a fresh workspace it is what every row
+ * says, because nothing has been copied down yet.
+ */
 function describeStateBadge(state: DocumentSyncState): string | undefined {
   switch (state) {
     case 'synced': return undefined;
-    case 'modified': return '● modified';
-    case 'local-only': return '● new';
-    case 'remote-only': return '· remote';
-    case 'remote-changed': return '⟳ remote changed';
+    case 'modified': return '● changed here';
+    case 'local-only': return '● not published';
+    case 'remote-only': return '· on server';
+    case 'remote-changed': return '⟳ newer on server';
   }
 }
 
@@ -169,21 +176,22 @@ function describeTooltip(entry: DocumentEntry): string {
   const lines: string[] = [entry.relativePath];
   switch (entry.state) {
     case 'synced':
-      lines.push('Synced with backend.');
+      lines.push('Published, and this workspace has the same version.');
       break;
     case 'modified':
-      lines.push('Modified locally — upload to push your changes.');
+      lines.push('Changed in this workspace. Upload to publish your version.');
       break;
     case 'local-only':
-      lines.push('Local only — not yet uploaded.');
+      lines.push('Only in this workspace. Upload to publish it.');
       break;
     case 'remote-only':
-      lines.push('On the backend — click to download.');
+      lines.push('Published on the server; this workspace has no copy yet. Click to fetch one.');
       break;
     case 'remote-changed':
-      lines.push('Remote copy moved past your last pull. Pull again to refresh.');
+      lines.push('The published version moved past your copy. Fetch it again to catch up.');
       break;
   }
+  lines.push('Published documents are served under /docs — use "Copy Public URL" for the address.');
   if (entry.remote?.lastModified) {
     try {
       lines.push(`Last modified: ${new Date(entry.remote.lastModified).toLocaleString()}`);

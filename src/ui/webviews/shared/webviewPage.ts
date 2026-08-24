@@ -29,6 +29,14 @@ export interface WebviewPageOptions {
   inlineStyles?: string;
   /** Wrap the body in a centered .container (max-width 1200px). */
   container?: boolean;
+  /**
+   * Extra CSP sources for content this page embeds in a frame or an object —
+   * a PDF or an HTML document handed to the browser's own renderer. Default is
+   * `default-src 'none'`, which blocks both outright, so a viewer that builds a
+   * `blob:` URL passes `['blob:']` here. Keep it to what the page actually
+   * needs: this is the one directive that lets foreign markup render.
+   */
+  embedSrc?: string[];
 }
 
 export function getNonce(): string {
@@ -106,6 +114,10 @@ export function renderWebviewPage(
 </script>`
     : '';
 
+  const embedDirectives = options.embedSrc?.length
+    ? ` frame-src ${options.embedSrc.join(' ')}; object-src ${options.embedSrc.join(' ')};`
+    : '';
+
   const headerHtml = options.headerHtml ? `<div class="header">${options.headerHtml}</div>` : '';
   const bodyHtml = options.bodyHtml.replace(/{{NONCE}}/g, nonce);
   const content = `${headerHtml}\n  ${bodyHtml}`;
@@ -115,7 +127,7 @@ export function renderWebviewPage(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https: data:; font-src ${webview.cspSource} data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} https: data:; font-src ${webview.cspSource} data:;${embedDirectives}">
   <title>${escapeHtml(options.title)}</title>
   ${cssLinks}
   ${options.inlineStyles ? `<style>${options.inlineStyles}</style>` : ''}

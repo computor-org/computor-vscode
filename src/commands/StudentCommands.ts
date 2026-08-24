@@ -1888,7 +1888,7 @@ export class StudentCommands {
     }
 
     const name = path.basename(dest.fsPath);
-    if (await downloadFileInBrowser(this.context.extensionUri, dest.fsPath)) {
+    if (await downloadFileInBrowser(this.context.extensionUri, dest.fsPath, 'application/zip')) {
       void notify.info(`${summary} ${name} is downloading to your computer.`);
       return;
     }

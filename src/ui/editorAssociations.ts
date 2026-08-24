@@ -3,8 +3,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 /**
- * Point image files at the Computor image preview, but only where the built-in
- * one is broken.
+ * Point images, PDFs and HTML documents at the Computor viewers, but only where
+ * the built-in handling fails the user.
  *
  * `computor.imagePreview` is contributed at `priority: "option"` on purpose:
  * on a lecturer's desktop VS Code the built-in image editor works, and works
@@ -19,20 +19,47 @@ import * as vscode from 'vscode';
  * So the association is written here instead, under the one condition that
  * makes it necessary — `UIKind.Web`, i.e. code-server, where the built-in
  * editor's picture, stylesheet and script all arrive through a service worker
- * that Firefox and older Safari never consult (computor-org/issues#282).
+ * that Firefox and older Safari never consult (computor-org/issues#282). PDF
+ * and HTML have no built-in viewer at all, so in the browser they simply could
+ * not be looked at (computor-org/issues#361).
  *
  * It is written once per workspace and never overwrites an association the
  * user already holds, because "the extension keeps putting a setting back"
  * is worse than a preview someone chose for themselves.
  */
 
-/** Kept in step with the `customEditors` selector in package.json. */
-const IMAGE_PATTERN = '*.{png,jpg,jpe,jpeg,gif,bmp,ico,webp,avif,svg}';
-
-const IMAGE_VIEWER = 'computor.imagePreview';
-
-/** The extensions that pattern covers, for spotting a choice already made. */
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpe', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'avif', 'svg'];
+/**
+ * Each family: the glob written into `workbench.editorAssociations`, the viewer
+ * it points at, and the extensions it covers so an association the user already
+ * holds can be spotted. Kept in step with the `customEditors` selectors in
+ * package.json.
+ *
+ * PDF and HTML joined images for the Documents tree: a lecturer could not look
+ * at either without downloading it first (computor-org/issues#361).
+ */
+const VIEWER_FAMILIES: ReadonlyArray<{
+  pattern: string;
+  viewer: string;
+  extensions: readonly string[];
+}> = [
+  {
+    pattern: '*.{png,jpg,jpe,jpeg,gif,bmp,ico,webp,avif,svg}',
+    viewer: 'computor.imagePreview',
+    extensions: ['png', 'jpg', 'jpe', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'avif', 'svg']
+  },
+  {
+    pattern: '*.pdf',
+    viewer: 'computor.pdfPreview',
+    extensions: ['pdf']
+  },
+  {
+    // Not `.htm`: it is rare here, and someone who opens one usually wants the
+    // source. `.html` is what gets published as a document.
+    pattern: '*.html',
+    viewer: 'computor.htmlPreview',
+    extensions: ['html']
+  }
+];
 
 const APPLIED_KEY_PREFIX = 'computor.editorAssociations.applied:';
 
@@ -40,14 +67,18 @@ const APPLIED_KEY_PREFIX = 'computor.editorAssociations.applied:';
 const COMPUTOR_MARKER = '.computor';
 
 /**
- * Whether the user has already said something about how images open — under
- * any pattern, not just ours. `*.png` and `*.{png,jpg}` are both opinions, and
- * neither is ours to overrule.
+ * Whether the user has already said something about how this family opens —
+ * under any pattern, not just ours. `*.png` and `*.{png,jpg}` are both
+ * opinions, and neither is ours to overrule. Each family is judged on its own,
+ * so an image association a user chose does not suppress the PDF one.
  */
-function alreadyAssociatesImages(associations: Record<string, string>): boolean {
+function alreadyAssociates(
+  associations: Record<string, string>,
+  extensions: readonly string[]
+): boolean {
   return Object.keys(associations).some(pattern => {
     const lowered = pattern.toLowerCase();
-    return IMAGE_EXTENSIONS.some(ext => lowered.includes(ext));
+    return extensions.some(ext => lowered.includes(ext));
   });
 }
 
@@ -76,17 +107,24 @@ export async function ensureEditorAssociations(context: vscode.ExtensionContext)
   // workspace — the user still sees its effect here.
   const held = { ...(inspected?.globalValue ?? {}), ...workspaceValue };
 
-  if (!alreadyAssociatesImages(held)) {
+  const additions: Record<string, string> = {};
+  for (const family of VIEWER_FAMILIES) {
+    if (!alreadyAssociates(held, family.extensions)) {
+      additions[family.pattern] = family.viewer;
+    }
+  }
+
+  if (Object.keys(additions).length > 0) {
     try {
       await config.update(
         'editorAssociations',
-        { ...workspaceValue, [IMAGE_PATTERN]: IMAGE_VIEWER },
+        { ...workspaceValue, ...additions },
         vscode.ConfigurationTarget.Workspace
       );
     } catch (err) {
       // A read-only or absent .vscode/ is not worth a notification; leave the
       // flag unset so the next activation can try again.
-      console.warn('[computor] Could not set the image editor association:', err);
+      console.warn('[computor] Could not set the editor associations:', err);
       return;
     }
   }
