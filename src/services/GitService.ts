@@ -1,9 +1,6 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { GitWrapper } from '../git/GitWrapper';
-import { GitStashEntry } from '../types/GitTypes';
-import { notify } from '../utils/notify';
 
 export interface AssignmentBranchInfo {
   assignmentPath: string;
@@ -60,82 +57,6 @@ export class GitService {
       throw error;
     }
   }
-
-  /**
-   * Create or switch to assignment branch
-   */
-  async switchToAssignmentBranch(repoPath: string, assignmentPath: string): Promise<void> {
-    const branchInfo = await this.checkAssignmentBranch(repoPath, assignmentPath);
-    
-    if (branchInfo.isCurrent) {
-      notify.info(`Already on branch ${branchInfo.branchName}`);
-      return;
-    }
-    
-    try {
-      // Check for uncommitted changes
-      const status = await this.gitWrapper.status(repoPath);
-      if (!status.isClean) {
-        const action = await notify.warning(
-          'You have uncommitted changes. What would you like to do?',
-          'Stash Changes',
-          'Commit Changes',
-          'Cancel'
-        );
-        
-        if (action === 'Cancel') {
-          return;
-        } else if (action === 'Stash Changes') {
-          await this.gitWrapper.stash(repoPath, [`-m`, `Auto-stash for branch switch to ${branchInfo.branchName}`]);
-          notify.info('Changes stashed');
-        } else if (action === 'Commit Changes') {
-          await this.commitChanges(repoPath, `WIP: Switching to ${branchInfo.branchName}`);
-        }
-      }
-      
-      if (branchInfo.exists) {
-        // Switch to existing branch
-        await this.gitWrapper.checkoutBranch(repoPath, branchInfo.branchName);
-        notify.info(`Switched to branch ${branchInfo.branchName}`);
-      } else {
-        // Create new branch from main/master
-        const mainBranch = await this.getMainBranch(repoPath);
-        
-        // First checkout main branch
-        try {
-          await this.gitWrapper.checkoutBranch(repoPath, mainBranch);
-        } catch {
-          // If main branch doesn't exist locally, try to pull it
-          await this.gitWrapper.pull(repoPath, 'origin', mainBranch);
-          await this.gitWrapper.checkoutBranch(repoPath, mainBranch);
-        }
-        
-        // Create and checkout new branch
-        await this.gitWrapper.createBranch(repoPath, branchInfo.branchName);
-        await this.gitWrapper.checkoutBranch(repoPath, branchInfo.branchName);
-        notify.info(`Created and switched to branch ${branchInfo.branchName}`);
-      }
-      
-      // Check for stashed changes to restore
-      const stashList = await this.gitWrapper.stashList(repoPath);
-      const relevantStash = stashList.find((s: GitStashEntry) => s.message?.includes(`Auto-stash for branch switch to ${branchInfo.branchName}`));
-      if (relevantStash) {
-        try {
-          await this.gitWrapper.stashPop(repoPath);
-          notify.info('Stashed changes restored');
-        } catch (error) {
-          console.log('Could not restore stash:', error);
-        }
-      }
-    } catch (error) {
-      notify.error(`Failed to switch branch: ${error}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Get the main branch name (main or master)
-   */
   async getMainBranch(repoPath: string): Promise<string> {
     try {
       const branches = await this.gitWrapper.getBranches(repoPath);
@@ -167,34 +88,6 @@ export class GitService {
     await this.gitWrapper.add(repoPath, '.');
     await this.gitWrapper.commit(repoPath, message);
   }
-
-  /**
-   * Push assignment branch to remote
-   */
-  async pushAssignmentBranch(repoPath: string, assignmentPath: string): Promise<void> {
-    const branchName = this.generateBranchName(assignmentPath);
-    
-    try {
-      // Push branch to remote
-      // First try regular push, GitWrapper will handle upstream if needed
-      await this.gitWrapper.push(repoPath, 'origin', branchName);
-      notify.info(`Pushed branch ${branchName} to remote`);
-    } catch (error) {
-      // If push fails due to no upstream, try with set-upstream
-      try {
-        const git = await this.gitWrapper.getRepository(repoPath);
-        await git.push('origin', branchName, ['--set-upstream']);
-        notify.info(`Pushed branch ${branchName} to remote`);
-      } catch (fallbackError) {
-        notify.error(`Failed to push branch: ${error}`);
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * Get list of all assignment branches
-   */
   async listAssignmentBranches(repoPath: string): Promise<string[]> {
     try {
       const branches = await this.gitWrapper.getBranches(repoPath);
@@ -314,43 +207,6 @@ export class GitService {
       return null;
     }
   }
-
-  /**
-   * Create merge request for assignment submission
-   */
-  async createMergeRequest(
-    repoPath: string,
-    assignmentPath: string
-  ): Promise<void> {
-    const branchName = this.generateBranchName(assignmentPath);
-    
-    try {
-      const remotes = await this.gitWrapper.getRemotes(repoPath);
-      const originRemote = remotes.find(r => r.name === 'origin');
-      
-      if (!originRemote) {
-        throw new Error('No origin remote found');
-      }
-      
-      // Convert git URL to web URL
-      let webUrl = originRemote.url;
-      if (webUrl.endsWith('.git')) {
-        webUrl = webUrl.slice(0, -4);
-      }
-      if (webUrl.startsWith('git@')) {
-        webUrl = webUrl.replace('git@', 'https://').replace(':', '/');
-      }
-      
-      const mrUrl = `${webUrl}/-/merge_requests/new?merge_request[source_branch]=${branchName}`;
-      vscode.env.openExternal(vscode.Uri.parse(mrUrl));
-    } catch (error) {
-      notify.error(`Failed to create merge request: ${error}`);
-    }
-  }
-
-  /**
-   * Get assignment directory in repository
-   */
   getAssignmentDirectory(repoPath: string, assignmentPath: string): string {
     // Convert path like "1.2.3" to directory like "assignment_1_2_3"
     const dirName = `assignment_${assignmentPath.replace(/\./g, '_')}`;
@@ -379,39 +235,6 @@ export class GitService {
       return assignmentDir;
     } catch (error) {
       console.error(`Failed to create assignment directory: ${error}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Fork repository from template
-   */
-  async forkFromTemplate(
-    templateUrl: string,
-    targetPath: string,
-    assignmentPath: string
-  ): Promise<void> {
-    try {
-      // Clone the template repository
-      await this.gitWrapper.clone(templateUrl, targetPath, {
-        depth: 1
-      });
-      
-      // Remove the original remote
-      const git = await this.gitWrapper.getRepository(targetPath);
-      await git.removeRemote('origin');
-      
-      // Create initial assignment branch
-      const branchName = this.generateBranchName(assignmentPath);
-      await this.gitWrapper.createBranch(targetPath, branchName);
-      await this.gitWrapper.checkoutBranch(targetPath, branchName);
-      
-      // Create assignment directory
-      await this.ensureAssignmentDirectory(targetPath, assignmentPath);
-      
-      notify.info('Repository forked from template successfully');
-    } catch (error) {
-      notify.error(`Failed to fork from template: ${error}`);
       throw error;
     }
   }

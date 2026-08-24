@@ -278,14 +278,17 @@ export class OfflineRepositoryManager {
           cwd: targetPath
         });
 
-        progress.report({ increment: 90, message: 'Configuring repository...' });
-
-        // Configure git to use the stored credentials
-        await execAsync(`git config credential.helper store`, {
-          cwd: targetPath
-        });
-
         progress.report({ increment: 100, message: 'Done!' });
+
+        // Deliberately NOT setting `credential.helper store`: that writes every
+        // credential git subsequently handles into plaintext ~/.git-credentials,
+        // which is the least secure place available and outlives this repository.
+        // The token is already embedded in the remotes this flow configured, so
+        // it is not needed for the clone to keep working.
+        void notify.warning(
+          'This repository was set up in offline mode, so your access token is stored ' +
+          'in its .git/config in plain text. Remove the folder when you are done with it.'
+        );
       } catch (error: any) {
         // Clean up on failure
         if (fs.existsSync(targetPath)) {

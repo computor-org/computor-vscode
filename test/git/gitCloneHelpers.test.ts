@@ -18,7 +18,7 @@ function createFakeExec(result: { stdout?: string; stderr?: string } | Error = {
 }
 
 describe('execGitClone', () => {
-  it('runs a git clone with the authenticated URL, default 40s timeout, GIT_TERMINAL_PROMPT=0', async () => {
+  it('runs a git clone with the authenticated URL, a generous default timeout, GIT_TERMINAL_PROMPT=0', async () => {
     const { impl, calls } = createFakeExec();
 
     await execGitClone('https://oauth2:token@gitlab.example/foo.git', '/tmp/foo', { exec: impl as any });
@@ -26,7 +26,9 @@ describe('execGitClone', () => {
     expect(calls).to.have.length(1);
     const call = calls[0]!;
     expect(call.command).to.equal('git clone "https://oauth2:token@gitlab.example/foo.git" "/tmp/foo"');
-    expect(call.options.timeout).to.equal(40_000);
+    // Long enough for a figure-heavy course repository on campus wifi;
+    // a timeout here surfaces to the student as a failed setup.
+    expect(call.options.timeout).to.equal(180_000);
     expect(call.options.env.GIT_TERMINAL_PROMPT).to.equal('0');
   });
 

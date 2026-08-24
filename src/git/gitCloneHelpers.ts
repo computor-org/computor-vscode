@@ -32,7 +32,9 @@ export async function execGitClone(
     `git clone "${authenticatedUrl}" "${targetPath}"`,
     {
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      timeout: options.timeout ?? 40_000,
+      // A course repository with figures, on campus wifi, does not reliably
+      // clone in 40 seconds — and a timeout here surfaces as a failed setup.
+      timeout: options.timeout ?? 180_000,
       cancellationToken: options.cancellationToken,
       cwd: options.cwd
     }

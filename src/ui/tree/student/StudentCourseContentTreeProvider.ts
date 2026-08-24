@@ -966,8 +966,14 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 model = { configured: true, mode, modes, repoRoot };
             }
         } catch (e) {
-            // Unconfigured / API error → fall back to the legacy submission-group flow.
-            console.warn('[StudentTree] resolveCourseGit failed, using legacy flow:', e);
+            // Unconfigured / API error → fall back to the legacy submission-group flow
+            // for THIS render, but do not remember it. Caching a failed fetch
+            // permanently demoted the course to the legacy flow for the rest of
+            // the session — wrong repo roots and wrong actions — until the whole
+            // extension was reloaded, even though the next call would have
+            // succeeded.
+            console.warn('[StudentTree] resolveCourseGit failed, using legacy flow for this render:', e);
+            return model;
         }
         this.gitModelCache.set(courseId, model);
         return model;
