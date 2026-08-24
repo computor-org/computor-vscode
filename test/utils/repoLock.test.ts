@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as path from 'path';
 
-import { clearRepoLocks, isRepoLocked, withRepoLock } from '../../src/utils/repoLock';
+import { clearRepoLocks, isRepoLocked, tryWithRepoLock, withRepoLock } from '../../src/utils/repoLock';
 
 /**
  * Guards the serialization of git operations on one clone. Several entry points
@@ -111,5 +111,57 @@ describe('withRepoLock', () => {
     // Let the bookkeeping microtask run.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(isRepoLocked(repo)).to.equal(false);
+  });
+});
+
+describe('tryWithRepoLock', () => {
+  beforeEach(() => clearRepoLocks());
+  afterEach(() => clearRepoLocks());
+
+  it('runs when the repository is free', async () => {
+    const result = await tryWithRepoLock('/tmp/free', async () => 7);
+    expect(result).to.deep.equal({ ran: true, value: 7 });
+  });
+
+  it('skips instead of queuing when the repository is busy', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const holder = withRepoLock('/tmp/busy', () => gate);
+
+    const result = await tryWithRepoLock('/tmp/busy', async () => 'never');
+    expect(result).to.deep.equal({ ran: false });
+
+    release();
+    await holder;
+  });
+
+  it('two operations fanning out to each other cannot deadlock', async () => {
+    // The shape a Forgejo rotation storm produces: repo A's heal holds lock(A)
+    // and reaches for B; repo B's heal holds lock(B) and reaches for A. With
+    // queuing locks both wait forever. A barrier guarantees both locks are held
+    // at the moment each side tries the other, so both must skip.
+    const events: string[] = [];
+    let armA!: () => void;
+    let armB!: () => void;
+    const aInside = new Promise<void>((resolve) => { armA = resolve; });
+    const bInside = new Promise<void>((resolve) => { armB = resolve; });
+
+    const healA = withRepoLock('/tmp/repo-a', async () => {
+      armA();
+      await bInside; // B provably holds its lock now
+      const r = await tryWithRepoLock('/tmp/repo-b', async () => 'a-touched-b');
+      events.push(`a: ${r.ran ? 'ran' : 'skipped'}`);
+    });
+    const healB = withRepoLock('/tmp/repo-b', async () => {
+      armB();
+      await aInside; // A provably holds its lock now
+      const r = await tryWithRepoLock('/tmp/repo-a', async () => 'b-touched-a');
+      events.push(`b: ${r.ran ? 'ran' : 'skipped'}`);
+    });
+
+    // The core assertion is completion itself — with queuing locks this
+    // barrier arrangement deadlocks and the test times out.
+    await Promise.all([healA, healB]);
+    expect(events).to.have.members(['a: skipped', 'b: skipped']);
   });
 });

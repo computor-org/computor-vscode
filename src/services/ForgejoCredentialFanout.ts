@@ -9,7 +9,7 @@ import {
   redactGitCredentials,
   stripCredentialsFromGitUrl
 } from '../utils/gitUrlHelpers';
-import { withRepoLock } from '../utils/repoLock';
+import { tryWithRepoLock } from '../utils/repoLock';
 
 /**
  * The backend mints ONE Forgejo clone token per user and git server and rotates
@@ -76,10 +76,13 @@ export async function propagateForgejoCloneCredential(opts: PropagateForgejoCred
       continue;
     }
     try {
-      // This runs fire-and-forget from provisioning, so it can land on a repo
-      // that is mid-fetch or mid-merge. Take the repo's lock before touching its
-      // remote — rewriting origin under a running fetch breaks both.
-      const rewritten = await withRepoLock(repoPath, async () => {
+      // This can land on a repo that is mid-fetch or mid-merge, so take its
+      // lock before touching the remote — but only if it is free. The caller
+      // may itself be holding another repository's lock (the 401-heal runs
+      // inside one), and two heals queuing on each other's repositories would
+      // deadlock. A busy sibling is skipped: its own operation re-mints a
+      // broken credential on demand.
+      const attempt = await tryWithRepoLock(repoPath, async () => {
         const { stdout } = await execAsyncWithTimeout('git remote get-url origin', { cwd: repoPath, timeout: 15_000 });
         const currentUrl = stdout.trim();
         if (!currentUrl || !shouldRewriteOriginForForgejo(currentUrl, opts.serverUrl)) {
@@ -98,7 +101,11 @@ export async function propagateForgejoCloneCredential(opts: PropagateForgejoCred
         await execAsyncWithTimeout(`git remote set-url origin "${authUrl}"`, { cwd: repoPath, timeout: 15_000 });
         return true;
       });
-      if (rewritten) {
+      if (!attempt.ran) {
+        console.log(`[ForgejoCredentialFanout] ${repoPath} is busy; leaving it to its own operation`);
+        continue;
+      }
+      if (attempt.value) {
         updated++;
       }
     } catch (err: any) {
