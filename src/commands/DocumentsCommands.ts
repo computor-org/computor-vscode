@@ -15,15 +15,13 @@ import {
 } from '../ui/tree/lecturer-documents/DocumentsTreeItems';
 import type { DocumentScope } from '../services/DocumentsCacheService';
 import { validateSegment } from '../utils/studentFsOperations';
+import JSZip from 'jszip';
+import { downloadBytesInBrowser } from '../ui/webviews/browserDownload';
+import { pickFilesFromBrowser, type PickedFile } from '../ui/webviews/browserUpload';
+import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
+import { copyToClipboard } from '../utils/clipboard';
+import { buildPublicDocumentUrl, mimeTypeFor, normalizeUploadPath } from '../utils/documentTransfer';
 
-/**
- * Wires up commands for the lecturer Documents tree:
- *
- *  - refresh                   (view title)
- *  - openFile / uploadFile / downloadFile / revealInOS / copyPath…
- *  - newFile / newFolder / rename / delete / discardLocal
- *  - uploadAllPending          (per-scope, anchored on org/family/course/dir)
- */
 export class DocumentsCommands {
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -46,7 +44,11 @@ export class DocumentsCommands {
       vscode.commands.registerCommand('computor.lecturer.documents.delete', (item: any) => this.delete(item)),
       vscode.commands.registerCommand('computor.lecturer.documents.discardLocal', (item: any) => this.discardLocal(item)),
       vscode.commands.registerCommand('computor.lecturer.documents.uploadAllPending', (item: any) => this.uploadAllPending(item)),
-      vscode.commands.registerCommand('computor.lecturer.documents.revealMirrorRoot', () => this.revealMirrorRoot())
+      vscode.commands.registerCommand('computor.lecturer.documents.revealMirrorRoot', () => this.revealMirrorRoot()),
+      vscode.commands.registerCommand('computor.lecturer.documents.downloadToComputer', (item: any) => this.downloadToComputer(item)),
+      vscode.commands.registerCommand('computor.lecturer.documents.uploadFromComputer', (item: any) => this.uploadFromComputer(item, { folder: false })),
+      vscode.commands.registerCommand('computor.lecturer.documents.uploadFolderFromComputer', (item: any) => this.uploadFromComputer(item, { folder: true })),
+      vscode.commands.registerCommand('computor.lecturer.documents.copyPublicUrl', (item: any) => this.copyPublicUrl(item))
     );
 
     this.installMirrorWatcher();
@@ -187,6 +189,290 @@ export class DocumentsCommands {
   private async downloadFile(item: any): Promise<void> {
     if (!(item instanceof DocumentsFileItem)) { return; }
     await this.pullToMirror(item.scope, item.entry.relativePath);
+  }
+
+  // ----- The lecturer's own computer -----
+
+  /**
+   * Hand a document — or a whole folder, zipped — to the machine the lecturer
+   * is sitting at.
+   *
+   * Everything else in this view moves bytes between the backend and the
+   * workspace mirror, and under code-server that mirror is still the *server's*
+   * disk. So a lecturer whose source material is a Keynote deck on their laptop
+   * had no way out and no way in (computor-org/issues#361). This is the way
+   * out; `uploadFromComputer` is the way in. On desktop VS Code the save dialog
+   * already reaches the real machine, so it is used there.
+   */
+  private async downloadToComputer(item: any): Promise<void> {
+    const target = this.resolveDownloadTarget(item);
+    if (!target) {
+      notify.warning('Select a document, a folder, or a course to download.');
+      return;
+    }
+
+    try {
+      const payload = await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: target.isDirectory
+          ? `Collecting "${target.label}"…`
+          : `Preparing "${target.label}"…`,
+        cancellable: false
+      }, () => target.isDirectory
+        ? this.buildDirectoryArchive(target.scope, target.relativePath)
+        : this.readDocumentBytes(target.scope, target.relativePath));
+
+      if (!payload) { return; }
+
+      if (vscode.env.uiKind === vscode.UIKind.Web) {
+        const handed = await downloadBytesInBrowser(
+          this.context.extensionUri,
+          payload.name,
+          payload.contents,
+          payload.mimeType
+        );
+        if (!handed) {
+          notify.warning(
+            `"${payload.name}" is too large to hand to the browser. Open it from the ` +
+            'workspace mirror instead.'
+          );
+        }
+        return;
+      }
+
+      const destination = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(payload.name),
+        saveLabel: 'Save'
+      });
+      if (!destination) { return; }
+      await fs.promises.writeFile(destination.fsPath, payload.contents);
+      notify.info(`Saved ${payload.name}.`);
+    } catch (err: any) {
+      notify.error(`Failed to download: ${err?.message || err}`);
+    }
+  }
+
+  /** What a download command was invoked on, if it was anything downloadable. */
+  private resolveDownloadTarget(item: any):
+    { scope: DocumentScope; relativePath: string; isDirectory: boolean; label: string } | undefined {
+    if (item instanceof DocumentsFileItem) {
+      return {
+        scope: item.scope,
+        relativePath: item.entry.relativePath,
+        isDirectory: false,
+        label: item.entry.name
+      };
+    }
+    if (item instanceof DocumentsDirectoryItem) {
+      return {
+        scope: item.scope,
+        relativePath: item.entry.relativePath,
+        isDirectory: true,
+        label: item.entry.name
+      };
+    }
+    if (item instanceof DocumentsOrgItem) {
+      return { scope: item.scope, relativePath: '', isDirectory: true, label: item.organization.path };
+    }
+    if (item instanceof DocumentsCourseFamilyItem) {
+      return { scope: item.scope, relativePath: '', isDirectory: true, label: item.courseFamily.path };
+    }
+    if (item instanceof DocumentsCourseItem) {
+      return { scope: item.scope, relativePath: '', isDirectory: true, label: item.course.path };
+    }
+    return undefined;
+  }
+
+  /** The current bytes of one document, straight from the backend. */
+  private async readDocumentBytes(
+    scope: DocumentScope,
+    relativePath: string
+  ): Promise<{ name: string; contents: Buffer; mimeType: string }> {
+    const bytes = await this.api.downloadDocument(scope.scope, scope.scopeId ?? null, relativePath);
+    const name = relativePath.split('/').pop() || 'document';
+    return { name, contents: Buffer.from(bytes), mimeType: mimeTypeFor(name) };
+  }
+
+  /**
+   * Zip a documents subtree by walking the backend's listings. The mirror is
+   * deliberately not used as the source: it holds only what happens to have
+   * been pulled, so an archive built from it would silently omit everything the
+   * lecturer never opened.
+   */
+  private async buildDirectoryArchive(
+    scope: DocumentScope,
+    relativePath: string
+  ): Promise<{ name: string; contents: Buffer; mimeType: string } | undefined> {
+    const zip = new JSZip();
+    let fileCount = 0;
+
+    const walk = async (dirPath: string): Promise<void> => {
+      const entries = await this.api.listDocuments(scope.scope, scope.scopeId ?? null, dirPath);
+      for (const entry of entries) {
+        const childPath = dirPath ? `${dirPath}/${entry.name}` : entry.name;
+        if (entry.type === 'directory') {
+          await walk(childPath);
+          continue;
+        }
+        const bytes = await this.api.downloadDocument(scope.scope, scope.scopeId ?? null, childPath);
+        const within = relativePath && childPath.startsWith(`${relativePath}/`)
+          ? childPath.slice(relativePath.length + 1)
+          : childPath;
+        zip.file(within, Buffer.from(bytes));
+        fileCount += 1;
+      }
+    };
+
+    await walk(relativePath);
+
+    if (fileCount === 0) {
+      notify.info('That folder has no documents to download.');
+      return undefined;
+    }
+
+    const base = relativePath.split('/').pop() || scope.scope;
+    const contents = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    return { name: `${base}.zip`, contents, mimeType: 'application/zip' };
+  }
+
+  /**
+   * Take files (or a folder) off the lecturer's machine, into the mirror and
+   * straight on to the backend — which is the same thing as publishing them,
+   * since the store the upload writes to is the one the web server serves.
+   */
+  private async uploadFromComputer(item: any, options: { folder: boolean }): Promise<void> {
+    const target = this.resolveTarget(item);
+    if (!target) {
+      notify.warning('Right-click an organization, course family, course, or folder to upload into it.');
+      return;
+    }
+
+    const picked = vscode.env.uiKind === vscode.UIKind.Web
+      ? await pickFilesFromBrowser(this.context.extensionUri, {
+        folder: options.folder,
+        title: options.folder ? 'Upload a folder' : 'Upload files'
+      })
+      : await this.pickFilesFromDisk(options.folder);
+
+    if (picked.length === 0) { return; }
+
+    let succeeded = 0;
+    const failures: string[] = [];
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Uploading ${picked.length} file${picked.length === 1 ? '' : 's'}…`,
+      cancellable: false
+    }, async (progress) => {
+      let index = 0;
+      for (const file of picked) {
+        index += 1;
+        progress.report({
+          increment: (1 / picked.length) * 100,
+          message: `${index}/${picked.length} · ${file.relativePath}`
+        });
+
+        const relative = normalizeUploadPath(file.relativePath);
+        if (!relative) {
+          failures.push(`${file.relativePath} (unusable name)`);
+          continue;
+        }
+        const destination = target.parentPath ? `${target.parentPath}/${relative}` : relative;
+
+        try {
+          await this.api.uploadDocument(
+            target.scope.scope,
+            target.scope.scopeId ?? null,
+            destination,
+            file.contents
+          );
+          const idx = destination.lastIndexOf('/');
+          const parent = idx >= 0 ? destination.slice(0, idx) : '';
+          const listing = await this.api.listDocuments(target.scope.scope, target.scope.scopeId ?? null, parent);
+          const remote = listing.find(e => e.name === destination.split('/').pop() && e.type === 'file');
+          await this.tree.cache.writePulled(target.scope, destination, file.contents, remote?.last_modified);
+          succeeded += 1;
+        } catch (err: any) {
+          failures.push(`${relative} (${err?.message || err})`);
+        }
+      }
+    });
+
+    this.tree.invalidateDirectory(target.scope, target.parentPath);
+
+    if (failures.length === 0) {
+      notify.info(`Uploaded ${succeeded} file${succeeded === 1 ? '' : 's'}. They are live at /docs.`);
+    } else {
+      notify.warning(
+        `Uploaded ${succeeded} of ${picked.length}. Failed: ${failures.slice(0, 5).join('; ')}` +
+        `${failures.length > 5 ? `; and ${failures.length - 5} more` : ''}`
+      );
+    }
+  }
+
+  /** Desktop VS Code: the open dialog already browses the lecturer's machine. */
+  private async pickFilesFromDisk(folder: boolean): Promise<PickedFile[]> {
+    const chosen = await vscode.window.showOpenDialog({
+      canSelectFiles: !folder,
+      canSelectFolders: folder,
+      canSelectMany: !folder,
+      openLabel: folder ? 'Upload folder' : 'Upload'
+    });
+    if (!chosen || chosen.length === 0) { return []; }
+
+    const collected: PickedFile[] = [];
+    const addFile = async (absPath: string, relativePath: string): Promise<void> => {
+      collected.push({ relativePath, contents: await fs.promises.readFile(absPath) });
+    };
+
+    for (const uri of chosen) {
+      const stat = await fs.promises.stat(uri.fsPath);
+      if (!stat.isDirectory()) {
+        await addFile(uri.fsPath, path.basename(uri.fsPath));
+        continue;
+      }
+      const base = path.basename(uri.fsPath);
+      const walk = async (dir: string, prefix: string): Promise<void> => {
+        for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
+          const child = path.join(dir, entry.name);
+          const rel = `${prefix}/${entry.name}`;
+          if (entry.isDirectory()) {
+            await walk(child, rel);
+          } else if (entry.isFile()) {
+            await addFile(child, rel);
+          }
+        }
+      };
+      await walk(uri.fsPath, base);
+    }
+    return collected;
+  }
+
+  /**
+   * The URL an assignment can link to. Uploading already publishes — the store
+   * the API writes into is the directory the static server exposes at `/docs` —
+   * but nothing in the tree ever showed the address, which is what a lecturer
+   * actually needs from this view (computor-org/issues#361).
+   */
+  private async copyPublicUrl(item: any): Promise<void> {
+    if (!(item instanceof DocumentsFileItem || item instanceof DocumentsDirectoryItem)) { return; }
+    const segments = this.tree.scopePathSegments(item.scope);
+    if (!segments) {
+      notify.warning('Expand this document\'s course first, so its address can be resolved.');
+      return;
+    }
+
+    let origin: string;
+    try {
+      const base = await new ComputorSettingsManager(this.context).getBaseUrl();
+      origin = new URL(base).origin;
+    } catch {
+      notify.warning('No backend URL is configured, so the public address cannot be built.');
+      return;
+    }
+
+    const url = buildPublicDocumentUrl(origin, segments, item.entry.relativePath);
+
+    await copyToClipboard(url, 'Document URL', `Public URL: ${url}`);
   }
 
   private async revealInOS(item: any): Promise<void> {
@@ -359,11 +645,30 @@ export class DocumentsCommands {
     if (!(item instanceof DocumentsFileItem || item instanceof DocumentsDirectoryItem)) { return; }
     const { scope, entry } = item;
     const kind = entry.type === 'directory' ? 'folder' : 'file';
-    const choice = await notify.confirm(
-      `Delete ${kind} "${entry.relativePath}"?${entry.type === 'directory' ? ' This removes everything inside it.' : ''}`,
-      'Delete'
-    );
-    if (!choice) { return; }
+
+    // A published document can be linked from any number of assignments, and
+    // the backend deletes a directory with a plain rmtree — no trash, no
+    // history, nothing to undo it with. A folder delete therefore has to be
+    // typed out, the way deleting an entity in the course tree is
+    // (computor-org/issues#361).
+    if (entry.type === 'directory' && entry.state !== 'local-only') {
+      const typed = await vscode.window.showInputBox({
+        title: `Delete folder "${entry.name}"`,
+        prompt: `This permanently removes the folder and everything inside it, for everyone, and any assignment linking to those documents will break. There is no undo. Type "${entry.name}" to confirm.`,
+        ignoreFocusOut: true,
+        validateInput: (value) => value === entry.name || value.length === 0
+          ? undefined
+          : `Type "${entry.name}" exactly, or leave empty to cancel.`
+      });
+      if (typed !== entry.name) { return; }
+    } else {
+      const choice = await notify.confirm(
+        `Delete ${kind} "${entry.relativePath}"?${entry.type === 'directory' ? ' This removes everything inside it.' : ''}` +
+        (entry.state === 'local-only' ? '' : ' It disappears for everyone, and any assignment linking to it will break.'),
+        'Delete'
+      );
+      if (!choice) { return; }
+    }
     const idx = entry.relativePath.lastIndexOf('/');
     const parent = idx >= 0 ? entry.relativePath.slice(0, idx) : '';
     try {

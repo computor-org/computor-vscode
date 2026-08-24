@@ -67,6 +67,7 @@ import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
 import { registerContentDescription } from './ui/contentDescription';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
+import { registerDocumentPreviewProviders } from './ui/panels/DocumentPreviewPanel';
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
@@ -1788,6 +1789,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // through a service worker that never sees the request (issue #282) — so we
   // bring our own, inlined like every other Computor webview.
   registerImageViewer(context);
+  registerDocumentPreviewProviders(context);
 
   // …and, in the browser only, make it the editor images actually open with.
   // The contribution is "option" priority, so without an association nothing

@@ -353,6 +353,28 @@
         "category": "Computor Documents"
       },
       {
+        "command": "computor.lecturer.documents.downloadToComputer",
+        "title": "Download to My Computer...",
+        "icon": "$(desktop-download)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.uploadFromComputer",
+        "title": "Upload Files from My Computer...",
+        "icon": "$(device-desktop)",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.uploadFolderFromComputer",
+        "title": "Upload Folder from My Computer...",
+        "category": "Computor Documents"
+      },
+      {
+        "command": "computor.lecturer.documents.copyPublicUrl",
+        "title": "Copy Public URL",
+        "category": "Computor Documents"
+      },
+      {
         "command": "computor.lecturer.checkoutExample",
         "title": "Checkout Latest",
         "icon": "$(cloud-download)",
@@ -1268,6 +1290,26 @@
             "filenamePattern": "*.{png,jpg,jpe,jpeg,gif,bmp,ico,webp,avif,svg}"
           }
         ]
+      },
+      {
+        "viewType": "computor.pdfPreview",
+        "displayName": "Computor PDF Preview",
+        "priority": "option",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ]
+      },
+      {
+        "viewType": "computor.htmlPreview",
+        "displayName": "Computor HTML Preview",
+        "priority": "option",
+        "selector": [
+          {
+            "filenamePattern": "*.html"
+          }
+        ]
       }
     ],
     "viewsContainers": {
@@ -1789,6 +1831,26 @@
           "command": "computor.lecturer.documents.revealInOS",
           "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.scope\\./",
           "group": "1_navigation@1"
+        },
+        {
+          "command": "computor.lecturer.documents.downloadToComputer",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir|scope\\.)/",
+          "group": "4_transfer@1"
+        },
+        {
+          "command": "computor.lecturer.documents.uploadFromComputer",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "group": "4_transfer@2"
+        },
+        {
+          "command": "computor.lecturer.documents.uploadFolderFromComputer",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "group": "4_transfer@3"
+        },
+        {
+          "command": "computor.lecturer.documents.copyPublicUrl",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "group": "9_clipboard@3"
         },
         {
           "command": "computor.chat.markScopeRead",

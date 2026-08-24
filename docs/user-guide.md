@@ -388,6 +388,40 @@ Assignments are leaves in the course tree — they do not expand. To browse the 
 you just created, right-click the assignment → `Open Assignment Folder`, or open the
 assignments repository in the workspace explorer.
 
+### Documents
+
+The **Documents** view holds the material served to students at `/docs` — slide
+decks, handouts, data files that assignments link to. It mirrors the course tree:
+organization → course family → course, each with its own documents.
+
+**Where things are.** Documents live on the server. Your workspace keeps a copy of
+the ones you have opened, so each row says how the two compare: no badge means they
+match, `· on server` means you have no copy yet (clicking fetches one),
+`● changed here` means your copy differs, `● not published` means it exists only in
+your workspace, and `⟳ newer on server` means someone else moved ahead of you.
+
+**Viewing.** Images, PDFs and HTML documents render in the editor. Anything else
+opens in whatever editor VS Code has for it.
+
+**Getting files out.** Right-click → `Download to My Computer...` on a document, a
+folder or a whole course. Folders arrive as a ZIP. This reaches the machine you are
+sitting at, unlike `Download`, which fetches into your workspace.
+
+**Getting files in.** Right-click a folder or course → `Upload Files from My
+Computer...` or `Upload Folder from My Computer...`. Use these when the source is on
+your laptop — a PowerPoint or Keynote file that was never on the server. Uploading
+publishes immediately: there is no separate release step.
+
+**Linking from an assignment.** Right-click → `Copy Public URL` gives the address the
+document is served at.
+
+**Who may change what.** Course documents need lecturer or higher in that course,
+course-family and organization documents need developer or higher, and system
+documents are admin-only.
+
+**Deleting.** There is no undo, no history and no trash, and other assignments may
+link to what you remove — so deleting a folder asks you to type its name.
+
 ---
 
 ## Common Tasks

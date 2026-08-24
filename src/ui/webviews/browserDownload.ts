@@ -26,7 +26,8 @@ const MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024;
 
 export async function downloadFileInBrowser(
   extensionUri: vscode.Uri,
-  filePath: string
+  filePath: string,
+  mimeType: string = 'application/octet-stream'
 ): Promise<boolean> {
   let size: number;
   try {
@@ -38,8 +39,26 @@ export async function downloadFileInBrowser(
     return false;
   }
 
-  const name = path.basename(filePath);
-  const base64 = (await fs.promises.readFile(filePath)).toString('base64');
+  const bytes = await fs.promises.readFile(filePath);
+  return downloadBytesInBrowser(extensionUri, path.basename(filePath), bytes, mimeType);
+}
+
+/**
+ * The same hand-off for bytes that were never a file on disk — a ZIP built in
+ * memory, say. Callers that already hold a path should use
+ * {@link downloadFileInBrowser}.
+ */
+export async function downloadBytesInBrowser(
+  extensionUri: vscode.Uri,
+  name: string,
+  contents: Buffer,
+  mimeType: string = 'application/octet-stream'
+): Promise<boolean> {
+  if (contents.byteLength > MAX_DOWNLOAD_BYTES) {
+    return false;
+  }
+
+  const base64 = contents.toString('base64');
 
   const panel = vscode.window.createWebviewPanel(
     'computor.browserDownload',
@@ -84,7 +103,7 @@ export async function downloadFileInBrowser(
     });
   });
 
-  await panel.webview.postMessage({ command: 'download', data: { name, base64 } });
+  await panel.webview.postMessage({ command: 'download', data: { name, base64, mimeType } });
   return started;
 }
 
@@ -96,7 +115,9 @@ const DOWNLOAD_SCRIPT = `
     for (let i = 0; i < payload.byteLength; i++) {
       bytes[i] = payload.binary.charCodeAt(i);
     }
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+    const url = URL.createObjectURL(
+      new Blob([bytes], { type: payload.mimeType || 'application/octet-stream' })
+    );
     const link = document.createElement('a');
     link.href = url;
     link.download = payload.name;
@@ -111,7 +132,12 @@ const DOWNLOAD_SCRIPT = `
     if (!message || message.command !== 'download') { return; }
     try {
       const binary = atob(message.data.base64);
-      pending = { name: message.data.name, binary: binary, byteLength: binary.length };
+      pending = {
+        name: message.data.name,
+        binary: binary,
+        byteLength: binary.length,
+        mimeType: message.data.mimeType
+      };
       start(pending);
       document.getElementById('status').textContent =
         'Your download of ' + message.data.name + ' has started.';

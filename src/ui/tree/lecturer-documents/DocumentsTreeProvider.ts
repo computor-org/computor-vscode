@@ -47,6 +47,15 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
   private familiesCache = new Map<string, Awaited<ReturnType<ComputorApiService['getCourseFamilies']>>>();
   /** Per-family course list cache. */
   private coursesCache = new Map<string, Awaited<ReturnType<ComputorApiService['getCourses']>>>();
+  /**
+   * Entity-path segments per scope, e.g. `['tugraz', 'physics', 'mech-2026']`
+   * for a course. The backend lays the documents store out along exactly these
+   * (`resolve_scope_root`), and the static server publishes that same tree at
+   * `/docs`, so this is what turns a document into the URL an assignment can
+   * link to. Filled in as entity rows are built — a document row only exists
+   * under one — and cleared with the rest on refresh.
+   */
+  private scopeSegments = new Map<string, string[]>();
 
   constructor(
     private readonly api: ComputorApiService,
@@ -60,7 +69,22 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
     this.orgsCache = undefined;
     this.familiesCache.clear();
     this.coursesCache.clear();
+    this.scopeSegments.clear();
     super.refresh();
+  }
+
+  /**
+   * The entity-path segments a scope's documents live under, or undefined when
+   * that scope's entity row has not been expanded in this session yet. System
+   * scope is the store's root, so it answers an empty list.
+   */
+  scopePathSegments(scope: DocumentScope): string[] | undefined {
+    if (scope.scope === 'system') { return []; }
+    return this.scopeSegments.get(`${scope.scope}:${scope.scopeId ?? ''}`);
+  }
+
+  private rememberScopeSegments(scope: DocumentScope, segments: string[]): void {
+    this.scopeSegments.set(`${scope.scope}:${scope.scopeId ?? ''}`, segments);
   }
 
   /** Re-render a single document subtree without dropping the rest. */
@@ -110,7 +134,11 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
         (a.title || a.path).localeCompare(b.title || b.path)
       );
       orgPaths = new Set(sorted.map(o => o.path));
-      items.push(...sorted.map(org => new DocumentsOrgItem(org)));
+      items.push(...sorted.map(org => {
+        const item = new DocumentsOrgItem(org);
+        this.rememberScopeSegments(item.scope, [org.path]);
+        return item;
+      }));
     } catch (err: any) {
       items.push(new DocumentsErrorItem(`Failed to load organizations: ${err?.message || err}`));
     }
@@ -131,7 +159,11 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
 
   private async getOrgChildren(item: DocumentsOrgItem): Promise<DocumentsTreeItem[]> {
     const families = await this.fetchFamilies(item.organization.id);
-    const familyItems = families.map(f => new DocumentsCourseFamilyItem(f, item.organization));
+    const familyItems = families.map(f => {
+      const row = new DocumentsCourseFamilyItem(f, item.organization);
+      this.rememberScopeSegments(row.scope, [item.organization.path, f.path]);
+      return row;
+    });
     // Drop family-path directories from the org-scope listing so they don't
     // duplicate the family entity rows above.
     const documents = await this.listChildrenAt(item.scope, '', new Set(families.map(f => f.path)));
@@ -140,7 +172,11 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
 
   private async getCourseFamilyChildren(item: DocumentsCourseFamilyItem): Promise<DocumentsTreeItem[]> {
     const courses = await this.fetchCourses(item.courseFamily.id);
-    const courseItems = courses.map(c => new DocumentsCourseItem(c, item.courseFamily, item.organization));
+    const courseItems = courses.map(c => {
+      const row = new DocumentsCourseItem(c, item.courseFamily, item.organization);
+      this.rememberScopeSegments(row.scope, [item.organization.path, item.courseFamily.path, c.path]);
+      return row;
+    });
     // Drop course-path directories from the family-scope listing so they
     // don't duplicate the course entity rows above.
     const documents = await this.listChildrenAt(item.scope, '', new Set(courses.map(c => c.path)));

@@ -8,18 +8,27 @@ import { configurationOverrides, UIKind } from '../helpers/vscode-stub';
 import { ensureEditorAssociations } from '../../src/ui/editorAssociations';
 
 /**
- * The Computor image preview is contributed at "option" priority, so it opens
- * nothing until `workbench.editorAssociations` names it — and the templates
+ * The Computor viewers are contributed at "option" priority, so they open
+ * nothing until `workbench.editorAssociations` names them — and the templates
  * that write that setting only ever ran for provisioned student workspaces. A
- * lecturer in the browser was left with the built-in editor that cannot render
- * under code-server (computor-org/issues#282).
+ * lecturer in the browser was left with the built-in image editor that cannot
+ * render under code-server (computor-org/issues#282), and with no viewer at
+ * all for PDF or HTML (computor-org/issues#361).
  *
  * These tests pin the three things that keep the fix from becoming its own
  * annoyance: it stays out of desktop VS Code, out of folders that are not
- * ours, and out of a choice the user already made.
+ * ours, and out of a choice the user already made — the last one judged per
+ * file family, so an opinion about images does not cost the lecturer the PDF
+ * viewer.
  */
 
 const IMAGE_PATTERN = '*.{png,jpg,jpe,jpeg,gif,bmp,ico,webp,avif,svg}';
+
+const ALL_VIEWERS = {
+  [IMAGE_PATTERN]: 'computor.imagePreview',
+  '*.pdf': 'computor.pdfPreview',
+  '*.html': 'computor.htmlPreview'
+};
 
 let workspaceRoot: string;
 let written: Array<{ key: string; value: any; target: number }>;
@@ -65,12 +74,12 @@ describe('ensureEditorAssociations', () => {
     delete configurationOverrides['workbench'];
   });
 
-  it('points images at the Computor preview in the browser', async () => {
+  it('points images, PDFs and HTML at the Computor viewers in the browser', async () => {
     await ensureEditorAssociations(context);
 
     expect(written).to.have.lengthOf(1);
     expect(written[0]!.key).to.equal('editorAssociations');
-    expect(written[0]!.value).to.deep.equal({ [IMAGE_PATTERN]: 'computor.imagePreview' });
+    expect(written[0]!.value).to.deep.equal(ALL_VIEWERS);
     expect(written[0]!.target).to.equal(vscode.ConfigurationTarget.Workspace);
   });
 
@@ -105,7 +114,7 @@ describe('ensureEditorAssociations', () => {
 
     expect(written[0]!.value).to.deep.equal({
       '*.ipynb': 'jupyter-notebook',
-      [IMAGE_PATTERN]: 'computor.imagePreview'
+      ...ALL_VIEWERS
     });
   });
 
@@ -115,11 +124,42 @@ describe('ensureEditorAssociations', () => {
 
     await ensureEditorAssociations(context);
 
-    expect(written).to.be.empty;
+    // The other families are still ours to set: one opinion about images is
+    // not an opinion about PDFs.
+    expect(written[0]!.value).to.deep.equal({
+      '*.png': 'default',
+      '*.pdf': 'computor.pdfPreview',
+      '*.html': 'computor.htmlPreview'
+    });
   });
 
   it('respects an image association held in the user settings', async () => {
     inspectResult = { globalValue: { '*.{png,jpg}': 'imagePreview.previewEditor' } };
+
+    await ensureEditorAssociations(context);
+
+    // A global value is an opinion, but it is not part of the workspace value
+    // we write back, so only the untouched families appear.
+    expect(written[0]!.value).to.deep.equal({
+      '*.pdf': 'computor.pdfPreview',
+      '*.html': 'computor.htmlPreview'
+    });
+  });
+
+  it('leaves a family alone when the user already chose for it', async () => {
+    inspectResult = { workspaceValue: { '*.pdf': 'default' } };
+
+    await ensureEditorAssociations(context);
+
+    expect(written[0]!.value).to.deep.equal({
+      '*.pdf': 'default',
+      [IMAGE_PATTERN]: 'computor.imagePreview',
+      '*.html': 'computor.htmlPreview'
+    });
+  });
+
+  it('writes nothing when every family is already spoken for', async () => {
+    inspectResult = { workspaceValue: { '*.png': 'a', '*.pdf': 'b', '*.html': 'c' } };
 
     await ensureEditorAssociations(context);
 
