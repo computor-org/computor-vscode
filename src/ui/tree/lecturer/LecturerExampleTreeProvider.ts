@@ -893,26 +893,72 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
     this.treeView = view;
   }
 
-  async revealExample(params: { identifier?: string; id?: string; repositoryId?: string }): Promise<boolean> {
-    if (!this.treeView) { return false; }
-    if (!params.identifier && !params.id) { return false; }
-
-    // Make sure the merged list is built and parentMap is populated.
-    const examplesSection = new RootSectionTreeItem('examples', 'Examples', 'package');
-    await this.getMergedExampleItems(examplesSection);
-
+  /**
+   * Reveal one example row in the Examples section.
+   *
+   * The match is looked up in the *unfiltered* list, but only filtered rows are
+   * ever rendered — so with a filter that excludes the target, `reveal()` was
+   * asked for a row that is not a child of the section, quietly did nothing,
+   * and this still answered `true`, suppressing the caller's warning
+   * (computor-org/issues#356). Filters that hide the match are therefore
+   * cleared before revealing, and the answer now reflects what happened.
+   */
+  /** The example a content row points at, checked out or not, filters ignored. */
+  async findMergedExample(
+    params: { identifier?: string; id?: string; repositoryId?: string }
+  ): Promise<MergedExample | undefined> {
+    if (!params.identifier && !params.id) { return undefined; }
     const merged = await this.getMergedExamples();
-    const match = merged.find(m =>
+    return merged.find(m => LecturerExampleTreeProvider.matchesExample(m, params));
+  }
+
+  private static matchesExample(
+    m: MergedExample,
+    params: { identifier?: string; id?: string; repositoryId?: string }
+  ): boolean {
+    return Boolean(
       (params.id && m.remote?.id === params.id) ||
       (params.identifier && m.identifier === params.identifier &&
         (!params.repositoryId || m.repositoryId === params.repositoryId))
     );
+  }
+
+  async revealExample(params: { identifier?: string; id?: string; repositoryId?: string }): Promise<boolean> {
+    if (!this.treeView) { return false; }
+    if (!params.identifier && !params.id) { return false; }
+
+    const matches = (m: MergedExample): boolean =>
+      LecturerExampleTreeProvider.matchesExample(m, params);
+
+    const merged = await this.getMergedExamples();
+    const match = merged.find(matches);
     if (!match) { return false; }
+
+    const visible = await this.getFilteredMergedExamples();
+    if (!visible.some(matches)) {
+      this.clearFilters();
+    }
+
+    // Build the section's children *after* any filter reset, so parentMap holds
+    // the rows that are actually rendered.
+    const examplesSection = new RootSectionTreeItem('examples', 'Examples', 'package');
+    await this.getMergedExampleItems(examplesSection);
 
     const item = new ExampleTreeItem(match);
     if (item.id) { this.parentMap.set(item.id, examplesSection); }
     await this.treeView.reveal(item, { select: true, focus: true, expand: true });
     return true;
+  }
+
+  /** Drop every example filter, including the persisted ones. */
+  clearFilters(): void {
+    this.searchQuery = '';
+    this.selectedCategory = undefined;
+    this.selectedTags = [];
+    this.selectedRepositoryIds.clear();
+    this.persistFilters();
+    this.persistRepoFilter();
+    this.refresh();
   }
 
   public handleDrag(source: readonly vscode.TreeItem[], treeDataTransfer: vscode.DataTransfer, _token: vscode.CancellationToken): void | Thenable<void> {

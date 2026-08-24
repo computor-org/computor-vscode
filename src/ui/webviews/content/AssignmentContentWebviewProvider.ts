@@ -49,8 +49,8 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Assignment title' }))}
         ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Assignment description' }))}
         ${formGroup('Max Group Size', textInput('maxGroupSize', String(courseContent.max_group_size ?? 1), { type: 'number', min: 1 }))}
-        ${courseContent.max_test_runs !== undefined ? formGroup('Max Test Runs', textInput('maxTestRuns', String(courseContent.max_test_runs ?? ''), { type: 'number', min: 0 })) : ''}
-        ${courseContent.max_submissions !== undefined ? formGroup('Max Submissions', textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0 })) : ''}
+        ${formGroup('Max Test Runs', textInput('maxTestRuns', String(courseContent.max_test_runs ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }))}
+        ${formGroup('Max Submissions', textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
           <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
@@ -105,10 +105,20 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
           description: document.getElementById('description').value,
           max_group_size: parseInt(document.getElementById('maxGroupSize').value) || 1
         };
+        // An empty field means "unlimited"; 0 means zero. \`parseInt(v) || null\`
+        // conflated the two and silently turned a 0 into unlimited
+        // (computor-org/issues#356).
+        function limitValue(el) {
+          if (!el) { return undefined; }
+          var raw = String(el.value).trim();
+          if (raw === '') { return null; }
+          var parsed = parseInt(raw, 10);
+          return isNaN(parsed) ? null : parsed;
+        }
         var testRunsEl = document.getElementById('maxTestRuns');
-        if (testRunsEl) { updates.max_test_runs = parseInt(testRunsEl.value) || null; }
+        if (testRunsEl) { updates.max_test_runs = limitValue(testRunsEl); }
         var submissionsEl = document.getElementById('maxSubmissions');
-        if (submissionsEl) { updates.max_submissions = parseInt(submissionsEl.value) || null; }
+        if (submissionsEl) { updates.max_submissions = limitValue(submissionsEl); }
 
         vscode.postMessage({
           command: 'updateContent',

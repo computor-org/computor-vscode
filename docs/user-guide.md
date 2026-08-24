@@ -376,17 +376,22 @@ Students can't see content until it's released:
 - **Member Comments**: Right-click → `Show Comments` for student notes
 - **Open GitLab Repo**: Right-click on course → `Open GitLab Repository`
 
-### Managing Files in Assignments
+### Assignment Files
 
-For submittable assignments, you can manage the file structure:
+An assignment's files come from the example assigned to it, so you edit them in the
+Examples view (check the example out, edit, upload a new version) and then release
+the content to students. There is no file creation on the course tree: what it can
+show you is a local copy of the assignments repository, and that copy is only ever
+pulled — anything written into it would never reach students.
 
-1. Right-click on assignment → `New Folder` or `New File`
-2. Upload folder contents
-3. Students will see this structure when they clone
+Assignments are leaves in the course tree — they do not expand. To see what is
+currently deployed for one, right-click the assignment → `Reveal Deployed Files`.
 
-Assignments are leaves in the course tree — they do not expand. To browse the files
-you just created, right-click the assignment → `Open Assignment Folder`, or open the
-assignments repository in the workspace explorer.
+### Test and Submission Limits
+
+Right-click an assignment → `Set Max Test Runs...` or `Set Max Submissions...`, or
+edit both in `Show Details`. Leave the value empty for unlimited; `0` means the
+student gets none.
 
 ---
 
