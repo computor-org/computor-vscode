@@ -8,7 +8,7 @@ import { GitCancelledError, GitTimeoutError } from '../exceptions/errors/GitExec
 import { execGitClone } from '../git/gitCloneHelpers';
 import { CTGit } from '../git/CTGit';
 import { GitErrorHandler } from '../git/GitErrorHandler';
-import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
+import { classifyRemoteRelation, createRepositoryBackup, isHistoryRewriteError, RemoteRelation } from '../utils/repositoryBackup';
 import { addBasicCredentialsToGitUrl, addTokenToGitUrl, extractOriginFromGitUrl, redactGitCredentials, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
@@ -39,6 +39,8 @@ export class StudentRepositoryManager {
   private corruptIndexHandler?: (repoPath: string) => void;
   /** Repo root → course, so credential refresh can re-provision at push time. */
   private courseIdByRepoPath = new Map<string, string>();
+  /** Repo roots already reported as out of sync, so we warn once per session. */
+  private syncFailureAlerted = new Set<string>();
 
   constructor(
     context: vscode.ExtensionContext,
@@ -799,6 +801,17 @@ export class StudentRepositoryManager {
       }
 
       if (!isHistoryRewriteError(error)) {
+        await this.reportOutOfSync(repoPath, repoName, error);
+        return token;
+      }
+
+      // The error text alone is not proof. Confirm against the actual object
+      // graph that the histories really are unrelated — anything else (a
+      // diverged branch, a force-push, an unreadable upstream) still holds the
+      // student's commits and must never be resolved by deleting the clone.
+      const relation = await classifyRemoteRelation(repoPath);
+      if (relation !== 'unrelated') {
+        await this.reportOutOfSync(repoPath, repoName, error, relation);
         return token;
       }
 
@@ -816,6 +829,29 @@ export class StudentRepositoryManager {
         console.error(`[StudentRepositoryManager] Failed to create backup for ${repoPath}:`, backupError);
       }
 
+      // No verified backup, no deletion. createRepositoryBackup also returns
+      // undefined without throwing (e.g. the path vanished), so test the value
+      // rather than relying on the catch above.
+      if (!backupPath) {
+        notify.error(
+          `Computor could not back up the repository "${repoName}", so it was left untouched. ` +
+          `Please copy your work somewhere safe, then remove the folder manually to let Computor recreate it.`
+        );
+        return token;
+      }
+
+      const confirmed = await notify.confirm(
+        `The remote for "${repoName}" is a different repository. Computor can recreate it from the remote.`,
+        'Recreate Repository',
+        `Your current files were backed up to ${backupPath}. The backup contains your files only — it does NOT include Git history, so any commits that were never pushed will be lost.`
+      );
+      if (!confirmed) {
+        notify.warning(
+          `Left "${repoName}" untouched. Your backup is at ${backupPath}.`
+        );
+        return token;
+      }
+
       try {
         await fs.promises.rm(repoPath, { recursive: true, force: true });
       } catch (removeError) {
@@ -830,27 +866,48 @@ export class StudentRepositoryManager {
         refreshedToken = await this.cloneRepository(repoPath, cloneUrl, token);
       } catch (cloneError) {
         console.error(`[StudentRepositoryManager] Re-clone failed for ${repoPath}:`, cloneError);
-        notify.error(`Computor could not recreate the repository "${repoName}". Your previous files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
+        notify.error(`Computor could not recreate the repository "${repoName}". Your previous files were backed up at ${backupPath}.`);
         throw cloneError;
       }
 
-      const actions: string[] = [];
-      if (backupPath) {
-        actions.push('Open Backup Folder');
-      }
-      actions.push('Dismiss');
-
-      const message = backupPath
-        ? `The repository "${repoName}" was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This is unusual—if it happens again, please inform your course instructor.`
-        : `The repository "${repoName}" was reset because the remote history changed. This is unusual—if it happens again, please inform your course instructor.`;
-
-      const choice = await notify.warning(message, ...actions);
-      if (choice === 'Open Backup Folder' && backupPath) {
+      const choice = await notify.warning(
+        `The repository "${repoName}" was recreated because the remote is a different repository. ` +
+        `A backup of your files (without Git history) is at ${backupPath}. ` +
+        `This is unusual—if it happens again, please inform your course instructor.`,
+        'Open Backup Folder',
+        'Dismiss'
+      );
+      if (choice === 'Open Backup Folder') {
         await revealUri(vscode.Uri.file(backupPath));
       }
 
       return refreshedToken;
     }
+  }
+
+  /**
+   * Tell the student their repository could not be synced, once per repo per
+   * session. Previously every non-rewrite failure returned silently, so a
+   * student could keep working against a stale base — and a tutor could grade
+   * one — with nothing on screen to say so.
+   */
+  private async reportOutOfSync(
+    repoPath: string,
+    repoName: string,
+    error: unknown,
+    relation?: RemoteRelation
+  ): Promise<void> {
+    console.warn(`[StudentRepositoryManager] ${repoName} is out of sync (${relation ?? 'update failed'}):`, error);
+    if (this.syncFailureAlerted.has(repoPath)) {
+      return;
+    }
+    this.syncFailureAlerted.add(repoPath);
+
+    const detail = relation === 'diverged'
+      ? `Your local branch and the remote have both moved on, so Computor cannot fast-forward. Your work is safe — commit and push it, or merge the remote changes, to get back in sync.`
+      : `Computor could not update it just now. Your work is safe; the copy you see may be out of date.`;
+
+    void notify.warning(`Could not update "${repoName}". ${detail}`);
   }
 
   /**

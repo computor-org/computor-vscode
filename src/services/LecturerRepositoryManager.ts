@@ -5,7 +5,7 @@ import { execAsyncWithTimeout } from '../utils/exec';
 import { execGitClone } from '../git/gitCloneHelpers';
 import { RepositoryTokenManager } from './RepositoryTokenManager';
 import { ComputorApiService } from './ComputorApiService';
-import { createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
+import { classifyRemoteRelation, createRepositoryBackup, isHistoryRewriteError } from '../utils/repositoryBackup';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
@@ -79,7 +79,19 @@ export class LecturerRepositoryManager {
         await execAsyncWithTimeout('git pull --ff-only', { cwd: target, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 30_000 });
       } catch (error: any) {
         if (!isHistoryRewriteError(error)) {
+          // Unlike the student path this rethrows: the caller
+          // (syncAllAssignments) already downgrades it to a per-course warning,
+          // and a lecturer pulling a shared repo should not have a failure
+          // silently swallowed.
           console.warn(`[LecturerRepo] Failed to pull course ${courseId}:`, error);
+          throw error;
+        }
+
+        // Confirm the histories really are unrelated before anything
+        // destructive — see classifyRemoteRelation.
+        const relation = await classifyRemoteRelation(target);
+        if (relation !== 'unrelated') {
+          console.warn(`[LecturerRepo] Course ${courseId} is ${relation}; not resetting.`);
           throw error;
         }
 
@@ -95,6 +107,24 @@ export class LecturerRepositoryManager {
           console.error(`[LecturerRepo] Failed to create backup for course ${courseId}:`, backupError);
         }
 
+        if (!backupPath) {
+          notify.error(
+            `Computor could not back up the assignments repository, so it was left untouched. ` +
+            `Please copy your work somewhere safe, then remove the folder manually to let Computor recreate it.`
+          );
+          throw error;
+        }
+
+        const confirmed = await notify.confirm(
+          `The remote for the assignments repository is a different repository. Computor can recreate it from the remote.`,
+          'Recreate Repository',
+          `Your current files were backed up to ${backupPath}. The backup contains your files only — it does NOT include Git history, so any commits that were never pushed will be lost.`
+        );
+        if (!confirmed) {
+          notify.warning(`Left the assignments repository untouched. Your backup is at ${backupPath}.`);
+          throw error;
+        }
+
         try {
           await fs.promises.rm(target, { recursive: true, force: true });
         } catch (removeError) {
@@ -108,22 +138,18 @@ export class LecturerRepositoryManager {
           await execGitClone(authUrl, target);
         } catch (cloneError) {
           console.error(`[LecturerRepo] Re-clone failed for course ${courseId}:`, cloneError);
-          notify.error(`Computor could not recreate the assignments repository. Your files${backupPath ? ` were backed up at ${backupPath}` : ''}.`);
+          notify.error(`Computor could not recreate the assignments repository. Your files were backed up at ${backupPath}.`);
           throw cloneError;
         }
 
-        const actions: string[] = [];
-        if (backupPath) {
-          actions.push('Open Backup Folder');
-        }
-        actions.push('Dismiss');
-
-        const message = backupPath
-          ? `The assignments repository was reset because the remote history changed. A backup without Git metadata is available at ${backupPath}. This event is unusual—if it happens repeatedly, please inform the course coordination team.`
-          : `The assignments repository was reset because the remote history changed. This event is unusual—if it happens repeatedly, please inform the course coordination team.`;
-
-        const choice = await notify.warning(message, ...actions);
-        if (choice === 'Open Backup Folder' && backupPath) {
+        const choice = await notify.warning(
+          `The assignments repository was recreated because the remote is a different repository. ` +
+          `A backup of your files (without Git history) is at ${backupPath}. ` +
+          `This event is unusual—if it happens repeatedly, please inform the course coordination team.`,
+          'Open Backup Folder',
+          'Dismiss'
+        );
+        if (choice === 'Open Backup Folder') {
           await revealUri(vscode.Uri.file(backupPath));
         }
       }
