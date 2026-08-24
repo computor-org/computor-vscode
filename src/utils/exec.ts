@@ -4,10 +4,45 @@ import type { CancellationToken } from 'vscode';
 import { redactGitCredentials } from './gitUrlHelpers';
 import { GitCancelledError, GitTimeoutError } from '../exceptions/errors/GitExecError';
 
+const execPromise = promisify(exec);
+
 /**
- * Promisified version of exec for async/await usage
+ * Scrub credentials from every field of a failed exec that can carry the command
+ * back to a log or a notification.
+ *
+ * Node builds the rejection message as `Command failed: <the whole command>`, so
+ * an error from a git call with `https://user:token@host` in it reproduces the
+ * token verbatim — and `.stderr`/`.stdout` carry git's own output, which several
+ * callers interpolate into user-facing messages and which the history-rewrite
+ * classifier reads.
  */
-export const execAsync = promisify(exec);
+export function redactExecError<T>(error: T): T {
+  const bearer = error as { message?: unknown; cmd?: unknown; stderr?: unknown; stdout?: unknown };
+  for (const field of ['message', 'cmd', 'stderr', 'stdout'] as const) {
+    if (typeof bearer[field] === 'string') {
+      bearer[field] = redactGitCredentials(bearer[field] as string);
+    }
+  }
+  return error;
+}
+
+/**
+ * Promisified version of exec for async/await usage.
+ *
+ * Prefer `execAsyncWithTimeout` for anything that talks to a remote: this has no
+ * timeout and no cancellation. Both redact credentials from rejections.
+ */
+export async function execAsync(
+  command: string,
+  options: ExecOptions = {}
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const { stdout, stderr } = await execPromise(command, options);
+    return { stdout: stdout ?? '', stderr: stderr ?? '' };
+  } catch (error) {
+    throw redactExecError(error);
+  }
+}
 
 interface ExecWithTimeoutOptions extends ExecOptions {
   timeout?: number;
@@ -41,10 +76,7 @@ export function execAsyncWithTimeout(
         } else if (error.killed && cancellationToken?.isCancellationRequested) {
           reject(new GitCancelledError(safeCommand));
         } else {
-          if (typeof error.message === 'string') { error.message = redactGitCredentials(error.message); }
-          const cmdBearing = error as { cmd?: string };
-          if (typeof cmdBearing.cmd === 'string') { cmdBearing.cmd = redactGitCredentials(cmdBearing.cmd); }
-          reject(error);
+          reject(redactExecError(error));
         }
         return;
       }
