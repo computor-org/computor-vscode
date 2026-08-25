@@ -5,6 +5,7 @@ import * as path from 'path';
 import { SimpleGit } from 'simple-git';
 import { createSimpleGit } from './simpleGitFactory';
 import { notify } from '../utils/notify';
+import { stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 
 function openFileInMergeEditor(filePath: string): void {
   // A conflicted file is a file to edit, so it belongs in the source group
@@ -379,6 +380,13 @@ export class CTGit {
    * seeded from the course template keep the template linked as `upstream`
    * (see `StudentRepositoryProvisioningService.seedFromTemplateClone`), and
    * removing the remote would take its remote-tracking refs with it.
+   *
+   * The restored URL is stripped of any embedded credential. `upstream` is
+   * meant to be credential-free — provisioning writes a plain template URL and
+   * every fetch injects a fresh credential — but repositories seeded by older
+   * builds still carry `oauth2:<token>@` in theirs. Putting such a URL back
+   * verbatim re-armed a token the server has since rotated, so the repository
+   * stayed broken no matter how often the sync ran (computor-org/issues#332).
    */
   private async releaseRemote(
     remoteName: string,
@@ -386,8 +394,11 @@ export class CTGit {
     remove: boolean
   ): Promise<void> {
     if (previousUrl !== undefined) {
+      // Non-http(s) remotes (ssh) have no credentials to strip and come back
+      // as undefined — restore those unchanged.
+      const restoredUrl = stripCredentialsFromGitUrl(previousUrl) ?? previousUrl;
       try {
-        await this.simpleGit.remote(['set-url', remoteName, previousUrl]);
+        await this.simpleGit.remote(['set-url', remoteName, restoredUrl]);
       } catch (error) {
         console.warn(`[CTGit] Failed to restore the URL of remote ${remoteName}:`, error);
       }
@@ -396,6 +407,39 @@ export class CTGit {
 
     if (remove) {
       await this.cleanupRemote(remoteName);
+    }
+  }
+
+  /**
+   * Point `remoteName` at `remoteUrl`, fetch it, and resolve its default branch.
+   *
+   * Wrapped so a failure cannot leak the credential-carrying URL that
+   * {@link ensureRemote} just wrote. None of this used to be protected: one
+   * failed template sync — an expired clone token, an unreachable server — left
+   * `upstream` pointing at `oauth2:<dead-token>@…/template.git` permanently,
+   * and because `git fetch --all` fails when any single remote fails, the
+   * student's repository then stopped updating from origin as well
+   * (computor-org/issues#332).
+   */
+  private async prepareUpstream(
+    remoteName: string,
+    remoteUrl: string,
+    previousRemoteUrl: string | undefined,
+    shouldRemoveRemote: boolean,
+    defaultBranchHint?: string
+  ): Promise<string | undefined> {
+    await this.ensureRemote(remoteName, remoteUrl);
+    try {
+      // Spelled out as a raw command: `simpleGit.fetch(remoteName)` does NOT
+      // fetch that remote. simple-git only passes the remote through when a
+      // branch is given with it, so it degrades to a bare `git fetch` — origin
+      // gets fetched, `refs/remotes/upstream/*` is never written, and every
+      // comparison against it fails.
+      await this.simpleGit.raw(['fetch', remoteName]);
+      return defaultBranchHint ?? await this.detectDefaultBranch(remoteName, ['main', 'master']);
+    } catch (error) {
+      await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
+      throw error;
     }
   }
 
@@ -427,17 +471,15 @@ export class CTGit {
     // Remember whether the repository already had this remote: one it owns is
     // restored rather than deleted once we are done (see releaseRemote).
     const previousRemoteUrl = await this.remoteFetchUrl(remoteName);
-    await this.ensureRemote(remoteName, remoteUrl);
-    // Spelled out as a raw command: `simpleGit.fetch(remoteName)` does NOT
-    // fetch that remote. simple-git only passes the remote through when a
-    // branch is given with it, so it degrades to a bare `git fetch` — origin
-    // gets fetched, `refs/remotes/upstream/*` is never written, and every
-    // comparison below fails.
-    await this.simpleGit.raw(['fetch', remoteName]);
-
-    const defaultBranch = options?.defaultBranch
-      ?? await this.detectDefaultBranch(remoteName, ['main', 'master']);
     const shouldRemoveRemote = options?.removeRemote ?? true;
+
+    const defaultBranch = await this.prepareUpstream(
+      remoteName,
+      remoteUrl,
+      previousRemoteUrl,
+      shouldRemoveRemote,
+      options?.defaultBranch
+    );
 
     if (!defaultBranch) {
       await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
@@ -656,12 +698,13 @@ export class CTGit {
     const previousRemoteUrl = await this.remoteFetchUrl(remoteName);
     const shouldRemoveRemote = options?.removeRemote ?? true;
 
-    await this.ensureRemote(remoteName, remoteUrl);
-    // Raw command: `simpleGit.fetch(remoteName)` does not fetch that remote.
-    await this.simpleGit.raw(['fetch', remoteName]);
-
-    const defaultBranch = options?.defaultBranch
-      ?? await this.detectDefaultBranch(remoteName, ['main', 'master']);
+    const defaultBranch = await this.prepareUpstream(
+      remoteName,
+      remoteUrl,
+      previousRemoteUrl,
+      shouldRemoveRemote,
+      options?.defaultBranch
+    );
     if (!defaultBranch) {
       await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
       throw new Error('Could not determine the course template’s default branch.');

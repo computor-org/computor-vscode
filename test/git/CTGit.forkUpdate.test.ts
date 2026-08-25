@@ -174,4 +174,43 @@ describe('CTGit.forkUpdate', () => {
     expect(fs.existsSync(path.join(fixture.student, 'week_3.md'))).to.equal(true);
     expect(git(fixture.origin, 'show', 'main:week_3.md')).to.equal('Assignment 3');
   });
+
+  /**
+   * The credential the sync injects into `upstream` must never outlive the
+   * call. The backend rotates the Forgejo clone token on every provision, so
+   * one left behind is dead by the next run — and `git fetch --all` fails
+   * whenever a single remote fails, which took the student's own origin fetch
+   * down with it (computor-org/issues#332).
+   */
+  it('leaves no credential-carrying remote behind when the upstream fetch fails', async function () {
+    this.timeout(20_000);
+    // Port 1 refuses immediately, standing in for an expired token or an
+    // unreachable git server. Nothing may be prompted for.
+    const unreachable = 'http://oauth2:dead-token@127.0.0.1:1/itpcp-2027/template.git';
+
+    let threw = false;
+    try {
+      await new CTGit(fixture.student).forkUpdate(unreachable, { autoResolveConflicts: true });
+    } catch {
+      threw = true;
+    }
+
+    expect(threw, 'an unreachable upstream must surface as an error').to.equal(true);
+    expect(git(fixture.student, 'remote').split('\n').filter(Boolean)).to.not.include('upstream');
+  });
+
+  it('strips the embedded credential from a repository-owned upstream it restores', async function () {
+    this.timeout(20_000);
+    // Seeded by an older build, which baked the clone token into the remote.
+    // Restoring it verbatim re-armed a token the server had already rotated.
+    git(fixture.student, 'remote', 'add', 'upstream', 'http://oauth2:rotated-token@git.invalid/itpcp-2027/template.git');
+    releaseNewAssignment(fixture);
+
+    const result = await new CTGit(fixture.student).forkUpdate(fixture.template, { autoResolveConflicts: true });
+
+    expect(result.updated).to.equal(true);
+    expect(git(fixture.student, 'remote').split('\n')).to.include('upstream');
+    expect(git(fixture.student, 'remote', 'get-url', 'upstream'))
+      .to.equal('http://git.invalid/itpcp-2027/template.git');
+  });
 });

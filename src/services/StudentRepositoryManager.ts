@@ -758,7 +758,15 @@ export class StudentRepositoryManager {
     refreshAuth?: () => Promise<{ username: string; password: string } | undefined>
   ): Promise<string> {
     const attempt = async (): Promise<void> => {
-      await execAsyncWithTimeout('git fetch --all', {
+      // `origin`, NOT `--all`. This repository also has the course template
+      // linked as `upstream`, and that remote is deliberately credential-free
+      // — the template sync injects a fresh credential per fetch. `git fetch
+      // --all` exits non-zero if ANY remote fails, so fetching upstream here
+      // aborted the whole update (with "could not read Username", or with a
+      // dead token on repos seeded by older builds) before the `git pull`
+      // below ever ran, and the student's repository silently stopped
+      // updating from their own origin (computor-org/issues#332).
+      await execAsyncWithTimeout('git fetch origin', {
         cwd: repoPath,
         env: {
           ...process.env,
