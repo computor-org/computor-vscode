@@ -1,5 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 const backupRootDir = '.backups';
 
@@ -69,7 +73,77 @@ export function isHistoryRewriteError(error: any): boolean {
   const message = typeof error?.message === 'string' ? error.message : '';
   const combined = `${stderr}\n${stdout}\n${message}`.toLowerCase();
 
-  return combined.includes('not possible to fast-forward') ||
-    combined.includes('refusing to merge unrelated histories') ||
+  // "not possible to fast-forward" is deliberately NOT listed: that is what
+  // `git pull --ff-only` prints for an ordinary diverged branch (local commits
+  // that were never pushed + origin moved on), which is a routine state — not a
+  // reason to throw the repository away.
+  return combined.includes('refusing to merge unrelated histories') ||
     combined.includes('fatal: unrelated histories');
+}
+
+/**
+ * How the checked-out branch relates to its upstream.
+ *
+ * `unrelated` means the two have no common ancestor at all — the remote is a
+ * different repository, which is the only case where recreating the clone can
+ * be justified. Note that a force-push and an ordinary divergence are
+ * indistinguishable by ancestry alone (in both, neither side contains the
+ * other), so both report `diverged` and neither may be resolved destructively.
+ */
+export type RemoteRelation =
+  | 'unrelated'
+  | 'diverged'
+  | 'behind'
+  | 'ahead'
+  | 'up-to-date'
+  | 'unknown';
+
+async function git(repoPath: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, {
+    cwd: repoPath,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    timeout: 15_000
+  });
+  return stdout.trim();
+}
+
+export async function classifyRemoteRelation(
+  repoPath: string,
+  upstreamRef?: string
+): Promise<RemoteRelation> {
+  try {
+    const upstream =
+      upstreamRef ||
+      (await git(repoPath, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']));
+    if (!upstream) {
+      return 'unknown';
+    }
+
+    let mergeBase: string;
+    try {
+      mergeBase = await git(repoPath, ['merge-base', 'HEAD', upstream]);
+    } catch {
+      // No common ancestor: git exits non-zero rather than printing a base.
+      return 'unrelated';
+    }
+    if (!mergeBase) {
+      return 'unrelated';
+    }
+
+    const head = await git(repoPath, ['rev-parse', 'HEAD']);
+    const remote = await git(repoPath, ['rev-parse', upstream]);
+
+    if (head === remote) {
+      return 'up-to-date';
+    }
+    if (mergeBase === head) {
+      return 'behind';
+    }
+    if (mergeBase === remote) {
+      return 'ahead';
+    }
+    return 'diverged';
+  } catch {
+    return 'unknown';
+  }
 }
