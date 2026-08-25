@@ -1,535 +1,162 @@
-# Student Guide: Assignments
+# Assignments
 
-## Table of Contents
+An assignment is a piece of work you hand in: a folder in your course repository
+with the task description, the files you start from, and the files you are meant
+to write. This page covers working on one, handing it in, and everything you can
+do with the files inside it.
 
-- [What is an Assignment?](#what-is-an-assignment)
-- [What You See](#what-you-see)
-- [Assignment Information](#assignment-information)
-  - [Tooltip Information](#tooltip-information)
-  - [Description in Tree](#description-in-tree)
-- [Assignment Lifecycle](#assignment-lifecycle)
-  - [1. Work on Your Code](#1-work-on-your-code)
-  - [2. Test Locally](#2-test-locally)
-  - [3. Commit Your Changes](#3-commit-your-changes)
-  - [4. Submit the Assignment](#4-submit-the-assignment)
-  - [5. View Feedback and Grades](#5-view-feedback-and-grades)
-- [Available Actions](#available-actions)
-  - [Show README Preview](#-show-readme-preview-inline-icon)
-  - [Test Assignment](#-test-assignment-inline-icon-only-if-cloned)
-  - [Commit Assignment](#-commit-assignment-inline-icon-only-if-cloned)
-  - [Submit Assignment](#-submit-assignment-inline-icon-only-if-cloned)
-  - [File Actions](#-file-actions)
-  - [Show Test Results](#-show-test-results)
-  - [View Details](#-view-details)
-  - [Show Messages](#-show-messages)
-  - [Help](#-help)
-- [Assignment Types](#assignment-types)
-  - [Individual Assignments](#individual-assignments)
-  - [Team Assignments](#team-assignments)
-- [Understanding Icons and Badges](#understanding-icons-and-badges)
-  - [Assignment Icons](#assignment-icons)
-  - [Inline Action Icons](#inline-action-icons)
-- [Working with Files](#working-with-files)
-  - [Creating](#creating)
-  - [Copying and Moving](#copying-and-moving)
-  - [Deleting](#deleting)
-  - [Renaming and Duplicating](#renaming-and-duplicating)
-  - [Cut, Copy and Paste](#cut-copy-and-paste)
-  - [Paths](#paths)
-  - [What You Cannot Change](#what-you-cannot-change)
-- [Getting a File Back from the Template](#getting-a-file-back-from-the-template)
-- [Common Scenarios](#common-scenarios)
-  - [Starting a New Assignment](#starting-a-new-assignment)
-  - [Debugging Test Failures](#debugging-test-failures)
-  - [Submitting Work](#submitting-work)
-  - [After Receiving Feedback](#after-receiving-feedback)
-- [Tips and Best Practices](#tips-and-best-practices)
-  - [Commit Frequently](#commit-frequently)
-  - [Test Before Submitting](#test-before-submitting)
-  - [Manage Test Attempts](#manage-test-attempts)
-  - [Watch Submission Limits](#watch-submission-limits)
-  - [Read Messages](#read-messages)
-  - [Understand the Metrics](#understand-the-metrics)
-- [Troubleshooting](#troubleshooting)
-  - ["I deleted a file I needed"](#i-deleted-a-file-i-needed)
-  - ["Cannot clone repository"](#cannot-clone-repository)
-  - ["Tests won't run"](#tests-wont-run)
-  - ["Submission failed"](#submission-failed)
-  - ["No test attempts remaining"](#no-test-attempts-remaining)
-- [Next Steps](#next-steps)
-
----
-
-## What is an Assignment?
-
-An **Assignment** is a submittable task with a Git repository where you write code, complete exercises, or create deliverables. Assignments are the core interactive element of your coursework - you clone them, work on them, test them, and submit them for grading.
-
-## What You See
-
-Assignments appear with a colored square icon:
+## What the row tells you
 
 ```
-📖 Introduction to Programming
-├── ⚫ Week 1
-│   ├── 🟦 Lab 1: Hello World
-│   └── 🟦 Homework 1: Variables
-└── 🟦 Final Project
+🟦 Lab 1: Hello World   ● 🔔 1 (2/5) (1/3) 85% 90%
 ```
 
-The color of the square icon indicates the **content type** (lab, homework, exam, etc.) defined by your instructor.
-
-## Assignment Information
-
-### Tooltip Information
-
-When you hover over an assignment, you'll see comprehensive details:
-
-```
-Repository: john-doe/cs101-lab1
-Type: Lab
-Unread messages: 1
-Tests: 2 of 5
-Submissions: 1 of 3
-Result: 85.50%
-Grading: 90.00%
-Status: Corrected
-Team members:
-  - John Doe
-  - Jane Smith
-```
-
-**What each line means:**
-
-1. **Repository: [path]** - Your personal Git repository full path (e.g., `username/course-assignment`)
-2. **Type: [Content Type]** - Assignment category (Lab, Homework, Exam, Project, etc.)
-3. **Unread messages: [X]** - New announcements or feedback messages (only shown if > 0)
-4. **Tests: [X] of [Y]** - Test runs you've used out of maximum allowed
-   - Example: "2 of 5" means you've run tests 2 times, with 3 attempts remaining
-   - If no limit: shows just the count (e.g., "Tests: 2")
-5. **Submissions: [X] of [Y]** - Submissions made out of maximum allowed
-   - Example: "1 of 3" means you've submitted once, with 2 submissions remaining
-   - **Important:** Once you reach the limit, you cannot submit again
-6. **Result: [X]%** - Your latest test result percentage (0-100%)
-   - Based on automated test execution
-   - Updates when you run local tests or submit
-7. **Grading: [X]%** - Your official grade from the instructor (0-100%)
-   - Only appears after grading
-   - May differ from test results (instructors can adjust grades)
-8. **Status** - Grading/correction status:
-   - **Corrected** - Assignment has been graded
-   - **Correction Necessary** - Instructor requires changes
-   - **Correction Possible** - You can revise and resubmit
-9. **Team members** - List of collaborators (only shown for team assignments)
-
-### Description in Tree
-
-Next to the assignment name, you'll see compact metrics:
-
-```
-🟦 Lab 1: Hello World    🔔 1 [2/5] [1/3] 85%
-```
-
-- **🔔 [X]** - Unread messages (bell icon, only if unread > 0)
-- **[X/Y]** - Test runs used (e.g., `[2/5]`)
-- **[X/Y]** - Submissions made (e.g., `[1/3]`)
-- **[X]%** - Current result percentage (e.g., `85%`)
-
-## Assignment Lifecycle
-
-### 1. Work on Your Code
-
-1. Edit files in your preferred editor
-2. Make changes to complete the assignment requirements
-3. Save your work frequently
-
-**Tips:**
-- Read the README for instructions (click preview icon or right-click → **Show README Preview**)
-- Follow the assignment structure - don't rename required files
-- Commit your work regularly (even before it's perfect)
-
-### 2. Test Locally
-
-Before submitting, run automated tests to check your work.
-
-**How to test:**
-1. Click the **🧪 beaker icon** next to the assignment (inline action)
-   - Or right-click → **Test Assignment**
-2. Tests execute locally on your machine
-3. Results appear in the **Test Results** panel (bottom panel)
-4. Click on failed tests to jump to the relevant code
-
-**Important:**
-- Testing uses one of your test attempts (if limited)
-- **Tests: [X] of [Y]** in the tooltip shows remaining attempts
-- Test locally before submitting to catch errors early
-- Green checkmark badge = tests passing
-- Red X badge = tests failing
-
-**Viewing test results:**
-- Right-click → **Show Test Results** to see detailed output
-- Test results persist even after closing VS Code
-
-### 3. Commit Your Changes
-
-Save your progress to the Git repository regularly.
-
-**How to commit:**
-1. Click the **📝 git commit icon** next to the assignment (inline action)
-   - Or right-click → **Commit Assignment**
-2. Enter a descriptive commit message (e.g., "Implemented sorting function")
-3. Changes are committed and pushed to your remote repository
-
-**Committing everything at once:** all the assignments of a course share one
-repository, so right-clicking the **course** and choosing **Commit Course** saves
-every assignment you have worked on in a single step.
-
-**Why commit often:**
-- Saves your progress remotely (backup)
-- Allows instructors to see your work-in-progress
-- Creates a history of your development process
-- Required before submission
-
-### 4. Submit the Assignment
-
-When you're ready to be graded, submit your work.
-
-**How to submit:**
-1. Ensure all changes are committed
-2. Click the **☁️ upload icon** next to the assignment (inline action)
-   - Or right-click → **Submit Assignment**
-3. Submission is created on the backend
-4. You'll see the submission count increase
-
-**Important:**
-- **Submissions are limited!** Check "Submissions: [X] of [Y]" before submitting
-- You cannot submit after reaching the maximum
-- Only submit when you're confident in your work
-- You can view submission details: right-click → **View Details**
-
-### 5. View Feedback and Grades
-
-After submission, instructors review and grade your work.
-
-**How to check feedback:**
-- Right-click → **View Details** to see:
-  - Submission information
-  - Test results
-  - Grading percentage
-  - Instructor comments
-- Right-click → **Show Messages** for feedback discussions
-
-**Status indicators:**
-- **Corrected** - Graded and finalized
-- **Correction Necessary** - Instructor requires changes (you may need to revise)
-- **Correction Possible** - You can resubmit (if submissions remain)
-
-## Available Actions
+Reading that from the left:
 
-Right-click on an assignment to access:
-
-### 📖 Show README Preview (inline icon)
-Opens the assignment's README file in a preview panel. This typically contains:
-- Assignment instructions
-- Requirements and specifications
-- Grading criteria
-- Tips and hints
-
-**When to use:** Before starting work, to understand what's expected
-
-### 🧪 Test Assignment (inline icon, only if cloned)
-Runs automated tests on your local code.
+| Part | Meaning |
+|------|---------|
+| 🟦 | The content type your lecturer defined — lab, homework, exam. A tick or cross on the icon shows whether the last test passed |
+| `●` `↑` `⚠` | Your work's state: uncommitted, not uploaded, upload failing. See [Courses](student-course.md#the-marks-on-a-row) |
+| `🔔 1` | Unread messages on this assignment |
+| `(2/5)` | Test runs: two used of five allowed. Just `(2)` when there is no limit |
+| `(1/3)` | Submissions: one made of three allowed |
+| `85%` | The **test result** — what the automated tests scored |
+| `90%` | The **grade** — your lecturer's official mark, once graded |
 
-**When to use:**
-- Before submitting
-- After making significant changes
-- To verify your solution works
-
-**Note:** Uses one test attempt (if limited)
-
-### 📝 Commit Assignment (inline icon, only if cloned)
-Commits and pushes the changes in this assignment to the remote repository. To
-save every assignment of the course at once, use **Commit Course** on the course
-row instead.
+The two percentages always keep their places: the test result first, the grade
+second. If you have a grade but no test result, the first slot reads `-%`, so
+the second number is always the grade and never has to be guessed at.
 
-**When to use:**
-- After completing a feature or section
-- Regularly throughout development
-- Before running tests or submitting
-
-### ☁️ Submit Assignment (inline icon, only if cloned)
-Creates an official submission for grading.
-
-**When to use:**
-- When you're confident your work is complete
-- After testing locally
-- Before the deadline
-
-**Warning:** Limited submissions - use wisely!
-
-### 📁 File Actions
-Right-click an assignment for **New File…** and **New Folder…**, and right-click
-any file or folder inside it for the full set — see
-[Working with Files](#working-with-files).
+Hovering gives the same information in words, plus your team members if the
+assignment is a team one.
 
-### 📋 Show Test Results
-Opens the detailed test results panel.
+## Working on an assignment
 
-**When to use:**
-- After running tests
-- To debug failing tests
-- To see which requirements are met
+**1. Read the task.** Click the preview icon on the row, or right-click →
+*Show README Preview*. The description opens beside your code and stays there
+while you work.
 
-### 📄 View Details
-Opens a detailed view with all assignment information, including:
-- Repository details
-- Submission history
-- Test results
-- Grading information
+**2. Write your solution.** Expand the assignment to see its files and click one
+to open it. Keep the files the task asks for under the names it asks for —
+renaming a file the tests look for makes them fail.
 
-**When to use:**
-- To see comprehensive assignment status
-- To review submission history
-- To check grading details
+**3. Test.** Click the beaker icon, or right-click → *Test Assignment*.
 
-### 💬 Show Messages
-Opens the message panel for this assignment.
+> Testing is not a local dry run. Computor saves your open files, commits them,
+> uploads them, and runs the tests **on the server** — so a test run always
+> uploads your current work, and it always costs one of your test runs if the
+> assignment has a limit. Results come back into the Test Results panel; click a
+> failed test to jump to the code it is about.
 
-**When to use:**
-- To read instructor feedback
-- To ask questions about the assignment
-- To view announcements
+**4. Commit as you go.** The commit icon on the assignment saves and uploads
+that folder; *Commit Course* on the course row does the whole course at once.
+Commit early and often — it is your backup, and it costs nothing. It is not a
+submission and nobody grades it.
 
-### ❓ Help
-Opens this help guide (you're reading it now!).
+**5. Submit when you are ready.** The upload icon, or right-click → *Submit*.
+This is the deliberate act of handing in, it is limited, and the count only goes
+up.
 
-## Assignment Types
+Computor submits the commit that was **tested**, not necessarily your newest
+one. If those differ — because the last test could not run, for instance — you
+are told before anything is handed in, so your newest work never gets graded
+silently or left out silently.
 
-### Individual Assignments
-- You work alone
-- Repository is in your name
-- All commits and submissions are your own
+**6. Read the feedback.** *Show Test Results* for the automated run,
+*View Details* for the submission history and grading, *Show Messages* for what
+your lecturer or tutor wrote. A status of *Correction Necessary* means changes
+are expected; *Correction Possible* means you may revise if submissions remain.
 
-### Team Assignments
-- You work with teammates
-- Shared repository
-- Tooltip shows team member list
-- All team members can commit and submit
+## Test runs and submissions are limited
 
-**Identifying team assignments:**
-- Tooltip includes "Team members:" section
-- Context value includes `.team`
-- Repository is shared among team members
+When your lecturer sets a limit, the row shows how much you have left, and
+Computor tells you before an action would exceed it rather than after.
 
-## Understanding Icons and Badges
+Spend test runs deliberately: read the error, reason about the code, then test.
+Save submissions for work you believe in — once the count is reached you cannot
+hand in again, and no amount of remaining time helps.
 
-### Assignment Icons
+## Working with files
 
-**Base icon:** Colored square (🟦)
-- Color indicates content type (set by instructor)
+Expand an assignment to see its files. Right-click a file, a folder, or the
+assignment itself. Everything here happens **on your computer only** — nothing
+reaches the server until you commit.
 
-**Icon badges:**
-- **✅ Green checkmark** - Tests passing
-- **❌ Red X** - Tests failing
-- **Corner badges:**
-  - Small dot in corner indicates correction status
-  - Different colors for Corrected, Correction Necessary, Correction Possible
-
-### Inline Action Icons
-
-Icons that appear to the right of the assignment name:
-
-1. **📖 Preview icon** - Show README preview
-2. **🧪 Beaker icon** - Test assignment (only if cloned)
-3. **📝 Commit icon** - Commit changes (only if cloned)
-4. **☁️ Upload icon** - Submit assignment (only if cloned)
-5. **☁️ Download icon** - Clone repository (only if not cloned)
-
-## Working with Files
-
-Expand an assignment to see its files:
-
-```
-🟦 Lab 1: Hello World
-├── 📄 src/
-│   ├── main.py
-│   └── utils.py
-├── 📄 tests/
-│   └── test_main.py
-└── 📄 README.md
-```
-
-Click a file to open it. Right-click a file, a folder, or the assignment itself
-for the actions below. Everything here happens **only on your own computer** —
-nothing is uploaded until you commit.
-
-### Creating
-
-- **New File…** — right-click the assignment or a folder, type a name
-- **New Folder…** — the same, for a folder
-
+**Creating.** *New File…* and *New Folder…* on the assignment or on a folder.
 The new file opens straight away.
 
-### Copying and Moving
+**Copying and moving.** *Copy File…* and *Move File…* offer only folders inside
+the same assignment, so work cannot land in a different exercise by mistake. If
+the name is taken you are asked to *Keep Both* or *Overwrite*. *Cut*, *Copy* and
+*Paste* are the two-step alternative; *Paste* appears once something is waiting.
 
-- **Copy File…** — pick a destination folder; the original stays where it is
-- **Move File…** — pick a destination folder; the file is moved there
+**Renaming and duplicating.** *Rename…* gives a new name; *Duplicate* makes a
+copy beside the original.
 
-Both offer only folders **inside the same assignment**, so you cannot move your
-work into a different exercise by mistake. If a file of that name is already
-there, you are asked whether to **Keep Both** or **Overwrite**.
+**Deleting.** *Delete File* and *Delete Folder*, always after a confirmation.
+If the file was part of an assignment you already submitted, the confirmation
+says so — you may still delete it, but not without knowing. The same warning
+appears when you move or rename such a file.
 
-### Deleting
+Deleting a file elsewhere — in the Explorer, or with `rm` in a terminal —
+cannot be caught beforehand. Computor notices it immediately afterwards and, if
+the file was part of a submission, offers to bring your last committed version
+back with one click.
 
-- **Delete File**
-- **Delete Folder** — removes everything inside it
+**Paths.** *Copy Path* for the full path, *Copy Relative Path* for its path
+inside the repository, *Reveal in File Explorer* to show it in the file manager —
+or in the VS Code Explorer when you work in the browser. If the browser refuses
+Computor the clipboard, the path is shown in a box to copy by hand.
 
-You are always asked to confirm first.
+**What you cannot change.** A few things are managed for you: `.git`, and at the
+top of an assignment the `README.md`, its translations, and `mediaFiles` — that
+is the task description, which your lecturer maintains. READMEs in sub-folders
+are yours to write.
 
-Deleting is not as final as it sounds: anything that came with the assignment can
-be brought back — see [Getting a File Back from the Template](#getting-a-file-back-from-the-template).
+## Getting a file back
 
-### Renaming and Duplicating
+If you have ruined a file that came with the assignment — data, a figure, the
+starter code — you can have a fresh copy:
 
-- **Rename…** — give the file or folder a new name
-- **Duplicate** — make a copy next to it, named `main copy.py`
-
-### Cut, Copy and Paste
-
-The familiar two-step alternative to *Copy File…* / *Move File…*: **Cut** or
-**Copy** a file, then **Paste** into a folder or onto the assignment. **Paste**
-only appears once something is waiting.
-
-### Paths
-
-- **Copy Path** — the full path of the selected file, folder or assignment
-- **Copy Relative Path** — its path within the repository
-- **Reveal in File Explorer** — shows it in the file manager, or in the VS Code
-  Explorer when you are working in the browser
-
-If your browser refuses to let Computor write to the clipboard, the path is shown
-in a box instead so you can copy it with Ctrl/Cmd+C.
-
-### What You Cannot Change
-
-A few things are managed by Computor and are hidden or protected:
-
-- `.git` — the repository's own data
-- `README.md`, `README_de.md` and `mediaFiles` at the top of an assignment — the
-  assignment description, which your lecturer maintains
-
-You can create and edit READMEs in sub-folders as much as you like.
-
-## Getting a File Back from the Template
-
-If you have ruined a file that came with the assignment — a data file, a figure,
-or the starter code — you can get a fresh copy:
-
-1. **Copy anything you want to keep first** (right-click → *Copy File…*).
+1. **Copy anything you want to keep** (right-click → *Copy File…*).
 2. **Delete** the file.
-3. Right-click the **course** and choose **Update Repository from Template**.
+3. Right-click the **course** → *Update Repository from Template*.
 
-Every file the course material has and your folder does not is restored. Files
-you still have are left untouched, so this never overwrites your work — which is
-also why deleting the file first is a required step, not a shortcut.
+Every file the course material has and your folder does not is restored, and
+files you still have are left untouched. That is why deleting first is a
+required step rather than a shortcut: it is what makes the restore safe for
+everything else you have written.
 
-The same action brings in new material your lecturer has released since you
-started.
+## Team assignments
 
-## Common Scenarios
+Some assignments are handed in by a group. You share one folder and one
+submission count with your teammates: any of you can commit, and any of you can
+submit for all of you. The hover text lists who is on the team.
 
-### Starting a New Assignment
+Agree on who submits and when. A submission spent by one member is spent for
+everyone.
 
-1. Read the README: Click preview icon 📖
-2. Start coding: Open and edit files
-3. Commit early: Save your initial work
+## When something goes wrong
 
-### Debugging Test Failures
+**"I deleted a file I needed."** See [Getting a file back](#getting-a-file-back).
+If you had committed the file, Computor may also have offered to restore your own
+version right after the deletion.
 
-1. Run tests: Click beaker icon 🧪
-2. View results: Right-click → **Show Test Results**
-3. Click on failed test to jump to code
-4. Fix the issue
-5. Commit changes
-6. Run tests again
+**"Tests will not run."** The assignment has to be set up locally and your work
+has to be uploadable — a `⚠` on the row means uploading is failing, so run
+*Fix Repository Authentication* on the course first. If the run starts but every
+test fails, read the output in Test Results before spending another attempt.
 
-### Submitting Work
+**"Submitting failed."** Check the submission count on the row. If the count is
+not the problem, look for `⚠` — a submission needs your work on the server.
 
-1. Ensure all changes are committed (use commit icon 📝)
-2. Run final tests (beaker icon 🧪)
-3. Verify tests pass (check badge or results panel)
-4. Check submission count: Hover to see "Submissions: [X] of [Y]"
-5. Submit: Click upload icon ☁️
+**"No test runs left."** Ask your lecturer in the course messages. Meanwhile
+your last successful result still stands, and you can still submit.
 
-### After Receiving Feedback
+**"My newest work was not graded."** Submitting hands in the *tested* commit.
+Run a test on your latest commit, then submit again if you have one left.
 
-1. Check messages: Right-click → **Show Messages**
-2. View details: Right-click → **View Details**
-3. Read instructor comments
-4. If "Correction Necessary":
-   - Make required changes
-   - Commit updates
-   - Test again
-   - Resubmit (if submissions remain)
+## Next
 
-## Tips and Best Practices
-
-### Commit Frequently
-- Commit after completing each feature or section
-- Use descriptive commit messages
-- Don't wait until the assignment is perfect
-
-### Test Before Submitting
-- Always run tests locally first
-- Fix all test failures if possible
-- Understand what each test checks
-
-### Manage Test Attempts
-- If test runs are limited, use them wisely
-- Debug code before running tests
-- Review test code to understand requirements
-
-### Watch Submission Limits
-- Know your limit: Check "Submissions: [X] of [Y]"
-- Don't waste submissions on incomplete work
-- Test thoroughly before submitting
-
-### Read Messages
-- Check unread message count (🔔 bell icon)
-- Instructors may post important clarifications
-- Respond promptly to feedback requests
-
-### Understand the Metrics
-- **Result %** = Automated test score (technical correctness)
-- **Grading %** = Instructor's final grade (may include style, documentation, etc.)
-- These may differ - grading is the official score
-
-## Troubleshooting
-
-### "I deleted a file I needed"
-- Right-click the course → **Update Repository from Template**
-- See [Getting a File Back from the Template](#getting-a-file-back-from-the-template)
-
-### "Cannot clone repository"
-- Ensure you have a workspace directory selected
-- Check your network connection
-- Verify you have access to the course
-
-### "Tests won't run"
-- Ensure repository is cloned and opened in VS Code
-- Check that dependencies are installed
-- Review test output in the Test Results panel
-
-### "Submission failed"
-- Ensure all changes are committed first
-- Check that you haven't exceeded submission limit
-- Verify network connection to backend
-
-### "No test attempts remaining"
-- You've used all allowed test runs
-- Contact your instructor if you need more attempts
-- Submit your best effort based on current work
-
-## Next Steps
-
-- Learn about [Units and Folders](student-unit.md)
-- Learn about [Courses](student-course.md)
+- [Courses](student-course.md) — the repository, commits and the row marks
+- [Units](student-unit.md) — how a course is organized, and readings
