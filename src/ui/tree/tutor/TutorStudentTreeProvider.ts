@@ -22,6 +22,7 @@ import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
+import { withRepoLock } from '../../../utils/repoLock';
 
 function getEmbeddedCourseContentType(courseContent: any): any | undefined {
   const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
@@ -546,27 +547,40 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       return [new MessageItem('Student repository not found locally. Use "Clone Student Repository" first.', 'warning')];
     }
 
-    // Auto-update repository when expanding
+    // Auto-update repository when expanding.
+    //
+    // A failure here used to be a console warning and nothing else, which meant
+    // a tutor could grade an old revision of the student's work with no
+    // indication on screen. Say so instead — the grade depends on it.
+    let staleWarning: MessageItem | undefined;
     try {
-      const git = new CTGit(repoRoot);
-      await git.fetch();
-      await git.pull();
+      await withRepoLock(repoRoot, async () => {
+        const git = new CTGit(repoRoot);
+        await git.fetch();
+        await git.pull();
+      });
     } catch (error) {
       console.warn('[TutorStudentTreeProvider] Failed to update repository:', error);
+      staleWarning = new MessageItem(
+        '⚠ Could not fetch — this may not be the student\'s latest work.',
+        'warning'
+      );
     }
 
     const directoryName = this.deriveAssignmentDirectory(element.content);
+    const prefix = staleWarning ? [staleWarning] : [];
+
     if (!directoryName) {
-      return [new MessageItem('Assignment directory is not specified for this content.', 'info')];
+      return [...prefix, new MessageItem('Assignment directory is not specified for this content.', 'info')];
     }
 
     const assignmentPath = path.join(repoRoot, directoryName);
     if (!fs.existsSync(assignmentPath)) {
-      return [new MessageItem('Assignment directory missing locally. Pull the latest student repository.', 'warning')];
+      return [...prefix, new MessageItem('Assignment directory missing locally. Pull the latest student repository.', 'warning')];
     }
 
     const items = await this.readDirectoryItems(assignmentPath, element.courseId, element.memberId, repoRoot, element.content, 'repository');
-    return items.length > 0 ? items : [new MessageItem('Assignment directory is empty.', 'info')];
+    return items.length > 0 ? [...prefix, ...items] : [...prefix, new MessageItem('Assignment directory is empty.', 'info')];
   }
 
   private async getReferenceChildren(element: TutorVirtualFolderItem, workspaceStructure: WorkspaceStructureManager): Promise<vscode.TreeItem[]> {

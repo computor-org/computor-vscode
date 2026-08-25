@@ -9,12 +9,19 @@ export interface AssignmentGitBadges {
   dirty: boolean;
   unpushed: boolean;
   pushFailing: boolean;
+  /**
+   * Fetch or pull failed, so what is on screen may be out of date. Unlike
+   * pushFailing this is NOT gated on local changes: a repository can be
+   * perfectly clean and still be stale, and that is exactly the case worth
+   * warning about — it is the one the student cannot otherwise notice.
+   */
+  syncFailing?: boolean;
 }
 
 /** Description prefix for an assignment row, '' when there is nothing to show. */
 export function assignmentGitIndicator(badges: AssignmentGitBadges): string {
   const glyphs: string[] = [];
-  if (badges.pushFailing && (badges.dirty || badges.unpushed)) {
+  if (badges.syncFailing || (badges.pushFailing && (badges.dirty || badges.unpushed))) {
     glyphs.push('⚠');
   }
   if (badges.dirty) {
@@ -37,6 +44,9 @@ export function assignmentGitTooltipLines(badges: AssignmentGitBadges): string[]
   }
   if (badges.pushFailing && (badges.dirty || badges.unpushed)) {
     lines.push('⚠ Push failing');
+  }
+  if (badges.syncFailing) {
+    lines.push('⚠ Not up to date — could not fetch from the server');
   }
   return lines;
 }

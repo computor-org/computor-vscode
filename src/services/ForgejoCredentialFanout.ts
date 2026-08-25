@@ -9,6 +9,7 @@ import {
   redactGitCredentials,
   stripCredentialsFromGitUrl
 } from '../utils/gitUrlHelpers';
+import { withRepoLock } from '../utils/repoLock';
 
 /**
  * The backend mints ONE Forgejo clone token per user and git server and rotates
@@ -75,23 +76,31 @@ export async function propagateForgejoCloneCredential(opts: PropagateForgejoCred
       continue;
     }
     try {
-      const { stdout } = await execAsyncWithTimeout('git remote get-url origin', { cwd: repoPath, timeout: 15_000 });
-      const currentUrl = stdout.trim();
-      if (!currentUrl || !shouldRewriteOriginForForgejo(currentUrl, opts.serverUrl)) {
-        continue;
-      }
+      // This runs fire-and-forget from provisioning, so it can land on a repo
+      // that is mid-fetch or mid-merge. Take the repo's lock before touching its
+      // remote — rewriting origin under a running fetch breaks both.
+      const rewritten = await withRepoLock(repoPath, async () => {
+        const { stdout } = await execAsyncWithTimeout('git remote get-url origin', { cwd: repoPath, timeout: 15_000 });
+        const currentUrl = stdout.trim();
+        if (!currentUrl || !shouldRewriteOriginForForgejo(currentUrl, opts.serverUrl)) {
+          return false;
+        }
 
-      const bareUrl = stripCredentialsFromGitUrl(currentUrl);
-      if (!bareUrl) {
-        continue;
-      }
-      const authUrl = addBasicCredentialsToGitUrl(bareUrl, opts.username, opts.token);
-      if (authUrl === currentUrl) {
-        continue;
-      }
+        const bareUrl = stripCredentialsFromGitUrl(currentUrl);
+        if (!bareUrl) {
+          return false;
+        }
+        const authUrl = addBasicCredentialsToGitUrl(bareUrl, opts.username, opts.token);
+        if (authUrl === currentUrl) {
+          return false;
+        }
 
-      await execAsyncWithTimeout(`git remote set-url origin "${authUrl}"`, { cwd: repoPath, timeout: 15_000 });
-      updated++;
+        await execAsyncWithTimeout(`git remote set-url origin "${authUrl}"`, { cwd: repoPath, timeout: 15_000 });
+        return true;
+      });
+      if (rewritten) {
+        updated++;
+      }
     } catch (err: any) {
       console.warn(
         `[ForgejoCredentialFanout] Could not refresh origin of ${repoPath}:`,

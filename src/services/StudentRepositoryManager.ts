@@ -18,6 +18,7 @@ import { revealUri } from '../utils/reveal';
 import { propagateForgejoCloneCredential } from './ForgejoCredentialFanout';
 import { PushHealthRegistry } from './PushHealthRegistry';
 import { isGitAuthenticationError } from '../utils/gitErrors';
+import { withRepoLock } from '../utils/repoLock';
 
 interface RepositoryInfo {
   cloneUrl: string;
@@ -386,39 +387,46 @@ export class StudentRepositoryManager {
       ? () => this.refreshForgejoCredentials(courseId, repoPath)
       : undefined;
 
-    const repoExists = await this.directoryExists(repoPath);
+    // One clone, one sequence at a time. The startup sync, the refresh command
+    // and tree-expansion setup all land here, and interleaving their
+    // stash/checkout/merge/remote steps corrupts the repository.
+    effectiveToken = await withRepoLock(repoPath, async () => {
+      let token = effectiveToken;
+      const repoExists = await this.directoryExists(repoPath);
 
-    if (!repoExists) {
-      if (forgejoManaged) {
-        // The first clone of a managed Forgejo repo is owned by the provisioning
-        // service, which holds the backend-issued credentials. Nothing to clone
-        // here — it appears once the student runs "Set up repository".
-        console.log(`[StudentRepositoryManager] Managed Forgejo repo ${fullPath} not present locally; deferring first clone to provisioning`);
-        return effectiveToken;
+      if (!repoExists) {
+        if (forgejoManaged) {
+          // The first clone of a managed Forgejo repo is owned by the provisioning
+          // service, which holds the backend-issued credentials. Nothing to clone
+          // here — it appears once the student runs "Set up repository".
+          console.log(`[StudentRepositoryManager] Managed Forgejo repo ${fullPath} not present locally; deferring first clone to provisioning`);
+          return token;
+        }
+        console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
+        report(`Cloning ${repoName}...`);
+        token = await this.cloneRepository(repoPath, cloneUrl, token as string, cancellationToken);
+      } else {
+        console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
+        report(`Updating ${repoName}...`);
+        // Managed Forgejo repos authenticate via the credentials already embedded in
+        // their remote, so the (possibly absent) token here is only bookkeeping.
+        token = await this.updateRepository(repoPath, cloneUrl, token as string, repoName, report, cancellationToken, refreshAuth);
       }
-      console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
-      report(`Cloning ${repoName}...`);
-      effectiveToken = await this.cloneRepository(repoPath, cloneUrl, effectiveToken as string, cancellationToken);
-    } else {
-      console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
-      report(`Updating ${repoName}...`);
-      // Managed Forgejo repos authenticate via the credentials already embedded in
-      // their remote, so the (possibly absent) token here is only bookkeeping.
-      effectiveToken = await this.updateRepository(repoPath, cloneUrl, effectiveToken as string, repoName, report, cancellationToken, refreshAuth);
-    }
 
-    // Merge new template commits if we resolved an upstream. CTGit.forkUpdate
-    // owns the whole cycle including the push back to origin.
-    if (upstreamUrl) {
-      console.log('[StudentRepositoryManager] Checking for template updates');
-      report('Checking for template updates...');
-      const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, effectiveToken, upstreamAuth, refreshAuth);
-      if (updated) {
-        console.log('[StudentRepositoryManager] Repository updated from template');
-        report('Template updates merged.');
+      // Merge new template commits if we resolved an upstream. CTGit.forkUpdate
+      // owns the whole cycle including the push back to origin.
+      if (upstreamUrl) {
+        console.log('[StudentRepositoryManager] Checking for template updates');
+        report('Checking for template updates...');
+        const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, token, upstreamAuth, refreshAuth);
+        if (updated) {
+          console.log('[StudentRepositoryManager] Repository updated from template');
+          report('Template updates merged.');
+        }
       }
-    }
-    
+      return token;
+    });
+
     // Now update the directory field for each assignment in this repository
     for (const repo of repoInfos) {
       const content = courseContents.find(c => c.path === repo.assignmentPath);
@@ -898,6 +906,7 @@ export class StudentRepositoryManager {
     relation?: RemoteRelation
   ): Promise<void> {
     console.warn(`[StudentRepositoryManager] ${repoName} is out of sync (${relation ?? 'update failed'}):`, error);
+    PushHealthRegistry.markFailing(repoPath, 'sync');
     if (this.syncFailureAlerted.has(repoPath)) {
       return;
     }

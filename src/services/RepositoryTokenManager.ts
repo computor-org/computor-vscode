@@ -6,6 +6,7 @@ import { OrganizationList, CourseList } from '../types/generated';
 import { execAsync } from '../utils/exec';
 import { addTokenToGitUrl, extractOriginFromGitUrl, hasNonOAuthEmbeddedCredentials, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 import { notify } from '../utils/notify';
+import { withRepoLock } from '../utils/repoLock';
 
 /**
  * GitLab Token Manager - Singleton service for managing GitLab tokens
@@ -409,6 +410,12 @@ export class RepositoryTokenManager {
   }
 
   private async updateRepositoryRemote(repoPath: string, gitlabUrl: string, token: string): Promise<void> {
+    // Called fire-and-forget after a token is stored, so it can collide with a
+    // fetch or merge already running on this clone.
+    return withRepoLock(repoPath, () => this.rewriteRemotes(repoPath, gitlabUrl, token));
+  }
+
+  private async rewriteRemotes(repoPath: string, gitlabUrl: string, token: string): Promise<void> {
     try {
       const { stdout } = await execAsync('git remote', { cwd: repoPath });
       const remoteNames = stdout

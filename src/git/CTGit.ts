@@ -149,15 +149,36 @@ export class CTGit {
     return selection.value;
   }
 
+  /**
+   * Restore the work stashed before a merge.
+   *
+   * Applying can genuinely fail — most often because the merge touched the very
+   * files that were stashed — and that used to be swallowed with a console
+   * warning. The student's in-progress edits simply disappeared from the working
+   * tree, surviving only as a stash entry they had no reason to look for. So the
+   * failure is now named, with the ref they need to recover it by hand.
+   *
+   * Uses `pop` rather than `apply`: pop drops the entry only when it applied
+   * cleanly, and leaves it in place when it did not — which is exactly the
+   * behaviour wanted here. The previous `apply` never dropped anything, so a
+   * stash entry accumulated on every single sync.
+   */
   private async applyLatestStash(): Promise<void> {
     try {
       const stashList = await this.simpleGit.stashList();
-      const latest = stashList.latest?.hash;
-      if (latest) {
-        await this.simpleGit.raw(['stash', 'apply', latest]);
+      if (!stashList.latest) {
+        return;
       }
+      // No ref argument: we stashed at the start of this operation and hold the
+      // repository lock, so the most recent entry is ours.
+      await this.simpleGit.raw(['stash', 'pop']);
     } catch (error) {
-      console.warn('[CTGit] Failed to apply stash:', error);
+      console.warn('[CTGit] Failed to restore stash:', error);
+      void notify.warning(
+        `Your uncommitted changes could not be restored automatically after the update. ` +
+        `They are safe in the git stash — run "git stash list" and "git stash pop" in the ` +
+        `repository to get them back.`
+      );
     }
   }
 
@@ -195,7 +216,19 @@ export class CTGit {
     }
   }
 
-  private async resolveConflictsAutomatically(conflicts: string[]): Promise<boolean> {
+  /**
+   * Resolve conflicts without asking, for the unattended sync path.
+   *
+   * "Ours" is safe — during a merge it keeps the student's own version — so it
+   * runs automatically. "Theirs" REPLACES their committed work with upstream and
+   * is therefore opt-in (`preferUpstreamOnConflict`). When ours is not enough the
+   * honest outcome is to fail and let the caller abort the merge, which restores
+   * the pre-merge state, rather than to finish the merge by discarding work.
+   */
+  private async resolveConflictsAutomatically(
+    conflicts: string[],
+    preferUpstreamOnConflict = false
+  ): Promise<boolean> {
     const keptDeletedFiles = await this.autoResolveDeletedByThemConflicts(conflicts);
     if (keptDeletedFiles) {
       return true;
@@ -216,11 +249,16 @@ export class CTGit {
       }
     } catch (error) {
       console.warn('[CTGit] Failed to resolve conflicts using ours:', error);
+      remaining = await this.hasUnmergedPaths();
     }
 
-    remaining = await this.hasUnmergedPaths();
     if (remaining.length === 0) {
       return true;
+    }
+
+    if (!preferUpstreamOnConflict) {
+      console.warn('[CTGit] Conflicts need upstream versions to clear; not discarding local work:', remaining);
+      return false;
     }
 
     try {
@@ -235,9 +273,9 @@ export class CTGit {
       }
     } catch (error) {
       console.warn('[CTGit] Failed to resolve conflicts using theirs:', error);
+      remaining = await this.hasUnmergedPaths();
     }
 
-    remaining = await this.hasUnmergedPaths();
     if (remaining.length === 0) {
       return true;
     }
@@ -246,9 +284,19 @@ export class CTGit {
     return false;
   }
 
-  private async forceResolveRemainingConflicts(conflicts: string[]): Promise<void> {
+  /**
+   * Last-ditch resolution after the user chose a strategy. Reports whether the
+   * tree is actually clean rather than pretending.
+   *
+   * There used to be a final `git add --all` here "to ensure clean state".
+   * Staging an unmerged path marks it resolved while the file on disk still
+   * contains `<<<<<<<` markers — and `hasUnmergedPaths()` reads
+   * `status().conflicted`, so it then reported nothing wrong and the marker-ridden
+   * files were committed and pushed to the repository the student is graded on.
+   */
+  private async forceResolveRemainingConflicts(conflicts: string[]): Promise<boolean> {
     if (conflicts.length === 0) {
-      return;
+      return true;
     }
 
     try {
@@ -260,7 +308,7 @@ export class CTGit {
 
     let remaining = await this.hasUnmergedPaths();
     if (remaining.length === 0) {
-      return;
+      return true;
     }
 
     try {
@@ -271,16 +319,48 @@ export class CTGit {
     }
 
     remaining = await this.hasUnmergedPaths();
-    if (remaining.length === 0) {
-      return;
+    return remaining.length === 0;
+  }
+
+  /** Return the tree to its pre-merge state; best effort, never masks the real error. */
+  private async abortMergeQuietly(): Promise<void> {
+    try {
+      await this.simpleGit.raw(['merge', '--abort']);
+    } catch (error) {
+      console.warn('[CTGit] Could not abort the merge:', error);
+    }
+  }
+
+  /**
+   * Files that still contain conflict markers, checked against the working tree
+   * rather than the index — a path can be staged (so git calls it resolved) while
+   * the file on disk is still full of `<<<<<<<`.
+   */
+  private async filesWithConflictMarkers(): Promise<string[]> {
+    let candidates: string[];
+    try {
+      const status = await this.simpleGit.status();
+      candidates = Array.from(new Set(
+        [...status.staged, ...status.modified, ...status.created]
+          .filter((file): file is string => Boolean(file))
+      ));
+    } catch (error) {
+      console.warn('[CTGit] Could not list files to scan for conflict markers:', error);
+      return [];
     }
 
-    console.warn('[CTGit] Conflicts persisted after force resolution. Staging all to ensure clean state.');
-    try {
-      await this.simpleGit.raw(['add', '--all']);
-    } catch (error) {
-      console.warn('[CTGit] Failed to stage all files during forced resolution:', error);
+    const marked: string[] = [];
+    for (const file of candidates) {
+      try {
+        const contents = await fs.promises.readFile(path.join(this.repoPath, file), 'utf-8');
+        if (/^<{7} /m.test(contents) && /^>{7} /m.test(contents)) {
+          marked.push(file);
+        }
+      } catch {
+        // Binary, unreadable or already gone — nothing to assert about it.
+      }
     }
+    return marked;
   }
 
   private async cleanupRemote(remoteName: string): Promise<void> {
@@ -321,7 +401,18 @@ export class CTGit {
 
   async forkUpdate(
     remoteUrl: string,
-    options?: { defaultBranch?: string; removeRemote?: boolean; autoResolveConflicts?: boolean }
+    options?: {
+      defaultBranch?: string;
+      removeRemote?: boolean;
+      /** Resolve conflicts without prompting. Keeps local work; never discards it. */
+      autoResolveConflicts?: boolean;
+      /**
+       * Allow replacing the student's conflicting content with the upstream
+       * version. Off by default: it discards committed work, so it has to be a
+       * deliberate choice rather than a fallback the sync reaches on its own.
+       */
+      preferUpstreamOnConflict?: boolean;
+    }
   ): Promise<{ updated: boolean; defaultBranch?: string; behindCount?: number }> {
     const remoteName = 'upstream';
 
@@ -432,21 +523,27 @@ export class CTGit {
           throw mergeError;
         }
 
-        const resolvedAutomatically = await this.resolveConflictsAutomatically(conflicts);
+        const resolvedAutomatically = await this.resolveConflictsAutomatically(
+          conflicts,
+          options?.preferUpstreamOnConflict
+        );
         if (resolvedAutomatically) {
           mergeCompleted = true;
         } else {
           // If auto-resolve is enabled, force resolution without prompting
           if (options?.autoResolveConflicts) {
             console.log('[CTGit] Auto-resolving conflicts without user prompt');
-            await this.forceResolveRemainingConflicts(conflicts);
-            const remainingAfterForce = await this.hasUnmergedPaths();
-            if (remainingAfterForce.length === 0) {
+            const forced = await this.forceResolveRemainingConflicts(conflicts);
+            if (forced) {
               mergeCompleted = true;
               void notify.info(
                 'Fork updated successfully. Some conflicts were automatically resolved by keeping your local changes where possible.'
               );
             } else {
+              // Abort so the working tree goes back to its pre-merge state
+              // instead of being left half-merged for the next run to trip over.
+              const remainingAfterForce = await this.hasUnmergedPaths();
+              await this.abortMergeQuietly();
               throw new Error(`merge-unresolved: ${remainingAfterForce.length} conflicts could not be resolved automatically`);
             }
           } else {
@@ -479,6 +576,20 @@ export class CTGit {
             console.warn('[CTGit] Conflicts persisted after forced resolution:', remainingConflicts);
             throw new Error('merge-unresolved');
           }
+        }
+
+        // git considers a staged path resolved even when the file still holds
+        // conflict markers. Committing that would push `<<<<<<<` into the
+        // repository the student is graded on, so check the working tree itself.
+        const markered = await this.filesWithConflictMarkers();
+        if (markered.length > 0) {
+          console.warn('[CTGit] Conflict markers remain in:', markered);
+          await this.abortMergeQuietly();
+          void notify.error(
+            `The update was stopped because conflict markers were left in:\n${markered.join('\n')}\n` +
+            `Your repository was returned to its previous state.`
+          );
+          throw new Error('merge-unresolved');
         }
 
         try {
