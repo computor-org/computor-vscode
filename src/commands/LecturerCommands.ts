@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { LecturerTreeDataProvider } from '../ui/tree/lecturer/LecturerTreeDataProvider';
 import { OrganizationTreeItem, CourseFamilyTreeItem, CourseTreeItem, CourseContentTreeItem, CourseFolderTreeItem, CourseContentTypeTreeItem, CourseGroupTreeItem, CourseMemberTreeItem } from '../ui/tree/lecturer/LecturerTreeItems';
-import type { GitServerGet, CourseGitBindingUpsert } from '../types/courseGit';
+import type { GitServerGet, CourseGitBindingUpsert, CourseGitBindingGet } from '../types/courseGit';
+import { parentRepositoryUrl } from '../utils/gitUrlHelpers';
 import { CourseGroupCommands } from './LecturerCourseGroupCommands';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { CourseWebviewProvider } from '../ui/webviews/CourseWebviewProvider';
@@ -2001,43 +2002,37 @@ export class LecturerCommands {
     try {
       let webUrl: string | undefined;
       let itemType: string;
-      
+
       if (item instanceof CourseMemberTreeItem) {
         // For course members, we need to fetch the full member data to get the GitLab project URL
         itemType = 'member project';
         const memberData = await this.apiService.getCourseMember(item.member.id);
-        
+
         if (memberData?.properties?.gitlab?.url && memberData.properties.gitlab.full_path) {
           // Build the full GitLab project URL
           const gitlabHost = memberData.properties.gitlab.url;
           const projectPath = memberData.properties.gitlab.full_path;
           webUrl = `${gitlabHost}/${projectPath}`;
         } else {
-          notify.warning('No repository found for this course member');
+          notify.warning(
+            'No repository is recorded for this course member yet — it is created when they first open the course.'
+          );
           return;
         }
       } else {
-        // For courses, use the course group URL
-        itemType = 'course group';
-        const courseGitlab = item.course.properties?.gitlab;
-        
-        if (courseGitlab?.url && courseGitlab.full_path) {
-          // Build the full GitLab group URL
-          const gitlabHost = courseGitlab.url;
-          const groupPath = courseGitlab.full_path;
-          webUrl = `${gitlabHost}/${groupPath}`;
-        } else {
-          notify.warning('No repository found for this course');
+        itemType = 'course repositories';
+        webUrl = await this.courseGitNamespaceUrl(item.course);
+        if (!webUrl) {
           return;
         }
       }
-      
+
       if (webUrl) {
         // Ensure the URL has proper protocol
         if (!webUrl.startsWith('http://') && !webUrl.startsWith('https://')) {
           webUrl = `https://${webUrl}`;
         }
-        
+
         // Open the URL in the default browser
         await vscode.env.openExternal(vscode.Uri.parse(webUrl));
         notify.info(`Opening ${itemType} in browser`);
@@ -2045,6 +2040,56 @@ export class LecturerCommands {
     } catch (error) {
       notify.error(`Failed to open repository: ${error}`);
     }
+  }
+
+  /**
+   * Web URL of the git namespace holding a course's repositories — the place
+   * where assignments, student-template and reference live.
+   *
+   * A course on the current git server keeps its location on the git *binding*;
+   * `properties.gitlab` is a leftover of the era when every course was
+   * provisioned into a GitLab group, and modern courses simply never have it.
+   * Reading only that property made this command claim "No repository found for
+   * this course" for courses whose repositories exist and are in daily use
+   * (computor-org/issues#356). The binding comes first now, the old property
+   * stays as the fallback for courses that predate it.
+   *
+   * Returns undefined after telling the lecturer what is missing.
+   */
+  private async courseGitNamespaceUrl(course: CourseList): Promise<string | undefined> {
+    let binding: CourseGitBindingGet | null = null;
+    try {
+      binding = await this.apiService.getCourseGitBinding(String(course.id));
+    } catch (error) {
+      // A lecturer without git-manage rights cannot read the binding; fall
+      // through to the legacy property rather than failing the command.
+      console.warn('Could not read course git binding:', error);
+    }
+
+    const namespace = binding?.template_url ? parentRepositoryUrl(binding.template_url) : undefined;
+    if (namespace) {
+      return namespace;
+    }
+
+    const legacy = course.properties?.gitlab;
+    if (legacy?.url && legacy.full_path) {
+      return `${legacy.url}/${legacy.full_path}`;
+    }
+
+    if (binding && binding.delivery === 'download') {
+      notify.warning(
+        'This course hands out assignments as downloads, so it has no git repositories to open.'
+      );
+    } else if (binding) {
+      notify.warning(
+        'This course has a git binding, but no student-template location is recorded for it yet.'
+      );
+    } else {
+      notify.warning(
+        'This course is not connected to a git server yet. Use "Configure Course Git" on the course to set it up.'
+      );
+    }
+    return undefined;
   }
 
   private async createCourseContentType(item: CourseFolderTreeItem): Promise<void> {

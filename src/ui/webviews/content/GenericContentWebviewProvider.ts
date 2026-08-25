@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, detailGrid } from '../shared/webviewHelpers';
 
 export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -33,11 +33,10 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
     `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Content title' }))}
-        ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Content description' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
           <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
-          <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
+          <button type="button" class="btn-secondary" data-action="editDescription">Edit Description...</button>
         </div>
       </form>
     `);
@@ -55,8 +54,7 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
             courseId: courseId,
             contentId: contentId,
             updates: {
-              title: document.getElementById('title').value,
-              description: document.getElementById('description').value
+              title: document.getElementById('title').value
             }
           }
         });
@@ -66,11 +64,11 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
         vscode.postMessage({ command: 'refresh', data: { contentId: contentId } });
       }
 
-      function deleteContent() {
-        vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
+      function editDescription() {
+        vscode.postMessage({ command: 'editDescription' });
       }
 
-      ComputorWebview.registerActions({ refreshData: refreshData, deleteContent: deleteContent });
+      ComputorWebview.registerActions({ refreshData: refreshData, editDescription: editDescription });
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 

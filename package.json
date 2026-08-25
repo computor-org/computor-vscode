@@ -1272,6 +1272,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.lecturer.editContentDescription",
+        "title": "Edit Description...",
+        "icon": "$(edit)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.figures.show",
         "title": "Show Figures",
         "icon": "$(graph)",
@@ -2251,6 +2257,21 @@
           "group": "inline@2"
         },
         {
+          "command": "computor.lecturer.releaseCourseContent",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "group": "0_release@1"
+        },
+        {
+          "command": "computor.lecturer.releaseCourseContent",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course\\.contents/",
+          "group": "0_release@1"
+        },
+        {
+          "command": "computor.lecturer.releaseCourseContent",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "0_release@1"
+        },
+        {
           "command": "computor.lecturer.revealInExamples",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment.*hasExample/",
           "group": "inline@1"
@@ -2526,14 +2547,24 @@
           "group": "inline@0"
         },
         {
-          "command": "computor.showContentDescription",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course\\.hasDescription$/",
+          "command": "computor.lecturer.editContentDescription",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "inline@0"
         },
         {
-          "command": "computor.showContentDescription",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent.*\\.hasDescription$/",
+          "command": "computor.lecturer.editContentDescription",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "inline@0"
+        },
+        {
+          "command": "computor.lecturer.editContentDescription",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "group": "5_details@0"
+        },
+        {
+          "command": "computor.lecturer.editContentDescription",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "5_details@0"
         },
         {
           "command": "computor.student.showPreview",

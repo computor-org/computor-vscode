@@ -79,6 +79,45 @@ export function stripCredentialsFromGitUrl(remoteUrl: string): string | undefine
   }
 }
 
+/**
+ * The namespace a repository lives in, as a browsable URL: the repo URL minus
+ * its last path segment and any `.git` suffix.
+ *
+ * `https://git.example.org/phys-2027/student-template.git` becomes
+ * `https://git.example.org/phys-2027` — the org (Forgejo) or group (GitLab)
+ * that also holds the course's assignments and reference repositories. Any
+ * embedded credentials are dropped, since the result is handed to a browser.
+ *
+ * Returns undefined for anything that is not an http(s) URL with at least one
+ * path segment beyond the host (an ssh remote has no browsable equivalent we
+ * could derive without knowing the server's web root).
+ */
+export function parentRepositoryUrl(repositoryUrl: string): string | undefined {
+  const trimmed = repositoryUrl.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return undefined;
+  }
+
+  try {
+    const urlObj = new URL(trimmed);
+    urlObj.username = '';
+    urlObj.password = '';
+    urlObj.hash = '';
+    urlObj.search = '';
+
+    const segments = urlObj.pathname.split('/').filter((segment) => segment.length > 0);
+    if (segments.length < 2) {
+      return undefined;
+    }
+    segments.pop();
+
+    urlObj.pathname = `/${segments.join('/')}`;
+    return urlObj.toString().replace(/\/$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
 export function extractOriginFromGitUrl(remoteUrl: string): string | undefined {
   try {
     const normalized = remoteUrl.trim();

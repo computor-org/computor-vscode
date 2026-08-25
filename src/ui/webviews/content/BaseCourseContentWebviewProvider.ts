@@ -4,6 +4,7 @@ import { CourseContentGet, CourseList, CourseContentTypeList, CourseContentKindL
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 import { notify } from '../../../utils/notify';
+import { EDIT_DESCRIPTION_COMMAND } from '../../descriptionEditor';
 
 export interface CourseContentWebviewData {
   courseContent: CourseContentGet;
@@ -57,6 +58,10 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
 
       case 'deleteContent':
         await this.handleDeleteContent(message.data);
+        break;
+
+      case 'editDescription':
+        await this.handleEditDescription();
         break;
 
       default:
@@ -118,5 +123,24 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
   protected async handleDeleteContent(data?: Record<string, unknown>): Promise<void> {
     await vscode.commands.executeCommand('computor.lecturer.deleteCourseContent', data);
     this.panel?.dispose();
+  }
+
+  /**
+   * Hand the description over to the markdown editor (issue #356).
+   *
+   * The form used to carry a textarea for it, which showed none of the
+   * formatting back and made a paragraph of prose a chore to write. The command
+   * takes the same shape a tree item has, so the button and the tree entry lead
+   * to exactly the same editor.
+   */
+  protected async handleEditDescription(): Promise<void> {
+    const data = this.currentData as CourseContentWebviewData | undefined;
+    if (!data?.courseContent) {
+      return;
+    }
+    await vscode.commands.executeCommand(EDIT_DESCRIPTION_COMMAND, {
+      courseContent: data.courseContent,
+      course: data.course
+    });
   }
 }

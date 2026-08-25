@@ -65,6 +65,7 @@ import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMember
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
 import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
 import { registerContentDescription } from './ui/contentDescription';
+import { registerDescriptionEditor } from './ui/descriptionEditor';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
 import { registerDocumentPreviewProviders } from './ui/panels/DocumentPreviewPanel';
@@ -1326,6 +1327,18 @@ class UnifiedController {
 
     const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService, this.commentsInputPanel);
     commands.registerCommands();
+
+    // Descriptions are markdown, so they are written in an editor with a
+    // preview rather than in a textarea inside a form (issue #356). Lives with
+    // the lecturer view because writing one is a lecturer's job; everybody else
+    // reads it through `computor.showContentDescription`.
+    registerDescriptionEditor(this.context, api, (target) => {
+      tree.updateNode(
+        target.kind === 'course' ? 'course' : 'courseContent',
+        target.contentId ?? target.courseId,
+        { course_id: target.courseId }
+      );
+    });
 
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);

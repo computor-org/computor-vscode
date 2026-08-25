@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, detailGrid, badge, deploymentBadge, formGroup, textInput, textareaInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, detailGrid, badge, deploymentBadge, formGroup, textInput } from '../shared/webviewHelpers';
 import { notify } from '../../../utils/notify';
 
 export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewProvider {
@@ -47,14 +47,13 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Assignment title' }))}
-        ${formGroup('Description', textareaInput('description', courseContent.description, { placeholder: 'Assignment description' }))}
         ${formGroup('Max Group Size', textInput('maxGroupSize', String(courseContent.max_group_size ?? 1), { type: 'number', min: 1 }))}
         ${formGroup('Max Test Runs', textInput('maxTestRuns', String(courseContent.max_test_runs ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }))}
         ${formGroup('Max Submissions', textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
           <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
-          <button type="button" class="btn-danger" data-action="deleteContent">Delete</button>
+          <button type="button" class="btn-secondary" data-action="editDescription">Edit Description...</button>
         </div>
       </form>
     `);
@@ -102,7 +101,6 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         e.preventDefault();
         var updates = {
           title: document.getElementById('title').value,
-          description: document.getElementById('description').value,
           max_group_size: parseInt(document.getElementById('maxGroupSize').value) || 1
         };
         // An empty field means "unlimited"; 0 means zero. \`parseInt(v) || null\`
@@ -138,11 +136,11 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
         vscode.postMessage({ command: 'deployAssignment', data: { courseId: courseId, contentId: contentId, path: contentPath, title: contentTitle } });
       }
 
-      function deleteContent() {
-        vscode.postMessage({ command: 'deleteContent', data: { courseId: courseId, contentId: contentId } });
+      function editDescription() {
+        vscode.postMessage({ command: 'editDescription' });
       }
 
-      ComputorWebview.registerActions({ refreshData: refreshData, deleteContent: deleteContent, updateExampleVersion: updateExampleVersion, deployAssignment: deployAssignment });
+      ComputorWebview.registerActions({ refreshData: refreshData, editDescription: editDescription, updateExampleVersion: updateExampleVersion, deployAssignment: deployAssignment });
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
