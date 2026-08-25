@@ -1,183 +1,136 @@
-# Student Guide: Courses
+# Courses
 
-## Table of Contents
-
-- [What is a Course?](#what-is-a-course)
-- [What You See](#what-you-see)
-- [Course Information](#course-information)
-  - [Tooltip Information](#tooltip-information)
-  - [Tree Structure](#tree-structure)
-- [Available Actions](#available-actions)
-  - [Commit Course](#commit-course)
-  - [Update Repository from Template](#update-repository-from-template)
-  - [Export Course Examples](#export-course-examples)
-  - [Show Messages](#show-messages)
-  - [Set up Repository](#set-up-repository)
-  - [Download Template](#download-template)
-  - [Fix Repository Authentication](#fix-repository-authentication)
-  - [Help](#help)
-- [Understanding Course Organization](#understanding-course-organization)
-- [Tips](#tips)
-- [Next Steps](#next-steps)
-
----
-
-## What is a Course?
-
-A **Course** is the top-level container in your student view. It represents a complete class or module you're enrolled in, such as "Introduction to Programming" or "Data Structures".
-
-## What You See
-
-When you see a course in your tree view:
+A course is everything you are enrolled in for one class: its units, its
+assignments, and the repository your work lives in. It is the top row in the
+Computor view, and most of what this page describes applies everywhere below it.
 
 ```
-📖 Introduction to Programming
+📖 Programming in Physics
+├── ⚫ Week 1 — Introduction
+│   ├── 🟦 Lab 1
+│   └── 🟦 Homework 1
+└── 🟦 Final Project
 ```
 
-The book icon (📖) indicates this is a course root. Clicking it expands to show all course content, including units and assignments.
+Click a row to expand it. The structure comes from your lecturer; you cannot
+change it.
 
-## Course Information
+## Your work lives in one repository
 
-### Tooltip Information
+Every assignment of a course is a folder in a **single repository** that belongs
+to you. This is the thing to understand first, because almost everything else
+follows from it:
 
-When you hover over a course, you'll see:
-```
-Course: [Course Name]
-```
+- Saving a file changes it **on your computer only**.
+- **Committing** records your changes in the repository and uploads them to the
+  server. This is your backup, and it is what your lecturer can see.
+- **Submitting** is a separate, deliberate step that hands one assignment in for
+  grading. Committing is not submitting.
 
-This confirms you're looking at a course-level item.
+Because the repository holds the whole course, *Commit Course* on the course row
+saves everything you have worked on anywhere in the course, in one step. The
+commit action on a single assignment does the same for that folder alone.
 
-### Tree Structure
+You normally never set the repository up yourself. It is created and downloaded
+the first time you open the course, and again when the extension starts.
 
-Courses contain:
-- **📁 Units/Folders** - Organizational containers for related content
-- **📝 Assignments** - Submittable tasks with repositories
+## The marks on a row
 
-## Available Actions
+Rows carry small marks that tell you where your work stands. They appear on
+assignments, on the units above them, and on the course row itself:
 
-Right-click on a course to see everything it offers. The icons on the course row
-are shortcuts to the same actions — the context menu always shows the full set.
+| Mark | Meaning |
+|------|---------|
+| `●` | You have changes that are not committed yet |
+| `↑` | Committed, but not yet uploaded to the server |
+| `⚠` | Uploading or fetching is failing — see *Fix Repository Authentication* |
 
-Which entries appear depends on your course: actions that cannot apply are
-hidden rather than shown and then refused.
+On the course row the `↑` carries a number (`↑3`), counting the commits waiting
+to be uploaded. A row with no marks is committed and uploaded — safe.
+
+A `🔔` with a number means unread messages.
+
+## Actions on the course
+
+Right-click the course row. The icons on the row are shortcuts to the same
+actions, and entries that cannot apply to your course are hidden rather than
+shown and then refused.
 
 ### Commit Course
 
-Saves **all** your work in this course and uploads it, in one step.
-
-All the assignments of a course live in a single repository, so this is usually
-what you want: it commits every change you have made anywhere in the course and
-pushes it. The commit icon on an individual assignment does the same thing for
-that one folder.
-
-**When to use:**
-- At the end of a working session
-- Before you close the workspace
-- Whenever you want your work backed up on the server
+Saves **all** your work in the course and uploads it, in one step. Use it at the
+end of a working session, before closing the workspace, or whenever you want
+your work safely on the server.
 
 ### Update Repository from Template
 
-Brings your repository up to date with the course material and **puts back any
+Brings your repository up to date with the course material, and **puts back any
 file you deleted**.
 
 Two things happen:
 
-1. New and changed material released by your lecturer is merged into your
+1. New and changed material your lecturer has released is merged into your
    repository.
-2. Every file the course template has and your folder does **not** is restored.
-   Files you still have are left exactly as they are — your work is never
+2. Every file the course material has and your folder does **not** is restored.
+   Files you still have are left exactly as they are — your own work is never
    overwritten.
 
 That second step is how you undo a mistake. If you have ruined a data file, a
 figure or a starter file, **delete it** and run this action: a fresh copy comes
-back from the course template.
+back.
 
-> **Make a copy first.** If you want to keep what you have written, copy the file
-> (right-click → *Copy File…*) before deleting it.
+> **Copy it first** if you want to keep what you wrote. Right-click the file →
+> *Copy File…*, then delete the original.
+
+### Show Messages
+
+Announcements and discussions for the whole course. Lecturers and tutors post
+updates, deadlines and clarifications here, and you can ask questions. Units and
+assignments have their own messages for narrower topics.
 
 ### Export Course Examples
 
-Packs the assignments you have on disk into a single ZIP archive, so you keep
-your work after the course ends and your access to the course repository stops.
-
-You are asked how the archive should be laid out:
+Packs the assignments you have on disk into a single ZIP, so you keep your work
+after the course ends and your access to the repository stops. You choose the
+layout:
 
 - **Tree** — mirrors the course structure, folders named after the content titles
 - **Flat** — one folder per assignment, named after its example identifier
 
-In the browser (Computor workspaces), the archive is saved in your workspace
-under `exports/` and then downloaded to your own computer. If your browser blocks
-the download, use the **Download again** button on the page that opens, or
-right-click the file in the Explorer and choose **Download…**.
-
-On the desktop version of VS Code you are asked where to save it.
-
-### Show Messages
-View announcements and discussions related to this course. Lecturers and tutors may post important updates, deadlines, or course-wide information here.
-
-**When to use:**
-- Check for course announcements
-- Participate in course discussions
-- View important updates from instructors
-
-### Set up Repository
-
-Creates and downloads your personal repository for this course.
-
-**You normally never need this.** It runs by itself the first time you open a
-course or an assignment, and again when the extension starts. The entry only
-appears while the course has no local copy yet — for example after you have
-moved to a different workspace folder, or if the first attempt failed.
-
-### Download Template
-
-Downloads the course material as a ZIP, or extracts it into a folder you choose.
-
-This appears only for courses handed out as a plain download rather than through
-a repository. For those courses the material is also fetched automatically when
-you first open the course; use this action if you want a second copy somewhere
-else.
+In the browser the archive is saved in your workspace under `exports/` and then
+downloaded to your computer. If your browser blocks the download, use the
+*Download again* button on the page that opens, or right-click the file in the
+Explorer and choose *Download…*. In desktop VS Code you are asked where to save.
 
 ### Fix Repository Authentication
 
-Renews the credentials your repository uses.
+Renews the credentials your repository uses. Use it when uploading suddenly
+fails and the course row shows `⚠`. It does not touch any of your files.
 
-Use it if uploading suddenly fails — the tree shows a ⚠ badge on the course and
-Computor tells you a push could not be repaired automatically. It does not touch
-any of your files.
+### Set up Repository
 
-### Help
-Opens this help guide (you're reading it now!).
+Creates and downloads your repository. **You normally never need this** — it
+runs by itself. The entry only appears while the course has no local copy yet,
+for example after you moved to a different workspace folder or the first attempt
+failed.
 
-## Understanding Course Organization
+### Download Template
 
-Courses are organized hierarchically:
+For courses handed out as a plain download instead of a repository: downloads the
+material as a ZIP, or extracts it into a folder you choose. The material is also
+fetched automatically when you first open such a course; use this if you want a
+second copy elsewhere.
 
-```
-📖 Course Name
-├── 📁 Week 1 - Introduction
-│   ├── 📝 Lab 1
-│   └── 📝 Homework 1
-├── 📁 Week 2 - Data Types
-│   ├── 📝 Lab 2
-│   └── 📝 Homework 2
-└── 📝 Final Project
-```
+## When something looks wrong
 
-- **Top level:** All courses you're enrolled in
-- **Second level:** Units and assignments within each course
-- **Third level:** Nested content (assignments can contain files when expanded)
+- **A row shows `⚠`** — run *Fix Repository Authentication* on the course.
+- **New material has not arrived** — run *Update Repository from Template*.
+- **You deleted something you needed** — see the same action; deleting the file
+  is what brings a fresh copy back.
+- **The tree looks out of date** — collapse and expand the course, which reloads
+  it from the server.
 
-## Tips
+## Next
 
-- **Commit from the course row** — one action saves every assignment you touched
-- **Deleted a file by accident?** See [Update Repository from Template](#update-repository-from-template)
-- **Keep courses expanded** to quickly see what's available
-- **Check messages regularly** for important announcements
-- **Course structure is set by instructors** - you cannot modify the organization
-- **All your enrolled courses appear here** - no need to search for them
-
-## Next Steps
-
-- Learn about [Units and Folders](student-unit.md)
-- Learn about [Assignments](student-assignment.md)
+- [Units](student-unit.md) — how a course is organized, and readings
+- [Assignments](student-assignment.md) — working, testing, submitting, files

@@ -31,6 +31,7 @@ import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
 import { submissionBudget, testBudget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
+import { helpPageFor } from '../utils/studentHelpPages';
 import {
   availableDescriptionLanguages,
   listDescriptionFiles,
@@ -1736,25 +1737,7 @@ export class StudentCommands {
 
   private async showHelp(item?: any): Promise<void> {
     try {
-      let helpFileName = 'student-course.md';
-
-      // Determine which help file to show based on context value
-      if (item?.contextValue) {
-        const contextValue = item.contextValue as string;
-
-        // Prefix matches, never equality: an item with a description carries a
-        // `.hasDescription` suffix on its context value, and a unit's Help must
-        // not fall back to the course page because of it.
-        if (contextValue.startsWith('studentCourseContent')) {
-          // All course content items show assignment help
-          helpFileName = 'student-assignment.md';
-        } else if (contextValue.startsWith('studentCourseUnit')) {
-          helpFileName = 'student-unit.md';
-        } else if (contextValue.startsWith('studentCourseRoot')) {
-          helpFileName = 'student-course.md';
-        }
-      }
-
+      const helpFileName = helpPageFor(item?.contextValue);
       const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
 
       if (!fs.existsSync(helpPath)) {

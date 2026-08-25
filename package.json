@@ -2653,6 +2653,11 @@
           "group": "3_help@1"
         },
         {
+          "command": "computor.student.help",
+          "when": "view == computor.student.courses && viewItem =~ /^student(File|Folder)$/",
+          "group": "3_help@1"
+        },
+        {
           "command": "computor.student.fs.newFile",
           "when": "view == computor.student.courses && viewItem =~ /^(studentCourseContent\\.assignment\\..*\\.cloned(\\..*)?|studentFolder)$/",
           "group": "4_explorer@1"
