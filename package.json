@@ -1278,6 +1278,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.lecturer.checkLinks",
+        "title": "Check Links",
+        "icon": "$(link)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.figures.show",
         "title": "Show Figures",
         "icon": "$(graph)",
@@ -2255,6 +2261,21 @@
           "command": "computor.lecturer.releaseCourseContent",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
           "group": "inline@2"
+        },
+        {
+          "command": "computor.lecturer.checkLinks",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "group": "5_details@2"
+        },
+        {
+          "command": "computor.lecturer.checkLinks",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course\\.contents/",
+          "group": "5_details@2"
+        },
+        {
+          "command": "computor.lecturer.checkLinks",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "group": "5_details@2"
         },
         {
           "command": "computor.lecturer.releaseCourseContent",

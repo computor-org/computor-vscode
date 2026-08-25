@@ -14,6 +14,8 @@ export interface WorkspaceDirectories {
   exampleVersions: string;
   tmp: string;
   tmpArtifacts: string;
+  /** Reports a lecturer keeps while working through them — not scratch space. */
+  reports: string;
 }
 
 export class WorkspaceStructureManager {
@@ -52,7 +54,8 @@ export class WorkspaceStructureManager {
       examples: path.join(this.workspaceRoot, 'examples'),
       exampleVersions: path.join(this.workspaceRoot, 'example_versions'),
       tmp,
-      tmpArtifacts: path.join(tmp, 'artifacts')
+      tmpArtifacts: path.join(tmp, 'artifacts'),
+      reports: path.join(this.workspaceRoot, 'reports')
     };
   }
 
