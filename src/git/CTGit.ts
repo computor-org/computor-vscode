@@ -712,6 +712,27 @@ export class CTGit {
       await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
     }
   }
+
+  /**
+   * Bring paths back from the last commit, undoing a deletion that has not been
+   * committed yet (computor-org/issues#352).
+   *
+   * Unlike {@link restoreMissingFromTemplate} this restores the *student's* own
+   * version rather than the template's, and commits nothing: undoing an
+   * accidental delete should leave the repository exactly as it was a moment
+   * before, including whether there was anything to commit.
+   *
+   * Paths are repository-relative and are checked out in batches, since a
+   * folder can hold more of them than one command line takes.
+   */
+  async restorePathsFromHead(relativePaths: string[]): Promise<void> {
+    if (relativePaths.length === 0) {
+      return;
+    }
+    for (const batch of chunk(relativePaths, 100)) {
+      await this.simpleGit.raw(['checkout', 'HEAD', '--', ...batch]);
+    }
+  }
 }
 
 /** Split `items` into runs of at most `size`. */

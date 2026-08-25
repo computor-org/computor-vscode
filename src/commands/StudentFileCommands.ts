@@ -7,7 +7,9 @@ import { copyToClipboard } from '../utils/clipboard';
 import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
 import { openFile } from '../ui/editorLayout';
+import type { ComputorApiService } from '../services/ComputorApiService';
 import type { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
+import { checkSubmitted, submittedWarning } from '../utils/submittedFiles';
 import {
   copyEntry,
   createFile,
@@ -60,11 +62,14 @@ interface Entry {
  */
 export class StudentFileCommands {
   /** Single-entry: the student view is single-select (`canSelectMany` is off). */
-  private clipboard: { path: string; root: string; op: 'copy' | 'cut' } | undefined;
+  private clipboard:
+    | { path: string; root: string; op: 'copy' | 'cut'; submissionGroupId?: string }
+    | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly treeDataProvider: StudentCourseContentTreeProvider
+    private readonly treeDataProvider: StudentCourseContentTreeProvider,
+    private readonly apiService: ComputorApiService
   ) {}
 
   registerCommands(): void {
@@ -186,6 +191,61 @@ export class StudentFileCommands {
     };
   }
 
+  /**
+   * The submission group of the assignment a row belongs to, or undefined.
+   *
+   * Filesystem rows hang under the assignment they came from, so the answer is
+   * up the parent chain. Duck-typed like the rest of this class: the tree's item
+   * classes are module-private.
+   */
+  private submissionGroupIdFor(item: any): string | undefined {
+    let node = item;
+    for (let depth = 0; node && depth < 20; depth += 1) {
+      const groupId = node.courseContent?.submission_group?.id;
+      if (typeof groupId === 'string' && groupId.length > 0) {
+        return groupId;
+      }
+      node = node.parent;
+    }
+    return undefined;
+  }
+
+  /**
+   * The sentence to add when this entry was already handed in, or undefined
+   * (computor-org/issues#352).
+   */
+  private async submittedNote(item: any, entry: Entry): Promise<string | undefined> {
+    const check = await checkSubmitted(
+      entry.root,
+      entry.path,
+      this.submissionGroupIdFor(item),
+      this.apiService,
+      { isDirectory: entry.isDirectory }
+    );
+    return submittedWarning(check, entry.isDirectory);
+  }
+
+  /**
+   * Confirm an action that would take a submitted file away from where it was
+   * handed in — moving or renaming one (computor-org/issues#352).
+   *
+   * Silent for everything else: these actions carried no confirmation before,
+   * and adding one to every rename would only train people to click through it.
+   */
+  private async confirmIfSubmitted(
+    item: any,
+    entry: Entry,
+    question: string,
+    confirmLabel: string,
+    detail: string
+  ): Promise<boolean> {
+    const note = await this.submittedNote(item, entry);
+    if (!note) {
+      return true;
+    }
+    return notify.confirm(question, confirmLabel, `${note} ${detail}`);
+  }
+
   /** Any node that has a path worth revealing or copying. */
   private resolveAnyPath(item: any): { path: string; root: string } | undefined {
     const entry = this.resolveEntry(item);
@@ -258,6 +318,17 @@ export class StudentFileCommands {
     });
     if (!name || name === current) { return; }
 
+    // A rename is a move within the folder: under the submitted name there is
+    // nothing afterwards (computor-org/issues#352).
+    const confirmed = await this.confirmIfSubmitted(
+      item,
+      entry,
+      `Rename "${current}" to "${name}"?`,
+      'Rename',
+      'The content is kept, only the name changes.'
+    );
+    if (!confirmed) { return; }
+
     renameEntry(entry.root, entry.path, name);
     this.treeDataProvider.refreshNode(entry.refresh);
   }
@@ -268,6 +339,7 @@ export class StudentFileCommands {
 
     const name = path.basename(entry.path);
     const detail = [
+      await this.submittedNote(item, entry),
       entry.isDirectory ? 'This removes everything inside it.' : undefined,
       'Anything that came from the course template can be brought back with "Update Repository from Template".'
     ].filter(Boolean).join(' ');
@@ -295,7 +367,14 @@ export class StudentFileCommands {
   private async stash(item: any, op: 'copy' | 'cut'): Promise<void> {
     const entry = this.resolveEntry(item);
     if (!entry) { return; }
-    this.clipboard = { path: entry.path, root: entry.root, op };
+    // Noted while the tree row is still at hand: Paste happens on a different
+    // row, from which the source's assignment can no longer be walked to.
+    this.clipboard = {
+      path: entry.path,
+      root: entry.root,
+      op,
+      submissionGroupId: this.submissionGroupIdFor(item)
+    };
     await vscode.commands.executeCommand('setContext', CLIPBOARD_CONTEXT_KEY, true);
   }
 
@@ -342,6 +421,26 @@ export class StudentFileCommands {
     }
 
     if (pending.op === 'cut') {
+      // Cut + Paste is a move, and moving a submitted file away asks the same
+      // question the tree's Move To does (computor-org/issues#352).
+      const isDirectory = fs.statSync(pending.path).isDirectory();
+      const check = await checkSubmitted(
+        pending.root,
+        pending.path,
+        pending.submissionGroupId,
+        this.apiService,
+        { isDirectory }
+      );
+      const note = submittedWarning(check, isDirectory);
+      if (note) {
+        const confirmed = await notify.confirm(
+          `Move "${name}" here?`,
+          'Move',
+          `${note} Its content is not changed, only its place in the assignment.`
+        );
+        if (!confirmed) { return; }
+      }
+
       moveEntry(target.root, pending.path, target.dir, {
         overwrite,
         name: finalName,
@@ -401,6 +500,17 @@ export class StudentFileCommands {
     }
 
     if (op === 'move') {
+      // Moving a submitted file away leaves the same hole as deleting it from
+      // where it was handed in, so it asks the same question (issue #352).
+      const confirmed = await this.confirmIfSubmitted(
+        item,
+        entry,
+        `Move "${name}" to ${picked.label}?`,
+        'Move',
+        'Its content is not changed, only its place in the assignment.'
+      );
+      if (!confirmed) { return; }
+
       moveEntry(entry.root, entry.path, picked.dir, {
         overwrite,
         name: finalName,

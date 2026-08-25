@@ -987,7 +987,13 @@ class UnifiedController {
 
     // Filesystem actions on the tree's course/unit/assignment/file rows.
     const { StudentFileCommands } = await import('./commands/StudentFileCommands');
-    new StudentFileCommands(this.context, tree).registerCommands();
+    new StudentFileCommands(this.context, tree, api).registerCommands();
+
+    // A delete made in the file explorer or a terminal cannot be intercepted,
+    // so an already-submitted file that disappears is offered back instead
+    // (computor-org/issues#352).
+    const { registerSubmittedDeleteGuard } = await import('./ui/submittedDeleteGuard');
+    registerSubmittedDeleteGuard(this.context, tree, api);
 
   }
 

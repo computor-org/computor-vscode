@@ -133,6 +133,52 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         context.subscriptions.push(watcher);
     }
 
+    /**
+     * The assignment a path on disk belongs to, from what the tree has already
+     * loaded (computor-org/issues#352).
+     *
+     * The reverse of what the badges do: they take an assignment and ask which
+     * dirty paths touch it, this takes a path and asks whose it is. Answers only
+     * for courses already rendered — a delete inside a course the student has
+     * not opened this session is nothing this tree knows about, and provoking a
+     * fetch from a file-system event is not worth it.
+     */
+    findAssignmentForPath(fsPath: string): {
+        repoRoot: string;
+        courseId: string;
+        title: string;
+        submissionGroupId?: string;
+    } | undefined {
+        for (const [courseId, model] of this.gitModelCache) {
+            const repoRoot = model.repoRoot;
+            if (!repoRoot || !model.configured) {
+                continue;
+            }
+            const relative = path.relative(repoRoot, fsPath);
+            if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+                continue;
+            }
+
+            for (const content of this.courseContentsCache.get(courseId) ?? []) {
+                const dir = (content as any)?.directory as string | undefined;
+                if (!dir || !path.isAbsolute(dir)) {
+                    continue;
+                }
+                const withinAssignment = path.relative(dir, fsPath);
+                if (withinAssignment.startsWith('..') || path.isAbsolute(withinAssignment)) {
+                    continue;
+                }
+                return {
+                    repoRoot,
+                    courseId,
+                    title: content.title || content.path || 'assignment',
+                    submissionGroupId: (content as any)?.submission_group?.id
+                };
+            }
+        }
+        return undefined;
+    }
+
     private scheduleGitBadgeRefresh(): void {
         if (this.gitBadgeRefreshTimer) {
             clearTimeout(this.gitBadgeRefreshTimer);
