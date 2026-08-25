@@ -1284,6 +1284,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.lecturer.checkExampleLinks",
+        "title": "Check Links",
+        "icon": "$(link)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.figures.show",
         "title": "Show Figures",
         "icon": "$(graph)",
@@ -2381,6 +2387,16 @@
           "command": "computor.lecturer.replaceInFilteredExamples",
           "when": "view == computor.lecturer.examples && viewItem == rootSection_examples",
           "group": "2_edit@1"
+        },
+        {
+          "command": "computor.lecturer.checkExampleLinks",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "computor.lecturer.checkExampleLinks",
+          "when": "view == computor.lecturer.examples && viewItem =~ /^example(CheckedOut|LocalOnly)?$/",
+          "group": "1_actions@3"
         },
         {
           "command": "computor.lecturer.cleanupFilteredExamples",

@@ -1349,10 +1349,12 @@ class UnifiedController {
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
 
-    // "Check Links" over a course, a unit or one assignment — the deployed
-    // READMEs and meta.yaml files, not a local checkout (issue #362).
+    // "Check Links" — on an example, where READMEs and meta.yaml are written
+    // and a working copy can be checked before it is ever uploaded, and on a
+    // course/unit/assignment, which checks what students currently have
+    // (issue #362).
     const { LinkCheckCommands } = await import('./commands/LinkCheckCommands');
-    new LinkCheckCommands(this.context, api).registerCommands();
+    new LinkCheckCommands(this.context, api, exampleTree).registerCommands();
 
     // Documents tree — file-system mirror over /documents/* with per-entry sync state.
     const { DocumentsTreeProvider } = await import('./ui/tree/lecturer-documents/DocumentsTreeProvider');
