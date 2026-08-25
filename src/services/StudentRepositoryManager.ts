@@ -764,22 +764,35 @@ export class StudentRepositoryManager {
           ...process.env,
           GIT_TERMINAL_PROMPT: '0'
         },
-        timeout: 30_000,
+        timeout: 120_000,
         cancellationToken
       });
 
-      const { stdout: branch } = await execAsync('git symbolic-ref --short HEAD 2>/dev/null || echo "DETACHED"', {
-        cwd: repoPath
-      });
+      // Do the fallback here rather than in the shell: `2>/dev/null || echo "X"`
+      // is POSIX. Under cmd.exe the redirect targets a file called `\dev\null`
+      // and echo emits the quotes too, so the comparison below misbehaved on
+      // Windows — where plenty of students run VS Code.
+      let branch = '';
+      try {
+        const { stdout } = await execAsyncWithTimeout('git symbolic-ref --short HEAD', {
+          cwd: repoPath,
+          timeout: 15_000
+        });
+        branch = stdout.trim();
+      } catch {
+        // Non-zero exit means a detached HEAD (or not a repository); either way
+        // there is no branch to pull onto.
+        branch = '';
+      }
 
-      if (branch.trim() !== 'DETACHED') {
+      if (branch) {
         await execAsyncWithTimeout('git pull --ff-only', {
           cwd: repoPath,
           env: {
             ...process.env,
             GIT_TERMINAL_PROMPT: '0'
           },
-          timeout: 30_000,
+          timeout: 120_000,
           cancellationToken
         });
       }

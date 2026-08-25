@@ -23,6 +23,7 @@ import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import { withRepoLock } from '../../../utils/repoLock';
+import { safeExtractTarget } from '../../../utils/zipHelpers';
 
 function getEmbeddedCourseContentType(courseContent: any): any | undefined {
   const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
@@ -622,7 +623,14 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
           const fileData = file as any;
           if (!fileData.dir) {
             const content = await fileData.async('nodebuffer');
-            const filePath = path.join(submissionPath, filename);
+            // Submission archives are built from student-controlled content and
+            // extract on the TUTOR's machine, so an entry named `../../.bashrc`
+            // would write outside the destination.
+            const filePath = safeExtractTarget(submissionPath, filename);
+            if (!filePath) {
+              console.warn(`[TutorStudentTreeProvider] Skipping archive entry outside the destination: ${filename}`);
+              continue;
+            }
             await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
             await fs.promises.writeFile(filePath, content);
           }
@@ -688,7 +696,14 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
           const fileData = file as any;
           if (!fileData.dir) {
             const content = await fileData.async('nodebuffer');
-            const filePath = path.join(submissionPath, filename);
+            // Submission archives are built from student-controlled content and
+            // extract on the TUTOR's machine, so an entry named `../../.bashrc`
+            // would write outside the destination.
+            const filePath = safeExtractTarget(submissionPath, filename);
+            if (!filePath) {
+              console.warn(`[TutorStudentTreeProvider] Skipping archive entry outside the destination: ${filename}`);
+              continue;
+            }
             await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
             await fs.promises.writeFile(filePath, content);
           }

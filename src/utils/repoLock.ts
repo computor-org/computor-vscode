@@ -48,3 +48,22 @@ export function isRepoLocked(repoPath: string): boolean {
 export function clearRepoLocks(): void {
   chains.clear();
 }
+
+/**
+ * Run `operation` under the repository's lock only if it is free right now.
+ *
+ * For best-effort maintenance (the credential fan-out) that must never QUEUE
+ * behind an active operation: the caller may itself be holding another
+ * repository's lock, and two such callers queuing on each other's repositories
+ * deadlock. A busy repository is skipped — whatever runs there deals with its
+ * own state, and the 401-heal path re-mints a broken credential on demand.
+ */
+export function tryWithRepoLock<T>(
+  repoPath: string,
+  operation: () => Promise<T>
+): Promise<{ ran: true; value: T } | { ran: false }> {
+  if (isRepoLocked(repoPath)) {
+    return Promise.resolve({ ran: false });
+  }
+  return withRepoLock(repoPath, operation).then((value) => ({ ran: true as const, value }));
+}
