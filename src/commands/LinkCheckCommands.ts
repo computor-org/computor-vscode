@@ -15,29 +15,41 @@ import {
   resolveRelativeLink,
   LinkOccurrence
 } from '../utils/linkExtraction';
+import {
+  bundleFromDirectory,
+  bundleFromFiles,
+  ExampleBundle
+} from '../utils/exampleLinkSources';
 import { getExampleVersionId } from '../utils/deploymentHelpers';
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
+import type { LecturerExampleTreeProvider, MergedExample } from '../ui/tree/lecturer/LecturerExampleTreeProvider';
 import type { CourseContentList, CourseList } from '../types/generated/courses';
 
 /**
- * "Check Links" for a course, a unit or a single assignment
- * (computor-org/issues#362).
+ * "Check Links" over courseware (computor-org/issues#362).
  *
  * A lecturer has no way of noticing that the paper an assignment points at has
- * moved, or that a picture stopped resolving — until a student says so. This
- * walks the courseware the students actually receive and says which links no
- * longer lead anywhere.
+ * moved, or that a figure stopped resolving, until a student says so. The
+ * crawler answering that is offered at both levels it makes sense at, because
+ * they answer different questions:
  *
- * The content comes from the API, not from a checked-out working copy: what is
- * checked has to be what was *deployed*, and a lecturer should not have to
- * check out forty examples to find out. Each distinct address is probed once,
- * however many assignments quote it.
+ * - On an **example**, which is where READMEs and meta.yaml actually live and
+ *   are edited. A working copy is read straight from disk, so a link can be
+ *   fixed before the example is ever uploaded — the only moment fixing it is
+ *   cheap. Examples that are not checked out, and are not deployed anywhere,
+ *   can be checked too.
+ * - On a **course, unit or assignment**, which asks the other question: is what
+ *   the students have right now still sound? That reads the deployed version,
+ *   not whatever the lecturer happens to have on disk.
+ *
+ * Everything after "which files" is shared: one extractor, one prober, one
+ * report.
  */
 
 /** Where a link was found, in terms the lecturer can navigate by. */
 interface LinkFinding {
   url: string;
-  /** Assignment / unit / course the link belongs to. */
+  /** Example / assignment / course the link belongs to. */
   where: string;
   /** File or field inside it. */
   source: string;
@@ -49,65 +61,134 @@ interface RelativeFinding extends LinkFinding {
   resolved?: string;
 }
 
-interface CheckScope {
-  courseId: string;
-  label: string;
-  contents: CourseContentList[];
-  /** Whole-course checks also cover the course's own description. */
-  course?: CourseList;
+/** Everything one run found, before probing. */
+interface Collected {
+  web: LinkFinding[];
+  missing: RelativeFinding[];
+  /** How many examples / contents were read, for the report's summary line. */
+  itemCount: number;
 }
-
-/** Files worth reading for links. Anything binary is skipped. */
-const TEXT_FILE = /\.(md|markdown|txt|ya?ml|json|html?|tex|rst|csv|py|m|jl|r)$/i;
 
 export class LinkCheckCommands {
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly apiService: ComputorApiService
+    private readonly apiService: ComputorApiService,
+    private readonly exampleTree?: LecturerExampleTreeProvider
   ) {}
 
   registerCommands(): void {
     const register = commandRegistrar(this.context);
     register('computor.lecturer.checkLinks', async (item: any) => {
-      await this.checkLinks(item);
+      await this.checkCourseLinks(item);
+    });
+    register('computor.lecturer.checkExampleLinks', async (item: any) => {
+      await this.checkExampleLinks(item);
     });
   }
 
-  private async checkLinks(item: any): Promise<void> {
-    const scope = await this.resolveScope(item);
-    if (!scope) {
+  // --- entry points --------------------------------------------------------
+
+  /** Course, unit or assignment: what the students currently have. */
+  private async checkCourseLinks(item: any): Promise<void> {
+    const content = item?.courseContent;
+    const course: CourseList | undefined = item?.course;
+    const courseId = content?.course_id ?? course?.id;
+    if (!courseId) {
       notify.warning('Open "Check Links" from a course, a unit or an assignment in the tree.');
       return;
     }
 
-    if (scope.contents.length === 0 && !scope.course) {
-      notify.info(`Nothing to check under “${scope.label}”.`);
+    const all = await this.apiService.getCourseContents(String(courseId), true, true);
+
+    let contents: CourseContentList[];
+    let label: string;
+    let courseForDescription: CourseList | undefined;
+
+    if (content?.id) {
+      const own = all.find((entry) => entry.id === content.id);
+      const prefix = `${content.path}.`;
+      contents = [...(own ? [own] : []), ...all.filter((entry) => entry.path?.startsWith(prefix))];
+      label = String(content.title || content.path);
+    } else {
+      contents = all;
+      label = String(course?.title || course?.path || 'course');
+      courseForDescription = course;
+    }
+
+    if (contents.length === 0 && !courseForDescription) {
+      notify.info(`Nothing to check under “${label}”.`);
       return;
     }
 
+    await this.run(label, (report, cancelled) =>
+      this.collectFromCourse(contents, courseForDescription, report, cancelled)
+    );
+  }
+
+  /**
+   * An example row, or the [Examples] row for everything the filters show.
+   *
+   * The filtered form matches the other bulk actions on that row, so "according
+   * to the filter settings" means the same thing everywhere (issues #339–#341).
+   */
+  private async checkExampleLinks(item: any): Promise<void> {
+    const single: MergedExample | undefined = item?.merged;
+
+    let examples: MergedExample[];
+    let label: string;
+
+    if (single) {
+      examples = [single];
+      label = single.title || single.identifier;
+    } else if (this.exampleTree) {
+      examples = await this.exampleTree.getFilteredMergedExamples();
+      const filters = this.exampleTree.describeActiveFilters();
+      label = filters.length > 0 ? `examples (${filters.join(', ')})` : 'all examples';
+      if (examples.length === 0) {
+        notify.info('No examples match the current filters.');
+        return;
+      }
+    } else {
+      notify.warning('Open "Check Links" from an example in the Examples view.');
+      return;
+    }
+
+    await this.run(label, (report, cancelled) =>
+      this.collectFromExamples(examples, report, cancelled)
+    );
+  }
+
+  // --- the shared run ------------------------------------------------------
+
+  /** Collect, probe, report — the part neither level does differently. */
+  private async run(
+    label: string,
+    collect: (
+      report: (message: string) => void,
+      cancelled: () => boolean
+    ) => Promise<Collected>
+  ): Promise<void> {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Checking links in ${scope.label}…`,
+        title: `Checking links in ${label}…`,
         cancellable: true
       },
       async (progress, token) => {
-        const web: LinkFinding[] = [];
-        const missingFiles: RelativeFinding[] = [];
-
         progress.report({ message: 'collecting links…' });
-        const collected = await this.collect(scope, missingFiles, (message) =>
-          progress.report({ message })
+        const collected = await collect(
+          (message) => progress.report({ message }),
+          () => token.isCancellationRequested
         );
-        web.push(...collected);
 
         if (token.isCancellationRequested) {
+          notify.info('Link check cancelled.');
           return;
         }
 
-        const urls = Array.from(new Set(web.map((finding) => finding.url)));
-        if (urls.length === 0 && missingFiles.length === 0) {
-          notify.info(`No links found in ${scope.label}.`);
+        const urls = Array.from(new Set(collected.web.map((finding) => finding.url)));
+        if (urls.length === 0 && collected.missing.length === 0) {
+          notify.info(`No links found in ${label}.`);
           return;
         }
 
@@ -122,157 +203,126 @@ export class LinkCheckCommands {
           return;
         }
 
-        const reportPath = this.writeReport(scope, web, results, missingFiles);
+        const reportPath = this.writeReport(label, collected, results);
         await this.showReport(reportPath);
 
-        const broken = countStatus(web, results, 'broken') + missingFiles.length;
-        const blocked = countStatus(web, results, 'blocked');
+        const broken = countStatus(collected.web, results, 'broken') + collected.missing.length;
+        const blocked = countStatus(collected.web, results, 'blocked');
         notify.info(
           broken === 0 && blocked === 0
-            ? `All ${urls.length} links in ${scope.label} are reachable.`
+            ? `All ${urls.length} links in ${label} are reachable.`
             : `${broken} problem(s), ${blocked} not checkable — see the report.`
         );
       }
     );
   }
 
-  /**
-   * What a tree item asks to be checked.
-   *
-   * A unit means the unit and everything under it, because that is what "check
-   * this chapter" means to the person clicking it.
-   */
-  private async resolveScope(item: any): Promise<CheckScope | undefined> {
-    const content = item?.courseContent;
-    const course: CourseList | undefined = item?.course;
-    const courseId = content?.course_id ?? course?.id;
-    if (!courseId) {
-      return undefined;
+  // --- collecting ----------------------------------------------------------
+
+  /** Links of the examples themselves — working copy first, server otherwise. */
+  private async collectFromExamples(
+    examples: MergedExample[],
+    report: (message: string) => void,
+    cancelled: () => boolean
+  ): Promise<Collected> {
+    const web: LinkFinding[] = [];
+    const missing: RelativeFinding[] = [];
+    let itemCount = 0;
+
+    for (const [index, example] of examples.entries()) {
+      if (cancelled()) {
+        break;
+      }
+      const where = example.title || example.identifier;
+      report(`reading ${index + 1} of ${examples.length}: ${where}…`);
+
+      const bundle = await this.bundleForExample(example);
+      if (!bundle) {
+        continue;
+      }
+      itemCount += 1;
+      collectFromBundle(bundle, where, web, missing);
     }
 
-    const all = await this.apiService.getCourseContents(String(courseId), true, true);
-
-    if (content?.id) {
-      const own = all.find((entry) => entry.id === content.id);
-      const prefix = `${content.path}.`;
-      const descendants = all.filter((entry) => entry.path?.startsWith(prefix));
-      return {
-        courseId: String(courseId),
-        label: `“${content.title || content.path}”`,
-        contents: [...(own ? [own] : []), ...descendants]
-      };
-    }
-
-    // The course row, or its Contents folder.
-    return {
-      courseId: String(courseId),
-      label: `“${course?.title || course?.path || 'course'}”`,
-      contents: all,
-      ...(course ? { course } : {})
-    };
+    return { web, missing, itemCount };
   }
 
-  /** Every link in the scope, with the relative ones resolved on the way. */
-  private async collect(
-    scope: CheckScope,
-    missingFiles: RelativeFinding[],
-    report: (message: string) => void
-  ): Promise<LinkFinding[]> {
-    const findings: LinkFinding[] = [];
+  /**
+   * The files of one example.
+   *
+   * A checked-out working copy wins over the server: it is what the lecturer is
+   * looking at, and checking anything else would answer a question they did not
+   * ask. A local-only example has nothing else to read anyway.
+   */
+  private async bundleForExample(example: MergedExample): Promise<ExampleBundle | undefined> {
+    const workingPath = example.local?.workingVersion?.fullPath ?? example.local?.fullPath;
+    if (workingPath && fs.existsSync(workingPath)) {
+      return bundleFromDirectory(workingPath);
+    }
 
-    const addOccurrences = (occurrences: LinkOccurrence[], where: string) => {
-      for (const occurrence of occurrences) {
-        if (classifyLink(occurrence.url) === 'web') {
-          findings.push({
-            url: occurrence.url,
-            where,
-            source: occurrence.source,
-            ...(occurrence.line !== undefined ? { line: occurrence.line } : {})
-          });
-        }
-      }
-    };
+    const exampleId = example.remote?.id;
+    if (!exampleId) {
+      return undefined;
+    }
+    const download = await this.apiService.downloadExample(String(exampleId));
+    return download ? bundleFromFiles(download.files, download.meta) : undefined;
+  }
 
-    if (scope.course) {
-      const description = (scope.course as any).description;
+  /** Links of what a course currently hands out. */
+  private async collectFromCourse(
+    contents: CourseContentList[],
+    course: CourseList | undefined,
+    report: (message: string) => void,
+    cancelled: () => boolean
+  ): Promise<Collected> {
+    const web: LinkFinding[] = [];
+    const missing: RelativeFinding[] = [];
+    let itemCount = 0;
+
+    if (course) {
+      const description = (course as any).description;
       if (typeof description === 'string') {
-        addOccurrences(extractLinks(description, 'description'), 'Course');
+        addWebLinks(extractLinks(description, 'description'), 'Course', web);
       }
     }
 
-    let index = 0;
-    for (const content of scope.contents) {
-      index += 1;
+    for (const [index, content] of contents.entries()) {
+      if (cancelled()) {
+        break;
+      }
       const where = content.title || content.path || 'content';
-      report(`reading ${index} of ${scope.contents.length}: ${where}…`);
+      report(`reading ${index + 1} of ${contents.length}: ${where}…`);
+      itemCount += 1;
 
       const description = (content as any).description;
       if (typeof description === 'string') {
-        addOccurrences(extractLinks(description, 'description'), where);
+        addWebLinks(extractLinks(description, 'description'), where, web);
       }
 
       const versionId = getExampleVersionId(content as any);
       if (!versionId) {
         continue;
       }
-
       const download = await this.apiService.downloadExampleVersion(String(versionId));
       if (!download) {
         continue;
       }
-
-      const files = download.files ?? {};
-      const fileNames = new Set(Object.keys(files));
-
-      addOccurrences(extractMetaLinks(download.meta, 'meta.yaml'), where);
-
-      for (const [name, raw] of Object.entries(files)) {
-        if (!TEXT_FILE.test(name) || typeof raw !== 'string') {
-          continue;
-        }
-        // meta.yaml's links are read from the parsed document above; reading the
-        // raw text too would report each of them twice.
-        if (name === 'meta.yaml') {
-          continue;
-        }
-
-        const occurrences = extractLinks(raw, name);
-        addOccurrences(occurrences, where);
-
-        // A relative link is checked against the example's own files — this is
-        // where the classic mediaFiles/MediaFiles slip shows up, and no amount
-        // of network probing would ever have found it.
-        for (const occurrence of occurrences) {
-          if (classifyLink(occurrence.url) !== 'relative') {
-            continue;
-          }
-          const resolved = resolveRelativeLink(occurrence.url, name);
-          if (resolved !== undefined && fileNames.has(resolved)) {
-            continue;
-          }
-          missingFiles.push({
-            url: occurrence.url,
-            where,
-            source: occurrence.source,
-            ...(occurrence.line !== undefined ? { line: occurrence.line } : {}),
-            ...(resolved !== undefined ? { resolved } : {})
-          });
-        }
-      }
+      collectFromBundle(bundleFromFiles(download.files, download.meta), where, web, missing);
     }
 
-    return findings;
+    return { web, missing, itemCount };
   }
+
+  // --- reporting -----------------------------------------------------------
 
   /** The report as markdown, written where the lecturer can keep it. */
   private writeReport(
-    scope: CheckScope,
-    findings: LinkFinding[],
-    results: Map<string, ProbeResult>,
-    missingFiles: RelativeFinding[]
+    label: string,
+    collected: Collected,
+    results: Map<string, ProbeResult>
   ): string {
     const byUrl = new Map<string, LinkFinding[]>();
-    for (const finding of findings) {
+    for (const finding of collected.web) {
       const list = byUrl.get(finding.url) ?? [];
       list.push(finding);
       byUrl.set(finding.url, list);
@@ -288,14 +338,16 @@ export class LinkCheckCommands {
     const okCount = of('ok').length;
 
     const lines: string[] = [];
-    lines.push(`# Link check — ${scope.label.replace(/^“|”$/g, '')}`);
+    lines.push(`# Link check — ${label}`);
     lines.push('');
     lines.push(`Checked ${new Date().toLocaleString()}.`);
     lines.push('');
     lines.push(
-      `${byUrl.size} distinct link(s) in ${scope.contents.length} item(s): ` +
+      `${byUrl.size} distinct link(s) in ${collected.itemCount} item(s): ` +
       `**${broken.length} unreachable**, **${blocked.length} not checkable**, ${okCount} fine.` +
-      (missingFiles.length > 0 ? ` **${missingFiles.length} missing file reference(s)**.` : '')
+      (collected.missing.length > 0
+        ? ` **${collected.missing.length} missing file reference(s)**.`
+        : '')
     );
     lines.push('');
 
@@ -310,10 +362,9 @@ export class LinkCheckCommands {
       lines.push(note);
       lines.push('');
       for (const [url, occurrences] of entries) {
-        const result = results.get(url);
         lines.push(`### ${url}`);
         lines.push('');
-        lines.push(`${result?.reason ?? 'unknown'}`);
+        lines.push(`${results.get(url)?.reason ?? 'unknown'}`);
         lines.push('');
         for (const occurrence of occurrences) {
           const at = occurrence.line !== undefined ? `:${occurrence.line}` : '';
@@ -323,11 +374,7 @@ export class LinkCheckCommands {
       }
     };
 
-    section(
-      'Unreachable',
-      'These did not answer, or answered that they are gone.',
-      broken
-    );
+    section('Unreachable', 'These did not answer, or answered that they are gone.', broken);
     section(
       'Did not let us check',
       'These refused an automated request (403, 429 and friends). They usually ' +
@@ -337,7 +384,7 @@ export class LinkCheckCommands {
 
     lines.push('## Missing files inside the example');
     lines.push('');
-    if (missingFiles.length === 0) {
+    if (collected.missing.length === 0) {
       lines.push('_None._');
       lines.push('');
     } else {
@@ -347,11 +394,11 @@ export class LinkCheckCommands {
         'folders to a server.'
       );
       lines.push('');
-      for (const missing of missingFiles) {
-        const at = missing.line !== undefined ? `:${missing.line}` : '';
+      for (const entry of collected.missing) {
+        const at = entry.line !== undefined ? `:${entry.line}` : '';
         lines.push(
-          `- \`${missing.url}\` — ${missing.where}, \`${missing.source}${at}\`` +
-          (missing.resolved ? ` (looked for \`${missing.resolved}\`)` : '')
+          `- \`${entry.url}\` — ${entry.where}, \`${entry.source}${at}\`` +
+          (entry.resolved ? ` (looked for \`${entry.resolved}\`)` : '')
         );
       }
       lines.push('');
@@ -361,11 +408,11 @@ export class LinkCheckCommands {
     fs.mkdirSync(directories.reports, { recursive: true });
 
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const slug = scope.label
+    const slug = label
       .replace(/[“”"]/g, '')
       .replace(/[^a-zA-Z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
-      .slice(0, 50) || 'course';
+      .slice(0, 50) || 'examples';
     const reportPath = path.join(directories.reports, `link-check-${slug}-${stamp}.md`);
     fs.writeFileSync(reportPath, `${lines.join('\n')}\n`, 'utf8');
     return reportPath;
@@ -378,6 +425,68 @@ export class LinkCheckCommands {
       await showMarkdownPreview(this.context, reportPath, { title: 'Link check' });
     } catch (error) {
       console.warn('Could not preview the link report:', error);
+    }
+  }
+}
+
+/** Keep the web links out of a batch of occurrences. */
+function addWebLinks(
+  occurrences: LinkOccurrence[],
+  where: string,
+  into: LinkFinding[]
+): void {
+  for (const occurrence of occurrences) {
+    if (classifyLink(occurrence.url) === 'web') {
+      into.push({
+        url: occurrence.url,
+        where,
+        source: occurrence.source,
+        ...(occurrence.line !== undefined ? { line: occurrence.line } : {})
+      });
+    }
+  }
+}
+
+/**
+ * Every link of one example: the meta.yaml fields, every readable file, and the
+ * relative links checked against the example's own file list.
+ *
+ * That last part needs no network and is what catches the classic
+ * mediaFiles/MediaFiles slip — probing would never have found it.
+ */
+export function collectFromBundle(
+  bundle: ExampleBundle,
+  where: string,
+  web: LinkFinding[],
+  missing: RelativeFinding[]
+): void {
+  addWebLinks(extractMetaLinks(bundle.meta, 'meta.yaml'), where, web);
+
+  for (const [name, text] of bundle.texts) {
+    // meta.yaml's own link fields are read from the parsed document above;
+    // reading the raw text too would report each of them twice.
+    if (name === 'meta.yaml' || name === 'meta.yml') {
+      continue;
+    }
+
+    const occurrences = extractLinks(text, name);
+    addWebLinks(occurrences, where, web);
+
+    for (const occurrence of occurrences) {
+      if (classifyLink(occurrence.url) !== 'relative') {
+        continue;
+      }
+      const resolved = resolveRelativeLink(occurrence.url, name);
+      if (resolved !== undefined && bundle.fileNames.has(resolved)) {
+        continue;
+      }
+      missing.push({
+        url: occurrence.url,
+        where,
+        source: occurrence.source,
+        ...(occurrence.line !== undefined ? { line: occurrence.line } : {}),
+        ...(resolved !== undefined ? { resolved } : {})
+      });
     }
   }
 }
