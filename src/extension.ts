@@ -65,6 +65,7 @@ import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMember
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
 import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
 import { registerContentDescription } from './ui/contentDescription';
+import { registerDescriptionEditor } from './ui/descriptionEditor';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
 import { registerDocumentPreviewProviders } from './ui/panels/DocumentPreviewPanel';
@@ -986,7 +987,13 @@ class UnifiedController {
 
     // Filesystem actions on the tree's course/unit/assignment/file rows.
     const { StudentFileCommands } = await import('./commands/StudentFileCommands');
-    new StudentFileCommands(this.context, tree).registerCommands();
+    new StudentFileCommands(this.context, tree, api).registerCommands();
+
+    // A delete made in the file explorer or a terminal cannot be intercepted,
+    // so an already-submitted file that disappears is offered back instead
+    // (computor-org/issues#352).
+    const { registerSubmittedDeleteGuard } = await import('./ui/submittedDeleteGuard');
+    registerSubmittedDeleteGuard(this.context, tree, api);
 
   }
 
@@ -1327,8 +1334,25 @@ class UnifiedController {
     const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService, this.commentsInputPanel);
     commands.registerCommands();
 
+    // Descriptions are markdown, so they are written in an editor with a
+    // preview rather than in a textarea inside a form (issue #356). Lives with
+    // the lecturer view because writing one is a lecturer's job; everybody else
+    // reads it through `computor.showContentDescription`.
+    registerDescriptionEditor(this.context, api, (target) => {
+      tree.updateNode(
+        target.kind === 'course' ? 'course' : 'courseContent',
+        target.contentId ?? target.courseId,
+        { course_id: target.courseId }
+      );
+    });
+
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
+
+    // "Check Links" over a course, a unit or one assignment — the deployed
+    // READMEs and meta.yaml files, not a local checkout (issue #362).
+    const { LinkCheckCommands } = await import('./commands/LinkCheckCommands');
+    new LinkCheckCommands(this.context, api).registerCommands();
 
     // Documents tree — file-system mirror over /documents/* with per-entry sync state.
     const { DocumentsTreeProvider } = await import('./ui/tree/lecturer-documents/DocumentsTreeProvider');

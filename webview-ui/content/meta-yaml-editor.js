@@ -32,6 +32,7 @@
     m.description = (document.getElementById('meta-description') || {}).value || '';
     m.language = (document.getElementById('meta-language') || {}).value || '';
     m.license = (document.getElementById('meta-license') || {}).value || '';
+    m.category = (document.getElementById('meta-category') || {}).value || '';
 
     m.authors = collectPersonList('authors');
     m.maintainers = collectPersonList('maintainers');
@@ -388,6 +389,12 @@
     html += '<label for="meta-license">License</label>';
     html += '<input id="meta-license" type="text" value="' + esc(meta.license || '') + '" placeholder="e.g. MIT" />';
     html += '</div>';
+    // Category drives the Examples tree's Category filter (issue #358).
+    html += '<div class="form-group full-width">';
+    html += '<label for="meta-category">Category</label>';
+    html += '<div class="hint section-hint">One grouping for this example. Filterable in the Examples view.</div>';
+    html += '<input id="meta-category" type="text" value="' + esc(meta.category || '') + '" placeholder="e.g. Numerics" />';
+    html += '</div>';
     html += '</div>'; // meta-grid
     html += '</div>'; // section
 
@@ -408,7 +415,7 @@
     // Keywords
     html += '<div class="section">';
     html += '<h2>Keywords</h2>';
-    html += '<div class="hint section-hint">Tags for discovery and categorization</div>';
+    html += '<div class="hint section-hint">These become the example\'s tags. Filterable in the Examples view.</div>';
     html += renderChipInput('keywords', keywords, 'Add keyword...');
     html += '</div>';
 

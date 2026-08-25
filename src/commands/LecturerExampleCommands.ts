@@ -79,43 +79,65 @@ export class LecturerExampleCommands {
       notify.info('Search cleared');
     });
 
-    // Filter by category
+    // Filter by category. Picked from the categories the examples carry rather
+    // than typed: a category is matched whole, so a typo used to empty the tree
+    // with nothing to explain it (computor-org/issues#358).
     register('computor.lecturer.filterExamplesByCategory', async () => {
-      const currentCategory = this.treeProvider.getSelectedCategory();
-      const category = await vscode.window.showInputBox({
-        prompt: 'Enter category to filter by (leave empty to clear)',
-        placeHolder: 'e.g., Introduction, Advanced',
-        value: currentCategory || ''
-      });
-      
-      if (category !== undefined) {
-        this.treeProvider.setCategory(category || undefined);
-        if (category) {
-          notify.info(`Filtering by category: ${category}`);
-        } else {
-          notify.info('Category filter cleared');
-        }
+      const current = this.treeProvider.getSelectedCategory();
+      const { categories } = await this.treeProvider.getFilterVocabulary();
+
+      if (categories.length === 0) {
+        notify.info(
+          'None of your examples has a category yet. Add `category: ...` to an example\'s meta.yaml and upload it.'
+        );
+        return;
       }
+
+      const clearItem = { label: 'Show all categories', category: undefined as string | undefined };
+      const picked = await vscode.window.showQuickPick(
+        [
+          ...(current ? [clearItem] : []),
+          ...categories.map(category => ({
+            label: category,
+            description: category === current ? 'current filter' : undefined,
+            category: category as string | undefined
+          }))
+        ],
+        { title: 'Filter Examples by Category', placeHolder: 'Category', ignoreFocusOut: true }
+      );
+      if (!picked) { return; }
+
+      this.treeProvider.setCategory(picked.category);
+      notify.info(picked.category ? `Filtering by category: ${picked.category}` : 'Category filter cleared');
     });
 
-    // Filter by tags
+    // Filter by tags — multi-select over the tags in use.
     register('computor.lecturer.filterExamplesByTags', async () => {
-      const currentTags = this.treeProvider.getSelectedTags();
-      const tagsInput = await vscode.window.showInputBox({
-        prompt: 'Enter tags to filter by (comma-separated, leave empty to clear)',
-        placeHolder: 'e.g., beginner, loops, functions',
-        value: currentTags.join(', ')
-      });
-      
-      if (tagsInput !== undefined) {
-        const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
-        this.treeProvider.setTags(tags);
-        if (tags.length > 0) {
-          notify.info(`Filtering by tags: ${tags.join(', ')}`);
-        } else {
-          notify.info('Tag filter cleared');
-        }
+      const current = this.treeProvider.getSelectedTags();
+      const { tags } = await this.treeProvider.getFilterVocabulary();
+
+      if (tags.length === 0) {
+        notify.info(
+          'None of your examples has tags yet. List them under `keywords:` in an example\'s meta.yaml and upload it.'
+        );
+        return;
       }
+
+      const selected = new Set(current.map(tag => tag.toLowerCase()));
+      const picked = await vscode.window.showQuickPick(
+        tags.map(tag => ({ label: tag, picked: selected.has(tag.toLowerCase()) })),
+        {
+          title: 'Filter Examples by Tags',
+          placeHolder: 'An example must carry every tag you pick',
+          canPickMany: true,
+          ignoreFocusOut: true
+        }
+      );
+      if (!picked) { return; }
+
+      const chosen = picked.map(item => item.label);
+      this.treeProvider.setTags(chosen);
+      notify.info(chosen.length > 0 ? `Filtering by tags: ${chosen.join(', ')}` : 'Tag filter cleared');
     });
 
     // Clear category filter
@@ -1463,7 +1485,10 @@ export class LecturerExampleCommands {
         maintainers: [],
         links: [],
         supportingMaterial: [],
+        // Both drive the Examples filters: keywords become the example's tags,
+        // category groups it (computor-org/issues#358).
         keywords: [],
+        category: '',
         properties: {
           studentSubmissionFiles: [],
           additionalFiles: [],

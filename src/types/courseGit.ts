@@ -130,3 +130,30 @@ export interface CourseGitBindingUpsert {
   default_branch?: string | null;
   student_repo_modes?: string[];
 }
+
+/**
+ * `GET /courses/{course_id}/git` — the lecturer's full view of the binding.
+ *
+ * Unlike the student descriptor this carries the template's own location, from
+ * which the course's git namespace can be derived. 404s when the course has no
+ * binding at all.
+ */
+export interface CourseGitBindingGet {
+  id: string;
+  course_id: string;
+  /** 'git' | 'download' */
+  delivery: string;
+  git_server_id?: string | null;
+  /** GitLab parent group id/path (GitLab only). */
+  parent_group_id?: string | null;
+  /** Whether a per-course token is stored; the token itself is never returned. */
+  has_token?: boolean;
+  template_repo?: string | null;
+  /** Public (never backend-internal) clone/web URL of the student-template. */
+  template_url?: string | null;
+  default_branch?: string | null;
+  student_repo_modes?: string[];
+  /** True once the binding materialized repos; its identity is then immutable. */
+  locked?: boolean;
+  lock_reason?: string | null;
+}

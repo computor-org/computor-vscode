@@ -3,7 +3,8 @@ import {
   addTokenToGitUrl,
   stripCredentialsFromGitUrl,
   extractOriginFromGitUrl,
-  hasNonOAuthEmbeddedCredentials
+  hasNonOAuthEmbeddedCredentials,
+  parentRepositoryUrl
 } from '../../src/utils/gitUrlHelpers';
 
 describe('gitUrlHelpers', () => {
@@ -104,6 +105,44 @@ describe('gitUrlHelpers', () => {
       expect(hasNonOAuthEmbeddedCredentials('git@gitlab.example:foo.git')).to.be.false;
       expect(hasNonOAuthEmbeddedCredentials('ssh://user:pw@host/repo.git')).to.be.false;
       expect(hasNonOAuthEmbeddedCredentials('')).to.be.false;
+    });
+  });
+
+  /**
+   * "Open Remote Repository" on a course opens the namespace its repositories
+   * live in, derived from the student-template's own URL — the course carries
+   * no group URL of its own on the current git server
+   * (computor-org/issues#356).
+   */
+  describe('parentRepositoryUrl', () => {
+    it('drops the repository, keeping the org that holds it', () => {
+      expect(parentRepositoryUrl('https://git.example.org/phys-2027/student-template.git'))
+        .to.equal('https://git.example.org/phys-2027');
+    });
+
+    it('keeps a GitLab subgroup path intact', () => {
+      expect(parentRepositoryUrl('https://gitlab.example/uni/phys/2027/template'))
+        .to.equal('https://gitlab.example/uni/phys/2027');
+    });
+
+    it('keeps a non-default port', () => {
+      expect(parentRepositoryUrl('http://localhost:3000/course/template.git'))
+        .to.equal('http://localhost:3000/course');
+    });
+
+    it('drops embedded credentials, since the result goes to a browser', () => {
+      expect(parentRepositoryUrl('https://user:secret@git.example.org/phys/template.git'))
+        .to.equal('https://git.example.org/phys');
+    });
+
+    it('has no answer for an ssh remote', () => {
+      expect(parentRepositoryUrl('git@git.example.org:phys/template.git')).to.be.undefined;
+    });
+
+    it('has no answer when nothing would be left but the host', () => {
+      expect(parentRepositoryUrl('https://git.example.org/template.git')).to.be.undefined;
+      expect(parentRepositoryUrl('https://git.example.org')).to.be.undefined;
+      expect(parentRepositoryUrl('')).to.be.undefined;
     });
   });
 });

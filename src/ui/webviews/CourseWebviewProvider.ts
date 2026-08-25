@@ -3,8 +3,9 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { CourseGet, CourseFamilyList, OrganizationList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { EDIT_DESCRIPTION_COMMAND } from '../descriptionEditor';
 
 export class CourseWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -46,10 +47,10 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', course.title, { placeholder: 'Course title' }))}
-        ${formGroup('Description', textareaInput('description', course.description, { placeholder: 'Course description' }))}
         <div class="actions">
           <button type="submit">Save Changes</button>
           <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="button" class="btn-secondary" data-action="editDescription">Edit Description...</button>
         </div>
       </form>
     `);
@@ -65,8 +66,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
           data: {
             courseId: courseId,
             updates: {
-              title: document.getElementById('title').value,
-              description: document.getElementById('description').value
+              title: document.getElementById('title').value
             }
           }
         });
@@ -76,7 +76,11 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
         vscode.postMessage({ command: 'refresh', data: { courseId: courseId } });
       }
 
-      ComputorWebview.registerActions({ refreshData: refreshData });
+      function editDescription() {
+        vscode.postMessage({ command: 'editDescription' });
+      }
+
+      ComputorWebview.registerActions({ refreshData: refreshData, editDescription: editDescription });
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
@@ -111,6 +115,16 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
           }
         }
         break;
+
+      // The description is markdown and belongs in an editor with a preview,
+      // not in a textarea on this form (computor-org/issues#356).
+      case 'editDescription': {
+        const course = (this.currentData as any)?.course;
+        if (course?.id) {
+          await vscode.commands.executeCommand(EDIT_DESCRIPTION_COMMAND, { course });
+        }
+        break;
+      }
     }
   }
 }

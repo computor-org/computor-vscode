@@ -17,6 +17,7 @@ import type {
   CourseMemberRepositoryRegister,
   GitServerGet,
   CourseGitBindingUpsert,
+  CourseGitBindingGet,
   TemplateAccessGet
 } from '../types/courseGit';
 import {
@@ -1613,6 +1614,23 @@ export class ComputorApiService {
   ): Promise<void> {
     const client = await this.getHttpClient();
     await client.put(`/courses/${courseId}/git`, body);
+  }
+
+  /**
+   * A course's git binding as the lecturer sees it, or `null` when the course
+   * has none yet (the backend 404s in that case — an answer, not a failure).
+   */
+  async getCourseGitBinding(courseId: string): Promise<CourseGitBindingGet | null> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<CourseGitBindingGet>(`/courses/${courseId}/git`);
+      return response.data ?? null;
+    } catch (error) {
+      if ((error as any)?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**

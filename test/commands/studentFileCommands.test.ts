@@ -114,9 +114,14 @@ function useCommandHarness(): void {
     (vscode.env.clipboard as any).readText = async () => clipboardText;
 
     const provider = { refreshNode: (node: any) => { refreshed.push(node); } };
+    // The submitted-file guard (computor-org/issues#352) asks the API which
+    // commits were handed in; these fixtures have no submissions, so the
+    // question is answered with none and the dialogs stay as they were.
+    const api = { listSubmissionArtifacts: async () => [] };
     new StudentFileCommands(
       { subscriptions: [] } as unknown as vscode.ExtensionContext,
-      provider as any
+      provider as any,
+      api as any
     ).registerCommands();
   });
 

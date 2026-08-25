@@ -180,7 +180,6 @@ class ExampleTreeItem extends vscode.TreeItem {
     } else {
       parts.push('Repository: (local only)');
     }
-    if (this.merged.remote?.subject) { parts.push(`Subject: ${this.merged.remote.subject}`); }
     if (this.merged.category) { parts.push(`Category: ${this.merged.category}`); }
     if (this.merged.tags && this.merged.tags.length > 0) {
       parts.push(`Tags: ${this.merged.tags.join(', ')}`);
@@ -790,6 +789,39 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   }
   clearSearch(): void { this.setSearchQuery(''); }
 
+  /**
+   * The categories and tags the examples actually carry, for the filter pickers
+   * (computor-org/issues#358).
+   *
+   * Typing a filter by hand meant guessing, and guessing wrongly emptied the
+   * tree with nothing to say why — a category is matched whole, so one wrong
+   * letter hides everything. Offering the values that exist removes the guess.
+   * Counted across all repositories, not only the visible ones, so a filter can
+   * be set before its repository is expanded.
+   */
+  async getFilterVocabulary(): Promise<{ categories: string[]; tags: string[] }> {
+    const examples = await this.getMergedExamples();
+
+    const categories = new Set<string>();
+    const tags = new Set<string>();
+    for (const example of examples) {
+      if (example.category) {
+        categories.add(example.category);
+      }
+      for (const tag of example.tags ?? []) {
+        if (tag) {
+          tags.add(tag);
+        }
+      }
+    }
+
+    const alphabetically = (a: string, b: string) => a.localeCompare(b);
+    return {
+      categories: Array.from(categories).sort(alphabetically),
+      tags: Array.from(tags).sort(alphabetically)
+    };
+  }
+
   getSelectedCategory(): string | undefined { return this.selectedCategory; }
   setCategory(category: string | undefined): void {
     this.selectedCategory = category;
@@ -853,13 +885,19 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
         (m.tags || []).some(t => t.toLowerCase().includes(query))
       );
     }
+    // Case-insensitively: "numerics" and "Numerics" are one category, and a
+    // filter that silently matches nothing over capitalisation is indis-
+    // tinguishable from an empty repository (computor-org/issues#358).
     if (this.selectedCategory) {
-      filtered = filtered.filter(m => m.category === this.selectedCategory);
+      const wanted = this.selectedCategory.toLowerCase();
+      filtered = filtered.filter(m => (m.category || '').toLowerCase() === wanted);
     }
     if (this.selectedTags.length > 0) {
-      filtered = filtered.filter(m =>
-        m.tags && this.selectedTags.every(tag => m.tags?.includes(tag))
-      );
+      const wanted = this.selectedTags.map(tag => tag.toLowerCase());
+      filtered = filtered.filter(m => {
+        const present = (m.tags ?? []).map(tag => tag.toLowerCase());
+        return wanted.every(tag => present.includes(tag));
+      });
     }
 
     return filtered.slice().sort((a, b) => a.identifier.localeCompare(b.identifier));
