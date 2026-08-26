@@ -8,6 +8,7 @@
     "test/services/**/*.test.ts",
     "test/utils/*.test.ts",
     "test/commands/*.test.ts",
+    "test/extension/*.test.ts",
     "test/ui/**/*.test.ts"
   ],
   "timeout": 5000,
