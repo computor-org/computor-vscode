@@ -53,9 +53,9 @@ describe('webview-ui/shared/markdown.js renderMarkdown', () => {
     const html = renderMarkdown(source, deps);
 
     expect(deps.katexCalls).to.have.length(1);
-    expect(deps.katexCalls[0].tex).to.contain('\\\\');
-    expect(deps.katexCalls[0].tex).to.contain('x_1');
-    expect(deps.katexCalls[0].displayMode).to.equal(true);
+    expect(deps.katexCalls[0]!.tex).to.contain('\\\\');
+    expect(deps.katexCalls[0]!.tex).to.contain('x_1');
+    expect(deps.katexCalls[0]!.displayMode).to.equal(true);
     // marked never sees TeX source
     expect(deps.markedInputs[0]).to.not.contain('$$');
     expect(deps.markedInputs[0]).to.not.contain('\\begin');
@@ -76,7 +76,7 @@ describe('webview-ui/shared/markdown.js renderMarkdown', () => {
     const deps = fakeDeps();
     renderMarkdown('$$\na = b\nc = d\n$$', deps);
     expect(deps.katexCalls).to.have.length(1);
-    expect(deps.katexCalls[0].tex).to.contain('a = b\nc = d');
+    expect(deps.katexCalls[0]!.tex).to.contain('a = b\nc = d');
   });
 
   it('extracts adjacent inline math with underscores separately', () => {
@@ -125,7 +125,7 @@ describe('webview-ui/shared/markdown.js renderMarkdown', () => {
     const deps = fakeDeps();
     renderMarkdown('$$\r\na = b\r\n$$\r\n', deps);
     expect(deps.katexCalls).to.have.length(1);
-    expect(deps.katexCalls[0].tex).to.equal('\na = b\n');
+    expect(deps.katexCalls[0]!.tex).to.equal('\na = b\n');
   });
 
   it('is immune to literal @@MATH-…@@ text in the document', () => {
@@ -159,8 +159,8 @@ describe('webview-ui/shared/markdown.js extractMath', () => {
   it('masks each segment with a unique token and reports it', () => {
     const { masked, segments } = extractMath('$a$ and $$b$$');
     expect(segments).to.have.length(2);
-    expect(masked).to.contain(segments[0].token);
-    expect(masked).to.contain(segments[1].token);
+    expect(masked).to.contain(segments[0]!.token);
+    expect(masked).to.contain(segments[1]!.token);
     expect(segments[0]).to.include({ tex: 'a', displayMode: false });
     expect(segments[1]).to.include({ tex: 'b', displayMode: true });
   });

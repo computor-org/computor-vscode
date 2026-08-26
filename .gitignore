@@ -2,6 +2,7 @@
 out/
 dist/
 coverage/
+artifacts/
 .nyc_output/
 *.js
 !webpack.config.js
