@@ -4,6 +4,13 @@ import { BackendErrorDefinition } from '../types';
 export class HttpError extends Error {
   public readonly errorCode?: string;
   public readonly backendError?: BackendErrorDefinition;
+  /**
+   * The server's own reason for THIS request, when it sent one. Kept as its
+   * own field rather than only folded into `message` so display code can
+   * prefer it without having to know how `message` was assembled — see the
+   * note on `serverDetail` below, and `utils/errorDisplay`.
+   */
+  public readonly serverDetail?: string;
 
   constructor(
     message: string,
@@ -39,6 +46,7 @@ export class HttpError extends Error {
     this.name = 'HttpError';
     this.errorCode = errorCode;
     this.backendError = backendError;
+    this.serverDetail = serverDetail;
   }
 
   /**
