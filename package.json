@@ -2843,6 +2843,7 @@
     "compile:fast": "webpack",
     "watch": "webpack --watch",
     "package": "npm run type-check && webpack --mode production --devtool hidden-source-map",
+    "package:preview": "npm run package && node scripts/package-preview-vsix.js",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile:fast && npm run lint",
