@@ -15,11 +15,23 @@ interface StoredProviderToken {
   hasToken: boolean;
 }
 
+/**
+ * Which entry the view should open on. Sent by the credential-expiry
+ * notification so the student lands on the field that fixes their problem
+ * instead of the view root (computor-org/issues#247).
+ */
+export interface SettingsFocus {
+  section: 'gitProvider' | 'backendUrl';
+  /** Git provider origin. Unknown realms open a blank, focused provider entry. */
+  url?: string;
+}
+
 interface SettingsInitialState {
   backendUrl: string;
   gitName: string;
   gitEmail: string;
   storedProviderTokens: StoredProviderToken[];
+  focus?: SettingsFocus;
 }
 
 export class SettingsWebviewProvider extends BaseWebviewProvider {
@@ -32,9 +44,11 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
     this.settingsManager = new ComputorSettingsManager(context);
   }
 
-  async open(): Promise<void> {
+  async open(focus?: SettingsFocus): Promise<void> {
     try {
-      const initialState = await this.loadInitialState();
+      const initialState = { ...(await this.loadInitialState()), focus };
+      // Passing state re-renders an already-open panel, so a deep link lands on
+      // its field whether or not the view was already on screen.
       await this.show('Computor Settings', initialState);
     } catch (error: any) {
       notify.error(`Failed to open settings: ${error?.message || error}`);
