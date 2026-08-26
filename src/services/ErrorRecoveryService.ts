@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BackendConnectionService } from './BackendConnectionService';
+import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { HttpError } from '../exceptions/errors/HttpError';
 import { ErrorDisplayStrategyFactory } from '../exceptions/ErrorDisplayStrategy';
 import { notify } from '../utils/notify';
@@ -80,20 +81,20 @@ export class AuthenticationErrorStrategy implements ErrorRecoveryStrategy {
            error.message.includes('Unauthorized');
   }
 
+  /**
+   * 401s are normally absorbed by BearerTokenHttpClient's refresh; reaching
+   * here means the credential is genuinely dead. Report it through the one
+   * credential path (computor-org/issues#247) — which names the expiry, offers
+   * sign-in rather than "reload the window", and keeps the blocked action —
+   * then rethrow so the caller does not mistake this for a recovery.
+   *
+   * Deliberately not awaited: this used to block on its own dialog, which
+   * during a silent session restore hung activation behind a prompt the user
+   * could not reach (see `probeToken` in extension.ts).
+   */
   async recover(error: Error): Promise<void> {
-    // Note: 401 errors are typically handled by BearerTokenHttpClient's token refresh mechanism.
-    // This recovery strategy is a fallback for when token refresh fails.
-    const action = await notify.error(
-      'Authentication failed. Your session may have expired. Please reload the window to refresh your session.',
-      'Reload Window',
-      'Cancel'
-    );
-
-    if (action === 'Reload Window') {
-      await vscode.commands.executeCommand('workbench.action.reloadWindow');
-    } else {
-      throw error;
-    }
+    void CredentialRecoveryService.getInstance().reportExpired({ kind: 'backend' });
+    throw error;
   }
 }
 

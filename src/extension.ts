@@ -26,6 +26,7 @@ import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
 import { WebSocketService } from './services/WebSocketService';
 import { BackendConnectionService } from './services/BackendConnectionService';
+import { CredentialRecoveryService } from './services/CredentialRecoveryService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
 
@@ -180,8 +181,12 @@ async function activateSession(
   // When the session can't be renewed, the client trips its breaker and calls
   // this once — offer an immediate re-login instead of silently failing fast.
   if (client instanceof BearerTokenHttpClient) {
-    client.setOnUnauthorized(() => { void handleSessionExpired(context); });
+    client.setOnUnauthorized(() => { void handleSessionExpired(); });
   }
+
+  // Signed in again: hand back whatever the dead credential interrupted. A no-op
+  // for an ordinary first sign-in, where nothing was blocked.
+  void CredentialRecoveryService.getInstance().credentialRestored({ kind: 'backend' });
 
   if (extensionUpdateService) {
     extensionUpdateService.checkForUpdates().catch(err => {
@@ -194,15 +199,14 @@ async function activateSession(
  * Invoked once (by the session client's circuit breaker) when the SSO session
  * has died and can't be refreshed. Offers a re-login; declining leaves the
  * client failing fast locally, so the backend isn't hammered with doomed calls.
+ *
+ * Routed through CredentialRecoveryService so this shares one expiry message
+ * with every other 401 surface, and so whatever the student was doing when the
+ * session died is offered back once they are signed in
+ * (computor-org/issues#247).
  */
-async function handleSessionExpired(context: vscode.ExtensionContext): Promise<void> {
-  const choice = await notify.warning(
-    'Your Computor session expired. Sign in again to continue.',
-    'Sign in'
-  );
-  if (choice === 'Sign in') {
-    await unifiedLoginFlow(context);
-  }
+async function handleSessionExpired(): Promise<void> {
+  await CredentialRecoveryService.getInstance().reportExpired({ kind: 'backend' });
 }
 
 /** Run the SSO browser handshake inside a cancellable progress notification. */
