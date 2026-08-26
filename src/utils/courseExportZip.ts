@@ -81,10 +81,12 @@ function buildTreePath(
 }
 
 function flatNameFor(content: CourseContentStudentList): string {
-  const exampleId = content.submission_group?.example_identifier;
+  // The deployment directory first, never the example identifier: one example
+  // can serve two contents of a course, and naming both folders after it
+  // collapsed them into one inside the export (issues#150).
   const directory = (content as any)?.directory as string | undefined;
   const fallback = content.path?.split('.').pop();
-  return sanitizeContentDirName(exampleId || (directory ? path.basename(directory) : '') || fallback || content.id);
+  return sanitizeContentDirName((directory ? path.basename(directory) : '') || fallback || content.id);
 }
 
 function addDirectoryToZip(zip: JSZip, sourceDir: string, zipBasePath: string): void {
