@@ -75,6 +75,7 @@ import { showGettingStarted } from './commands/showGettingStarted';
 import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
 import { reportProblem } from './commands/reportProblem';
 import { IssueReportStatusBarService } from './ui/IssueReportStatusBarService';
+import { COMPUTOR_MARKER, findComputorMarker } from './activation';
 
 interface StoredAuth {
   accessToken: string;
@@ -85,12 +86,15 @@ interface StoredAuth {
 }
 
 
-const computorMarker = '.computor';
-
 function getWorkspaceRoot(): string | undefined {
   const ws = vscode.workspace.workspaceFolders;
   if (!ws || ws.length === 0) return undefined;
   return ws[0]?.uri.fsPath;
+}
+
+/** Every open workspace folder, in contribution order. */
+function workspaceRoots(): string[] {
+  return (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
 }
 
 async function ensureBaseUrl(settings: ComputorSettingsManager): Promise<string | undefined> {
@@ -630,7 +634,7 @@ async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
     }
     return;
   }
-  const file = path.join(root, computorMarker);
+  const file = path.join(root, COMPUTOR_MARKER);
   const existing = await readMarker(file);
 
   // Update marker with backend URL if different or missing
@@ -1945,13 +1949,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }));
   
-  // Check if workspace has .computor file and automatically login if enabled
-  const workspaceRoot = getWorkspaceRoot();
-  if (workspaceRoot && !activeSession) {
-    const computorMarkerPath = path.join(workspaceRoot, computorMarker);
-    if (fs.existsSync(computorMarkerPath)) {
-      void handleComputorWorkspaceDetected(context, computorMarkerPath);
-    }
+  // Sign in, but only in a Computor workspace. `workspaceContains:.computor` is
+  // what woke the extension in the first place, so in the normal case this
+  // marker is already known to exist; the check stays because the palette and
+  // the custom editors can activate us in a folder that has none, and there a
+  // window must stay entirely quiet (computor-org/issues#258).
+  const startupMarker = findComputorMarker(workspaceRoots());
+  if (startupMarker && !activeSession) {
+    void handleComputorWorkspaceDetected(context, startupMarker);
   }
 
   // Change backend URL command
@@ -1980,12 +1985,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Listen for workspace folder changes to detect .computor files
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (workspaceRoot) {
-      const computorMarkerPath = path.join(workspaceRoot, computorMarker);
-      if (fs.existsSync(computorMarkerPath)) {
-        void handleComputorWorkspaceDetected(context, computorMarkerPath);
-      }
+    const marker = findComputorMarker(workspaceRoots());
+    if (marker) {
+      void handleComputorWorkspaceDetected(context, marker);
     }
   }));
 
