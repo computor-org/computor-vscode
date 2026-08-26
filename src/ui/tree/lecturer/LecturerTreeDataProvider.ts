@@ -1148,20 +1148,13 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       };
       
       const created = await this.apiService.createCourseContent(folderItem.course.id, contentData);
-      
-      // Clear cache and refresh
-      // Cache cleared via API
-      
-      // If creating under a parent, refresh the parent node
-      if (parentPath) {
-        const parentContent = existingContents.find(c => c.path === parentPath);
-        if (parentContent) {
-          // Don't need to create new item, just refresh
-          this.refreshNode();
-        }
-      } else {
-        this.refreshNode(folderItem);
-      }
+
+      // The tree reads its contents through the API cache, so a create only
+      // becomes visible once that cache is dropped -- and the refresh must not
+      // hang off finding the parent in `existingContents`, a list read *before*
+      // the create. Both were missing, so a new unit stayed invisible until the
+      // window was reloaded (computor-org/issues#162).
+      await this.forceRefreshCourse(folderItem.course.id);
       return created;
     } catch (error) {
       notify.error(`Failed to create content: ${error}`);

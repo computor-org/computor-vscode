@@ -1125,7 +1125,11 @@ export class LecturerCommands {
     });
     if (!title) { return; }
 
-    await this.treeDataProvider.createCourseContent(
+    // Use the result: a failed create notifies from inside the provider and
+    // returns undefined, and staying silent here is what let a create look
+    // like it had worked (computor-org/issues#162). The provider has already
+    // refreshed the course, so there is nothing to refresh a second time.
+    const created = await this.treeDataProvider.createCourseContent(
       target.folderItem,
       title,
       contentType.id,
@@ -1133,6 +1137,9 @@ export class LecturerCommands {
       this.slugify(title, 'unit'),
       undefined
     );
+    if (!created) { return; }
+
+    notify.info(`Created unit "${title}"`);
   }
 
   private async createAssignment(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
