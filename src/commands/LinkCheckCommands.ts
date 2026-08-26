@@ -344,10 +344,11 @@ export class LinkCheckCommands {
     lines.push('');
     lines.push(
       `${byUrl.size} distinct link(s) in ${collected.itemCount} item(s): ` +
-      `**${broken.length} unreachable**, **${blocked.length} not checkable**, ${okCount} fine.` +
+      `**${broken.length} unreachable**, ` +
       (collected.missing.length > 0
-        ? ` **${collected.missing.length} missing file reference(s)**.`
-        : '')
+        ? `**${collected.missing.length} missing file reference(s)**, `
+        : '') +
+      `${blocked.length} not checkable, ${okCount} fine.`
     );
     lines.push('');
 
@@ -375,12 +376,6 @@ export class LinkCheckCommands {
     };
 
     section('Unreachable', 'These did not answer, or answered that they are gone.', broken);
-    section(
-      'Did not let us check',
-      'These refused an automated request (403, 429 and friends). They usually ' +
-      'work fine in a browser — worth one manual look, not a fix.',
-      blocked
-    );
 
     lines.push('## Missing files inside the example');
     lines.push('');
@@ -403,6 +398,14 @@ export class LinkCheckCommands {
       }
       lines.push('');
     }
+
+    // Last on purpose: the least actionable group (computor-org/issues#362).
+    section(
+      'Not checkable',
+      'These refused an automated request (403, 429 and friends). They usually ' +
+      'work fine in a browser — worth one manual look, not a fix.',
+      blocked
+    );
 
     const directories = WorkspaceStructureManager.getInstance().getDirectories();
     fs.mkdirSync(directories.reports, { recursive: true });
