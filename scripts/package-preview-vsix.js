@@ -15,7 +15,10 @@ const commit = process.env.PREVIEW_COMMIT || "local";
 const branch = process.env.PREVIEW_BRANCH || "local";
 const backendUrl = process.env.PREVIEW_BACKEND_URL || "";
 const previewId = process.env.PREVIEW_ID || branch.replace(/[^A-Za-z0-9_.-]+/g, "-");
-const version = process.env.PREVIEW_VERSION || `2026.10.0-preview.${commit.slice(0, 8)}`;
+// Include the deployment identity so two builds of the same commit cannot
+// overwrite one another in an artifact registry.
+const previewSuffix = crypto.createHash("sha256").update(previewId).digest("hex").slice(0, 8);
+const version = process.env.PREVIEW_VERSION || `2026.10.0-preview.${commit.slice(0, 8)}.${previewSuffix}`;
 const outputDir = path.resolve(process.env.PREVIEW_OUTPUT_DIR || path.join(repo, "artifacts"));
 const output = path.join(outputDir, `computor-${version}.vsix`);
 
@@ -51,6 +54,9 @@ try {
   fs.writeFileSync(tempPackagePath, `${JSON.stringify(tempPackage, null, 2)}\n`);
 
   fs.mkdirSync(outputDir, { recursive: true });
+  if (fs.existsSync(output)) {
+    throw new Error(`preview artifact already exists: ${output}`);
+  }
   const vsce = path.join(repo, "node_modules", ".bin", "vsce");
   if (!fs.existsSync(vsce)) {
     throw new Error("@vscode/vsce is not installed; run npm ci first");
