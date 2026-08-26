@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { CredentialRecoveryService } from '../services/CredentialRecoveryService';
 import { showErrorWithSeverity } from '../utils/errorDisplay';
 
 export type CommandHandler = (...args: any[]) => any;
@@ -13,6 +14,11 @@ export type CommandHandler = (...args: any[]) => any;
  * surfaced via the error catalog (showErrorWithSeverity) instead of
  * disappearing into the extension host log. Handlers may still catch their
  * own errors for command-specific messaging.
+ *
+ * A dead credential is pulled out of that generic path first: it gets its own
+ * message and a deep link to the token entry that fixes it, and this is the one
+ * place that knows both the command id and its arguments, so it is where the
+ * interrupted action is captured for retry (computor-org/issues#247).
  */
 export function commandRegistrar(context: vscode.ExtensionContext): (id: string, handler: CommandHandler) => void {
   return (id, handler) => {
@@ -21,6 +27,9 @@ export function commandRegistrar(context: vscode.ExtensionContext): (id: string,
         return await handler(...args);
       } catch (error) {
         console.error(`[command:${id}] Unhandled error:`, error);
+        if (await CredentialRecoveryService.getInstance().handleCommandFailure(id, args, error)) {
+          return;
+        }
         showErrorWithSeverity(error instanceof Error ? error : new Error(String(error)));
       }
     }));

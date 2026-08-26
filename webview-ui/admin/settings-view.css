@@ -52,6 +52,18 @@
   margin-top: auto;
 }
 
+/* Deep-linked field: a credential notification sent the user to this exact
+   entry, so it flashes once instead of leaving them to find it. Fades out on
+   its own — the class is removed after the animation. */
+.field-highlight {
+  animation: field-highlight-pulse 2s ease-out;
+}
+
+@keyframes field-highlight-pulse {
+  0%, 55% { box-shadow: 0 0 0 2px var(--c-focus); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}
+
 /* Provider stored tokens list */
 .provider-stored-list {
   display: flex;

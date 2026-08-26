@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
+import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { OrganizationList, CourseList } from '../types/generated';
 import { execAsync } from '../utils/exec';
 import { addTokenToGitUrl, extractOriginFromGitUrl, hasNonOAuthEmbeddedCredentials, stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
@@ -280,10 +281,21 @@ export class RepositoryTokenManager {
 
     notify.info(`GitLab token stored for ${gitlabUrl}`);
 
-    // Refresh any repositories that already use this origin
-    void this.updateWorkspaceRemotes(gitlabUrl, token).catch((error) => {
-      console.warn('[RepositoryTokenManager] Failed to refresh workspace remotes:', error);
-    });
+    // Refresh any repositories that already use this origin, and only then
+    // offer back whatever this dead credential interrupted — a retry that beats
+    // the remote rewrite would just re-authenticate with the old token
+    // (computor-org/issues#247).
+    void this.updateWorkspaceRemotes(gitlabUrl, token)
+      .catch((error) => {
+        console.warn('[RepositoryTokenManager] Failed to refresh workspace remotes:', error);
+      })
+      .then(() => CredentialRecoveryService.getInstance().credentialRestored({
+        kind: 'gitProvider',
+        url: gitlabUrl
+      }))
+      .catch((error) => {
+        console.warn('[RepositoryTokenManager] Credential retry prompt failed:', error);
+      });
   }
 
   /**

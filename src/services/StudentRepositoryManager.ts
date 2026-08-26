@@ -15,6 +15,7 @@ import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
 import type { CourseMemberRepositoryGet } from '../types/courseGit';
 import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
+import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { propagateForgejoCloneCredential } from './ForgejoCredentialFanout';
 import { PushHealthRegistry } from './PushHealthRegistry';
 import { isGitAuthenticationError } from '../utils/gitErrors';
@@ -991,6 +992,10 @@ export class StudentRepositoryManager {
       const existingToken = await this.gitLabTokenManager.getToken(origin);
       const token = await this.gitLabTokenManager.requestAndStoreToken(origin, existingToken);
       if (!token) {
+        // Dismissing the input box used to end the story silently. Leave the
+        // route to the Settings entry for this server open instead
+        // (computor-org/issues#247).
+        void CredentialRecoveryService.getInstance().reportExpired({ kind: 'gitProvider', url: origin });
         return false;
       }
 

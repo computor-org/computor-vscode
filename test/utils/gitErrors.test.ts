@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 
-import { isGitAuthenticationError } from '../../src/utils/gitErrors';
+import { extractAuthFailureOrigin, isGitAuthenticationError } from '../../src/utils/gitErrors';
 
 /**
  * Misreading an error as a rejected credential is not a harmless false
@@ -58,5 +58,33 @@ describe('isGitAuthenticationError', () => {
     expect(isGitAuthenticationError(undefined)).to.equal(false);
     expect(isGitAuthenticationError(null)).to.equal(false);
     expect(isGitAuthenticationError({})).to.equal(false);
+  });
+});
+
+describe('extractAuthFailureOrigin', () => {
+  it('reads the origin out of the URL git quoted back', () => {
+    expect(extractAuthFailureOrigin({
+      stderr: "fatal: Authentication failed for 'https://git.example.org/itp/student-42.git/'"
+    })).to.equal('https://git.example.org');
+
+    expect(extractAuthFailureOrigin({
+      stderr: "fatal: could not read Username for 'https://git.example.org:8443': No such device or address"
+    })).to.equal('https://git.example.org:8443');
+
+    expect(extractAuthFailureOrigin({
+      stderr: "fatal: unable to access 'https://git.example.org/itp/x.git/': The requested URL returned error: 401"
+    })).to.equal('https://git.example.org');
+  });
+
+  it('drops the embedded credential — remotes carry the token in the URL', () => {
+    expect(extractAuthFailureOrigin({
+      stderr: "fatal: Authentication failed for 'https://oauth2:glpat-deadbeefdeadbeef@git.example.org/itp/x.git/'"
+    })).to.equal('https://git.example.org');
+  });
+
+  it('returns undefined when git named no usable URL', () => {
+    expect(extractAuthFailureOrigin({ stderr: 'remote: HTTP Basic: Access denied' })).to.equal(undefined);
+    expect(extractAuthFailureOrigin({ message: "fatal: unable to access 'not a url'" })).to.equal(undefined);
+    expect(extractAuthFailureOrigin(undefined)).to.equal(undefined);
   });
 });

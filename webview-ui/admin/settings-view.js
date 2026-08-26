@@ -11,7 +11,10 @@
     providerEntries: [],
     backendUrlValidationStatus: 'pending',
     backendUrlValidationMessage: '',
-    notice: null
+    notice: null,
+    // { section: 'gitProvider' | 'backendUrl', url? } — set when a credential
+    // notification deep-linked here (computor-org/issues#247).
+    focus: null
   };
   Object.assign(state, window.__INITIAL_STATE__ || {});
 
@@ -523,6 +526,68 @@
     return state.providerEntries.find(function (en) { return en.id === entryId; });
   }
 
+  // --- Deep link (computor-org/issues#247) ---
+
+  // Attribute values here are URLs and ids, so build no selector out of them —
+  // match on the parsed attribute instead of quoting into a CSS string.
+  function findByAttr(selector, attr, value) {
+    var nodes = document.querySelectorAll(selector);
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute(attr) === String(value)) { return nodes[i]; }
+    }
+    return null;
+  }
+
+  function highlightField(el) {
+    if (!el) { return; }
+    if (el.scrollIntoView) { el.scrollIntoView({ block: 'center' }); }
+    el.focus();
+    el.classList.add('field-highlight');
+    setTimeout(function () { el.classList.remove('field-highlight'); }, 2000);
+  }
+
+  /**
+   * Open on the entry the user was sent here to fix. Consumed once: a later
+   * re-render (validation result, save) must not yank focus back.
+   */
+  function applyFocus() {
+    var focus = state.focus;
+    if (!focus) { return; }
+    state.focus = null;
+
+    if (focus.section === 'backendUrl') {
+      highlightField(document.getElementById('backend-url'));
+      return;
+    }
+    if (focus.section !== 'gitProvider') { return; }
+
+    var url = focus.url ? normalizeUrl(focus.url) : '';
+    var isStored = !!url && (state.storedProviderTokens || []).some(function (t) {
+      return t.url === url;
+    });
+
+    if (isStored) {
+      // Expand that server's "Update" panel — replacing a token is the point.
+      updatingTokens[url] = { token: '', validationStatus: 'pending', validationMessage: '' };
+      render();
+      highlightField(findByAttr('.provider-update-token-input', 'data-url', url));
+      return;
+    }
+
+    // Nothing stored for this realm yet (or git never named it): a pre-filled
+    // new entry is still a better landing spot than the view root.
+    var entry = {
+      id: nextEntryId++,
+      url: url,
+      token: '',
+      validationStatus: 'pending',
+      validationMessage: ''
+    };
+    state.providerEntries.push(entry);
+    render();
+    highlightField(findByAttr(url ? '.provider-token-input' : '.provider-url-input', 'data-entry-id', entry.id));
+  }
+
   // --- Message handling ---
 
   window.addEventListener('message', function (event) {
@@ -546,7 +611,7 @@
         handleProviderTokenRemoved(message.data);
         break;
       case 'update':
-        if (message.data) { Object.assign(state, message.data); render(); }
+        if (message.data) { Object.assign(state, message.data); render(); applyFocus(); }
         break;
     }
   });
@@ -628,4 +693,5 @@
   }
 
   render();
+  applyFocus();
 })();
