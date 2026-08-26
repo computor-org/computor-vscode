@@ -25,8 +25,14 @@ export function showErrorWithSeverity(error: Error | HttpError, fallbackMessage?
     const backendError = error.backendError;
     if (backendError) {
       const title = backendError.title;
-      // Use plain message to avoid redundancy (markdown often includes the title again)
-      const body = backendError.message.plain;
+      // The server's reason for THIS request first; the catalog's per-code text
+      // only when it sent none. The catalog text describes the *code*, not the
+      // failure, so it is wrong whenever a call site carries a coarse or plain
+      // mistaken code — issue #121 was a backend config error tagged
+      // CONTENT_001, which this line turned into "Course Content Not Found:
+      // The requested course content was not found." and threw the real
+      // reason away. Use plain, not markdown: markdown repeats the title.
+      const body = error.serverDetail || backendError.message.plain;
       message = `${title}: ${body}`;
     }
   }
