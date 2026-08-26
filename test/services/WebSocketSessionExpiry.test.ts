@@ -5,6 +5,7 @@ import {
   WS_CLOSE_TOKEN_EXPIRED
 } from '../../src/services/WebSocketService';
 import { CredentialRecoveryService } from '../../src/services/CredentialRecoveryService';
+import { HttpError } from '../../src/exceptions/errors/HttpError';
 
 /**
  * The client half of computor-org/issues#257.
@@ -57,7 +58,8 @@ describe('WebSocketService session expiry (#257)', () => {
         if (refreshedTo !== undefined) {
           token = refreshedTo;
         }
-      }
+      },
+      get: async () => ({ data: {} })
     } as any);
 
     // The transport itself is out of scope here — these tests are about which
@@ -157,6 +159,24 @@ describe('WebSocketService session expiry (#257)', () => {
 
     expect(service.rejectedToken).to.equal(undefined);
     expect(service.sessionRecoveryAttempts).to.equal(0);
+  });
+
+  it('names the session when it stops reconnecting because of a 401', async () => {
+    // The reported state: socket gone, UI half-alive, HTTP returning 401. A
+    // close code cannot tell that apart from a dead network, so one probe does.
+    service.httpClient.get = async () => { throw new HttpError('nope', 401, 'Unauthorized'); };
+
+    await service.diagnoseGivingUp();
+
+    expect(reported).to.equal(1);
+  });
+
+  it('stays quiet when it stops reconnecting because of the network', async () => {
+    service.httpClient.get = async () => { throw new Error('ECONNREFUSED'); };
+
+    await service.diagnoseGivingUp();
+
+    expect(reported, 'a network outage is not a credential problem').to.equal(0);
   });
 
   it('keeps the two auth close codes apart', () => {

@@ -854,6 +854,31 @@ export class WebSocketService {
   }
 
   /**
+   * We have stopped reconnecting. Find out whether the session is the reason.
+   *
+   * This is the state computor-org/issues#257 actually reported: the socket is
+   * gone, the UI still looks half-alive, and authenticated requests are coming
+   * back 401. Because a close code cannot tell a dead session from a dead
+   * network, one cheap `GET /user` settles it. A 401 means the session, and the
+   * user gets the same re-login path every other 401 gives them; anything else
+   * is the network, where the status bar's click-to-reconnect is the right
+   * amount of noise.
+   */
+  private async diagnoseGivingUp(): Promise<void> {
+    if (!this.httpClient) {
+      return;
+    }
+
+    try {
+      await this.httpClient.get('/user');
+    } catch (error) {
+      if (CredentialRecoveryService.getInstance().classify(error)?.kind === 'backend') {
+        await this.reportSessionExpired();
+      }
+    }
+  }
+
+  /**
    * Answer the server's expiry warning by re-arming the connection in place.
    *
    * Reconnecting would also work, but it drops every subscription and
@@ -892,6 +917,7 @@ export class WebSocketService {
       console.warn('[WebSocket] Max reconnect attempts reached');
       this.connectionState = 'disconnected';
       this.updateStatusBar();
+      void this.diagnoseGivingUp();
       return;
     }
 
