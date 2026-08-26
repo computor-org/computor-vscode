@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
 import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated } from '../types/generated/websocket';
+import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { notify } from '../utils/notify';
 
 // WebSocket message types from server
@@ -104,6 +105,27 @@ export interface WsMaintenanceReminder {
 export interface WsSystemConnected {
   type: 'system:connected';
   user_id: string;
+  /** When the credential behind this connection expires; absent when it never does. */
+  expires_at?: string | null;
+}
+
+/**
+ * The session behind this socket is about to expire (computor-org/issues#257).
+ * The server sends this once, shortly before it closes the connection with
+ * {@link WS_CLOSE_TOKEN_EXPIRED} — it is the window in which a refresh can
+ * keep the connection instead of losing it.
+ */
+export interface WsAuthExpiring {
+  type: 'system:auth_expiring';
+  expires_at: string;
+  seconds_remaining: number;
+}
+
+/** The server accepted a `system:reauth`; the connection lives on. */
+export interface WsReauthed {
+  type: 'system:reauthed';
+  user_id: string;
+  expires_at?: string | null;
 }
 
 // Re-export deployment/course event types from generated types
@@ -113,7 +135,7 @@ export type WsDeploymentUnassigned = WSDeploymentUnassigned & { type: 'deploymen
 export type WsCourseContentUpdated = WSCourseContentUpdated & { type: 'course:content_updated' };
 export type WsCourseUpdated = WSCourseUpdated & { type: 'course:updated' };
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated;
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -146,7 +168,26 @@ export interface WsPing {
   type: 'system:ping';
 }
 
-export type WsClientMessage = WsSubscribe | WsUnsubscribe | WsTypingStart | WsTypingStop | WsReadMark | WsPing;
+/** Hand the server a freshly refreshed token so this connection survives. */
+export interface WsReauth {
+  type: 'system:reauth';
+  token: string;
+}
+
+export type WsClientMessage = WsSubscribe | WsUnsubscribe | WsTypingStart | WsTypingStop | WsReadMark | WsPing | WsReauth;
+
+/**
+ * The credential was rejected outright — the user needs to supply a new one.
+ */
+export const WS_CLOSE_AUTH_FAILED = 4001;
+
+/**
+ * The credential that opened this connection has since expired
+ * (computor-org/issues#257). Distinct from {@link WS_CLOSE_AUTH_FAILED} on
+ * purpose: this one is usually fixed by a silent session refresh, so it must
+ * not send the user to a sign-in prompt on the first occurrence.
+ */
+export const WS_CLOSE_TOKEN_EXPIRED = 4003;
 
 // Channel scope types
 export type ChannelScope = 'submission_group' | 'course_content' | 'course';
@@ -194,6 +235,17 @@ export class WebSocketService {
   private readonly typingTimeoutMs = 5000;
   private statusBarItem: vscode.StatusBarItem;
   private maintenanceStatusBarItem: vscode.StatusBarItem;
+  /**
+   * The token the server last closed us on. Reconnecting with it would be
+   * answered by the same close, forever — the loop that made an expired
+   * session look like a flapping network (computor-org/issues#257).
+   */
+  private rejectedToken?: string;
+  /** The token the current connection was opened (or last re-armed) with. */
+  private activeToken?: string;
+  /** Consecutive failed attempts to recover an expired session. */
+  private sessionRecoveryAttempts = 0;
+  private readonly maxSessionRecoveryAttempts = 3;
 
   private constructor(settingsManager: ComputorSettingsManager) {
     this.settingsManager = settingsManager;
@@ -232,7 +284,19 @@ export class WebSocketService {
       return;
     }
 
+    // Never hand the server back a token it has already closed us on: it will
+    // close us again, and the reconnect ladder turns a dead session into an
+    // endless retry loop that never tells anyone anything (#257).
+    if (token === this.rejectedToken) {
+      console.warn('[WebSocket] Refusing to reconnect with an already-rejected token');
+      this.connectionState = 'disconnected';
+      this.updateStatusBar();
+      await this.reportSessionExpired();
+      return;
+    }
+
     this.connectionState = 'connecting';
+    this.activeToken = token;
     this.updateStatusBar();
     const connectStartTime = Date.now();
 
@@ -265,6 +329,7 @@ export class WebSocketService {
         this.clearConnectionTimeout();
         this.connectionState = 'connected';
         this.reconnectAttempts = 0;
+        this.sessionRecoveryAttempts = 0;
         this.updateStatusBar();
         this.startPingInterval();
 
@@ -295,14 +360,28 @@ export class WebSocketService {
           handlers.onDisconnected?.();
         });
 
-        // Attempt reconnect if not intentionally closed and not an auth failure
-        if (event.code === 1000 || event.code === 4001 || event.code === 4003) {
-          if (event.code !== 1000) {
-            console.warn(`[WebSocket] Authentication failed (${event.code}), not reconnecting`);
-          }
-        } else {
-          this.scheduleReconnect();
+        if (event.code === 1000) {
+          // Intentional client-side close.
+          return;
         }
+
+        if (event.code === WS_CLOSE_TOKEN_EXPIRED) {
+          // The session died under a healthy connection. This is recoverable
+          // without troubling the user, and used to be indistinguishable from
+          // a hard auth failure: the socket just stopped and stayed stopped
+          // while HTTP started returning 401 (#257).
+          void this.recoverExpiredSession(token);
+          return;
+        }
+
+        if (event.code === WS_CLOSE_AUTH_FAILED) {
+          console.warn('[WebSocket] Token rejected at handshake, not reconnecting');
+          this.rejectedToken = token;
+          void this.reportSessionExpired();
+          return;
+        }
+
+        this.scheduleReconnect();
       };
 
       this.ws.onerror = (event) => {
@@ -451,6 +530,12 @@ export class WebSocketService {
   public async reconnect(): Promise<void> {
     console.log('[WebSocket] Manual reconnect requested');
     this.reconnectAttempts = 0;
+    // An explicit reconnect is the user saying "try again" — usually right
+    // after fixing their credentials — so the refusal to reuse a rejected
+    // token is lifted here. If it really is still dead the server says so
+    // again and we are back where we were.
+    this.rejectedToken = undefined;
+    this.sessionRecoveryAttempts = 0;
     this.disconnect();
     await this.connect();
   }
@@ -518,6 +603,19 @@ export class WebSocketService {
 
         case 'system:connected':
           console.log('[WebSocket] Connected as user:', message.user_id);
+          break;
+
+        case 'system:auth_expiring':
+          // The window before close 4003. Refreshing now keeps the socket and
+          // its subscriptions; ignoring it just means we reconnect instead.
+          console.log(`[WebSocket] Session expires in ${message.seconds_remaining}s, re-authenticating`);
+          void this.reauthenticateInPlace();
+          break;
+
+        case 'system:reauthed':
+          console.log('[WebSocket] Re-authenticated, connection valid until', message.expires_at ?? 'further notice');
+          this.rejectedToken = undefined;
+          this.sessionRecoveryAttempts = 0;
           break;
 
         case 'pong':
@@ -706,6 +804,107 @@ export class WebSocketService {
     }
   }
 
+  /**
+   * The server closed us because our session expired (close 4003).
+   *
+   * Refresh silently and come back — a session that is still renewable should
+   * cost the user nothing, and this is the common case: they left the editor
+   * open over lunch. Only when the refresh stops producing a *different*
+   * token is the session really gone, and then the #247 recovery flow takes
+   * over rather than a second, parallel "please sign in" path being invented
+   * here.
+   *
+   * @param deadToken the token the server just closed us on
+   */
+  private async recoverExpiredSession(deadToken: string): Promise<void> {
+    this.rejectedToken = deadToken;
+    this.sessionRecoveryAttempts++;
+
+    if (this.sessionRecoveryAttempts > this.maxSessionRecoveryAttempts) {
+      console.warn('[WebSocket] Session could not be renewed, handing over to credential recovery');
+      await this.reportSessionExpired();
+      return;
+    }
+
+    console.log(
+      `[WebSocket] Session expired, refreshing (attempt ${this.sessionRecoveryAttempts}/${this.maxSessionRecoveryAttempts})`
+    );
+    await this.ensureFreshToken();
+
+    if (this.httpClient?.getAccessToken() === deadToken) {
+      // Refresh returned the same credential, so there is nothing new to try.
+      // Reconnecting here is what produced the retry loop this replaced.
+      console.warn('[WebSocket] Refresh did not renew the session');
+      await this.reportSessionExpired();
+      return;
+    }
+
+    this.connectionState = 'reconnecting';
+    this.updateStatusBar();
+    await this.connect();
+  }
+
+  /**
+   * Give up quietly on our side and let the one credential-recovery surface
+   * (#247) tell the user, so an expired session says the same thing here as it
+   * does on a failed request.
+   */
+  private async reportSessionExpired(): Promise<void> {
+    await CredentialRecoveryService.getInstance().reportExpired({ kind: 'backend' });
+  }
+
+  /**
+   * We have stopped reconnecting. Find out whether the session is the reason.
+   *
+   * This is the state computor-org/issues#257 actually reported: the socket is
+   * gone, the UI still looks half-alive, and authenticated requests are coming
+   * back 401. Because a close code cannot tell a dead session from a dead
+   * network, one cheap `GET /user` settles it. A 401 means the session, and the
+   * user gets the same re-login path every other 401 gives them; anything else
+   * is the network, where the status bar's click-to-reconnect is the right
+   * amount of noise.
+   */
+  private async diagnoseGivingUp(): Promise<void> {
+    if (!this.httpClient) {
+      return;
+    }
+
+    try {
+      await this.httpClient.get('/user');
+    } catch (error) {
+      if (CredentialRecoveryService.getInstance().classify(error)?.kind === 'backend') {
+        await this.reportSessionExpired();
+      }
+    }
+  }
+
+  /**
+   * Answer the server's expiry warning by re-arming the connection in place.
+   *
+   * Reconnecting would also work, but it drops every subscription and
+   * re-establishes it a moment later; refreshing and sending the new token
+   * keeps the socket, so an hour-long session boundary is invisible.
+   */
+  private async reauthenticateInPlace(): Promise<void> {
+    if (!this.httpClient || !this.isConnected()) {
+      return;
+    }
+
+    await this.ensureFreshToken();
+    const token = this.httpClient.getAccessToken();
+    if (!token || token === this.rejectedToken || token === this.activeToken) {
+      // Nothing was renewed. Re-sending the credential the connection already
+      // holds cannot move its deadline — the server will not extend a session
+      // just because a socket asked — so let the close come and recover from
+      // there instead of pretending.
+      console.warn('[WebSocket] No renewed token to re-authenticate with; waiting for close');
+      return;
+    }
+
+    this.activeToken = token;
+    this.send({ type: 'system:reauth', token });
+  }
+
   private clearConnectionTimeout(): void {
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout);
@@ -718,6 +917,7 @@ export class WebSocketService {
       console.warn('[WebSocket] Max reconnect attempts reached');
       this.connectionState = 'disconnected';
       this.updateStatusBar();
+      void this.diagnoseGivingUp();
       return;
     }
 
