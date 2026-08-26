@@ -369,8 +369,10 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
   }
 
   private deriveAssignmentDirectory(content: CourseContentStudentList): string | undefined {
+    // Not the example identifier: two contents of one course may share an
+    // example and deliberately not share a directory (issues#150). The content
+    // slug is a per-content guess and stays as the last resort.
     const raw = (content as any)?.directory as string | undefined
-      ?? content.submission_group?.example_identifier
       ?? (content.path?.split('.').pop());
     return this.sanitizeAssignmentDirectoryName(raw);
   }

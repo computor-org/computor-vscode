@@ -173,11 +173,16 @@ export class StudentRepositoryManager {
             directory: content.directory,
             exampleIdentifier: content.submission_group?.example_identifier
           });
-          // Use directory from backend when available; otherwise fall back to example_identifier
-          // Treat these as subdirectories inside the repository (not absolute)
+          // The deployment record is the only thing that knows where this
+          // assignment lives -- the example identifier is not, because one
+          // example can be used by two contents of the same course and they
+          // deliberately land in different directories (issues#150). Guessing
+          // from the identifier put the second assignment on the first one's
+          // files. No directory means not released yet; leave it unset.
+          // Treat this as a subdirectory inside the repository (not absolute).
           const subdirectory = (typeof content.directory === 'string' && content.directory.length > 0)
             ? content.directory
-            : content.submission_group?.example_identifier;
+            : undefined;
           console.log(`[StudentRepositoryManager] Subdirectory for ${content.title}: "${subdirectory}"`);
 
           repoMap.set(key, {
@@ -441,12 +446,12 @@ export class StudentRepositoryManager {
             console.log(`[StudentRepositoryManager] Using backend directory for ${repo.assignmentTitle}: ${content.directory}`);
           }
         }
-        // Else use the repoInfo directory (example_identifier)
+        // Else use the deployment directory carried on the repo info
         if (!finalPath && repo.directory) {
           const p = path.join(repoPath, repo.directory);
           if (fs.existsSync(p)) {
             finalPath = p;
-            console.log(`[StudentRepositoryManager] Using example_identifier subdirectory for ${repo.assignmentTitle}: ${repo.directory}`);
+            console.log(`[StudentRepositoryManager] Using deployment subdirectory for ${repo.assignmentTitle}: ${repo.directory}`);
           }
         }
         
@@ -507,12 +512,10 @@ export class StudentRepositoryManager {
             const studentDir = this.workspaceStructure.getDirectories().student;
             const repoPath = path.join(studentDir, expectedDirName);
 
-            // Determine expected subdirectory from backend data first
+            // Only the deployment record knows the directory (issues#150).
             let subdirectory: string | undefined;
             if (typeof content.directory === 'string' && content.directory.length > 0) {
               subdirectory = content.directory;
-            } else if (content.submission_group?.example_identifier) {
-              subdirectory = content.submission_group.example_identifier;
             }
 
             if (subdirectory) {
