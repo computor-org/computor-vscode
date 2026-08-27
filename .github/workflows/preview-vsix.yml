@@ -1,0 +1,66 @@
+name: Preview VSIX
+
+# On-demand VSIX for a feature branch, downloadable from GitHub without going
+# anywhere near the Marketplace.
+#
+# Preview versions carry a semver pre-release suffix
+# (2026.10.4-preview.<commit>.<id>) which the Marketplace rejects outright, so
+# these can only ever be sideloaded — which is the point. The version is based
+# on the NEXT patch so the artifact sorts above whatever is currently published
+# and below the patch it graduates into; a pinned preview therefore is not
+# silently replaced by a Marketplace update.
+
+on:
+  workflow_dispatch:
+    inputs:
+      preview_id:
+        description: Preview/deployment identity (defaults to the branch name)
+        required: false
+        type: string
+      backend_url:
+        description: Backend this build is pinned to (recorded in the metadata)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run type-check
+      - run: npm run test:coverage
+
+      - name: Build preview VSIX
+        id: build
+        env:
+          PREVIEW_COMMIT: ${{ github.sha }}
+          PREVIEW_BRANCH: ${{ github.ref_name }}
+          PREVIEW_ID: ${{ inputs.preview_id }}
+          PREVIEW_BACKEND_URL: ${{ inputs.backend_url }}
+          PREVIEW_OUTPUT_DIR: artifacts
+        run: |
+          npm run package:preview
+          ls -l artifacts
+          echo "version=$(node -p "require('./artifacts/'+require('fs').readdirSync('artifacts').find(f=>f.endsWith('.preview.json'))).version")" >>"$GITHUB_OUTPUT"
+
+      - name: Upload preview VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: computor-preview-${{ github.ref_name }}-${{ github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30

@@ -3,15 +3,17 @@
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
   "version": "2026.10.1",
-  "publisher": "itpcp-tugraz",
+  "publisher": "computor-org",
   "repository": {
     "type": "git",
-    "url": "https://github.com/computor-org/computor-vsc-extension.git"
+    "url": "https://github.com/computor-org/computor-vscode.git"
   },
   "engines": {
     "vscode": "^1.74.0"
   },
   "categories": [
+    "Education",
+    "Testing",
     "Other"
   ],
   "activationEvents": [
@@ -2857,7 +2859,11 @@
     "test:all": "npm run test && npm run test:integration",
     "test:git-basic": "ts-node test/integration/manual/test-git-basic.ts",
     "test:gitlab": "ts-node test/integration/manual/test-gitlab-integration.ts",
-    "test:gitlab-auto": "ts-node test/integration/manual/test-gitlab-auto.ts"
+    "test:gitlab-auto": "ts-node test/integration/manual/test-gitlab-auto.ts",
+    "package:vsix": "npm run package && node scripts/vsce.mjs package",
+    "publish:marketplace": "node scripts/vsce.mjs publish",
+    "release:check": "node scripts/release-channel.mjs check-github",
+    "test:release": "mocha --config .mocharc.unit.json test/release/*.test.ts"
   },
   "devDependencies": {
     "@types/chai": "^4.3.4",
@@ -2891,5 +2897,21 @@
     "semver": "^7.7.2",
     "simple-git": "^3.28.0",
     "xlsx": "^0.18.5"
+  },
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "keywords": [
+    "teaching",
+    "education",
+    "grading",
+    "assignments",
+    "courses",
+    "matlab",
+    "python",
+    "tu graz"
+  ],
+  "homepage": "https://computor.at",
+  "bugs": {
+    "url": "https://github.com/computor-org/issues/issues"
   }
 }
