@@ -18,6 +18,8 @@ import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } f
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { notify } from '../utils/notify';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
+import { pickLatestSubmissionArtifactId, sortSubmissionArtifactsByRecency } from '../utils/submissionArtifacts';
+import { tutorTestTargetFor } from '../ui/tree/tutor/tutorTestTarget';
 interface TutorFilterRefreshable {
   refreshFilters(): void;
 }
@@ -932,13 +934,7 @@ export class TutorCommands {
       if (submissionGroupId) {
         const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroupId);
         if (artifacts && artifacts.length > 0) {
-          // Sort by created_at/uploaded_at descending to get latest
-          const sortedArtifacts = artifacts.sort((a, b) => {
-            const dateA = new Date((a as any).uploaded_at || (a as any).created_at || '').getTime();
-            const dateB = new Date((b as any).uploaded_at || (b as any).created_at || '').getTime();
-            return dateB - dateA;
-          });
-          latestArtifact = sortedArtifacts[0];
+          latestArtifact = sortSubmissionArtifactsByRecency(artifacts)[0];
         }
       }
 
@@ -1165,7 +1161,8 @@ export class TutorCommands {
   }
 
   /**
-   * Run a test on the checked-out submission
+   * Run a test on the checked-out submission - or on the reference, when that
+   * is the node the command was invoked from.
    */
   private async runTestOnSubmission(item: any): Promise<void> {
     try {
@@ -1177,31 +1174,28 @@ export class TutorCommands {
       }
 
       const courseContentId = content.id;
-      const submissionGroupId = content.submission_group?.id;
-
       if (!courseContentId) {
         notify.error('No course content ID available');
         return;
       }
 
-      // Determine the submission path
-      let submissionPath: string | undefined;
+      const assignmentTitle = content.title || 'Assignment';
 
-      // First, check if we have a specific submission artifact in the item
-      if (item?.artifactId && submissionGroupId) {
-        // Testing a specific submission artifact
-        submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, item.artifactId);
-      } else if (submissionGroupId) {
-        // Try to find the latest downloaded submission artifact
-        const artifacts = await this.workspaceStructure.getSubmissionArtifacts(submissionGroupId);
-        if (artifacts.length > 0) {
-          // Use the most recent artifact (they're typically sorted by name/date)
-          const latestArtifact = artifacts[artifacts.length - 1]!;
-          submissionPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, latestArtifact);
+      // "Run Test" hangs off five different nodes. On References the point is
+      // to check that the assignment still passes its own tests, so go there
+      // directly instead of preferring whatever submission is on disk - which
+      // is what the node did until now, without ever saying so.
+      if (tutorTestTargetFor(item) === 'reference') {
+        const referencePath = await this.resolveReferencePath(content);
+        if (referencePath) {
+          await this.runTutorTestAndOpenResults(courseContentId, referencePath, `${assignmentTitle} (reference)`);
         }
+        return;
       }
 
-      if (!submissionPath || !await this.workspaceStructure.directoryExists(submissionPath)) {
+      let submissionPath = await this.resolveDownloadedSubmissionPath(item, content);
+
+      if (!submissionPath) {
         // No submission found, offer to test the reference instead
         const choice = await notify.warning(
           'No student submission found. Would you like to test the reference solution instead?',
@@ -1213,46 +1207,111 @@ export class TutorCommands {
           return;
         }
 
-        // Use reference path
-        const deployment = content.deployment;
-        if (!deployment || !deployment.example_version_id) {
-          notify.error('No reference available for this assignment');
-          return;
-        }
-
-        submissionPath = this.workspaceStructure.getReviewReferencePath(deployment.example_version_id);
-
-        if (!await this.workspaceStructure.directoryExists(submissionPath)) {
-          notify.error('Reference not downloaded. Please checkout the assignment first.');
+        submissionPath = await this.resolveReferencePath(content);
+        if (!submissionPath) {
           return;
         }
       }
 
-      // Get assignment title for display
-      const assignmentTitle = content.title || 'Assignment';
-
-      // Run the test
-      const result = await this.tutorTestService.runTutorTest(
-        courseContentId,
-        submissionPath,
-        assignmentTitle
-      );
-
-      if (!result) {
-        return;
-      }
-
-      // Handle test results
-      if (result.status === 'SUCCESS' || result.status === 'FAILED') {
-        // Open test results if available
-        if (result.testId) {
-          await this.tutorTestService.openTestResults(result.testId, result.artifactsPath, result.testDetails, result.artifacts);
-        }
-      }
-
+      await this.runTutorTestAndOpenResults(courseContentId, submissionPath, assignmentTitle);
     } catch (error: any) {
       console.error('[TutorCommands] Error running test:', error);
       notify.error(`Failed to run test: ${error?.message || error}`);
+    }
+  }
+
+  private async runTutorTestAndOpenResults(courseContentId: string, sourcePath: string, title: string): Promise<void> {
+    const result = await this.tutorTestService.runTutorTest(courseContentId, sourcePath, title);
+    if (!result) {
+      return;
+    }
+
+    if (result.status === 'SUCCESS' || result.status === 'FAILED') {
+      // Open test results if available
+      if (result.testId) {
+        await this.tutorTestService.openTestResults(result.testId, result.artifactsPath, result.testDetails, result.artifacts);
+      }
+    }
+  }
+
+  /**
+   * The downloaded reference for an assignment, offering the download when it
+   * is not there yet rather than sending the tutor off to checkout first.
+   */
+  private async resolveReferencePath(content: CourseContentStudentList): Promise<string | undefined> {
+    const exampleVersionId = content.deployment?.example_version_id;
+    if (!exampleVersionId) {
+      notify.error('No reference available for this assignment');
+      return undefined;
+    }
+
+    const referencePath = this.workspaceStructure.getReviewReferencePath(exampleVersionId);
+    if (await this.workspaceStructure.directoryExists(referencePath)) {
+      return referencePath;
+    }
+
+    const choice = await notify.warning(
+      'Reference not downloaded. Download it now?',
+      'Download Reference',
+      'Cancel'
+    );
+    if (choice !== 'Download Reference') {
+      return undefined;
+    }
+
+    await this.downloadReference({ content });
+    if (!await this.workspaceStructure.directoryExists(referencePath)) {
+      notify.error('Reference still not found after download');
+      return undefined;
+    }
+    return referencePath;
+  }
+
+  /**
+   * The downloaded submission to test: the artifact the node names, else the
+   * student's latest one.
+   */
+  private async resolveDownloadedSubmissionPath(
+    item: any,
+    content: CourseContentStudentList
+  ): Promise<string | undefined> {
+    const submissionGroupId = content.submission_group?.id;
+    if (!submissionGroupId) {
+      return undefined;
+    }
+
+    if (item?.artifactId) {
+      const artifactPath = this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, item.artifactId);
+      return await this.workspaceStructure.directoryExists(artifactPath) ? artifactPath : undefined;
+    }
+
+    const downloadedIds = await this.workspaceStructure.getSubmissionArtifacts(submissionGroupId);
+    if (downloadedIds.length === 0) {
+      return undefined;
+    }
+
+    // Those directories are named by artifact id, so their listing order says
+    // nothing about which submission is the newest - the upload dates do.
+    const downloaded = await Promise.all(downloadedIds.map(async id => ({
+      id,
+      downloadedAt: await this.downloadedAt(submissionGroupId, id)
+    })));
+    const artifacts = await this.apiService.listSubmissionArtifacts(submissionGroupId);
+    const latestId = pickLatestSubmissionArtifactId(downloaded, artifacts);
+
+    return latestId
+      ? this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, latestId)
+      : undefined;
+  }
+
+  private async downloadedAt(submissionGroupId: string, artifactId: string): Promise<number> {
+    try {
+      const stats = await fs.promises.stat(
+        this.workspaceStructure.getReviewSubmissionPath(submissionGroupId, artifactId)
+      );
+      return stats.mtimeMs;
+    } catch {
+      return 0;
     }
   }
 
