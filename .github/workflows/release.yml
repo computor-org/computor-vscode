@@ -97,11 +97,11 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Publishes the exact bytes that were just checksummed and attached.
-      # Authentication is the federated Entra credential; set VSCE_PAT as a
-      # secret instead if a token is ever preferred.
+      # Marketplace publication is opt-in. A normal GitHub release remains a
+      # green, reproducible artifact build; the human publisher may run the
+      # documented Azure-backed command after checking the attached VSIX.
       - name: Azure login
-        if: github.event_name == 'release' || inputs.publish
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -109,7 +109,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Publish to the Marketplace
-        if: github.event_name == 'release' || inputs.publish
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
         env:
           COMPUTOR_RELEASE_CHANNEL: ${{ steps.channel.outputs.channel }}
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
