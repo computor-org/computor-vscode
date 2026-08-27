@@ -1214,7 +1214,10 @@ class UnifiedController {
           if (isRestoringSelection()) return;
           void vscode.commands.executeCommand('computor.tutor.checkout', selected, false);
           if ((selected as any).content?.result) {
-            void vscode.commands.executeCommand('computor.showTestResults', { courseContent: (selected as any).content });
+            // Hand over the tree item itself: it carries the member whose
+            // result this is, and without that the panel falls back to the
+            // signed-in user's own run (#389).
+            void vscode.commands.executeCommand('computor.showTestResults', selected);
           } else {
             void vscode.commands.executeCommand('computor.results.clear');
           }
