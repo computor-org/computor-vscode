@@ -1,0 +1,116 @@
+name: Release VSIX
+
+# Publishing is driven by a GitHub release. The channel is an explicit input
+# rather than something derived from the version number: the Marketplace marks
+# a pre-release solely through vsce's --pre-release flag, and semester CalVer
+# (2026.10.x, 2027.3.x) gives the minor no spare parity to encode it in.
+#
+# The validation step is the guard that the tag, the GitHub pre-release
+# checkbox, and the flag actually passed to vsce all agree.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        required: true
+        type: choice
+        options: [pre-release, stable]
+      publish:
+        description: Publish to the VS Code Marketplace
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  vsix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Resolve channel
+        id: channel
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+              channel=pre-release
+            else
+              channel=stable
+            fi
+          else
+            channel="${{ inputs.channel }}"
+          fi
+          echo "channel=$channel" >>"$GITHUB_OUTPUT"
+          echo "resolved channel: $channel"
+
+      - name: Validate tag, channel, and pre-release flag agree
+        if: github.event_name == 'release'
+        run: |
+          node scripts/release-channel.mjs check-github \
+            "$GITHUB_REF_NAME" \
+            "${{ github.event.release.prerelease }}" \
+            "${{ steps.channel.outputs.channel }}"
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run type-check
+      - run: npm run lint
+      - run: npm run check:assets
+      - run: npm run test:coverage
+
+      - name: Package VSIX
+        env:
+          COMPUTOR_RELEASE_CHANNEL: ${{ steps.channel.outputs.channel }}
+        run: npm run package:vsix
+
+      - name: Checksum
+        run: sha256sum ./*.vsix > SHA256SUMS
+
+      # The VSIX is attached to the GitHub release regardless of whether it is
+      # published, so the artifact is downloadable independently of the
+      # Marketplace.
+      - name: Attach to the GitHub release
+        if: github.event_name == 'release'
+        run: gh release upload "$GITHUB_REF_NAME" ./*.vsix SHA256SUMS --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: computor-vsix-${{ steps.channel.outputs.channel }}
+          path: |
+            ./*.vsix
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 90
+
+      # Publishes the exact bytes that were just checksummed and attached.
+      # Authentication is the federated Entra credential; set VSCE_PAT as a
+      # secret instead if a token is ever preferred.
+      - name: Azure login
+        if: github.event_name == 'release' || inputs.publish
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish to the Marketplace
+        if: github.event_name == 'release' || inputs.publish
+        env:
+          COMPUTOR_RELEASE_CHANNEL: ${{ steps.channel.outputs.channel }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npm run publish:marketplace

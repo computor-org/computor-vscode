@@ -18,7 +18,26 @@ const previewId = process.env.PREVIEW_ID || branch.replace(/[^A-Za-z0-9_.-]+/g, 
 // Include the deployment identity so two builds of the same commit cannot
 // overwrite one another in an artifact registry.
 const previewSuffix = crypto.createHash("sha256").update(previewId).digest("hex").slice(0, 8);
-const version = process.env.PREVIEW_VERSION || `2026.10.0-preview.${commit.slice(0, 8)}.${previewSuffix}`;
+
+// A preview must sort ABOVE whatever is currently published and BELOW the
+// patch it will become, so VS Code neither auto-updates a workshop machine off
+// its pinned preview nor strands it above the release track:
+//
+//   2026.10.3  <  2026.10.4-preview.<commit>.<id>  <  2026.10.4
+//
+// Basing the preview on the next patch is what gives that ordering. Pinning it
+// to a fixed `.0` puts every preview below the entire Marketplace line, which
+// is how a preview install silently gets replaced mid-workshop.
+// Parsed inline rather than imported: release-channel.mjs is ESM and this
+// script stays CommonJS, and the rule is small enough that the coupling would
+// cost more than it saves. scripts/release-channel.mjs owns the same shape.
+const releasedMatch = /^(\d+)\.(\d+)\.(\d+)$/.exec(packageJson.version);
+if (!releasedMatch) {
+  throw new Error(`package.json version must be YYYY.M.patch: ${packageJson.version}`);
+}
+const nextPatch = `${releasedMatch[1]}.${releasedMatch[2]}.${Number(releasedMatch[3]) + 1}`;
+const version = process.env.PREVIEW_VERSION
+  || `${nextPatch}-preview.${commit.slice(0, 8)}.${previewSuffix}`;
 const outputDir = path.resolve(process.env.PREVIEW_OUTPUT_DIR || path.join(repo, "artifacts"));
 const output = path.join(outputDir, `computor-${version}.vsix`);
 

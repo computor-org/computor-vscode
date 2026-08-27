@@ -25,7 +25,9 @@ old/**
 .gitignore
 BACKLOG.md
 CLAUDE.md
-README.md
+RELEASING.md
+# README.md and CHANGELOG.md are the Marketplace listing and its Changelog tab,
+# so they must ship inside the VSIX.
 
 # Node.js
 node_modules/**
@@ -39,6 +41,8 @@ tsconfig.json
 
 # Media and assets (if not needed)
 media/**
+# The extension icon shown on the Marketplace listing.
+!media/icon.png
 schemas/**
 
 # IDE and editor files
