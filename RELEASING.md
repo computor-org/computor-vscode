@@ -16,11 +16,12 @@ the semester starts.
 
 Two rules the tooling enforces, because both are easy to get wrong:
 
-- **No zero-padded month.** `2027.03.1` is not valid semver — numeric
-  identifiers may not have leading zeros, and npm and `vsce` reject it. The
-  release *branch* keeps the padding (`release/2027.03`); the *version* does
-  not (`2027.3.x`). `scripts/release-channel.mjs` fails loudly on this rather
-  than letting it surface during a semester rollover.
+- **No zero-padded month, anywhere.** The branch name and the version prefix
+  are the same string: `release/2027.3` produces `2027.3.x`, so there is
+  nothing to translate between them. A padded month is not valid semver —
+  numeric identifiers may not have leading zeros, and npm and `vsce` reject
+  `2027.03.1` — so `scripts/release-channel.mjs` fails loudly on it as a typo
+  guard rather than letting it surface during a semester rollover.
 - **The minor must be a semester month** (3 or 10). Anything else is a typo.
 
 ## Channels

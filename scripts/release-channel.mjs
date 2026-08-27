@@ -30,10 +30,11 @@ export const SEMESTER_MONTHS = [3, 10];
 /**
  * Parse and validate a Computor extension version.
  *
- * Rejects a leading zero in the minor: `2027.03.1` is not valid semver, and
- * npm/vsce reject it outright. The release branch stays `release/2027.03`; the
- * version it produces is `2027.3.x`. This is the one rollover trap worth
- * failing loudly on rather than discovering in March.
+ * The month is never zero-padded, in the version or in the branch name, so
+ * `release/2027.3` produces `2027.3.x` and there is nothing to translate
+ * between the two. The leading-zero check below is therefore a typo guard
+ * rather than a conversion: a padded month is not valid semver and npm/vsce
+ * reject it, so it fails here instead of at publish time.
  */
 export function parseVersion(version) {
   if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
@@ -78,12 +79,13 @@ export function releaseTag(version) {
 }
 
 /**
- * The release branch a version belongs to, with the month zero-padded back.
- * `2027.3.4` -> `release/2027.03`.
+ * The release branch a version belongs to. The branch name and the version
+ * prefix are the same string, so this is a plain concatenation:
+ * `2027.3.4` -> `release/2027.3`.
  */
 export function releaseBranch(version) {
   const { year, month } = parseVersion(version);
-  return `release/${year}.${String(month).padStart(2, "0")}`;
+  return `release/${year}.${month}`;
 }
 
 /**

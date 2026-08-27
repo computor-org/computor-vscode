@@ -22,7 +22,8 @@ describe('release version rules', () => {
   });
 
   it('rejects a zero-padded month, which is invalid semver', () => {
-    // The release branch is release/2027.03; the version it produces is 2027.3.x.
+    // Months are never padded, in a version or a branch name. This is a typo
+    // guard: npm and vsce reject 2027.03.1 outright.
     expect(() => releaseChannel.parseVersion('2027.03.1')).to.throw(/leading zero/);
   });
 
@@ -35,10 +36,10 @@ describe('release version rules', () => {
     expect(() => releaseChannel.parseVersion('2026.10.1-preview.abc')).to.throw(/YYYY\.M\.patch/);
   });
 
-  it('maps a version back to its tag and zero-padded release branch', () => {
+  it('maps a version back to its tag and release branch, unpadded', () => {
     expect(releaseChannel.releaseTag('2026.10.1')).to.equal('v2026.10.1');
     expect(releaseChannel.releaseBranch('2026.10.1')).to.equal('release/2026.10');
-    expect(releaseChannel.releaseBranch('2027.3.4')).to.equal('release/2027.03');
+    expect(releaseChannel.releaseBranch('2027.3.4')).to.equal('release/2027.3');
   });
 });
 
