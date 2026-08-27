@@ -127,6 +127,11 @@ interface ExampleQuery {
   directory?: string;
 }
 
+/** Cache slot for one member's view of one course content, seen as staff. */
+function tutorMemberCourseContentCacheKey(memberId: string, courseContentId: string): string {
+  return `tutorMemberCourseContent-${memberId}-${courseContentId}`;
+}
+
 
 export class ComputorApiService {
   private static instance?: ComputorApiService;
@@ -2843,12 +2848,28 @@ export class ComputorApiService {
     }
   }
 
-  // Tutor: get a specific member's course content (fresh)
-  async getTutorMemberCourseContent(memberId: string, courseContentId: string): Promise<any | undefined> {
+  // Tutor: get a specific member's course content
+  //
+  // Unlike the student endpoint this is scoped to the member in the path, so it
+  // is the only one a staff view may ask for someone else's result (#389). It
+  // serializes the detail DTO, i.e. `result` already carries result_json and
+  // result_artifacts.
+  async getTutorMemberCourseContent(
+    memberId: string,
+    courseContentId: string,
+    options?: { force?: boolean }
+  ): Promise<any | undefined> {
     try {
-      const client = await this.getHttpClient();
-      const response = await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`);
-      return response.data;
+      return await this.cachedRequest({
+        cacheKey: tutorMemberCourseContentCacheKey(memberId, courseContentId),
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`)).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
+      });
     } catch (e) {
       console.error('Failed to get tutor member course content:', e);
       return undefined;
@@ -2868,9 +2889,11 @@ export class ComputorApiService {
       `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
       update
     );
-    // Invalidate caches related to this member/content so UI refresh shows changes
+    // Invalidate caches related to this member/content so UI refresh shows
+    // changes. Grading someone else never touches the grader's own student
+    // view, so the member-scoped slots are the ones that go stale here.
     multiTierCache.delete(`tutorContents-${memberId}`);
-    multiTierCache.delete(`studentCourseContent-${courseContentId}`);
+    multiTierCache.delete(tutorMemberCourseContentCacheKey(memberId, courseContentId));
     return response.data;
   }
 
@@ -2887,9 +2910,11 @@ export class ComputorApiService {
       `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
       grade
     );
-    // Invalidate caches related to this member/content so UI refresh shows changes
+    // Invalidate caches related to this member/content so UI refresh shows
+    // changes. Grading someone else never touches the grader's own student
+    // view, so the member-scoped slots are the ones that go stale here.
     multiTierCache.delete(`tutorContents-${memberId}`);
-    multiTierCache.delete(`studentCourseContent-${courseContentId}`);
+    multiTierCache.delete(tutorMemberCourseContentCacheKey(memberId, courseContentId));
     return response.data;
   }
 
