@@ -117,3 +117,6 @@ tmp/
 temp/
 
 old/
+
+# Release build artifacts
+SHA256SUMS
