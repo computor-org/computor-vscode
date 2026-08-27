@@ -554,13 +554,6 @@
   resolved "https://registry.npmjs.org/@types/sarif/-/sarif-2.1.7.tgz"
   integrity sha512-kRz0VEkJqWLf1LLVN4pT1cg1Z9wAuvI6L97V3m2f5B76Tg8d413ddvLBPTEHAZJlnn4XSvu0FkZtViCQGVyrXQ==
 
-"@types/screenshot-desktop@^1.15.0":
-  version "1.15.0"
-  resolved "https://registry.npmjs.org/@types/screenshot-desktop/-/screenshot-desktop-1.15.0.tgz"
-  integrity sha512-99wdiZ+nQVvG7d6ahy5PnNXjVyM832sI9KQBvAojFRjUKs7KZcyE/UssNFPpgsjonLcQHRzhsIhXDiJHQrqZaQ==
-  dependencies:
-    "@types/node" "*"
-
 "@types/semver@^7.3.12":
   version "7.7.1"
   resolved "https://registry.npmjs.org/@types/semver/-/semver-7.7.1.tgz"
@@ -2814,7 +2807,7 @@ minimatch@^9.0.4:
   dependencies:
     brace-expansion "^2.0.2"
 
-minimist@^1.2.0, minimist@^1.2.3, minimist@^1.2.6:
+minimist@^1.2.0, minimist@^1.2.3:
   version "1.2.8"
   resolved "https://registry.npmjs.org/minimist/-/minimist-1.2.8.tgz"
   integrity sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==
@@ -2823,13 +2816,6 @@ minimist@^1.2.0, minimist@^1.2.3, minimist@^1.2.6:
   version "7.1.2"
   resolved "https://registry.npmjs.org/minipass/-/minipass-7.1.2.tgz"
   integrity sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==
-
-mkdirp@^0.5.1:
-  version "0.5.6"
-  resolved "https://registry.npmjs.org/mkdirp/-/mkdirp-0.5.6.tgz"
-  integrity sha512-FP+p8RB8OWpF3YZBCrP5gtADmtXApB5AMLn+vdyA+PyxCjrCs00mjyUozssO33cwDeT3wNGdLxJ5M//YqtHAJw==
-  dependencies:
-    minimist "^1.2.6"
 
 mkdirp-classic@^0.5.2, mkdirp-classic@^0.5.3:
   version "0.5.3"
@@ -3340,13 +3326,6 @@ reusify@^1.0.4:
   resolved "https://registry.npmjs.org/reusify/-/reusify-1.1.0.tgz"
   integrity sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==
 
-rimraf@~2.6.2:
-  version "2.6.3"
-  resolved "https://registry.npmjs.org/rimraf/-/rimraf-2.6.3.tgz"
-  integrity sha512-mwqeW5XsA2qAejG46gYdENaxXjx9onRNCfn7L0duuP4hCuTIi/QO7PDK07KJfp1d+izWPrzEJDcSqBa0OZQriA==
-  dependencies:
-    glob "^7.1.3"
-
 rimraf@^3.0.2:
   version "3.0.2"
   resolved "https://registry.npmjs.org/rimraf/-/rimraf-3.0.2.tgz"
@@ -3395,13 +3374,6 @@ schema-utils@^4.2.0, schema-utils@^4.3.0, schema-utils@^4.3.3:
     ajv "^8.9.0"
     ajv-formats "^2.1.1"
     ajv-keywords "^5.1.0"
-
-screenshot-desktop@^1.15.6:
-  version "1.15.6"
-  resolved "https://registry.npmjs.org/screenshot-desktop/-/screenshot-desktop-1.15.6.tgz"
-  integrity sha512-tPWnew2USoPaIO86hVz9aKOy8yh8wokOQMzkZJ6M7aAIm0yCmFgdy64VOcKWYfe2doCbiXbJXyOHm/g/ysilUw==
-  dependencies:
-    temp "^0.9.4"
 
 secretlint@^10.1.2:
   version "10.2.2"
@@ -3747,14 +3719,6 @@ tar-stream@^2.1.4:
     fs-constants "^1.0.0"
     inherits "^2.0.3"
     readable-stream "^3.1.1"
-
-temp@^0.9.4:
-  version "0.9.4"
-  resolved "https://registry.npmjs.org/temp/-/temp-0.9.4.tgz"
-  integrity sha512-yYrrsWnrXMcdsnu/7YMYAofM1ktpL5By7vZhf15CrXijWWrEYZks5AXBudalfSWJLlnen/QUJUB5aoB0kqZUGA==
-  dependencies:
-    mkdirp "^0.5.1"
-    rimraf "~2.6.2"
 
 terminal-link@^4.0.0:
   version "4.0.0"
