@@ -99,6 +99,16 @@
         "category": "Computor Tutor"
       },
       {
+        "command": "computor.tutor.setMaxTestRuns",
+        "title": "Set Max Test Runs for Student...",
+        "category": "Computor Tutor"
+      },
+      {
+        "command": "computor.tutor.setMaxSubmissions",
+        "title": "Set Max Submissions for Student...",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.changeRealmUrl",
         "title": "Change Backend URL",
         "category": "Computor"
@@ -2354,6 +2364,16 @@
           "command": "computor.tutor.runTest",
           "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo || viewItem == tutorVirtualFolder.submissions || viewItem == tutorSubmissionArtifact || viewItem == tutorVirtualFolder.reference)",
           "group": "3_external@5"
+        },
+        {
+          "command": "computor.tutor.setMaxTestRuns",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "group": "4_limits@1"
+        },
+        {
+          "command": "computor.tutor.setMaxSubmissions",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "group": "4_limits@2"
         },
         {
           "command": "computor.tutor.showMessages",

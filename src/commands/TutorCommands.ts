@@ -431,6 +431,14 @@ export class TutorCommands {
       }
     });
 
+    register('computor.tutor.setMaxTestRuns', async (item: any) => {
+      await this.setGroupBudget(item, 'max_test_runs');
+    });
+
+    register('computor.tutor.setMaxSubmissions', async (item: any) => {
+      await this.setGroupBudget(item, 'max_submissions');
+    });
+
     // Tutor: Download reference (example version)
     register('computor.tutor.downloadReference', async (item: any) => {
       await this.downloadReference(item);
@@ -467,6 +475,90 @@ export class TutorCommands {
     register('computor.tutor.runTest', async (item: any) => {
       await this.runTestOnSubmission(item);
     });
+  }
+
+  /**
+   * Grant one student (one submission group) their own test-run or submission
+   * budget, straight from the assignment row in the tutor tree.
+   *
+   * The refusal a student hits tells them to ask for another attempt, which
+   * until now nobody could act on: the limit lives on the assignment and on the
+   * course, so raising it raised it for the whole class
+   * (computor-org/issues#393). This writes the group-level override instead,
+   * which is the only tier that reaches a single student — and the only one a
+   * `_tutor` may touch.
+   *
+   * The number shown is the *effective* budget, whatever tier it comes from;
+   * clearing the field drops the override rather than granting unlimited, so
+   * the result is reported back from the server's own resolution.
+   */
+  private async setGroupBudget(
+    item: any,
+    field: 'max_test_runs' | 'max_submissions'
+  ): Promise<void> {
+    const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
+    const submissionGroup: SubmissionGroupStudentList | undefined | null = content?.submission_group;
+
+    if (!content) { notify.error('No assignment selected.'); return; }
+    if (!submissionGroup?.id) {
+      notify.warning(
+        'This student has no submission group for the assignment yet, so there is nothing to grant. '
+        + 'A group appears once the assignment is deployed to them.'
+      );
+      return;
+    }
+
+    const isTestRuns = field === 'max_test_runs';
+    const label = isTestRuns ? 'Max Test Runs' : 'Max Submissions';
+    const noun = isTestRuns ? 'test runs' : 'submissions';
+    const current = (isTestRuns ? content.max_test_runs : content.max_submissions) ?? null;
+    const who = submissionGroup.members?.[0]?.full_name || 'this student';
+
+    const answer = await vscode.window.showInputBox({
+      title: `Set ${label} for ${who}`,
+      prompt: `How many ${noun} may ${who} use for "${content.title || content.path}"? `
+        + `Leave empty to follow the assignment's limit.`,
+      value: current === null ? '' : String(current),
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (trimmed.length === 0) { return undefined; }
+        if (!/^\d+$/.test(trimmed)) { return "Enter a whole number, or leave empty to follow the assignment."; }
+        return undefined;
+      }
+    });
+
+    if (answer === undefined) { return; }
+
+    const trimmed = answer.trim();
+    // Empty means "drop the override", not "unlimited": the group falls back to
+    // the assignment and then the course. An unchanged number is a no-op rather
+    // than an override that freezes today's inherited value.
+    const value = trimmed.length === 0 ? null : Number.parseInt(trimmed, 10);
+    if (value !== null && value === current) { return; }
+
+    try {
+      const updated = await this.apiService.updateTutorSubmissionGroupLimits(
+        submissionGroup.id,
+        { [field]: value }
+      );
+
+      const memberId: string | undefined = item?.memberId || TutorSelectionService.getInstance().getCurrentMemberId() || undefined;
+      if (memberId) {
+        this.apiService.clearTutorMemberCourseContentsCache(memberId);
+      }
+      this.treeDataProvider.refresh();
+
+      const effective = isTestRuns ? updated.max_test_runs : updated.max_submissions;
+      const resolved = effective === null || effective === undefined ? 'unlimited' : String(effective);
+      notify.info(
+        value === null
+          ? `${label} for ${who}: following the assignment (${resolved})`
+          : `${label} for ${who}: ${resolved}`
+      );
+    } catch (error: any) {
+      notify.error(`Failed to set ${label}: ${error?.message || error}`);
+    }
   }
 
   // Grading/progress views are lecturer+ only (the backend enforces this too).
