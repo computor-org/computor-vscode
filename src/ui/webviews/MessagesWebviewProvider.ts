@@ -63,6 +63,13 @@ type EnrichedMessage = MessageList & {
   can_edit?: boolean;
   can_delete?: boolean;
   is_author?: boolean;
+  /**
+   * The reader flagged this message back to unread from the panel and the
+   * hold is still on (issue #390). The card shows "Mark read" instead of
+   * "Mark unread" and the dwell observer leaves it alone — otherwise a
+   * re-render would re-watch it and scroll it read behind the reader's back.
+   */
+  manually_unread?: boolean;
 };
 
 export class MessagesWebviewProvider extends BaseWebviewProvider {
@@ -352,6 +359,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (held && resolvedId) {
       const index = held.findIndex((m) => m.id === resolvedId);
       if (index >= 0) {
+        // Broadcasts carry no per-recipient read state (the backend strips
+        // is_read along with is_author), so an edit must not turn what we
+        // already knew about the message into "unknown" — the read sweeps
+        // treat unknown as unread.
+        if (enrichedMessage.is_read === undefined) {
+          enrichedMessage.is_read = held[index]!.is_read;
+        }
         held[index] = enrichedMessage;
       }
     }
@@ -835,7 +849,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       author_name: hasFullName ? fullName : undefined,
       can_edit: isAuthor && !isDeleted,
       can_delete: isAuthor && !isDeleted,
-      is_author: isAuthor
+      is_author: isAuthor,
+      manually_unread: this.manuallyUnread.has(message.id)
     } satisfies EnrichedMessage;
   }
 
@@ -859,7 +874,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       author_name: hasFullName ? fullName : undefined,
       can_edit: isAuthor && !isDeleted,
       can_delete: isAuthor && !isDeleted,
-      is_author: isAuthor
+      is_author: isAuthor,
+      manually_unread: this.manuallyUnread.has(message.id)
     } satisfies EnrichedMessage;
   }
 
