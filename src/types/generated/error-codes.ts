@@ -95,6 +95,7 @@ export const ErrorCodes = {
   CONTENT_007: "CONTENT_007", // Deletion Blocked by Descendant Submissions
   CONTENT_008: "CONTENT_008", // Content Type Kind Change Blocked
   CONTENT_009: "CONTENT_009", // Invalid Content Move
+  CONTENT_010: "CONTENT_010", // Content Type In Use
   VERSION_001: "VERSION_001", // Example Version Already Exists
   DEPLOY_001: "DEPLOY_001", // Assignment Not Released
   DEPLOY_002: "DEPLOY_002", // Deployment Not Found
@@ -112,6 +113,7 @@ export const ErrorCodes = {
   SUBMIT_009: "SUBMIT_009", // Maximum Submissions Reached
   SUBMIT_010: "SUBMIT_010", // Test and Submission Limits Exhausted
   SUBMIT_011: "SUBMIT_011", // Submission Cannot Be Withdrawn
+  SUBMIT_012: "SUBMIT_012", // Assignment Not Available
   TASK_001: "TASK_001", // Task Not Found
   TASK_002: "TASK_002", // Task Submission Failed
   TASK_003: "TASK_003", // Unsupported Execution Backend
@@ -132,6 +134,7 @@ export const ErrorCodes = {
   EXT_004: "EXT_004", // Temporal Service Unavailable
   EXT_005: "EXT_005", // Task Queue Unavailable
   EXT_006: "EXT_006", // Service Unavailable
+  EXT_007: "EXT_007", // Issue Reporting Unavailable
   DB_001: "DB_001", // Database Connection Failed
   DB_002: "DB_002", // Database Query Failed
   DB_003: "DB_003", // Transaction Failed
@@ -652,6 +655,20 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     retryAfter: undefined,
     documentationUrl: undefined,
   },
+  CONTENT_010: {
+    code: "CONTENT_010",
+    httpStatus: 400,
+    category: ErrorCategory.VALIDATION,
+    severity: ErrorSeverity.WARNING,
+    title: "Content Type In Use",
+    message: {
+      plain: "Cannot delete this content type because course content still uses it. Reassign or delete that content first.",
+      markdown: "**Content Type In Use**\n\nThis content type cannot be deleted while course content still refers to it. Change those contents to another type of the same kind, or delete them, and then delete the type.",
+      html: "<strong>Content Type In Use</strong><p>This content type cannot be deleted while course content still refers to it. Change those contents to another type of the same kind, or delete them, and then delete the type.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: undefined,
+  },
   VERSION_001: {
     code: "VERSION_001",
     httpStatus: 409,
@@ -889,6 +906,20 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     },
     retryAfter: undefined,
     documentationUrl: "/docs/testing#limits",
+  },
+  SUBMIT_012: {
+    code: "SUBMIT_012",
+    httpStatus: 400,
+    category: ErrorCategory.VALIDATION,
+    severity: ErrorSeverity.WARNING,
+    title: "Assignment Not Available",
+    message: {
+      plain: "This assignment is not currently available. Your lecturer has hidden it.",
+      markdown: "**Assignment Not Available**\n\nThis assignment is not currently available because your lecturer has hidden it. Your existing work and submissions are untouched and will reappear if it is made visible again.",
+      html: "<strong>Assignment Not Available</strong><p>This assignment is not currently available because your lecturer has hidden it. Your existing work and submissions are untouched and will reappear if it is made visible again.</p>",
+    },
+    retryAfter: undefined,
+    documentationUrl: "/docs/testing#visibility",
   },
   TASK_001: {
     code: "TASK_001",
@@ -1168,6 +1199,20 @@ export const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
       html: "<strong>Service Unavailable</strong><p>An external service is temporarily unavailable. Please try again later.</p>",
     },
     retryAfter: 60,
+    documentationUrl: undefined,
+  },
+  EXT_007: {
+    code: "EXT_007",
+    httpStatus: 503,
+    category: ErrorCategory.EXTERNAL_SERVICE,
+    severity: ErrorSeverity.ERROR,
+    title: "Issue Reporting Unavailable",
+    message: {
+      plain: "Problem reporting is not available on this deployment.",
+      markdown: "**Issue Reporting Unavailable**\n\nProblem reporting is not available on this deployment. Please contact your administrator.",
+      html: "<strong>Issue Reporting Unavailable</strong><p>Problem reporting is not available on this deployment. Please contact your administrator.</p>",
+    },
+    retryAfter: 300,
     documentationUrl: undefined,
   },
   DB_001: {
