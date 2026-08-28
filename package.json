@@ -1219,6 +1219,16 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.setCourseMaxTestRuns",
+        "title": "Set Default Max Test Runs...",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.setCourseMaxSubmissions",
+        "title": "Set Default Max Submissions...",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.archiveCourseContent",
         "title": "Archive",
         "icon": "$(archive)",
@@ -2133,6 +2143,16 @@
         {
           "command": "computor.lecturer.setMaxSubmissions",
           "when": "view == computor.lecturer.courses && viewItem =~ /courseContent.*assignment/",
+          "group": "2_edit@4"
+        },
+        {
+          "command": "computor.lecturer.setCourseMaxTestRuns",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "computor.lecturer.setCourseMaxSubmissions",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
           "group": "2_edit@4"
         },
         {

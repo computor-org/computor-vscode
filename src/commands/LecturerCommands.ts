@@ -416,6 +416,14 @@ export class LecturerCommands {
       await this.setSubmissionLimit(item, 'max_submissions');
     });
 
+    register('computor.lecturer.setCourseMaxTestRuns', async (item: CourseTreeItem) => {
+      await this.setCourseBudget(item, 'max_test_runs');
+    });
+
+    register('computor.lecturer.setCourseMaxSubmissions', async (item: CourseTreeItem) => {
+      await this.setCourseBudget(item, 'max_submissions');
+    });
+
     register('computor.lecturer.renameCourseGroup', async (item: CourseGroupTreeItem) => {
       await this.renameCourseGroup(item);
     });
@@ -1372,6 +1380,62 @@ export class LecturerCommands {
       await this.treeDataProvider.updateCourseContent(item, { [field]: value } as any);
       await this.treeDataProvider.refresh();
       notify.info(value === null ? `${label}: unlimited` : `${label}: ${value}`);
+    } catch (error: any) {
+      notify.error(`Failed to set ${label}: ${error?.message || error}`);
+    }
+  }
+
+  /**
+   * Set a course-wide default for one of the two budgets.
+   *
+   * The bottom tier of the three: an assignment that names its own limit wins
+   * over this, and a submission group's grant wins over both. It exists so a
+   * lecturer can cap a whole course once instead of per assignment
+   * (computor-org/issues#393), and stays lecturer-only — only the group-level
+   * grant is open to tutors.
+   */
+  private async setCourseBudget(
+    item: CourseTreeItem,
+    field: 'max_test_runs' | 'max_submissions'
+  ): Promise<void> {
+    if (!item?.course?.id) {
+      notify.warning('Select a course first.');
+      return;
+    }
+
+    const label = field === 'max_test_runs' ? 'Max Test Runs' : 'Max Submissions';
+    const noun = field === 'max_test_runs' ? 'test runs' : 'submissions';
+    const current = (item.course as any)[field] as number | null | undefined;
+
+    const answer = await vscode.window.showInputBox({
+      title: `Set Course Default: ${label}`,
+      prompt: `How many ${noun} may a student use for an assignment in `
+        + `"${item.course.title || item.course.path}" that does not set its own limit? `
+        + `Leave empty for unlimited.`,
+      value: typeof current === 'number' ? String(current) : '',
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (trimmed.length === 0) { return undefined; }
+        if (!/^\d+$/.test(trimmed)) { return 'Enter a whole number, or leave empty for unlimited.'; }
+        return undefined;
+      }
+    });
+
+    if (answer === undefined) { return; }
+
+    const trimmed = answer.trim();
+    const value = trimmed.length === 0 ? null : Number.parseInt(trimmed, 10);
+    if (value === (current ?? null)) { return; }
+
+    try {
+      await this.apiService.updateCourse(item.course.id, { [field]: value } as any);
+      await this.treeDataProvider.refresh();
+      notify.info(
+        value === null
+          ? `Course default ${label}: unlimited`
+          : `Course default ${label}: ${value} (assignments that set their own limit are unaffected)`
+      );
     } catch (error: any) {
       notify.error(`Failed to set ${label}: ${error?.message || error}`);
     }

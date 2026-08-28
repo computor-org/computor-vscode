@@ -102,10 +102,19 @@ export class CourseTreeItem extends vscode.TreeItem {
     this.id = `course-${course.id}`;
     this.contextValue = 'course';
     this.iconPath = new vscode.ThemeIcon('book');
-    this.tooltip = tooltipWithDescription(
-      [`Course: ${courseTitle}`, `Course Family: ${familyTitle}`, `Organization: ${orgTitle}`],
-      (course as any).description
-    );
+
+    // The course-wide budget defaults, shown only once set: they are the
+    // bottom tier, so an assignment naming its own limit overrides them and a
+    // tutor's per-student grant overrides both.
+    const tooltipParts = [`Course: ${courseTitle}`, `Course Family: ${familyTitle}`, `Organization: ${orgTitle}`];
+    const maxTestRuns = (course as any).max_test_runs;
+    const maxSubmissions = (course as any).max_submissions;
+    if (maxTestRuns != null || maxSubmissions != null) {
+      tooltipParts.push(`Default test runs: ${maxTestRuns ?? 'unlimited'}`);
+      tooltipParts.push(`Default submissions: ${maxSubmissions ?? 'unlimited'}`);
+    }
+
+    this.tooltip = tooltipWithDescription(tooltipParts, (course as any).description);
 
     // Set description to indicate this is a Course
     this.description = 'Course';
