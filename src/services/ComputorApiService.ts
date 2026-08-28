@@ -2441,6 +2441,32 @@ export class ComputorApiService {
     }
   }
 
+  /**
+   * Grant (or withdraw) one submission group's budget override.
+   *
+   * Tutor-reachable, unlike the assignment and course limits, because handing a
+   * single student another attempt is the correction a tutor is there to make
+   * (computor-org/issues#393).
+   *
+   * The two fields are independent: omit one and its override is left alone;
+   * send `null` and the group inherits from the assignment, then the course.
+   */
+  async updateTutorSubmissionGroupLimits(
+    submissionGroupId: string,
+    limits: { max_submissions?: number | null; max_test_runs?: number | null }
+  ): Promise<TutorSubmissionGroupGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<TutorSubmissionGroupGet>(
+      `/tutors/submission-groups/${submissionGroupId}`,
+      limits
+    );
+    // Exact keys rather than `invalidateCachePattern`, which clears whole
+    // cache tiers. The caller clears the member's content listing, which is
+    // the other place the budget is rendered.
+    multiTierCache.delete(`tutorSubmissionGroup-${submissionGroupId}`);
+    return response.data;
+  }
+
   // User Management: lookup by exact filter (email / username / etc).
   // Bypasses the cached "all users" list so the call still works for users
   // who lack list-all permission but have access via the filtered endpoint.
