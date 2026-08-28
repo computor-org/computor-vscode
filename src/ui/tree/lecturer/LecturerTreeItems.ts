@@ -419,7 +419,7 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
     
     const tooltips = {
       'contents': 'Course contents organized in a tree structure',
-      'contentTypes': 'Content types define the kinds of content in this course',
+      'contentTypes': 'Reusable labels (title, color, kind) that course content is tagged with. Creating one does not create any content.',
       'groups': 'Course groups and their members'
     };
     

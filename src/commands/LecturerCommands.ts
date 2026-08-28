@@ -25,6 +25,8 @@ import { ScopeMembershipWebviewProvider } from '../ui/webviews/ScopeMembershipWe
 import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../exceptions/errors/HttpError';
+import { findContentsUsingType, formatContentTypeInUseDetail } from '../utils/contentTypeUsage';
+import { showErrorWithSeverity } from '../utils/errorDisplay';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
@@ -1323,7 +1325,7 @@ export class LecturerCommands {
 
     } catch (error) {
       console.error('Failed to change course content type:', error);
-      notify.error(`Failed to change content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to change content type');
     }
   }
 
@@ -1723,7 +1725,7 @@ export class LecturerCommands {
       notify.info(`Content type renamed to "${newTitle}"`);
       await this.treeDataProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to rename content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to rename content type');
     }
   }
 
@@ -2111,47 +2113,69 @@ export class LecturerCommands {
       return;
     }
 
-    // Select content kind
+    // Select content kind. The kind titles read "Unit" and "Assignment", the
+    // same words as the contents themselves, so spell out that this step picks
+    // the category a *type* belongs to — a lecturer in issues#387 created a
+    // type called "Unit 1" believing it had created a unit.
     const kindItems = contentKinds.map(k => ({
       label: k.title || k.id,
-      description: `ID: ${k.id}`,
+      description: k.submittable ? 'submittable' : 'not submittable',
+      detail: k.has_descendants
+        ? 'Groups other content; students do not submit to it (e.g. a week or a chapter)'
+        : 'Students submit work to content of this kind',
       kindData: k
     }));
-    
+
     const selectedKind = await vscode.window.showQuickPick(
       kindItems,
-      { placeHolder: 'Select content kind' }
+      { placeHolder: 'Which kind of content will this type describe?' }
     );
 
     if (!selectedKind) {
       return;
     }
 
+    const kindLabel = selectedKind.label;
+
+    // Auto-generate slug from title: lowercase, replace spaces with underscores, remove non-alphanumeric
+    const deriveSlug = (value: string): string => value.toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+      .replace(/^_|_$/g, '');
+
     const title = await vscode.window.showInputBox({
-      prompt: 'Enter content type title',
-      placeHolder: 'e.g., Lecture, Assignment, Special Topics'
+      prompt: `Name this ${kindLabel.toLowerCase()} type. This creates a label you can put on content — it does not create a ${kindLabel.toLowerCase()}.`,
+      placeHolder: 'e.g., Lecture Notes, Homework, Bonus Task',
+      validateInput: value => deriveSlug(value || '')
+        ? undefined
+        : 'Use at least one letter or digit — the slug is derived from this name.'
     });
 
     if (!title) {
       return;
     }
 
-    // Auto-generate slug from title: lowercase, replace spaces with underscores, remove non-alphanumeric
-    const slug = title.toLowerCase()
-      .replace(/\s+/g, '_')
-      .replace(/[^a-z0-9_]/g, '')
-      .replace(/^_|_$/g, '');
-
-    if (!slug) {
-      notify.error('Invalid title: cannot generate slug');
-      return;
-    }
+    const slug = deriveSlug(title);
 
     const color = await vscode.window.showInputBox({
       prompt: 'Enter color (optional)',
       placeHolder: 'e.g., #FF5733, blue, rgb(255,87,51)',
       value: 'green'
     });
+
+    // Spell out what is about to be created. A lecturer in issues#387 named a
+    // type "Unit 1" believing they had created a unit, and only found out when
+    // deleting it failed.
+    const proceed = await notify.confirm(
+      `Create content type "${title}"?`,
+      'Create',
+      `Kind: ${kindLabel}\nSlug: ${slug}\nColor: ${color || 'green'}\n\n`
+      + `This adds a type you can assign to course content. It does not create any content.`
+    );
+
+    if (!proceed) {
+      return;
+    }
 
     try {
       await this.apiService.createCourseContentType({
@@ -2166,7 +2190,7 @@ export class LecturerCommands {
       this.treeDataProvider.refreshNode(item);
       notify.info(`Content type "${title}" created successfully (slug: ${slug})`);
     } catch (error) {
-      notify.error(`Failed to create content type: ${error}`);
+      showErrorWithSeverity(error as Error, `Failed to create content type "${title}"`);
     }
   }
 
@@ -2196,27 +2220,60 @@ export class LecturerCommands {
       this.treeDataProvider.refreshNode(parent);
       notify.info('Content type updated successfully');
     } catch (error) {
-      notify.error(`Failed to update content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to update content type');
     }
   }
 
   private async deleteCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
-    const confirmation = await notify.warning(
-      `Are you sure you want to delete content type "${item.contentType.title || item.contentType.slug}"?`,
-      'Yes',
-      'No'
+    const label = item.contentType.title || item.contentType.slug;
+
+    // A type that course content still points at cannot be deleted: the FK is
+    // NOT NULL with ondelete=RESTRICT. The backend refuses with CONTENT_010,
+    // but it can only say how many — the tree already knows *which*, so name
+    // them here instead of sending a request that is bound to fail
+    // (computor-org/issues#387).
+    try {
+      // Skip the cache: a stale entry would block a delete the server would allow.
+      const contents = await this.apiService.getCourseContents(item.course.id, true);
+      const blocking = findContentsUsingType(contents, item.contentType.id);
+      if (blocking.length > 0) {
+        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+          detail: formatContentTypeInUseDetail(label, blocking)
+        });
+        return;
+      }
+    } catch {
+      // Usage unknown (offline, stale cache): fall through and let the server
+      // be the authority.
+    }
+
+    const confirmed = await notify.confirm(
+      `Are you sure you want to delete content type "${label}"?`,
+      'Delete'
     );
 
-    if (confirmation === 'Yes') {
-      try {
-        await this.apiService.deleteCourseContentType(item.contentType.id);
-        notify.info('Content type deleted successfully');
-        
-        // Refresh the tree to show the changes
-        await this.treeDataProvider.refresh();
-      } catch (error) {
-        notify.error(`Failed to delete content type: ${error}`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await this.apiService.deleteCourseContentType(item.contentType.id);
+      notify.info('Content type deleted successfully');
+
+      // Refresh the tree to show the changes
+      await this.treeDataProvider.refresh();
+    } catch (error) {
+      if (error instanceof HttpError && error.errorCode === 'CONTENT_010') {
+        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+          detail: error.serverDetail
+            || 'Course content still uses this type. Change those contents to another content type of the same kind, or delete them first.'
+        });
+        return;
       }
+      showErrorWithSeverity(
+        error instanceof Error ? error : new Error(String(error)),
+        `Failed to delete content type "${label}"`
+      );
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "error_count": 78,
+  "error_count": 81,
   "errors": {
     "AUTH_001": {
       "code": "AUTH_001",
@@ -457,6 +457,19 @@
       },
       "retry_after": null
     },
+    "CONTENT_010": {
+      "code": "CONTENT_010",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "warning",
+      "title": "Content Type In Use",
+      "message": {
+        "plain": "Cannot delete this content type because course content still uses it. Reassign or delete that content first.",
+        "markdown": "**Content Type In Use**\n\nThis content type cannot be deleted while course content still refers to it. Change those contents to another type of the same kind, or delete them, and then delete the type.",
+        "html": "<strong>Content Type In Use</strong><p>This content type cannot be deleted while course content still refers to it. Change those contents to another type of the same kind, or delete them, and then delete the type.</p>"
+      },
+      "retry_after": null
+    },
     "VERSION_001": {
       "code": "VERSION_001",
       "http_status": 409,
@@ -675,6 +688,19 @@
         "plain": "A submission cannot be withdrawn. Ask a tutor if it was made in error.",
         "markdown": "**Submission Cannot Be Withdrawn**\n\nA submission cannot be withdrawn once made. Ask a tutor if it was made in error.",
         "html": "<strong>Submission Cannot Be Withdrawn</strong><p>A submission cannot be withdrawn. Ask a tutor if it was made in error.</p>"
+      },
+      "retry_after": null
+    },
+    "SUBMIT_012": {
+      "code": "SUBMIT_012",
+      "http_status": 400,
+      "category": "validation",
+      "severity": "warning",
+      "title": "Assignment Not Available",
+      "message": {
+        "plain": "This assignment is not currently available. Your lecturer has hidden it.",
+        "markdown": "**Assignment Not Available**\n\nThis assignment is not currently available because your lecturer has hidden it. Your existing work and submissions are untouched and will reappear if it is made visible again.",
+        "html": "<strong>Assignment Not Available</strong><p>This assignment is not currently available because your lecturer has hidden it. Your existing work and submissions are untouched and will reappear if it is made visible again.</p>"
       },
       "retry_after": null
     },
@@ -937,6 +963,19 @@
         "html": "<strong>Service Unavailable</strong><p>An external service is temporarily unavailable. Please try again later.</p>"
       },
       "retry_after": 60
+    },
+    "EXT_007": {
+      "code": "EXT_007",
+      "http_status": 503,
+      "category": "external_service",
+      "severity": "error",
+      "title": "Issue Reporting Unavailable",
+      "message": {
+        "plain": "Problem reporting is not available on this deployment.",
+        "markdown": "**Issue Reporting Unavailable**\n\nProblem reporting is not available on this deployment. Please contact your administrator.",
+        "html": "<strong>Issue Reporting Unavailable</strong><p>Problem reporting is not available on this deployment. Please contact your administrator.</p>"
+      },
+      "retry_after": 300
     },
     "DB_001": {
       "code": "DB_001",
