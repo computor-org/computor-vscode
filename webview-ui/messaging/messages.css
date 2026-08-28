@@ -175,9 +175,11 @@ body {
 }
 
 /*
- * Unread announcement: an accent rail on the leading edge, so the reader can
- * see at a glance where they left off in the list. Cleared in place once the
- * card has actually been on screen — not on panel open.
+ * Unread: an accent rail on the leading edge, so the reader can see at a
+ * glance where they left off in a list of notices. Cleared in place once the
+ * card has actually been on screen — not on panel open. In a conversation
+ * only a message the reader flagged back to unread carries it, until they
+ * press "Mark read" on the card (#390).
  */
 .message-card.message-unread {
   border-left: var(--sp-1) solid var(--c-link);
