@@ -166,12 +166,16 @@ export class StudentCommands {
       return true;
     }
 
+    // Names a tutor too: granting one student extra attempts is a per-group
+    // override, and that override is the one budget write a tutor may make
+    // (computor-org/issues#393). Sending every student to the lecturer for it
+    // was advice about a thing that could not be done at all.
     notify.warning(
       kind === 'test'
         ? `You have used all ${tests.max} test runs and all ${submissions.max} submissions `
-          + 'for this assignment. Ask your lecturer if you need another attempt.'
+          + 'for this assignment. Ask your tutor or lecturer if you need another attempt.'
         : `You have used all ${submissions.max} submissions for this assignment. `
-          + 'Ask your lecturer if you need another attempt.'
+          + 'Ask your tutor or lecturer if you need another attempt.'
     );
     return true;
   }
