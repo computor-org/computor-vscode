@@ -25,6 +25,8 @@ import { ScopeMembershipWebviewProvider } from '../ui/webviews/ScopeMembershipWe
 import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../exceptions/errors/HttpError';
+import { findContentsUsingType, formatContentTypeInUseDetail } from '../utils/contentTypeUsage';
+import { showErrorWithSeverity } from '../utils/errorDisplay';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
@@ -1323,7 +1325,7 @@ export class LecturerCommands {
 
     } catch (error) {
       console.error('Failed to change course content type:', error);
-      notify.error(`Failed to change content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to change content type');
     }
   }
 
@@ -1723,7 +1725,7 @@ export class LecturerCommands {
       notify.info(`Content type renamed to "${newTitle}"`);
       await this.treeDataProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to rename content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to rename content type');
     }
   }
 
@@ -2166,7 +2168,7 @@ export class LecturerCommands {
       this.treeDataProvider.refreshNode(item);
       notify.info(`Content type "${title}" created successfully (slug: ${slug})`);
     } catch (error) {
-      notify.error(`Failed to create content type: ${error}`);
+      showErrorWithSeverity(error as Error, `Failed to create content type "${title}"`);
     }
   }
 
@@ -2196,27 +2198,60 @@ export class LecturerCommands {
       this.treeDataProvider.refreshNode(parent);
       notify.info('Content type updated successfully');
     } catch (error) {
-      notify.error(`Failed to update content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to update content type');
     }
   }
 
   private async deleteCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
-    const confirmation = await notify.warning(
-      `Are you sure you want to delete content type "${item.contentType.title || item.contentType.slug}"?`,
-      'Yes',
-      'No'
+    const label = item.contentType.title || item.contentType.slug;
+
+    // A type that course content still points at cannot be deleted: the FK is
+    // NOT NULL with ondelete=RESTRICT. The backend refuses with CONTENT_010,
+    // but it can only say how many — the tree already knows *which*, so name
+    // them here instead of sending a request that is bound to fail
+    // (computor-org/issues#387).
+    try {
+      // Skip the cache: a stale entry would block a delete the server would allow.
+      const contents = await this.apiService.getCourseContents(item.course.id, true);
+      const blocking = findContentsUsingType(contents, item.contentType.id);
+      if (blocking.length > 0) {
+        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+          detail: formatContentTypeInUseDetail(label, blocking)
+        });
+        return;
+      }
+    } catch {
+      // Usage unknown (offline, stale cache): fall through and let the server
+      // be the authority.
+    }
+
+    const confirmed = await notify.confirm(
+      `Are you sure you want to delete content type "${label}"?`,
+      'Delete'
     );
 
-    if (confirmation === 'Yes') {
-      try {
-        await this.apiService.deleteCourseContentType(item.contentType.id);
-        notify.info('Content type deleted successfully');
-        
-        // Refresh the tree to show the changes
-        await this.treeDataProvider.refresh();
-      } catch (error) {
-        notify.error(`Failed to delete content type: ${error}`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await this.apiService.deleteCourseContentType(item.contentType.id);
+      notify.info('Content type deleted successfully');
+
+      // Refresh the tree to show the changes
+      await this.treeDataProvider.refresh();
+    } catch (error) {
+      if (error instanceof HttpError && error.errorCode === 'CONTENT_010') {
+        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+          detail: error.serverDetail
+            || 'Course content still uses this type. Change those contents to another content type of the same kind, or delete them first.'
+        });
+        return;
       }
+      showErrorWithSeverity(
+        error instanceof Error ? error : new Error(String(error)),
+        `Failed to delete content type "${label}"`
+      );
     }
   }
 

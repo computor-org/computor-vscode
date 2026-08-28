@@ -123,3 +123,62 @@ describe('showErrorWithSeverity', () => {
     expect(shown).to.deep.equal([{ level: 'error', message: 'Something went wrong' }]);
   });
 });
+
+/**
+ * computor-org/issues#387: deleting a content type that course content still
+ * used answered with raw Postgres text, and the command interpolated the error
+ * into a template string so `HttpError:` was prefixed on top of it. The backend
+ * now answers CONTENT_010; this pins that the vendored catalog carries the code
+ * and that the display path renders it as guidance rather than a crash.
+ */
+describe('CONTENT_010 rendering', () => {
+  let shown: Array<{ level: string; message: string }>;
+  let originalCatalog: any;
+  let originalInitialized: any;
+  let originalWarning: any;
+  let originalError: any;
+
+  beforeEach(() => {
+    shown = [];
+    originalCatalog = (errorCatalog as any).catalog;
+    originalInitialized = (errorCatalog as any).initialized;
+    originalWarning = (vscode.window as any).showWarningMessage;
+    originalError = (vscode.window as any).showErrorMessage;
+    (vscode.window as any).showWarningMessage = async (message: string) => {
+      shown.push({ level: 'warning', message });
+      return undefined;
+    };
+    (vscode.window as any).showErrorMessage = async (message: string) => {
+      shown.push({ level: 'error', message });
+      return undefined;
+    };
+    // The real vendored catalog, so a missing re-vendor fails this test.
+    (errorCatalog as any).catalog = require('../../src/exceptions/generated/error-catalog.vscode.json');
+    (errorCatalog as any).initialized = true;
+  });
+
+  afterEach(() => {
+    (errorCatalog as any).catalog = originalCatalog;
+    (errorCatalog as any).initialized = originalInitialized;
+    (vscode.window as any).showWarningMessage = originalWarning;
+    (vscode.window as any).showErrorMessage = originalError;
+  });
+
+  it('renders the server list as a warning, with no HttpError prefix', () => {
+    // The backend sends {message, error_code}, not {detail}.
+    const error = new HttpError('HTTP 400: Bad Request', 400, 'Bad Request', {
+      error_code: 'CONTENT_010',
+      message: "Cannot delete content type 'Unit 1' because 2 course content items still use it: 'Week 1', 'Week 2'. Change them to another content type of the same kind, or delete them first.",
+    });
+
+    showErrorWithSeverity(error, 'Failed to delete content type "Unit 1"');
+
+    expect(shown).to.have.lengthOf(1);
+    expect(shown[0]!.level).to.equal('warning');
+    expect(shown[0]!.message).to.equal(
+      "Content Type In Use: Cannot delete content type 'Unit 1' because 2 course content items still use it: 'Week 1', 'Week 2'. Change them to another content type of the same kind, or delete them first."
+    );
+    expect(shown[0]!.message).to.not.contain('HttpError');
+    expect(shown[0]!.message).to.not.contain('null value in column');
+  });
+});
