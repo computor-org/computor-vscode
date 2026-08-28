@@ -29,7 +29,7 @@ import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat }
 import { runLockedWithProgress } from '../utils/progressLock';
 import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
-import { submissionBudget, testBudget } from '../ui/tree/limitFormatting';
+import { submissionBudget, testBudget, type Budget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
 import { helpPageFor } from '../utils/studentHelpPages';
 import {
@@ -102,15 +102,112 @@ export class StudentCommands {
   private static pickLatestTestedArtifact(
     artifacts: SubmissionArtifactList[]
   ): SubmissionArtifactList | null {
-    const timestampOf = (artifact: SubmissionArtifactList): number => {
-      const raw = artifact.uploaded_at || artifact.created_at;
-      const parsed = raw ? Date.parse(raw) : NaN;
-      return Number.isNaN(parsed) ? 0 : parsed;
-    };
-
     return artifacts
       .filter(artifact => !!artifact.latest_result && !!artifact.version_identifier)
-      .sort((a, b) => timestampOf(b) - timestampOf(a))[0] ?? null;
+      .sort((a, b) => StudentCommands.artifactTimestamp(b) - StudentCommands.artifactTimestamp(a))[0] ?? null;
+  }
+
+  private static artifactTimestamp(artifact: SubmissionArtifactList): number {
+    const raw = artifact.uploaded_at || artifact.created_at;
+    const parsed = raw ? Date.parse(raw) : NaN;
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  /**
+   * The one artifact to act on out of everything stored for a single commit.
+   *
+   * A commit can carry several artifacts - the test command uploads one, submit
+   * uploads another, a group partner uploads a third - so "the artifact for this
+   * version" needs a rule. An already-submitted one wins outright: a commit that
+   * is submitted must never have a *second* artifact marked as submitted, which
+   * would spend another slot of the student's submission budget for work that is
+   * already handed in. Otherwise a tested artifact beats an untested one, and
+   * the newest beats the rest.
+   */
+  private static pickArtifactForVersion(
+    artifacts: SubmissionArtifactList[]
+  ): SubmissionArtifactList | undefined {
+    const rank = (artifact: SubmissionArtifactList): number =>
+      (artifact.submit === true ? 2 : 0) + (artifact.latest_result ? 1 : 0);
+
+    return [...artifacts].sort((a, b) =>
+      (rank(b) - rank(a)) || (StudentCommands.artifactTimestamp(b) - StudentCommands.artifactTimestamp(a))
+    )[0];
+  }
+
+  /**
+   * What submit has to do, given the artifact for the version being submitted.
+   *
+   * `submittedBeforeRun` must be read *before* this run touches anything, and is
+   * the only trustworthy answer to "had the student already submitted this?".
+   * A submit-triggered test run whose test budget is spent is paid for by the
+   * backend with a submission - it sets `submit = true` on the very artifact we
+   * are about to submit (computor-backend api/tests.py). Reading `submit` back
+   * after the run therefore reports our own submission as somebody's earlier
+   * one, which is what made a first-ever submit warn "already submitted"
+   * (computor-org/issues#381).
+   *
+   * `mark-submitted` stays correct in that case: PATCHing `submit: true` onto an
+   * artifact that already has it is a no-op server-side and spends no budget.
+   */
+  private static decideSubmitAction(
+    artifact: SubmissionArtifactList | undefined,
+    submittedBeforeRun: boolean
+  ): 'create' | 'mark-submitted' | 'already-submitted' {
+    if (!artifact?.id) {
+      return 'create';
+    }
+    return submittedBeforeRun ? 'already-submitted' : 'mark-submitted';
+  }
+
+  /**
+   * The one sentence that explains what an exhausted test budget costs.
+   *
+   * Shared so the warning shown when a test is refused and the confirmation
+   * shown when submit is about to run one cannot drift apart: both describe the
+   * same backend rule, that a submit-triggered run is paid for with a submission.
+   */
+  private static testBudgetSpendsSubmissionMessage(tests: Budget, submissions: Budget): string {
+    const opening = `You have used all ${tests.max} test runs for this assignment. `
+      + 'Submitting still runs a test, and that run spends a submission';
+
+    // An uncapped submission budget has no remaining count to quote, and the
+    // arithmetic used to render it as "0 submissions left" — the opposite of
+    // the truth.
+    if (submissions.max === null) {
+      return `${opening}.`;
+    }
+
+    const remaining = Math.max(submissions.max - submissions.used, 0);
+    return `${opening} — you have ${remaining} left.`;
+  }
+
+  /**
+   * Ask before a submit-triggered test run spends a submission.
+   *
+   * With the test budget gone the backend still runs the test that submit
+   * starts — submit has to be able to test — and pays for it with one of the
+   * student's submissions (computor-backend api/tests.py). That must not happen
+   * behind their back. Returns false when the student cancels.
+   */
+  private async confirmTestSpendsSubmission(content: any, group: any): Promise<boolean> {
+    const tests = testBudget(content, group);
+    const submissions = submissionBudget(content, group);
+
+    // Either test budget is left, and the run costs nothing extra, or there are
+    // no submissions either — the backend then refuses the run outright and
+    // `budgetBlocks` has already explained that.
+    if (!tests.exhausted || submissions.exhausted) {
+      return true;
+    }
+
+    const proceed = 'Submit';
+    const choice = await vscode.window.showWarningMessage(
+      StudentCommands.testBudgetSpendsSubmissionMessage(tests, submissions),
+      { modal: true },
+      proceed
+    );
+    return choice === proceed;
   }
 
   /**
@@ -152,16 +249,17 @@ export class StudentCommands {
     const submissions = submissionBudget(content, group);
 
     if (kind === 'test' && !submissions.exhausted) {
-      const remaining = (submissions.max ?? 0) - submissions.used;
       const choice = await vscode.window.showWarningMessage(
-        `You have used all ${tests.max} test runs for this assignment. `
-        + `Submitting still runs a test, and you have ${remaining} submission`
-        + `${remaining === 1 ? '' : 's'} left.`,
+        StudentCommands.testBudgetSpendsSubmissionMessage(tests, submissions),
         'Submit instead',
         'Cancel'
       );
       if (choice === 'Submit instead') {
-        await vscode.commands.executeCommand('computor.student.submitAssignment', item);
+        // This *was* the confirmation that a submission gets spent, so submit
+        // must not ask the same question a second time.
+        await vscode.commands.executeCommand(
+          'computor.student.submitAssignment', item, { budgetConfirmed: true }
+        );
       }
       return true;
     }
@@ -987,7 +1085,10 @@ export class StudentCommands {
       await this.submitDownload(item);
     });
 
-    register('computor.student.submitAssignment', async (itemOrSubmissionGroup: any) => {
+    register('computor.student.submitAssignment', async (
+      itemOrSubmissionGroup: any,
+      options?: { budgetConfirmed?: boolean }
+    ) => {
       try {
         // Hidden content refuses everything, so check it before the budget:
         // "not available" is the true reason, a quota message would mislead.
@@ -1147,8 +1248,33 @@ export class StudentCommands {
           console.warn('[submitAssignment] Failed to check tested artifacts:', listError);
         }
 
-        // Check if current commit has been tested
-        const currentCommitTested = latestTestedArtifact?.version_identifier === currentCommitHash;
+        // Everything stored for HEAD, read once and read *now* — before anything
+        // in this run can write. `headSubmittedBeforeRun` is the only trustworthy
+        // answer to "had the student already submitted this commit?": the test
+        // run started below can itself set `submit` on this very artifact when
+        // the test budget is spent, so asking again afterwards reports our own
+        // submission as an earlier one (computor-org/issues#381).
+        let headArtifacts: SubmissionArtifactList[] = [];
+        try {
+          headArtifacts = await this.apiService.listStudentSubmissionArtifacts({
+            submission_group_id: submissionGroupId,
+            version_identifier: currentCommitHash,
+            with_latest_result: true
+          });
+        } catch (listError) {
+          console.warn('[submitAssignment] Failed to check artifacts for HEAD:', listError);
+        }
+        let headArtifact = StudentCommands.pickArtifactForVersion(headArtifacts);
+        const headSubmittedBeforeRun = headArtifacts.some(artifact => artifact.submit === true);
+
+        // A tested artifact for HEAD wins over any older one — it is the version
+        // the student is submitting. The group-wide list above cannot always see
+        // it, because it filters on `submit: false`.
+        const headTestedArtifact = StudentCommands.pickLatestTestedArtifact(headArtifacts);
+        if (headTestedArtifact) {
+          latestTestedArtifact = headTestedArtifact;
+        }
+        const currentCommitTested = !!headTestedArtifact;
 
         // Resolve testing_service_id authoritatively from the backend before
         // deciding whether to test. The tree item / list DTO can be stale or
@@ -1156,11 +1282,17 @@ export class StudentCommands {
         // first submit skip testing entirely — tests only started running after
         // the student had manually tested once (which refreshed the item)
         // (issue #271). Fall back to the tree item's value if the fetch fails.
+        // The same fetch also carries the budget counters, so the confirmation
+        // below reads fresh numbers without a second request.
+        let budgetContent: any = courseContent;
         if (courseContentId) {
           try {
             const freshContent = await this.apiService.getStudentCourseContent(courseContentId, { force: true });
-            if (freshContent && freshContent.testing_service_id !== undefined) {
-              testingServiceId = freshContent.testing_service_id;
+            if (freshContent) {
+              budgetContent = freshContent;
+              if (freshContent.testing_service_id !== undefined) {
+                testingServiceId = freshContent.testing_service_id;
+              }
             }
           } catch (resolveError) {
             console.warn('[submitAssignment] Failed to resolve testing_service_id from backend; using tree item value:', resolveError);
@@ -1171,37 +1303,28 @@ export class StudentCommands {
         if (testingServiceId && !currentCommitTested) {
           console.log(`[submitAssignment] Testing required (testing_service_id: ${testingServiceId}), running test first...`);
 
-          let testArtifactId: string | undefined;
-
-          // Check if artifact already exists for current commit (untested)
-          try {
-            const existingArtifacts = await this.apiService.listStudentSubmissionArtifacts({
-              submission_group_id: submissionGroupId,
-              version_identifier: currentCommitHash,
-              with_latest_result: true
-            });
-
-            // Any tested artifact for HEAD means there is nothing to run. Search
-            // the whole list rather than trusting [0] to be the tested one.
-            const testedForHead = existingArtifacts.find(artifact => !!artifact.latest_result);
-            if (testedForHead) {
-              console.log(`[submitAssignment] Commit ${currentCommitHash} already tested`);
-              latestTestedArtifact = testedForHead;
-            } else if (existingArtifacts.length > 0 && existingArtifacts[0]) {
-              // Artifact exists but not tested - reuse it for testing
-              console.log(`[submitAssignment] Reusing existing untested artifact ID: ${existingArtifacts[0].id}`);
-              testArtifactId = existingArtifacts[0].id;
+          // The run about to start is paid for with a submission once the test
+          // budget is gone, so say so before spending it. Nothing has been
+          // consumed at this point — the commit and push above cost nothing.
+          if (!options?.budgetConfirmed) {
+            const group = (budgetContent as any)?.submission_group ?? submissionGroup;
+            if (!await this.confirmTestSpendsSubmission(budgetContent, group)) {
+              notify.info('Submission cancelled. Nothing was submitted.');
+              return;
             }
-          } catch (checkError) {
-            console.warn('[submitAssignment] Failed to check existing artifacts:', checkError);
           }
 
-          // Create an artifact whenever HEAD itself has no tested one. The old
-          // condition asked whether *any* tested artifact existed, so an older
-          // tested commit suppressed both the upload and the test run below -
-          // and that older commit was then what got submitted.
-          const headAlreadyTested = latestTestedArtifact?.version_identifier === currentCommitHash;
-          if (!testArtifactId && !headAlreadyTested) {
+          // Reuse the artifact already stored for HEAD rather than uploading a
+          // second copy of the same commit.
+          let testArtifactId: string | undefined =
+            headArtifact && !headArtifact.latest_result ? headArtifact.id : undefined;
+
+          // Upload whenever HEAD has nothing to test. `currentCommitTested` is
+          // derived from HEAD's own artifacts alone: it once asked whether *any*
+          // tested artifact existed, so an older tested commit suppressed both
+          // the upload and the test run below - and that older commit was then
+          // what got submitted.
+          if (!testArtifactId) {
             await vscode.window.withProgress({
               location: vscode.ProgressLocation.Notification,
               title: `Testing ${assignmentTitle}...`,
@@ -1265,17 +1388,22 @@ export class StudentCommands {
             // We still proceed with submission as the student may want to submit anyway
             console.log(`[submitAssignment] Test completed with status: ${testResult.status}, proceeding with submission`);
 
-            // Update latestTestedArtifact with the newly tested artifact
+            // Re-read HEAD so the artifact we just tested carries its result.
+            // Its identity and result are all that is taken from here: `submit`
+            // can have been flipped by this very run, so the already-submitted
+            // answer stays the one read before the run (see decideSubmitAction).
             try {
               const testedArtifacts = await this.apiService.listStudentSubmissionArtifacts({
                 submission_group_id: submissionGroupId,
                 version_identifier: currentCommitHash,
                 with_latest_result: true
               });
-              const refreshed = StudentCommands.pickLatestTestedArtifact(testedArtifacts)
-                ?? testedArtifacts[0];
+              const refreshed = testedArtifacts.find(artifact => artifact.id === testArtifactId)
+                ?? StudentCommands.pickLatestTestedArtifact(testedArtifacts)
+                ?? StudentCommands.pickArtifactForVersion(testedArtifacts);
               if (refreshed) {
                 latestTestedArtifact = refreshed;
+                headArtifact = refreshed;
               }
             } catch (refreshError) {
               console.warn('[submitAssignment] Failed to refresh tested artifact:', refreshError);
@@ -1315,73 +1443,58 @@ export class StudentCommands {
           console.log(`[submitAssignment] Student confirmed submitting older commit ${submissionVersion}`);
         }
 
+        // The artifact this submission acts on, and whether it was already
+        // submitted *before* this run touched anything - the two facts the write
+        // below needs. For HEAD both come from the reading taken before the test
+        // run; an older tested commit came from a `submit: false` listing, so it
+        // cannot have been submitted already.
+        const submitsHead = submissionVersion === currentCommitHash;
+        const targetArtifact = submitsHead ? headArtifact : (latestTestedArtifact ?? undefined);
+        const submittedBeforeRun = submitsHead
+          ? headSubmittedBeforeRun
+          : latestTestedArtifact?.submit === true;
+        const action = StudentCommands.decideSubmitAction(targetArtifact, submittedBeforeRun);
+        console.log(
+          `[submitAssignment] Version ${submissionVersion}, `
+          + `artifact ${targetArtifact?.id ?? 'none'} -> ${action}`
+        );
+
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
           title: `Submitting ${assignmentTitle}...`,
           cancellable: false
         }, async (progress) => {
-          try {
-
-            let existingArtifactId: string | undefined;
-            let alreadySubmitted = false;
-            try {
-              // Get artifact for this version
-              const existingSubmissions = await this.apiService.listStudentSubmissionArtifacts({
-                submission_group_id: submissionGroupId,
-                version_identifier: submissionVersion
-              });
-              console.log(`[submitAssignment] GET response: Found ${existingSubmissions.length} artifacts for version ${submissionVersion}`);
-              console.log(`[submitAssignment] Full response:`, JSON.stringify(existingSubmissions, null, 2));
-
-              if (existingSubmissions.length > 0) {
-                const matchingArtifact = existingSubmissions[0];
-                existingArtifactId = matchingArtifact!.id;
-                alreadySubmitted = matchingArtifact!.submit === true;
-                console.log(`[submitAssignment] Found latest artifact ${existingArtifactId}:`);
-                console.log(`  - submit field value: ${matchingArtifact!.submit}`);
-                console.log(`  - submit field type: ${typeof matchingArtifact!.submit}`);
-                console.log(`  - alreadySubmitted: ${alreadySubmitted}`);
-                console.log(`  - Full artifact:`, JSON.stringify(matchingArtifact, null, 2));
-              } else {
-                console.log(`[submitAssignment] GET returned empty array - no existing artifacts`);
-              }
-            } catch (listError) {
-              console.warn('[submitAssignment] Failed to check existing submissions:', listError);
-            }
-
-            if (existingArtifactId && alreadySubmitted) {
-              // Case 1: Artifact exists AND submit=true → Do nothing
-              reusedExistingSubmission = true;
-              submissionOk = true;
-              progress.report({ message: 'Submission already exists for this version.' });
-              console.log('[submitAssignment] Case 1: Artifact already submitted (submit=true), doing nothing');
-              return;
-            } else if (existingArtifactId && !alreadySubmitted) {
-              // Case 2: Artifact exists AND submit=false → PATCH to mark as submitted
-              console.log('[submitAssignment] Case 2: Artifact exists but submit=false, calling PATCH');
-              progress.report({ message: 'Marking existing artifact as submitted...' });
-              submissionResponse = await this.apiService.updateStudentSubmission(
-                existingArtifactId,
-                { submit: true }
-              );
-            } else {
-              // Case 3: No existing artifact → POST to create new submission
-              console.log('[submitAssignment] Case 3: No existing artifact found, calling POST to create new submission');
-              progress.report({ message: 'Packaging submission archive...' });
-              const archive = await this.createSubmissionArchive(submissionDirectory);
-
-              progress.report({ message: 'Creating submission...' });
-              submissionResponse = await this.apiService.createStudentSubmission({
-                submission_group_id: submissionGroupId,
-                version_identifier: submissionVersion || undefined,
-                submit: true
-              }, archive);
-            }
-
+          if (action === 'already-submitted') {
+            reusedExistingSubmission = true;
             submissionOk = true;
-          } catch (e) {
-            throw e;
+            progress.report({ message: 'Submission already exists for this version.' });
+            return;
           }
+
+          if (action === 'mark-submitted') {
+            // Marking an artifact that already carries `submit` is a no-op
+            // server-side and spends no budget, so this stays correct even when
+            // the test run above was what set it.
+            progress.report({ message: 'Marking existing artifact as submitted...' });
+            submissionResponse = await this.apiService.updateStudentSubmission(
+              targetArtifact!.id,
+              { submit: true }
+            );
+            submissionOk = true;
+            return;
+          }
+
+          // Nothing is stored for this version yet - upload it as the submission.
+          progress.report({ message: 'Packaging submission archive...' });
+          const archive = await this.createSubmissionArchive(submissionDirectory);
+
+          progress.report({ message: 'Creating submission...' });
+          submissionResponse = await this.apiService.createStudentSubmission({
+            submission_group_id: submissionGroupId,
+            version_identifier: submissionVersion || undefined,
+            submit: true
+          }, archive);
+          submissionOk = true;
         });
         if (submissionOk) {
           try {
@@ -1417,7 +1530,14 @@ export class StudentCommands {
           }
 
           if (reusedExistingSubmission) {
-            notify.warning('This artifact has already been submitted. No action taken.');
+            // Only reachable when this exact commit was already submitted before
+            // the student pressed submit, so it is news, not a failure - and it
+            // no longer claims "no action taken" about a submission that did
+            // happen (computor-org/issues#381).
+            notify.info(
+              'This commit was already submitted — there is nothing new to send. '
+              + 'Make a change, then submit again.'
+            );
           } else if (submissionResponse) {
             const successMessage = 'Assignment submitted successfully.';
 
