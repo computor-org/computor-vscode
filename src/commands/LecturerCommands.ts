@@ -42,7 +42,18 @@ import {
   canPostToOrganization
 } from '../services/MessagePermissions';
 import { runLockedWithProgress } from '../utils/progressLock';
-import { canAuthorExamples, canManageAnyCourseFamilyMembers, canManageAnyOrganizationMembers } from '../services/ScopePermissions';
+import {
+  canAuthorExamples,
+  canDeleteAny,
+  canDeleteCourse,
+  canDeleteScope,
+  canManageAnyCourseFamilyMembers,
+  canManageAnyOrganizationMembers
+} from '../services/ScopePermissions';
+import type { ScopePermissionContext } from '../services/ScopePermissions';
+import { formatCascadePreview } from '../services/CascadePreview';
+import type { CascadeDeleteResult } from '../types/generated/common';
+import { CourseSelectionService } from '../services/CourseSelectionService';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -174,6 +185,47 @@ export class LecturerCommands {
 
     register('computor.lecturer.manageCourse', async (item: CourseTreeItem) => {
       await this.manageCourse(item);
+    });
+
+    // Hierarchy lifecycle. Owners (and admins) only; the menu entries are
+    // gated by the coarse `canDeleteAny` context key and each command
+    // re-checks the specific node before doing anything.
+    // Both need a tree node: from the Command Palette there is none, so say
+    // so instead of throwing on `item.organization`.
+    register('computor.lecturer.deleteOrganization', async (item?: OrganizationTreeItem) => {
+      if (!item?.organization) {
+        notify.info('Right-click an organization in the Lecturer tree to delete it.');
+        return;
+      }
+      await this.deleteOrganization(item);
+    });
+    register('computor.lecturer.deleteCourseFamily', async (item?: CourseFamilyTreeItem) => {
+      if (!item?.courseFamily) {
+        notify.info('Right-click a course family in the Lecturer tree to delete it.');
+        return;
+      }
+      await this.deleteCourseFamily(item);
+    });
+    register('computor.lecturer.deleteCourse', async (item?: CourseTreeItem) => {
+      if (item?.course) {
+        await this.deleteCourse(item.course);
+      } else {
+        await this.manageCourse(undefined);
+      }
+    });
+    register('computor.lecturer.archiveCourse', async (item?: CourseTreeItem) => {
+      if (!item?.course) {
+        notify.info('Right-click a course in the Lecturer tree to archive it.');
+        return;
+      }
+      await this.archiveCourse(item.course);
+    });
+    register('computor.lecturer.unarchiveCourse', async (item?: CourseTreeItem) => {
+      if (!item?.course) {
+        notify.info('Right-click an archived course in the Lecturer tree to unarchive it.');
+        return;
+      }
+      await this.unarchiveCourse(item.course);
     });
 
     register('computor.lecturer.configureCourseGit', async (item: CourseTreeItem) => {
@@ -1028,28 +1080,302 @@ export class LecturerCommands {
     }
   }
 
-  private async deleteCourse(course: any): Promise<void> {
-    const confirmation = await notify.confirm(
-      `Are you sure you want to delete the course "${course.title || course.path}"? This action cannot be undone.`,
-      'Delete'
-    );
+  // ---------------------------------------------------------------------
+  // Hierarchy lifecycle: archive / delete of course, family, organization
+  // ---------------------------------------------------------------------
+  //
+  // One flow for all three deletes: owner pre-check → dry run (the server
+  // says what goes, what stays and whether the real call would be refused)
+  // → preview modal → the entity's `path` typed out → the real call. The
+  // typed confirmation is the same gate a folder delete in the documents
+  // tree has (`DocumentsCommands.delete`); nothing here is undoable.
 
-    if (confirmation) {
-      try {
-        // TODO: Implement deleteCourse in ComputorApiService
-        // For now, show a message that this feature is coming soon
-        notify.info(
-          `Course deletion feature is coming soon! Would delete: "${course.title || course.path}"`
-        );
-        
-        // When API is ready, uncomment:
-        // await this.apiService.deleteCourse(course.id);
-        // notify.info('Course deleted successfully');
-        // this.treeDataProvider.refresh();
-      } catch (error) {
-        notify.error(`Failed to delete course: ${error}`);
-      }
+  private async deleteCourse(course: CourseList): Promise<void> {
+    const label = course.title || course.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteCourse(course.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course can delete it.`, {
+        detail: `"${label}" can be deleted by a course owner or an administrator. Ask one of them, or ask to be made an owner.`
+      });
+      return;
     }
+
+    const preview = await this.previewCascadeDelete(
+      `Checking what deleting "${label}" would remove…`,
+      () => this.apiService.deleteCourse(course.id, { dryRun: true })
+    );
+    if (preview === undefined) {
+      return;
+    }
+
+    if (preview.blocked_reason) {
+      // The server already knows the real call would be refused. Two cases:
+      // an admin who has not archived yet (offer to), or an owner whose
+      // course holds student submissions (only an admin can delete it).
+      const needsArchive = ctx.scopes?.is_admin === true
+        && !course.archived_at
+        && /archive/i.test(preview.blocked_reason);
+      const picked = await notify.modal('warning', `Cannot delete "${label}" yet`, {
+        detail: preview.blocked_reason,
+        actions: needsArchive ? ['Archive course'] : []
+      });
+      if (picked === 'Archive course') {
+        await this.archiveCourse(course);
+      }
+      return;
+    }
+
+    const proceed = await notify.modal('warning', `Delete course "${label}"?`, {
+      detail: formatCascadePreview(preview, { kind: 'course' }),
+      actions: ['Continue']
+    });
+    if (proceed !== 'Continue') {
+      return;
+    }
+    if (!(await this.confirmByTypingPath('course', label, course.path))) {
+      return;
+    }
+
+    try {
+      const result = await notify.progress(`Deleting course "${label}"…`, () =>
+        this.apiService.deleteCourse(course.id)
+      );
+      this.reportCascadeResult(`Course "${label}" deleted.`, result);
+      await this.forgetDeletedCourseSelection(course.id);
+      this.treeDataProvider.refresh();
+    } catch (error) {
+      this.showDeleteError(error, `Failed to delete course "${label}"`, 'course');
+    }
+  }
+
+  private async deleteCourseFamily(item: CourseFamilyTreeItem): Promise<void> {
+    const family = item.courseFamily;
+    const label = family.title || family.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteScope('course_family', family.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course family can delete it.`, {
+        detail: `"${label}" can be deleted by a course family owner or an administrator.`
+      });
+      return;
+    }
+
+    const preview = await this.previewCascadeDelete(
+      `Checking what deleting "${label}" would remove…`,
+      () => this.apiService.deleteCourseFamily(family.id, { dryRun: true })
+    );
+    if (preview === undefined) {
+      return;
+    }
+    if (preview.blocked_reason) {
+      await notify.modal('warning', `Cannot delete "${label}" yet`, { detail: preview.blocked_reason });
+      return;
+    }
+
+    const proceed = await notify.modal('warning', `Delete course family "${label}"?`, {
+      detail: formatCascadePreview(preview, { kind: 'course_family' }),
+      actions: ['Continue']
+    });
+    if (proceed !== 'Continue') {
+      return;
+    }
+    if (!(await this.confirmByTypingPath('course family', label, family.path))) {
+      return;
+    }
+
+    try {
+      const result = await notify.progress(`Deleting course family "${label}"…`, () =>
+        this.apiService.deleteCourseFamily(family.id)
+      );
+      this.reportCascadeResult(`Course family "${label}" deleted.`, result);
+      this.treeDataProvider.refresh();
+    } catch (error) {
+      this.showDeleteError(error, `Failed to delete course family "${label}"`, 'course family');
+    }
+  }
+
+  private async deleteOrganization(item: OrganizationTreeItem): Promise<void> {
+    const org = item.organization;
+    const label = org.title || org.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteScope('organization', org.id, ctx)) {
+      await notify.modal('info', `Only an owner of this organization can delete it.`, {
+        detail: `"${label}" can be deleted by an organization owner or an administrator.`
+      });
+      return;
+    }
+
+    const preview = await this.previewCascadeDelete(
+      `Checking what deleting "${label}" would remove…`,
+      () => this.apiService.deleteOrganization(org.id, { dryRun: true })
+    );
+    if (preview === undefined) {
+      return;
+    }
+    if (preview.blocked_reason) {
+      await notify.modal('warning', `Cannot delete "${label}" yet`, { detail: preview.blocked_reason });
+      return;
+    }
+
+    const proceed = await notify.modal('warning', `Delete organization "${label}"?`, {
+      detail: formatCascadePreview(preview, { kind: 'organization' }),
+      actions: ['Continue']
+    });
+    if (proceed !== 'Continue') {
+      return;
+    }
+    if (!(await this.confirmByTypingPath('organization', label, org.path))) {
+      return;
+    }
+
+    try {
+      const result = await notify.progress(`Deleting organization "${label}"…`, () =>
+        this.apiService.deleteOrganization(org.id)
+      );
+      this.reportCascadeResult(`Organization "${label}" deleted.`, result);
+      this.treeDataProvider.refresh();
+    } catch (error) {
+      this.showDeleteError(error, `Failed to delete organization "${label}"`, 'organization');
+    }
+  }
+
+  private async archiveCourse(course: CourseList): Promise<void> {
+    const label = course.title || course.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteCourse(course.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course can archive it.`);
+      return;
+    }
+    const confirmed = await notify.confirm(
+      `Archive course "${label}"?`,
+      'Archive',
+      'Students and tutors will no longer see the course, and submissions and test runs are closed. It stays in your tree marked "Archived"; use Unarchive to reopen it.'
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await this.apiService.archiveCourse(course.id);
+      this.treeDataProvider.refresh();
+      notify.info(`"${label}" is archived: hidden from students, submissions closed. Use Unarchive to reopen it.`);
+    } catch (error) {
+      showErrorWithSeverity(
+        error instanceof Error ? error : new Error(String(error)),
+        `Failed to archive course "${label}"`
+      );
+    }
+  }
+
+  private async unarchiveCourse(course: CourseList): Promise<void> {
+    const label = course.title || course.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteCourse(course.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course can unarchive it.`);
+      return;
+    }
+    const confirmed = await notify.confirm(
+      `Unarchive course "${label}"?`,
+      'Unarchive',
+      'The course becomes visible to its students and tutors again, and submissions and test runs reopen.'
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await this.apiService.unarchiveCourse(course.id);
+      this.treeDataProvider.refresh();
+      notify.info(`"${label}" is open again for its students.`);
+    } catch (error) {
+      showErrorWithSeverity(
+        error instanceof Error ? error : new Error(String(error)),
+        `Failed to unarchive course "${label}"`
+      );
+    }
+  }
+
+  /** Dry run under a progress notification; `undefined` when it failed (already reported). */
+  private async previewCascadeDelete(
+    title: string,
+    run: () => Promise<CascadeDeleteResult>
+  ): Promise<CascadeDeleteResult | undefined> {
+    try {
+      return await notify.progress(title, () => run());
+    } catch (error) {
+      this.showDeleteError(error, 'Could not check what the delete would remove', 'item');
+      return undefined;
+    }
+  }
+
+  /** The typed gate: the entity's own `path`, exactly. Empty input cancels. */
+  private async confirmByTypingPath(kind: string, label: string, path: string): Promise<boolean> {
+    const typed = await vscode.window.showInputBox({
+      title: `Delete ${kind} "${label}"`,
+      prompt: `This permanently deletes the ${kind} and everything listed. There is no undo. Type "${path}" to confirm.`,
+      placeHolder: path,
+      ignoreFocusOut: true,
+      validateInput: (value) => value === path || value.length === 0
+        ? undefined
+        : `Type "${path}" exactly, or leave empty to cancel.`
+    });
+    return typed === path;
+  }
+
+  private reportCascadeResult(headline: string, result: CascadeDeleteResult): void {
+    const errors = result.errors ?? [];
+    if (errors.length === 0) {
+      notify.info(headline);
+      return;
+    }
+    // The database part is done; what failed is on the git server side
+    // (template/reference repos) or in storage. Say so instead of hiding it.
+    void notify.modal('warning', `${headline} Some clean-up did not complete.`, {
+      detail: errors.join('\n')
+    });
+  }
+
+  private showDeleteError(error: unknown, fallback: string, kind: string): void {
+    if (error instanceof HttpError && error.status === 409) {
+      // A 409 here is "not deletable in this state" (children left, student
+      // submissions, not archived). It arrives as CONFLICT_001, whose catalog
+      // title ("Resource Already Exists") is wrong for it — the server's own
+      // sentence is the message.
+      void notify.modal('warning', `Cannot delete this ${kind} yet`, {
+        detail: error.serverDetail || fallback
+      });
+      return;
+    }
+    if (error instanceof HttpError && error.status === 403) {
+      void notify.modal('info', `Only an owner of this ${kind} (or an administrator) can delete it.`, {
+        detail: error.serverDetail
+      });
+      return;
+    }
+    showErrorWithSeverity(error instanceof Error ? error : new Error(String(error)), fallback);
+  }
+
+  /** A deleted course must not stay the "current" one for the student side. */
+  private async forgetDeletedCourseSelection(courseId: string): Promise<void> {
+    try {
+      const selection = CourseSelectionService.getInstance();
+      if (selection.getCurrentCourseId() === courseId) {
+        await selection.clearSelection();
+      }
+    } catch {
+      // Selection service not initialized (no student side in this window).
+    }
+  }
+
+  /** The roles the current user holds, for the in-command owner checks. */
+  private async buildScopeContext(): Promise<ScopePermissionContext> {
+    const [scopes, currentUser] = await Promise.all([
+      this.apiService.getUserScopes(),
+      this.apiService.getUserAccount().catch(() => undefined)
+    ]);
+    const globalRoles = new Set(
+      (currentUser?.user_roles ?? [])
+        .map(r => r?.role_id)
+        .filter((id): id is string => typeof id === 'string')
+    );
+    return { scopes, globalRoles };
   }
 
   private resolveCreateTarget(item: CourseFolderTreeItem | CourseContentTreeItem): {
@@ -3013,30 +3339,26 @@ export class LecturerCommands {
     );
   }
 
-  // Sets the role-derived context keys: per-scope-kind "Manage Members" and
-  // example-authoring. See `services/ScopePermissions.ts` for the rules.
+  // Sets the role-derived context keys: per-scope-kind "Manage Members",
+  // example-authoring and hierarchy delete/archive. See
+  // `services/ScopePermissions.ts` for the rules.
   private async applyScopeMembershipContextKey(): Promise<void> {
     try {
-      const [scopes, currentUser] = await Promise.all([
-        this.apiService.getUserScopes(),
-        this.apiService.getUserAccount().catch(() => undefined)
-      ]);
-      const globalRoles = new Set(
-        (currentUser?.user_roles ?? [])
-          .map(r => r?.role_id)
-          .filter((id): id is string => typeof id === 'string')
-      );
-      const ctx = { scopes, globalRoles };
+      const ctx = await this.buildScopeContext();
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', canManageAnyOrganizationMembers(ctx));
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', canManageAnyCourseFamilyMembers(ctx));
       // Gates the example upload / create-repository buttons — backend reserves
       // those writes to `_example_manager` (admins bypass).
       await vscode.commands.executeCommand('setContext', 'computor.examples.canAuthor', canAuthorExamples(ctx));
+      // Coarse gate for the delete/archive menu entries ("owns at least one
+      // scope"); every command re-checks its own node.
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canDeleteAny', canDeleteAny(ctx));
     } catch (err) {
       console.warn('[LecturerCommands] Failed to compute scope-membership context keys:', err);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', false);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', false);
       await vscode.commands.executeCommand('setContext', 'computor.examples.canAuthor', false);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canDeleteAny', false);
     }
   }
 }
