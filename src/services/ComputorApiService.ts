@@ -8,6 +8,7 @@ import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
 import type { CourseDeploymentGet, VersionUpgradeGet, CourseDeployRequest, CourseDeployResult, InstanceInfoGet } from '../types/generated';
 import type { CourseTaskRequest } from '../types/generated/courses';
+import type { CascadeDeleteResult } from '../types/generated/common';
 import type { TaskInfo } from '../types/generated/tasks';
 import { notify } from '../utils/notify';
 import type {
@@ -550,6 +551,65 @@ export class ComputorApiService {
     const cacheKey = `courseContents-${courseId}`;
     multiTierCache.delete(cacheKey);
     this.invalidateCachePattern(`lecturerCourseContents-${courseId}`);
+  }
+
+  // --- Hierarchy lifecycle: archive / delete of course, family, organization ---
+  //
+  // The three deletes share one contract: `dryRun: true` returns the same
+  // `CascadeDeleteResult` the real call would, plus `blocked_reason` when the
+  // real call would be refused (409) — so the UI can preview and explain before
+  // asking for a typed confirmation. A real delete drops EVERY cache: the tree
+  // list keys (`organizations`, `courseFamilies-<org>`, `courses-<family>`) are
+  // not pattern-clearable and a stale entry would resurrect the deleted node.
+
+  async archiveCourse(courseId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch(`/courses/${courseId}/archive`);
+    this.clearCourseCache(courseId);
+    this.invalidateCachePattern('courses-');
+  }
+
+  async unarchiveCourse(courseId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch(`/courses/${courseId}/unarchive`);
+    this.clearCourseCache(courseId);
+    this.invalidateCachePattern('courses-');
+  }
+
+  async deleteCourse(courseId: string, options?: { dryRun?: boolean }): Promise<CascadeDeleteResult> {
+    const client = await this.getHttpClient();
+    const response = await client.delete<CascadeDeleteResult>(
+      `/courses/${courseId}`,
+      { dry_run: options?.dryRun === true }
+    );
+    if (!options?.dryRun) {
+      this.clearAllCaches();
+    }
+    return response.data;
+  }
+
+  async deleteCourseFamily(courseFamilyId: string, options?: { dryRun?: boolean }): Promise<CascadeDeleteResult> {
+    const client = await this.getHttpClient();
+    const response = await client.delete<CascadeDeleteResult>(
+      `/course-families/${courseFamilyId}`,
+      { dry_run: options?.dryRun === true }
+    );
+    if (!options?.dryRun) {
+      this.clearAllCaches();
+    }
+    return response.data;
+  }
+
+  async deleteOrganization(organizationId: string, options?: { dryRun?: boolean }): Promise<CascadeDeleteResult> {
+    const client = await this.getHttpClient();
+    const response = await client.delete<CascadeDeleteResult>(
+      `/organizations/${organizationId}`,
+      { dry_run: options?.dryRun === true }
+    );
+    if (!options?.dryRun) {
+      this.clearAllCaches();
+    }
+    return response.data;
   }
 
   async getCourseContentKinds(): Promise<CourseContentKindList[]> {

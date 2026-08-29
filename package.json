@@ -1160,6 +1160,36 @@
         "category": "Computor Lecturer"
       },
       {
+        "command": "computor.lecturer.deleteOrganization",
+        "title": "Delete Organization",
+        "icon": "$(trash)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.deleteCourseFamily",
+        "title": "Delete Course Family",
+        "icon": "$(trash)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.deleteCourse",
+        "title": "Delete Course",
+        "icon": "$(trash)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.archiveCourse",
+        "title": "Archive Course",
+        "icon": "$(archive)",
+        "category": "Computor Lecturer"
+      },
+      {
+        "command": "computor.lecturer.unarchiveCourse",
+        "title": "Unarchive Course",
+        "icon": "$(archive)",
+        "category": "Computor Lecturer"
+      },
+      {
         "command": "computor.lecturer.renameCourseContent",
         "title": "Rename Title...",
         "category": "Computor Lecturer"
@@ -2072,7 +2102,7 @@
         },
         {
           "command": "computor.lecturer.showMessages",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "2_discussion@1"
         },
         {
@@ -2147,12 +2177,12 @@
         },
         {
           "command": "computor.lecturer.setCourseMaxTestRuns",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "2_edit@3"
         },
         {
           "command": "computor.lecturer.setCourseMaxSubmissions",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "2_edit@4"
         },
         {
@@ -2187,7 +2217,7 @@
         },
         {
           "command": "computor.lecturer.updateExampleVersions",
-          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.hasDescription)?$/ || viewItem =~ /^course\\.contents/ || viewItem =~ /courseContent.*hasChildren/)",
+          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/ || viewItem =~ /^course\\.contents/ || viewItem =~ /courseContent.*hasChildren/)",
           "group": "4_example@1"
         },
         {
@@ -2202,22 +2232,22 @@
         },
         {
           "command": "computor.lecturer.configureCourseGit",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "2_config@1"
         },
         {
           "command": "computor.lecturer.manageCourseMembers",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "2_discussion@2"
         },
         {
           "command": "computor.lecturer.showCourseDetails",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "5_details@1"
         },
         {
           "command": "computor.lecturer.showCourseProgressOverview",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "5_details@2"
         },
         {
@@ -2281,13 +2311,38 @@
           "group": "3_delete@1"
         },
         {
+          "command": "computor.lecturer.deleteOrganization",
+          "when": "view == computor.lecturer.courses && viewItem == organization && computor.lecturer.canDeleteAny",
+          "group": "6_delete@1"
+        },
+        {
+          "command": "computor.lecturer.deleteCourseFamily",
+          "when": "view == computor.lecturer.courses && viewItem == courseFamily && computor.lecturer.canDeleteAny",
+          "group": "6_delete@1"
+        },
+        {
+          "command": "computor.lecturer.archiveCourse",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/ && computor.lecturer.canDeleteAny",
+          "group": "3_delete@1"
+        },
+        {
+          "command": "computor.lecturer.unarchiveCourse",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course\\.archived(\\.hasDescription)?$/ && computor.lecturer.canDeleteAny",
+          "group": "3_delete@1"
+        },
+        {
+          "command": "computor.lecturer.deleteCourse",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/ && computor.lecturer.canDeleteAny",
+          "group": "3_delete@2"
+        },
+        {
           "command": "computor.lecturer.openRemoteRepository",
-          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.hasDescription)?$/ || viewItem == course.member)",
+          "when": "view == computor.lecturer.courses && (viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/ || viewItem == course.member)",
           "group": "5_repository@1"
         },
         {
           "command": "computor.lecturer.releaseCourseContent",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "inline@2"
         },
         {
@@ -2302,7 +2357,7 @@
         },
         {
           "command": "computor.lecturer.checkLinks",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "5_details@2"
         },
         {
@@ -2317,7 +2372,7 @@
         },
         {
           "command": "computor.lecturer.releaseCourseContent",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "0_release@1"
         },
         {
@@ -2627,7 +2682,7 @@
         },
         {
           "command": "computor.lecturer.editContentDescription",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "inline@0"
         },
         {
@@ -2637,7 +2692,7 @@
         },
         {
           "command": "computor.lecturer.editContentDescription",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "5_details@0"
         },
         {
