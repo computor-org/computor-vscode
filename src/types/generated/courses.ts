@@ -1261,6 +1261,7 @@ export interface CourseGet {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   visible?: boolean | null;
+  archived_at?: string | null;
   /** Creation timestamp */
   created_at?: string | null;
   /** Update timestamp */
@@ -1283,6 +1284,7 @@ export interface CourseList {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   visible?: boolean | null;
+  archived_at?: string | null;
 }
 
 export interface CourseUpdate {
@@ -1309,6 +1311,7 @@ export interface CourseQuery {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   visible?: boolean | null;
+  archived?: boolean | null;
 }
 
 /**
