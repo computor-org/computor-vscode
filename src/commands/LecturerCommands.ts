@@ -190,10 +190,20 @@ export class LecturerCommands {
     // Hierarchy lifecycle. Owners (and admins) only; the menu entries are
     // gated by the coarse `canDeleteAny` context key and each command
     // re-checks the specific node before doing anything.
-    register('computor.lecturer.deleteOrganization', async (item: OrganizationTreeItem) => {
+    // Both need a tree node: from the Command Palette there is none, so say
+    // so instead of throwing on `item.organization`.
+    register('computor.lecturer.deleteOrganization', async (item?: OrganizationTreeItem) => {
+      if (!item?.organization) {
+        notify.info('Right-click an organization in the Lecturer tree to delete it.');
+        return;
+      }
       await this.deleteOrganization(item);
     });
-    register('computor.lecturer.deleteCourseFamily', async (item: CourseFamilyTreeItem) => {
+    register('computor.lecturer.deleteCourseFamily', async (item?: CourseFamilyTreeItem) => {
+      if (!item?.courseFamily) {
+        notify.info('Right-click a course family in the Lecturer tree to delete it.');
+        return;
+      }
       await this.deleteCourseFamily(item);
     });
     register('computor.lecturer.deleteCourse', async (item?: CourseTreeItem) => {
@@ -203,10 +213,18 @@ export class LecturerCommands {
         await this.manageCourse(undefined);
       }
     });
-    register('computor.lecturer.archiveCourse', async (item: CourseTreeItem) => {
+    register('computor.lecturer.archiveCourse', async (item?: CourseTreeItem) => {
+      if (!item?.course) {
+        notify.info('Right-click a course in the Lecturer tree to archive it.');
+        return;
+      }
       await this.archiveCourse(item.course);
     });
-    register('computor.lecturer.unarchiveCourse', async (item: CourseTreeItem) => {
+    register('computor.lecturer.unarchiveCourse', async (item?: CourseTreeItem) => {
+      if (!item?.course) {
+        notify.info('Right-click an archived course in the Lecturer tree to unarchive it.');
+        return;
+      }
       await this.unarchiveCourse(item.course);
     });
 
