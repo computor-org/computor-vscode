@@ -38,18 +38,29 @@
     const profile = state.profile || {};
     const studentProfiles = Array.isArray(state.studentProfiles) ? state.studentProfiles : [];
 
+    // Any role id ending in `_admin` confers system admin; the backend
+    // refuses grant/revoke of such roles by non-admins (403 AUTHZ_005),
+    // so don't offer the controls in the first place (#403).
+    const grantsAdmin = (roleId) => typeof roleId === 'string' && roleId.endsWith('_admin');
+
     const assignedRoleIds = new Set((Array.isArray(user.user_roles) ? user.user_roles : []).map(ur => ur.role_id));
     const userRolesHtml = assignedRoleIds.size > 0
-      ? Array.from(assignedRoleIds).map(roleId => `
-          <span class="role-badge">
+      ? Array.from(assignedRoleIds).map(roleId => {
+          const locked = !state.isAdmin && grantsAdmin(roleId);
+          const removeButton = locked
+            ? ''
+            : `<button type="button" class="role-badge-remove" data-role-remove="${escapeHtml(roleId)}" title="Remove role">×</button>`;
+          return `
+          <span class="role-badge"${locked ? ' title="Only administrators can remove this role."' : ''}>
             <span class="role-badge-label">${escapeHtml(roleId)}</span>
-            <button type="button" class="role-badge-remove" data-role-remove="${escapeHtml(roleId)}" title="Remove role">×</button>
+            ${removeButton}
           </span>
-        `).join('')
+        `;
+        }).join('')
       : '<span class="empty-value">No roles assigned</span>';
 
     const availableRoles = Array.isArray(state.availableRoles) ? state.availableRoles : [];
-    const assignableRoles = availableRoles.filter(r => !assignedRoleIds.has(r.id));
+    const assignableRoles = availableRoles.filter(r => !assignedRoleIds.has(r.id) && (state.isAdmin || !grantsAdmin(r.id)));
     const addRoleOptionsHtml = assignableRoles.length > 0
       ? assignableRoles.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.title || r.id)}</option>`).join('')
       : '';
@@ -149,7 +160,7 @@
       <section class="section stack" aria-labelledby="section-roles">
         <div>
           <h2 id="section-roles">Roles</h2>
-          <p class="section-description">System roles assigned to this user. Granting <code>_admin</code> requires admin privileges and is enforced server-side.</p>
+          <p class="section-description">System roles assigned to this user.${state.isAdmin ? '' : ' Admin roles can only be granted or removed by administrators.'}</p>
         </div>
         <div class="info-field full-width">
           <div class="info-value role-badges">${userRolesHtml}</div>
@@ -167,7 +178,7 @@
             <button type="submit" class="btn">Assign Role</button>
           </div>
         </form>
-        ` : '<p class="field-hint">All available roles are already assigned.</p>'}
+        ` : '<p class="field-hint">No more roles available to assign.</p>'}
       </section>
 
       <section class="section stack" aria-labelledby="section-profile">
