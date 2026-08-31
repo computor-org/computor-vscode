@@ -1867,6 +1867,20 @@ export class ComputorApiService {
     }
   }
 
+  /**
+   * Evict the cached permission projections (computor-org/issues#384).
+   *
+   * Called when the backend pushes `permissions:updated` on the personal
+   * websocket channel: the server has already dropped its own Principal cache,
+   * so the next `getUserViews`/`getUserScopes`/`getCurrentUser` read returns
+   * the fresh roles instead of the warm-tier copy.
+   */
+  invalidatePermissionCaches(): void {
+    multiTierCache.delete('userViews');
+    multiTierCache.delete('userScopes');
+    multiTierCache.delete('currentUser');
+  }
+
   async getUserScopes(options?: { force?: boolean }): Promise<UserScopes | undefined> {
     const cacheKey = 'userScopes';
 

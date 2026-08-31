@@ -3344,6 +3344,15 @@ export class LecturerCommands {
     );
   }
 
+  /**
+   * Re-derive the scope context keys after a server-pushed permissions change
+   * (computor-org/issues#384). Evict the scope caches first — this re-reads
+   * /user/scopes through the API service.
+   */
+  async refreshScopeContextKeys(): Promise<void> {
+    await this.applyScopeMembershipContextKey();
+  }
+
   // Sets the role-derived context keys: per-scope-kind "Manage Members",
   // example-authoring and hierarchy delete/archive. See
   // `services/ScopePermissions.ts` for the rules.
