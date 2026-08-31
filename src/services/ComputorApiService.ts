@@ -171,6 +171,20 @@ export class ComputorApiService {
     return ComputorApiService.instance;
   }
 
+  /**
+   * The live session's Authorization headers, for requests made outside the
+   * HttpClient — probing the instance's own /docs links needs them, because
+   * the static document store 401s anonymous requests (#362).
+   */
+  async sessionAuthHeaders(): Promise<Record<string, string> | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      return client.getAuthHeaders();
+    } catch {
+      return undefined;
+    }
+  }
+
   private async getHttpClient(): Promise<HttpClient> {
     console.log('[getHttpClient] Checking httpClient availability:', !!this.httpClient);
 

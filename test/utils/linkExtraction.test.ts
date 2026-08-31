@@ -29,6 +29,33 @@ describe('linkExtraction', () => {
       expect(found.map(f => f.url)).to.deep.equal(['mediaFiles/plot.png']);
     });
 
+    it('does not read a math block under a reference label as its target (#362)', () => {
+      // The exact shape from the report: a `[Label]:` line directly above a
+      // `$$` display-math block once captured `$$` as the definition's target
+      // and reported "content/$$" as a missing file.
+      const md = [
+        '[Anonymous Function]:',
+        '$$',
+        'f(x) = x^2',
+        '$$',
+        '',
+        '[real]: content/target.md'
+      ].join('\n');
+      const found = extractLinks(md, 'content/index_de.md');
+      expect(found.map(f => f.url)).to.deep.equal(['content/target.md']);
+    });
+
+    it('treats inline and display math as prose-free zones (#362)', () => {
+      const md = 'Where $[x](y)$ holds, see [the paper](https://example.org/p.pdf).\n\n$$ [a]: b $$';
+      const found = extractLinks(md, 'content/index.md');
+      expect(found.map(f => f.url)).to.deep.equal(['https://example.org/p.pdf']);
+    });
+
+    it('carries the raw line of a hit so reports can show it (#362)', () => {
+      const found = extractLinks('Look at [it](missing/file.png) closely.', 'content/index.md');
+      expect(found[0]?.text).to.equal('Look at [it](missing/file.png) closely.');
+    });
+
     it('finds a reference definition', () => {
       const found = extractLinks('[docs]: https://example.org/docs "Docs"', 'README.md');
       expect(found.map(f => f.url)).to.deep.equal(['https://example.org/docs']);
