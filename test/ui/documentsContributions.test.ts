@@ -91,19 +91,24 @@ describe('documents tree contributions', () => {
       return editors.find(e => e.viewType === viewType);
     }
 
-    it('renders PDFs', () => {
-      expect(editor('computor.pdfPreview')?.selector[0]?.filenamePattern).to.equal('*.pdf');
+    it('renders mirror PDFs', () => {
+      expect(editor('computor.pdfPreview')?.selector[0]?.filenamePattern)
+        .to.equal('**/.computor-data/documents/**/*.pdf');
     });
 
-    it('renders HTML', () => {
-      expect(editor('computor.htmlPreview')?.selector[0]?.filenamePattern).to.equal('*.html');
+    it('renders mirror HTML', () => {
+      expect(editor('computor.htmlPreview')?.selector[0]?.filenamePattern)
+        .to.equal('**/.computor-data/documents/**/*.html');
     });
 
-    it('leaves desktop VS Code alone by staying optional', () => {
-      // "option" editors only open a file when workbench.editorAssociations
-      // names them, which editorAssociations.ts does under UIKind.Web alone.
+    it('opens mirror documents by default and claims nothing else (#361)', () => {
+      // "default" makes a click on a mirror document open the viewer directly
+      // — reopening by hand on every PDF was the reported pain — while the
+      // mirror-scoped selector keeps a student's own files on their normal
+      // editors.
       for (const viewType of ['computor.pdfPreview', 'computor.htmlPreview']) {
-        expect(editor(viewType)?.priority).to.equal('option');
+        expect(editor(viewType)?.priority).to.equal('default');
+        expect(editor(viewType)?.selector[0]?.filenamePattern).to.contain('.computor-data/documents/');
       }
     });
   });
