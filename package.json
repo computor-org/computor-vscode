@@ -1362,20 +1362,20 @@
       {
         "viewType": "computor.pdfPreview",
         "displayName": "Computor PDF Preview",
-        "priority": "option",
+        "priority": "default",
         "selector": [
           {
-            "filenamePattern": "*.pdf"
+            "filenamePattern": "**/.computor-data/documents/**/*.pdf"
           }
         ]
       },
       {
         "viewType": "computor.htmlPreview",
         "displayName": "Computor HTML Preview",
-        "priority": "option",
+        "priority": "default",
         "selector": [
           {
-            "filenamePattern": "*.html"
+            "filenamePattern": "**/.computor-data/documents/**/*.html"
           }
         ]
       }

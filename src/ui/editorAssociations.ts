@@ -46,19 +46,13 @@ const VIEWER_FAMILIES: ReadonlyArray<{
     pattern: '*.{png,jpg,jpe,jpeg,gif,bmp,ico,webp,avif,svg}',
     viewer: 'computor.imagePreview',
     extensions: ['png', 'jpg', 'jpe', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'avif', 'svg']
-  },
-  {
-    pattern: '*.pdf',
-    viewer: 'computor.pdfPreview',
-    extensions: ['pdf']
-  },
-  {
-    // Not `.htm`: it is rare here, and someone who opens one usually wants the
-    // source. `.html` is what gets published as a document.
-    pattern: '*.html',
-    viewer: 'computor.htmlPreview',
-    extensions: ['html']
   }
+  // PDF and HTML need no association any more: their custom editors are
+  // `priority: "default"` for the documents mirror (`.computor-data/documents/`)
+  // and deliberately claim nothing else, so a student's own files keep their
+  // normal editors (computor-org/issues#361). Workspaces that already got the
+  // old global `*.pdf`/`*.html` associations keep them — never overwritten,
+  // same rule as everything else here.
 ];
 
 const APPLIED_KEY_PREFIX = 'computor.editorAssociations.applied:';
