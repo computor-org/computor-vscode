@@ -430,6 +430,20 @@ describe('student file commands', () => {
       ]);
     });
 
+    it('never offers a backend-owned folder as a destination (#352)', () => {
+      // `mediaFiles` serves the README; the tree hides it, so the picker must
+      // not quietly move student work into a folder they cannot see.
+      const { assignmentDir, item } = nestedFile();
+      fs.mkdirSync(path.join(assignmentDir, 'mediaFiles'));
+
+      return run('computor.student.fs.moveTo', item).then(() => {
+        expect(quickPickChoices).to.deep.equal([
+          '$(root-folder) Assignment root',
+          '$(folder) out'
+        ]);
+      });
+    });
+
     it('moves the file into the chosen folder', async () => {
       const { assignmentDir, item } = nestedFile();
       quickPickLabel = '$(folder) out';
