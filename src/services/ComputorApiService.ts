@@ -3710,6 +3710,23 @@ export class ComputorApiService {
   // local mirror under <workspace>/.computor/documents and decides cache
   // freshness from the per-entry etag returned in DocumentList.
 
+  /**
+   * GET /documents/permissions — may the caller write in this scope (#361)?
+   * `undefined` when the backend cannot answer (older API, network error) —
+   * the tree then fails open and lets the server refuse the actual write.
+   */
+  async documentsCanWrite(scope: string, scopeId: string | null | undefined): Promise<boolean | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const params: Record<string, string> = { scope };
+      if (scopeId) { params.scope_id = scopeId; }
+      const response = await client.get<{ can_write?: boolean }>('/documents/permissions', params);
+      return response.data?.can_write;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** GET /documents/list — directory listing (files + subdirs). */
   async listDocuments(scope: string, scopeId: string | null | undefined, path: string): Promise<DocumentList[]> {
     const client = await this.getHttpClient();

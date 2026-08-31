@@ -1362,20 +1362,20 @@
       {
         "viewType": "computor.pdfPreview",
         "displayName": "Computor PDF Preview",
-        "priority": "option",
+        "priority": "default",
         "selector": [
           {
-            "filenamePattern": "*.pdf"
+            "filenamePattern": "**/.computor-data/documents/**/*.pdf"
           }
         ]
       },
       {
         "viewType": "computor.htmlPreview",
         "displayName": "Computor HTML Preview",
-        "priority": "option",
+        "priority": "default",
         "selector": [
           {
-            "filenamePattern": "*.html"
+            "filenamePattern": "**/.computor-data/documents/**/*.html"
           }
         ]
       }
@@ -1847,12 +1847,12 @@
         },
         {
           "command": "computor.lecturer.documents.uploadFile",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.(modified|localOnly)$/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.(modified|localOnly)\\.writable$/",
           "group": "inline@1"
         },
         {
           "command": "computor.lecturer.documents.downloadFile",
-          "when": "view == computor.lecturer.documents && viewItem == documents.file.remoteOnly",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.remoteOnly(\\.writable)?$/",
           "group": "inline@1"
         },
         {
@@ -1877,32 +1877,32 @@
         },
         {
           "command": "computor.lecturer.documents.newFile",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/ && viewItem =~ /\\.writable$/",
           "group": "2_create@1"
         },
         {
           "command": "computor.lecturer.documents.newFolder",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/ && viewItem =~ /\\.writable$/",
           "group": "2_create@2"
         },
         {
           "command": "computor.lecturer.documents.uploadAllPending",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/ && viewItem =~ /\\.writable$/",
           "group": "2_create@3"
         },
         {
           "command": "computor.lecturer.documents.rename",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/ && viewItem =~ /\\.writable$/",
           "group": "3_modify@1"
         },
         {
           "command": "computor.lecturer.documents.discardLocal",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.(modified|remoteChanged)$/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.(modified|remoteChanged)(\\.writable)?$/",
           "group": "3_modify@2"
         },
         {
           "command": "computor.lecturer.documents.delete",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(file|dir)/ && viewItem =~ /\\.writable$/",
           "group": "8_destructive@1"
         },
         {
@@ -1917,12 +1917,12 @@
         },
         {
           "command": "computor.lecturer.documents.uploadFromComputer",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/ && viewItem =~ /\\.writable$/",
           "group": "4_transfer@2"
         },
         {
           "command": "computor.lecturer.documents.uploadFolderFromComputer",
-          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/",
+          "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.(dir|scope\\.)/ && viewItem =~ /\\.writable$/",
           "group": "4_transfer@3"
         },
         {

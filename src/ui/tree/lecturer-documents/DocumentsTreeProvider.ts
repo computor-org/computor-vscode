@@ -57,6 +57,9 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
    */
   private scopeSegments = new Map<string, string[]>();
 
+  /** Backend answers to "may I write here?", per scope (#361). */
+  private writableCache = new Map<string, boolean>();
+
   constructor(
     private readonly api: ComputorApiService,
     public readonly cache: DocumentsCacheService = new DocumentsCacheService()
@@ -66,6 +69,7 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
 
   override refresh(): void {
     this.listingCache.clear();
+    this.writableCache.clear();
     this.orgsCache = undefined;
     this.familiesCache.clear();
     this.coursesCache.clear();
@@ -134,11 +138,12 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
         (a.title || a.path).localeCompare(b.title || b.path)
       );
       orgPaths = new Set(sorted.map(o => o.path));
-      items.push(...sorted.map(org => {
+      for (const org of sorted) {
         const item = new DocumentsOrgItem(org);
         this.rememberScopeSegments(item.scope, [org.path]);
-        return item;
-      }));
+        await this.stampWritable(item.scope, [item]);
+        items.push(item);
+      }
     } catch (err: any) {
       items.push(new DocumentsErrorItem(`Failed to load organizations: ${err?.message || err}`));
     }
@@ -159,11 +164,13 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
 
   private async getOrgChildren(item: DocumentsOrgItem): Promise<DocumentsTreeItem[]> {
     const families = await this.fetchFamilies(item.organization.id);
-    const familyItems = families.map(f => {
+    const familyItems: DocumentsCourseFamilyItem[] = [];
+    for (const f of families) {
       const row = new DocumentsCourseFamilyItem(f, item.organization);
       this.rememberScopeSegments(row.scope, [item.organization.path, f.path]);
-      return row;
-    });
+      await this.stampWritable(row.scope, [row]);
+      familyItems.push(row);
+    }
     // Drop family-path directories from the org-scope listing so they don't
     // duplicate the family entity rows above.
     const documents = await this.listChildrenAt(item.scope, '', new Set(families.map(f => f.path)));
@@ -172,11 +179,13 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
 
   private async getCourseFamilyChildren(item: DocumentsCourseFamilyItem): Promise<DocumentsTreeItem[]> {
     const courses = await this.fetchCourses(item.courseFamily.id);
-    const courseItems = courses.map(c => {
+    const courseItems: DocumentsCourseItem[] = [];
+    for (const c of courses) {
       const row = new DocumentsCourseItem(c, item.courseFamily, item.organization);
       this.rememberScopeSegments(row.scope, [item.organization.path, item.courseFamily.path, c.path]);
-      return row;
-    });
+      await this.stampWritable(row.scope, [row]);
+      courseItems.push(row);
+    }
     // Drop course-path directories from the family-scope listing so they
     // don't duplicate the course entity rows above.
     const documents = await this.listChildrenAt(item.scope, '', new Set(courses.map(c => c.path)));
@@ -242,17 +251,45 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
         ? remote.filter(item => !excludeNames.has(item.name))
         : remote;
       const entries = await this.cache.classifyEntries(scope, parentPath, filtered);
-      items = entries.map(entry =>
+      items = await this.stampWritable(scope, entries.map(entry =>
         entry.type === 'directory'
           ? new DocumentsDirectoryItem(scope, entry)
           : new DocumentsFileItem(scope, entry)
-      );
+      ));
     } catch (err: any) {
       const message = err?.message || String(err);
       items = [new DocumentsErrorItem(`Failed to list documents: ${message}`)];
     }
 
     this.listingCache.set(cacheKey, items);
+    return items;
+  }
+
+  /**
+   * Whether the caller may write in `scope`, asked of the backend once per
+   * scope (GET /documents/permissions). Rows in a read-only scope drop their
+   * write actions instead of offering a guaranteed 403 (#361). Fail-open: a
+   * backend that cannot answer hides nothing — it still refuses real writes.
+   */
+  private async scopeWritable(scope: DocumentScope): Promise<boolean> {
+    const key = `${scope.scope}::${scope.scopeId ?? 'system'}`;
+    const cached = this.writableCache.get(key);
+    if (cached !== undefined) { return cached; }
+    const answer = await this.api.documentsCanWrite(scope.scope, scope.scopeId ?? null);
+    const writable = answer !== false;
+    this.writableCache.set(key, writable);
+    return writable;
+  }
+
+  /** Append the `.writable` contextValue suffix the write-action menus key on. */
+  private async stampWritable<T extends vscode.TreeItem>(scope: DocumentScope, items: T[]): Promise<T[]> {
+    if (await this.scopeWritable(scope)) {
+      for (const item of items) {
+        if (typeof item.contextValue === 'string' && item.contextValue.startsWith('documents.')) {
+          item.contextValue = `${item.contextValue}.writable`;
+        }
+      }
+    }
     return items;
   }
 

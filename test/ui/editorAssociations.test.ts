@@ -24,10 +24,11 @@ import { ensureEditorAssociations } from '../../src/ui/editorAssociations';
 
 const IMAGE_PATTERN = '*.{png,jpg,jpe,jpeg,gif,bmp,ico,webp,avif,svg}';
 
+// PDF and HTML left the family list when their custom editors became
+// mirror-scoped defaults (#361) — no association needed, and a global one
+// would have claimed a student's own files.
 const ALL_VIEWERS = {
-  [IMAGE_PATTERN]: 'computor.imagePreview',
-  '*.pdf': 'computor.pdfPreview',
-  '*.html': 'computor.htmlPreview'
+  [IMAGE_PATTERN]: 'computor.imagePreview'
 };
 
 let workspaceRoot: string;
@@ -74,7 +75,7 @@ describe('ensureEditorAssociations', () => {
     delete configurationOverrides['workbench'];
   });
 
-  it('points images, PDFs and HTML at the Computor viewers in the browser', async () => {
+  it('points images at the Computor viewer in the browser', async () => {
     await ensureEditorAssociations(context);
 
     expect(written).to.have.lengthOf(1);
@@ -120,17 +121,13 @@ describe('ensureEditorAssociations', () => {
 
   it('never overrules a choice the user made about images', async () => {
     // Any pattern covering an image counts — not only the one we would write.
+    // Images are the only family left, so an existing opinion means nothing
+    // is written at all.
     inspectResult = { workspaceValue: { '*.png': 'default' } };
 
     await ensureEditorAssociations(context);
 
-    // The other families are still ours to set: one opinion about images is
-    // not an opinion about PDFs.
-    expect(written[0]!.value).to.deep.equal({
-      '*.png': 'default',
-      '*.pdf': 'computor.pdfPreview',
-      '*.html': 'computor.htmlPreview'
-    });
+    expect(written).to.be.empty;
   });
 
   it('respects an image association held in the user settings', async () => {
@@ -138,28 +135,22 @@ describe('ensureEditorAssociations', () => {
 
     await ensureEditorAssociations(context);
 
-    // A global value is an opinion, but it is not part of the workspace value
-    // we write back, so only the untouched families appear.
-    expect(written[0]!.value).to.deep.equal({
-      '*.pdf': 'computor.pdfPreview',
-      '*.html': 'computor.htmlPreview'
-    });
+    expect(written).to.be.empty;
   });
 
-  it('leaves a family alone when the user already chose for it', async () => {
+  it('adds the image association next to unrelated ones the workspace holds', async () => {
     inspectResult = { workspaceValue: { '*.pdf': 'default' } };
 
     await ensureEditorAssociations(context);
 
     expect(written[0]!.value).to.deep.equal({
       '*.pdf': 'default',
-      [IMAGE_PATTERN]: 'computor.imagePreview',
-      '*.html': 'computor.htmlPreview'
+      [IMAGE_PATTERN]: 'computor.imagePreview'
     });
   });
 
   it('writes nothing when every family is already spoken for', async () => {
-    inspectResult = { workspaceValue: { '*.png': 'a', '*.pdf': 'b', '*.html': 'c' } };
+    inspectResult = { workspaceValue: { '*.png': 'a' } };
 
     await ensureEditorAssociations(context);
 

@@ -18,7 +18,6 @@ import { validateSegment } from '../utils/studentFsOperations';
 import JSZip from 'jszip';
 import { downloadBytesInBrowser } from '../ui/webviews/browserDownload';
 import { pickFilesFromBrowser, type PickedFile } from '../ui/webviews/browserUpload';
-import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { copyToClipboard } from '../utils/clipboard';
 import { buildPublicDocumentUrl, mimeTypeFor, normalizeUploadPath } from '../utils/documentTransfer';
 
@@ -232,9 +231,15 @@ export class DocumentsCommands {
           payload.mimeType
         );
         if (!handed) {
+          // Name the place on disk: "the workspace mirror" alone sent people
+          // searching for a feature instead of a folder (#361).
+          const local = this.tree.cache.resolveLocalPath(target.scope, target.relativePath);
           notify.warning(
-            `"${payload.name}" is too large to hand to the browser. Open it from the ` +
-            'workspace mirror instead.'
+            `"${payload.name}" could not be handed to the browser.` +
+            (local
+              ? ` The ${target.isDirectory ? 'folder' : 'file'} lives at ${local} in this ` +
+                'workspace — right-click it in the Explorer and choose Download.'
+              : '')
           );
         }
         return;
@@ -461,12 +466,23 @@ export class DocumentsCommands {
       return;
     }
 
-    let origin: string;
-    try {
-      const base = await new ComputorSettingsManager(this.context).getBaseUrl();
-      origin = new URL(base).origin;
-    } catch {
-      notify.warning('No backend URL is configured, so the public address cannot be built.');
+    // The WEB origin, never the API base: inside a workspace the API base is
+    // a docker-internal host (http://computor-api) that means nothing to a
+    // browser (#361). /instance-info carries the public web address.
+    let origin: string | undefined;
+    const webUrl = (await this.api.getInstanceInfo())?.web_url;
+    if (webUrl) {
+      try {
+        origin = new URL(webUrl).origin;
+      } catch {
+        origin = undefined;
+      }
+    }
+    if (!origin) {
+      notify.warning(
+        'This server has no public web address configured (instance-info web_url), ' +
+        'so a shareable document URL cannot be built. Ask an administrator to set it.'
+      );
       return;
     }
 
@@ -506,7 +522,9 @@ export class DocumentsCommands {
       const text = relative
         ? item.entry.relativePath
         : (item.entry.local?.absPath ?? this.tree.cache.resolveLocalPath(item.scope, item.entry.relativePath) ?? item.entry.relativePath);
-      await vscode.env.clipboard.writeText(text);
+      // Through the shared helper: a raw writeText fails silently on Safari,
+      // which read as "the command does nothing" (#361).
+      await copyToClipboard(text, relative ? 'Relative path' : 'Path');
     }
   }
 
