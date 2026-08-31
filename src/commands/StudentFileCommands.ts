@@ -482,6 +482,14 @@ export class StudentFileCommands {
     });
     if (!picked) { return; }
 
+    // Defense in depth for #352: even a destination that slipped past the
+    // picker's filter must not land inside a backend-owned root folder.
+    const destFirstSegment = path.relative(assignmentRoot, picked.dir).split(/[/\\]/)[0];
+    if (destFirstSegment && isReservedAtAssignmentRoot(destFirstSegment)) {
+      void notify.error(`"${destFirstSegment}" is managed by Computor and cannot hold your files.`);
+      return;
+    }
+
     let finalName = name;
     let overwrite = false;
     if (fs.existsSync(path.join(picked.dir, name))) {
@@ -560,6 +568,10 @@ export class StudentFileCommands {
       }
       for (const name of names) {
         if (name.startsWith('.')) { continue; }
+        // Backend-owned at the assignment root: `mediaFiles` only serves the
+        // README and the tree hides it — offering it as a destination was a
+        // trap the picker itself set (#352).
+        if (dir === root && isReservedAtAssignmentRoot(name)) { continue; }
         const abs = path.join(dir, name);
         try {
           if (!fs.statSync(abs).isDirectory()) { continue; }
