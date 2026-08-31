@@ -21,8 +21,19 @@ import { escapeHtml } from './shared/webviewHelpers';
  * the browser's own download machinery and nothing else.
  */
 
-/** Past this the base64 hand-off costs more than it is worth; callers fall back. */
-const MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024;
+/**
+ * The bytes travel to the webview in slices of this size: one message per
+ * slice, assembled into a Blob on the other side. A single message used to
+ * carry everything, and its practical ceiling made a 32 MB folder ZIP
+ * undeliverable (#361).
+ */
+const CHUNK_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Above this the assembled Blob starts to strain the browser tab itself;
+ * callers fall back to pointing at the file on disk.
+ */
+const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
 
 export async function downloadFileInBrowser(
   extensionUri: vscode.Uri,
@@ -57,8 +68,6 @@ export async function downloadBytesInBrowser(
   if (contents.byteLength > MAX_DOWNLOAD_BYTES) {
     return false;
   }
-
-  const base64 = contents.toString('base64');
 
   const panel = vscode.window.createWebviewPanel(
     'computor.browserDownload',
@@ -103,20 +112,35 @@ export async function downloadBytesInBrowser(
     });
   });
 
-  await panel.webview.postMessage({ command: 'download', data: { name, base64, mimeType } });
+  const totalChunks = Math.max(1, Math.ceil(contents.byteLength / CHUNK_BYTES));
+  await panel.webview.postMessage({
+    command: 'begin',
+    data: { name, mimeType, totalChunks, totalBytes: contents.byteLength }
+  });
+  for (let index = 0; index < totalChunks; index++) {
+    const slice = contents.subarray(index * CHUNK_BYTES, (index + 1) * CHUNK_BYTES);
+    await panel.webview.postMessage({
+      command: 'chunk',
+      data: { index, base64: slice.toString('base64') }
+    });
+  }
   return started;
 }
 
 const DOWNLOAD_SCRIPT = `
   let pending;
+  let incoming;
+
+  function decode(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
+    return bytes;
+  }
 
   function start(payload) {
-    const bytes = new Uint8Array(payload.byteLength);
-    for (let i = 0; i < payload.byteLength; i++) {
-      bytes[i] = payload.binary.charCodeAt(i);
-    }
     const url = URL.createObjectURL(
-      new Blob([bytes], { type: payload.mimeType || 'application/octet-stream' })
+      new Blob(payload.parts, { type: payload.mimeType || 'application/octet-stream' })
     );
     const link = document.createElement('a');
     link.href = url;
@@ -129,18 +153,31 @@ const DOWNLOAD_SCRIPT = `
 
   window.addEventListener('message', function (event) {
     const message = event.data;
-    if (!message || message.command !== 'download') { return; }
+    if (!message) { return; }
     try {
-      const binary = atob(message.data.base64);
-      pending = {
-        name: message.data.name,
-        binary: binary,
-        byteLength: binary.length,
-        mimeType: message.data.mimeType
-      };
+      if (message.command === 'begin') {
+        incoming = {
+          name: message.data.name,
+          mimeType: message.data.mimeType,
+          totalChunks: message.data.totalChunks,
+          received: 0,
+          parts: new Array(message.data.totalChunks)
+        };
+        return;
+      }
+      if (message.command !== 'chunk' || !incoming) { return; }
+      incoming.parts[message.data.index] = decode(message.data.base64);
+      incoming.received += 1;
+      if (incoming.received < incoming.totalChunks) {
+        document.getElementById('status').textContent =
+          'Receiving ' + incoming.name + '… (' + incoming.received + '/' + incoming.totalChunks + ')';
+        return;
+      }
+      pending = incoming;
+      incoming = undefined;
       start(pending);
       document.getElementById('status').textContent =
-        'Your download of ' + message.data.name + ' has started.';
+        'Your download of ' + pending.name + ' has started.';
       document.getElementById('again').hidden = false;
       vscode.postMessage({ command: 'downloaded' });
     } catch (error) {
