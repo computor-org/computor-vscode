@@ -162,7 +162,20 @@ async function editDescription(
 ): Promise<void> {
   const target = targetFromTreeItem(item);
   if (!target) {
-    notify.warning('Open "Edit Description" from a course, a unit or an assignment in the tree.');
+    notify.warning('Open "Edit Description" from a course or a unit in the tree.');
+    return;
+  }
+
+  // An assignment's description IS its README: the student view renders the
+  // README and never course_content.description, so text written here would
+  // never be seen (issue #356). The editor serves the course and units only.
+  const kindId = item?.contentType?.course_content_kind_id
+    ?? item?.courseContent?.course_content_kind_id;
+  const submittable = item?.isSubmittable ?? item?.courseContent?.is_submittable;
+  if (target.kind === 'content' && (kindId === 'assignment' || submittable === true)) {
+    notify.info(
+      'Assignments describe themselves in their README — edit the README in the example and release it instead.'
+    );
     return;
   }
 

@@ -2687,7 +2687,7 @@
         },
         {
           "command": "computor.lecturer.editContentDescription",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent\\.nonSubmittable/",
           "group": "inline@0"
         },
         {
@@ -2697,7 +2697,7 @@
         },
         {
           "command": "computor.lecturer.editContentDescription",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent(?!Type)/",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent\\.nonSubmittable/",
           "group": "5_details@0"
         },
         {
