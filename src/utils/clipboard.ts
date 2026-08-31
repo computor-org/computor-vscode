@@ -22,7 +22,14 @@ export async function copyToClipboard(
 ): Promise<boolean> {
   try {
     await vscode.env.clipboard.writeText(text);
-    if (await writeLanded(text)) {
+    // In a browser the read-back itself is the problem: Safari answers a
+    // clipboard *read* with a permission prompt, which code-server surfaces as
+    // its own blocking "Retry" dialog on every copy (#353). A resolved write
+    // is as much certainty as the sandbox allows there, so verify only on the
+    // desktop, where reading back is free.
+    const landed =
+      vscode.env.uiKind === vscode.UIKind.Web ? true : await writeLanded(text);
+    if (landed) {
       void notify.info(successMessage ?? `${label} copied to clipboard: ${text}`);
       return true;
     }
