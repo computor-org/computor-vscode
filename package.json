@@ -1739,6 +1739,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "computor.matlab.moveWorkspaceView",
+          "when": "view == computor.student.courses && computor.matlabExtensionAvailable",
+          "group": "9_layout@1"
+        },
+        {
           "command": "computor.student.offline.addCourse",
           "when": "view == computor.student.offline.view",
           "group": "navigation@0"
@@ -1835,6 +1840,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "computor.matlab.moveWorkspaceView",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseRoot/ && computor.matlabExtensionAvailable",
+          "group": "9_layout@1"
+        },
         {
           "command": "computor.lecturer.documents.uploadFile",
           "when": "view == computor.lecturer.documents && viewItem =~ /^documents\\.file\\.(modified|localOnly)$/",
