@@ -2662,7 +2662,7 @@
         },
         {
           "command": "computor.student.showMessages",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit(\\.hasDescription)?$/",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit(\\.hasDescription)?(\\.hidden)?$/",
           "group": "2_discussion@1"
         },
         {
@@ -2672,7 +2672,7 @@
         },
         {
           "command": "computor.showContentDescription",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit\\.hasDescription$/",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit\\.hasDescription(\\.hidden)?$/",
           "group": "inline@0"
         },
         {
@@ -2757,7 +2757,7 @@
         },
         {
           "command": "computor.student.help",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit(\\.hasDescription)?$/",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit(\\.hasDescription)?(\\.hidden)?$/",
           "group": "3_help@1"
         },
         {
@@ -2907,7 +2907,7 @@
         },
         {
           "command": "computor.showContentDescription",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit\\.hasDescription$/",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseUnit\\.hasDescription(\\.hidden)?$/",
           "group": "2_details@1"
         },
         {

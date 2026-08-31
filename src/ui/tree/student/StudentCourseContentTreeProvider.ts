@@ -25,7 +25,7 @@ import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../exceptions/errors/GitExecError';
 import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
-import { tooltipWithDescription, withDescription } from '../../contentDescription';
+import { withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
 import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
 import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
@@ -1366,7 +1366,6 @@ abstract class TreeItem extends vscode.TreeItem {
 
 class CourseRootItem extends TreeItem {
     private readonly tooltipParts: string[];
-    private readonly courseDescription?: string | null;
 
     constructor(
         public readonly title: string,
@@ -1394,7 +1393,6 @@ class CourseRootItem extends TreeItem {
             gitBinding?.cloned ? 'cloned' : 'notCloned'
         ].join('.');
         this.updateCounts(itemCount);
-        this.courseDescription = courseDescription;
         this.tooltipParts = [`Course: ${this.title}`];
         if (this.courseFamilyInfo) {
             this.tooltipParts.push(`Course Family: ${this.courseFamilyInfo.title}`);
@@ -1402,7 +1400,9 @@ class CourseRootItem extends TreeItem {
         if (this.organizationInfo) {
             this.tooltipParts.push(`Organization: ${this.organizationInfo.title}`);
         }
-        this.tooltip = tooltipWithDescription(this.tooltipParts, courseDescription);
+        // Facts only — the description stays behind the book icon; hovering a
+        // course must not unroll paragraphs of markdown (#353).
+        this.tooltip = this.tooltipParts.join('\n');
         withDescription(this, title, courseDescription);
     }
 
@@ -1415,7 +1415,7 @@ class CourseRootItem extends TreeItem {
     setGitStatus(git?: { dirty: boolean; aheadCount: number; pushFailing: boolean }): void {
         this.description = git ? courseGitIndicator(git.dirty, git.aheadCount, git.pushFailing) : undefined;
         const gitLines = git ? courseGitTooltipLines(git.dirty, git.aheadCount, git.pushFailing) : [];
-        this.tooltip = tooltipWithDescription([...this.tooltipParts, ...gitLines], this.courseDescription);
+        this.tooltip = [...this.tooltipParts, ...gitLines].join('\n');
     }
 }
 
@@ -1500,13 +1500,17 @@ class CourseContentPathItem extends TreeItem {
             this.iconPath = new vscode.ThemeIcon('folder-opened');
         }
         
-        this.contextValue = isHidden(node.courseContent as any)
-            ? 'studentCourseUnit.hidden'
-            : 'studentCourseUnit';
+        this.contextValue = 'studentCourseUnit';
         this.id = node.courseContent ? node.courseContent.id : `unit-${name}`;
 
         this.applyCounts(node);
         withDescription(this, name, node.courseContent?.description);
+        // 'hidden' marks the row for staff; it comes LAST so the prefix- and
+        // suffix-anchored menu clauses keep matching — leading the value cost a
+        // hidden row its whole context menu (#353).
+        if (isHidden(node.courseContent as any)) {
+            this.contextValue = `${this.contextValue}.hidden`;
+        }
     }
 
     public updateFromNode(node: ContentNode, gitBadges?: AssignmentGitBadges): void {
@@ -1563,7 +1567,8 @@ class CourseContentPathItem extends TreeItem {
         if (this.gitBadges) {
             tooltipLines.push(...assignmentGitTooltipLines(this.gitBadges));
         }
-        this.tooltip = tooltipWithDescription(tooltipLines, node.courseContent?.description);
+        // Facts only; the full description stays behind the book icon (#353).
+        this.tooltip = tooltipLines.join('\n');
     }
 
     private formatStatus(status: string): string {
@@ -1897,12 +1902,6 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     private setupContextValue(): void {
         const contexts: string[] = ['studentCourseContent'];
 
-        // Only ever true for staff rehearsing as a student (issue #338).
-        // Surfaced so menus can drop actions that would be refused anyway.
-        if (isHidden(this.courseContent as any)) {
-            contexts.push('hidden');
-        }
-
         // Add content type context
         if (this.isAssignment()) {
             contexts.push('assignment');
@@ -1937,7 +1936,15 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         if (this.submissionGroup && typeof (this.submissionGroup as any).grading === "number") {
             contexts.push('graded');
         }
-        
+
+        // Only ever true for staff rehearsing as a student (issue #338). LAST,
+        // because every menu clause anchors on the segments before it — leading
+        // the value cost a hidden row its icons and context menu (#353). Staff
+        // keep every action; the server refuses students on its own.
+        if (isHidden(this.courseContent as any)) {
+            contexts.push('hidden');
+        }
+
         this.contextValue = contexts.join('.');
     }
     
