@@ -149,8 +149,14 @@ export interface CourseGitBindingGet {
   /** Whether a per-course token is stored; the token itself is never returned. */
   has_token?: boolean;
   template_repo?: string | null;
-  /** Public (never backend-internal) clone/web URL of the student-template. */
+  /**
+   * Clone URL of the student-template for the requesting audience — inside a
+   * workspace this is the workspace-internal git host, right for git but dead
+   * in a browser tab (#356). Anything opened externally must use web_url.
+   */
   template_url?: string | null;
+  /** Browser-audience URL of the template (no .git), always the public host. */
+  web_url?: string | null;
   default_branch?: string | null;
   student_repo_modes?: string[];
   /** True once the binding materialized repos; its identity is then immutable. */

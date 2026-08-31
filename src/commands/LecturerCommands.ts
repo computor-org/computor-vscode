@@ -2465,7 +2465,12 @@ export class LecturerCommands {
       console.warn('Could not read course git binding:', error);
     }
 
-    const namespace = binding?.template_url ? parentRepositoryUrl(binding.template_url) : undefined;
+    // web_url is the browser-audience address; template_url is the CLONE URL
+    // for whoever asked, and inside a workspace that is the workspace-internal
+    // git host — dead in a browser tab (issue #356). Prefer web_url and keep
+    // template_url only for bindings from a backend that predates the field.
+    const browserUrl = binding?.web_url || binding?.template_url;
+    const namespace = browserUrl ? parentRepositoryUrl(browserUrl) : undefined;
     if (namespace) {
       return namespace;
     }
