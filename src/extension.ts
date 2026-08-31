@@ -661,6 +661,10 @@ class UnifiedController {
   private messagesInputPanel?: MessagesInputPanelProvider;
   private commentsInputPanel?: CourseMemberCommentsInputPanelProvider;
   private wsService?: WebSocketService;
+  private lecturerCommands?: LecturerCommands;
+  private permissionsRefreshTimer?: ReturnType<typeof setTimeout>;
+  private permissionsRefreshInFlight = false;
+  private reloadPromptVisible = false;
   private readonly uiState = UiStateService.getInstanceOrUndefined();
 
   constructor(context: vscode.ExtensionContext) {
@@ -707,6 +711,14 @@ class UnifiedController {
 
     // Connect WebSocket (fire-and-forget, will reconnect automatically on failure)
     void this.wsService.connect();
+
+    // Live permission updates (computor-org/issues#384): the backend publishes
+    // `permissions:updated` on the personal `user:<id>` channel — which the
+    // server auto-subscribes on connect, so no channel list is needed here —
+    // whenever someone else grants or revokes a role/membership of this user.
+    this.wsService.subscribe([], 'unified-controller-permissions', {
+      onPermissionsUpdated: () => this.schedulePermissionsRefresh(),
+    });
 
     // Check initial maintenance status (fire-and-forget)
     void this.checkInitialMaintenanceStatus(api);
@@ -1344,6 +1356,9 @@ class UnifiedController {
 
     const commands = new LecturerCommands(this.context, tree, api, this.messagesInputPanel, this.wsService, this.commentsInputPanel);
     commands.registerCommands();
+    // Retained so a pushed permissions change can re-derive the lecturer
+    // scope context keys without a reload (#384).
+    this.lecturerCommands = commands;
 
     // Descriptions are markdown, so they are written in an editor with a
     // preview rather than in a textarea inside a form (issue #356). Lives with
@@ -1584,6 +1599,102 @@ class UnifiedController {
 
   getActiveViews(): string[] {
     return [...this.activeViews];
+  }
+
+  /**
+   * Debounced entry point for server-pushed permission changes (#384). One
+   * role change often lands as several membership writes, each publishing its
+   * own `permissions:updated` — collapse them into a single refresh.
+   */
+  private schedulePermissionsRefresh(): void {
+    if (this.permissionsRefreshTimer) {
+      clearTimeout(this.permissionsRefreshTimer);
+    }
+    this.permissionsRefreshTimer = setTimeout(() => {
+      this.permissionsRefreshTimer = undefined;
+      void this.applyPermissionsChange();
+    }, 1500);
+  }
+
+  /**
+   * Re-read views/scopes after the backend said they changed, and reconcile
+   * the UI. Roles the user lost (or kept) apply live: context keys flip and
+   * the per-view trees refetch. A role whose view container was never
+   * constructed cannot be built after activation — `unifiedLoginFlow`
+   * deliberately refuses to re-activate a live session — so gaining one
+   * offers the established escape hatch, a window reload.
+   */
+  private async applyPermissionsChange(): Promise<void> {
+    const api = this.api;
+    if (!api) {
+      return;
+    }
+    if (this.permissionsRefreshInFlight) {
+      this.schedulePermissionsRefresh();
+      return;
+    }
+    this.permissionsRefreshInFlight = true;
+    try {
+      api.invalidatePermissionCaches();
+
+      let views: string[];
+      try {
+        views = await api.getUserViews();
+      } catch (error) {
+        // Transient fetch failure: the caches are already evicted, so the
+        // next read (or the next push) picks the change up.
+        console.warn('[UnifiedController] Could not re-read views after permissions change:', error);
+        return;
+      }
+      // Warm the scopes cache too; role labels and webview ceilings read it.
+      await api.getUserScopes();
+
+      const gained = views.filter((view) => !this.activeViews.includes(view));
+      if (gained.length > 0) {
+        if (!this.reloadPromptVisible) {
+          this.reloadPromptVisible = true;
+          void vscode.window
+            .showInformationMessage(
+              'Your Computor permissions changed and a new view is available. Reload the window to apply.',
+              'Reload Window'
+            )
+            .then((choice) => {
+              this.reloadPromptVisible = false;
+              if (choice === 'Reload Window') {
+                void vscode.commands.executeCommand('workbench.action.reloadWindow');
+              }
+            });
+        }
+        return;
+      }
+
+      await setViewContextKeys(views, ['student', 'tutor', 'lecturer', 'user_manager']);
+      this.activeViews = views;
+      await this.lecturerCommands?.refreshScopeContextKeys();
+
+      // Refetch the still-visible views' trees so role-dependent data
+      // (member role labels, course lists, gated nodes) reflects the change.
+      const refreshByView: Record<string, string> = {
+        student: 'computor.student.refresh',
+        tutor: 'computor.tutor.refresh',
+        lecturer: 'computor.lecturer.refresh',
+        user_manager: 'computor.userManager.refresh',
+      };
+      for (const view of views) {
+        const command = refreshByView[view];
+        if (!command) {
+          continue;
+        }
+        try {
+          await vscode.commands.executeCommand(command);
+        } catch (error) {
+          console.warn(`[UnifiedController] ${command} failed after permissions change:`, error);
+        }
+      }
+      vscode.window.setStatusBarMessage('Computor: permissions updated', 5000);
+    } finally {
+      this.permissionsRefreshInFlight = false;
+    }
   }
 
   getHttpClient(): BearerTokenHttpClient | undefined {
