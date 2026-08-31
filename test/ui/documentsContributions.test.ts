@@ -83,6 +83,34 @@ describe('documents tree contributions', () => {
     });
   });
 
+  describe('write actions', () => {
+    const WRITE_COMMANDS = [
+      'computor.lecturer.documents.uploadFile',
+      'computor.lecturer.documents.newFile',
+      'computor.lecturer.documents.newFolder',
+      'computor.lecturer.documents.uploadAllPending',
+      'computor.lecturer.documents.rename',
+      'computor.lecturer.documents.delete',
+      'computor.lecturer.documents.uploadFromComputer',
+      'computor.lecturer.documents.uploadFolderFromComputer'
+    ];
+
+    it('every write action requires the writable stamp (#361)', () => {
+      // The provider stamps `.writable` from the backend's own
+      // GET /documents/permissions answer; an ungated write action is a
+      // guaranteed 403 dressed up as a button.
+      const entries: Array<{ command: string; when?: string }> =
+        pkg.contributes.menus['view/item/context'];
+      for (const command of WRITE_COMMANDS) {
+        const clauses = entries.filter(e => e.command === command);
+        expect(clauses.length, command).to.be.greaterThan(0);
+        for (const clause of clauses) {
+          expect(clause.when, command).to.contain('writable');
+        }
+      }
+    });
+  });
+
   describe('viewers', () => {
     const editors: Array<{ viewType: string; priority: string; selector: Array<{ filenamePattern: string }> }> =
       pkg.contributes.customEditors;
