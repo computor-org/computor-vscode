@@ -2031,6 +2031,16 @@
           "group": "1_actions@1"
         },
         {
+          "command": "computor.lecturer.importExamples",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples && computor.examples.canAuthor",
+          "group": "1_upload@1"
+        },
+        {
+          "command": "computor.lecturer.uploadAllExamples",
+          "when": "view == computor.lecturer.examples && viewItem == rootSection_examples && computor.examples.canAuthor",
+          "group": "1_upload@2"
+        },
+        {
           "command": "computor.lecturer.uploadExamplesFromZip",
           "when": "view == computor.lecturer.examples && viewItem == exampleRepository && computor.examples.canAuthor",
           "group": "1_actions@2"

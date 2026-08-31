@@ -67,6 +67,10 @@ your work safely on the server.
 Brings your repository up to date with the course material, and **puts back any
 file you deleted**.
 
+You rarely need to run it yourself: released updates arrive on their own when
+the workspace starts and when the course view refreshes. This action is the
+manual trigger for the same sync, for when you do not want to wait.
+
 Two things happen:
 
 1. New and changed material your lecturer has released is merged into your
@@ -101,6 +105,20 @@ In the browser the archive is saved in your workspace under `exports/` and then
 downloaded to your computer. If your browser blocks the download, use the
 *Download again* button on the page that opens, or right-click the file in the
 Explorer and choose *Download…*. In desktop VS Code you are asked where to save.
+
+### Working outside the workspace
+
+The course page on the website (open the course, then *Check access* under
+*Your repository*) hands you a ready-to-paste `git clone` command with your
+personal access token in it. That gives you a **full git repository** on your
+own computer: you can pull updates and push your work with that token from any
+git client. The token works like a password, so treat it like one. It stays
+valid on its own — it is not the credential the workspace manages.
+
+This is different from *Export Course Examples* below: the export is a plain
+ZIP of the files with no git in it, for keeping your work after the course.
+The clone stays connected to the course. Either way, the workspace remains the
+supported place to work — testing and submitting happen there.
 
 ### Fix Repository Authentication
 
