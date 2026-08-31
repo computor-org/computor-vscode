@@ -1479,7 +1479,8 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
   private async handleContentMoveToParent(
     draggedData: { contentId: string; courseId: string; path: string; position: number },
     targetParentPath: string,
-    courseId: string
+    courseId: string,
+    placement: 'start' | 'end' = 'end'
   ): Promise<void> {
     const draggedParent = this.getParentPath(draggedData.path);
     if (draggedParent === targetParentPath) {
@@ -1503,9 +1504,12 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       })
       .sort((a, b) => a.position - b.position);
 
-    // Place at the end
+    const firstSibling = siblings[0];
     const lastSibling = siblings[siblings.length - 1];
-    const newPosition = lastSibling ? lastSibling.position + 1 : 1;
+    const newPosition =
+      placement === 'start'
+        ? (firstSibling ? firstSibling.position - 1 : 1)
+        : (lastSibling ? lastSibling.position + 1 : 1);
 
     try {
       await this.apiService.moveCourseContent(courseId, draggedData.contentId, newPath, newPosition);
@@ -1519,29 +1523,46 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
   }
 
   /**
-   * What a unit dropped on another unit should mean.
+   * What something dropped on a unit should mean.
    *
-   * Only genuinely ambiguous when the two are siblings — dragging a unit in
-   * from somewhere else reads as nesting, and an assignment dropped on a unit
-   * always means "into it". Returns 'into' without asking in those cases.
+   * An assignment always goes INTO the unit, but start-or-end is asked (#323)
+   * — silently appending made the drop feel like it landed "somewhere". A unit
+   * dragged in from elsewhere reads as nesting; only sibling units are
+   * genuinely ambiguous between "before" and "into", so those are asked too.
    */
   private async resolveUnitDrop(
     draggedData: { contentId?: string; path?: string; courseId?: string },
     target: CourseContentTreeItem
-  ): Promise<'into' | 'before' | 'cancelled'> {
+  ): Promise<'into' | 'intoStart' | 'before' | 'cancelled'> {
     const draggedPath = draggedData?.path;
     if (!draggedPath || draggedData.contentId === target.courseContent.id) {
-      return 'into';
-    }
-
-    if (this.getParentPath(draggedPath) !== this.getParentPath(target.courseContent.path)) {
       return 'into';
     }
 
     const allContents = await this.getCourseContents(target.course.id);
     const dragged = allContents.find(c => c.id === draggedData.contentId);
     if (!dragged || dragged.is_submittable) {
-      // An assignment dropped on a unit is never ambiguous.
+      if (this.getParentPath(draggedPath) === String(target.courseContent.path)) {
+        // Dropped on the unit it already lives in — a no-op, nothing to ask.
+        return 'into';
+      }
+      // An assignment dropped on a unit always goes INTO it — but where inside
+      // is a real question, and silently appending made the drop feel like it
+      // landed "somewhere" (#323). Same choice the Move to Start/End commands
+      // offer.
+      const intoLabel = target.courseContent.title || target.courseContent.path;
+      const pick = await vscode.window.showQuickPick(
+        [
+          { label: `$(arrow-up) At the start of "${intoLabel}"`, value: 'intoStart' as const },
+          { label: `$(arrow-down) At the end of "${intoLabel}"`, value: 'into' as const }
+        ],
+        { title: 'Where inside the unit?' }
+      );
+      return pick ? pick.value : 'cancelled';
+    }
+
+    if (this.getParentPath(draggedPath) !== this.getParentPath(target.courseContent.path)) {
+      // A unit dragged in from somewhere else reads as nesting.
       return 'into';
     }
 
@@ -1591,7 +1612,12 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
               if (dropped === 'before') {
                 await this.handleContentReorder(draggedData, target);
               } else {
-                await this.handleContentMoveToParent(draggedData, target.courseContent.path, target.course.id);
+                await this.handleContentMoveToParent(
+                  draggedData,
+                  target.courseContent.path,
+                  target.course.id,
+                  dropped === 'intoStart' ? 'start' : 'end'
+                );
               }
             } else {
               // Dropping onto a sibling: reorder alongside it
