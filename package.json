@@ -30,7 +30,8 @@
       {
         "command": "computor.tutor.assignment.grading",
         "title": "Grading…",
-        "category": "Computor Tutor"
+        "category": "Computor Tutor",
+        "icon": "$(checklist)"
       },
       {
         "command": "computor.tutor.cloneStudentRepository",
@@ -2424,6 +2425,11 @@
           "command": "computor.tutor.showReadme",
           "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
           "group": "inline@1"
+        },
+        {
+          "command": "computor.tutor.assignment.grading",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
+          "group": "inline@2"
         },
         {
           "command": "computor.tutor.assignment.grading",
