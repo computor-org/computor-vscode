@@ -2422,22 +2422,22 @@
         },
         {
           "command": "computor.tutor.showReadme",
-          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
           "group": "inline@1"
         },
         {
           "command": "computor.tutor.assignment.grading",
-          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
           "group": "1_status@1"
         },
         {
           "command": "computor.showTestResults",
-          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
           "group": "1_status@2"
         },
         {
           "command": "computor.tutor.checkout",
-          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo)",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutorStudentContent\\.assignment/",
           "group": "3_external@0"
         },
         {
@@ -2457,7 +2457,7 @@
         },
         {
           "command": "computor.tutor.runTest",
-          "when": "view == computor.tutor.courses && (viewItem == tutorStudentContent.assignment.hasRepo || viewItem == tutorStudentContent.assignment.noRepo || viewItem == tutorVirtualFolder.submissions || viewItem == tutorSubmissionArtifact || viewItem == tutorVirtualFolder.reference)",
+          "when": "view == computor.tutor.courses && (viewItem =~ /^tutorStudentContent\\.assignment/ || viewItem == tutorVirtualFolder.submissions || viewItem == tutorSubmissionArtifact || viewItem == tutorVirtualFolder.reference)",
           "group": "3_external@5"
         },
         {
