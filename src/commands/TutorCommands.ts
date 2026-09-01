@@ -426,6 +426,13 @@ export class TutorCommands {
         this.filterProvider?.refreshFilters();
 
         notify.info(`Updated: ${grade.toFixed(2)} • ${statusPick.label}`);
+
+        // Both verdicts ask the student to act, and students can't know what
+        // to change unless the tutor says so — open the conversation for this
+        // assignment right away (#372).
+        if (statusPick.value === 2 || statusPick.value === 3) {
+          await this.showMessages(item);
+        }
       } catch (e: any) {
         notify.error(`Failed to update grading: ${e?.message || e}`);
       }
