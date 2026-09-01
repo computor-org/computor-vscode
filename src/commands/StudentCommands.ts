@@ -1184,6 +1184,15 @@ export class StudentCommands {
         // Save all open files in the assignment directory
         await this.saveAllFilesInDirectory(submissionDirectory);
 
+        // After saving, so unsaved work in open editors counts as work.
+        if (!await this.directoryHasNonEmptyFile(submissionDirectory)) {
+          notify.warning(
+            'Nothing to submit yet: this assignment\'s files are all empty. '
+            + 'Write your solution first, then submit again.'
+          );
+          return;
+        }
+
         // Perform submission by ensuring latest work is committed and pushed
         let submissionOk = false;
         let submissionVersion: string | undefined;
@@ -1723,6 +1732,15 @@ export class StudentCommands {
         // Save all open files in the assignment directory
         await this.saveAllFilesInDirectory(submissionDirectory);
 
+        // After saving, so unsaved work in open editors counts as work.
+        if (!await this.directoryHasNonEmptyFile(submissionDirectory)) {
+          notify.warning(
+            'Nothing to test yet: this assignment\'s files are all empty. '
+            + 'Write your solution first, then test again.'
+          );
+          return;
+        }
+
         const hasChanges = await this.gitService.hasChanges(submissionDirectory);
         let currentCommitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
 
@@ -2211,6 +2229,11 @@ export class StudentCommands {
     if (!folder || !folder[0]) { return; }
     const dir = folder[0].fsPath;
 
+    if (!await this.directoryHasNonEmptyFile(dir)) {
+      notify.warning('Nothing to submit: the chosen folder has no files or only empty files.');
+      return;
+    }
+
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Submitting…', cancellable: false },
       async (progress) => {
@@ -2231,6 +2254,38 @@ export class StudentCommands {
         }
       }
     );
+  }
+
+  /**
+   * True when the directory holds at least one non-empty file (`.git` excluded).
+   * Pre-flight for the submit/test flows: an untouched assignment contains only
+   * the empty stub files, which the backend refuses anyway (SUBMIT_014) —
+   * catching it here answers the student before anything is committed, pushed
+   * or uploaded (computor-org/issues#378).
+   */
+  private async directoryHasNonEmptyFile(currentPath: string): Promise<boolean> {
+    const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.name === '.git') {
+        continue;
+      }
+
+      const entryPath = path.join(currentPath, entry.name);
+
+      if (entry.isDirectory()) {
+        if (await this.directoryHasNonEmptyFile(entryPath)) {
+          return true;
+        }
+      } else if (entry.isFile()) {
+        const stat = await fs.promises.stat(entryPath);
+        if (stat.size > 0) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   private async createSubmissionArchive(directory: string): Promise<{ buffer: Buffer; fileName: string }> {
