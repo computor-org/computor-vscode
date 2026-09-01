@@ -34,6 +34,12 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "computor.tutor.help",
+        "title": "Help",
+        "icon": "$(question)",
+        "category": "Computor Tutor"
+      },
+      {
         "command": "computor.tutor.cloneStudentRepository",
         "title": "Clone Student Repository",
         "icon": "$(cloud-download)",
@@ -2490,6 +2496,16 @@
           "command": "computor.tutor.showCourseMemberComments",
           "when": "view == computor.tutor.courses && viewItem == tutorMember.selected",
           "group": "2_discussion@1"
+        },
+        {
+          "command": "computor.tutor.help",
+          "when": "view == computor.tutor.courses && viewItem =~ /^tutor/",
+          "group": "3_help@1"
+        },
+        {
+          "command": "computor.tutor.help",
+          "when": "view == computor.tutor.filters && viewItem =~ /^tutor/",
+          "group": "3_help@1"
         },
         {
           "command": "computor.lecturer.checkoutExample",
