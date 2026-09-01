@@ -20,6 +20,7 @@ import { notify } from '../utils/notify';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { pickLatestSubmissionArtifactId, sortSubmissionArtifactsByRecency } from '../utils/submissionArtifacts';
 import { tutorTestTargetFor } from '../ui/tree/tutor/tutorTestTarget';
+import { tutorHelpPageFor } from '../utils/tutorHelpPages';
 interface TutorFilterRefreshable {
   refreshFilters(): void;
 }
@@ -426,6 +427,13 @@ export class TutorCommands {
         this.filterProvider?.refreshFilters();
 
         notify.info(`Updated: ${grade.toFixed(2)} • ${statusPick.label}`);
+
+        // Both verdicts ask the student to act, and students can't know what
+        // to change unless the tutor says so — open the conversation for this
+        // assignment right away (#372).
+        if (statusPick.value === 2 || statusPick.value === 3) {
+          await this.showMessages(item);
+        }
       } catch (e: any) {
         notify.error(`Failed to update grading: ${e?.message || e}`);
       }
@@ -475,6 +483,28 @@ export class TutorCommands {
     register('computor.tutor.runTest', async (item: any) => {
       await this.runTestOnSubmission(item);
     });
+
+    // Help command
+    register('computor.tutor.help', async (item?: any) => {
+      await this.showHelp(item);
+    });
+  }
+
+  private async showHelp(item?: any): Promise<void> {
+    try {
+      const helpFileName = tutorHelpPageFor(item?.contextValue);
+      const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
+
+      if (!fs.existsSync(helpPath)) {
+        notify.warning(`Help file not found: ${helpFileName}`);
+        return;
+      }
+
+      await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
+    } catch (error) {
+      console.error('[showHelp] Failed to show help:', error);
+      notify.error('Failed to open help documentation');
+    }
   }
 
   /**
