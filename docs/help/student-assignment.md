@@ -32,8 +32,8 @@ assignment is a team one.
 
 ## Working on an assignment
 
-**1. Read the task.** Click the preview icon on the row, or right-click →
-*Show README Preview*. The description opens beside your code and stays there
+**1. Read the task.** Click the book icon on the row, or right-click →
+*Show Description*. The description opens beside your code and stays there
 while you work.
 
 **2. Write your solution.** Expand the assignment to see its files and click one
