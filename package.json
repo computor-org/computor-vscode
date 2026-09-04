@@ -77,8 +77,8 @@
       },
       {
         "command": "computor.tutor.showReadme",
-        "title": "Show README Preview",
-        "icon": "$(open-preview)",
+        "title": "Show Description",
+        "icon": "$(book)",
         "category": "Computor Tutor"
       },
       {
@@ -288,8 +288,8 @@
       },
       {
         "command": "computor.student.offline.showPreview",
-        "title": "Show Preview",
-        "icon": "$(open-preview)",
+        "title": "Show Description",
+        "icon": "$(book)",
         "category": "Computor Student (Offline Mode)"
       },
       {
@@ -883,8 +883,8 @@
       },
       {
         "command": "computor.student.showPreview",
-        "title": "Show README Preview",
-        "icon": "$(open-preview)",
+        "title": "Show Description",
+        "icon": "$(book)",
         "category": "Computor Student"
       },
       {

@@ -21,8 +21,8 @@ have; clicking the row just fetches what is missing.
 
 ## Reviewing the work
 
-**Read the task first.** The preview icon on the row (or *Show README
-Preview*) opens the assignment description the student worked from.
+**Read the task first.** The book icon on the row (or *Show Description*)
+opens the assignment description the student worked from.
 
 **Open the files.** Expand *Submissions* and click a file to read it. To see
 how it differs from the sample solution, right-click a submission file →
