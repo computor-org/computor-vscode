@@ -5,6 +5,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { showErrorWithSeverity } from '../../utils/errorDisplay';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -127,7 +128,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
             vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
-          notify.error(`Failed to update content type: ${error}`);
+          showErrorWithSeverity(error as Error, 'Failed to update content type');
         }
         break;
 

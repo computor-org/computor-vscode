@@ -3,6 +3,7 @@ import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../panels
 import { TestResultService } from '../../services/TestResultService';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { notify } from '../../utils/notify';
+import { resolveResultPayload, resultCacheKey, resultScopeFor } from './resolveResultPayload';
 
 /**
  * The bottom "Results" panel and every command that drives it.
@@ -69,54 +70,25 @@ export function registerResultsPanel(
     // to the test-results container.
     const silent = opts?.silent === true;
     try {
-      let resultPayload: any | undefined;
-      let resultId: string | undefined;
-      let resultArtifacts: any[] | undefined;
-      let rawResult: any | undefined;
-
       // Get course content ID from the item (student tree uses courseContent, tutor tree uses content)
       const itemContent = (item?.courseContent || item?.content) as any;
       const courseContentId = itemContent?.id;
-      const cacheKey = courseContentId ? `testResults:${courseContentId}` : undefined;
 
-      if (courseContentId) {
-        // Fetch fresh data from API to get latest test results. The backend
-        // returns the latest *finished* result across all commits, so a prior
-        // run survives a workspace restart even though the in-memory tree item
-        // may no longer carry it (issue #273).
-        //
-        // This endpoint is student-scoped, so it yields nothing for a tutor or
-        // lecturer looking at someone else's assignment - fall back to the
-        // result the tree item already carries rather than showing an empty
-        // panel to staff.
-        const freshCourseContent = await api.getStudentCourseContent(courseContentId, { force: true });
-        rawResult = freshCourseContent?.result ?? itemContent?.result;
-      } else {
-        // Fallback to item data if no ID available
-        rawResult = itemContent?.result;
-      }
+      // Whose result this is decides which endpoint may answer. Resolving it
+      // from the signed-in user regardless of the view showed a tutor their own
+      // passing run in place of the student's (#389).
+      const scope = resultScopeFor(item);
+      const cacheKey = resultCacheKey(scope, courseContentId);
 
-      if (rawResult) {
-        resultId = rawResult.id;
-        let resultJson = rawResult.result_json;
-        resultArtifacts = rawResult.result_artifacts;
-
-        // The course-content endpoints serialize `result` through the
-        // lighter list DTO, so result_json/result_artifacts come back
-        // empty even when a finished result exists. GET /results/{id}
-        // always carries both — hydrate before falling back to the bare
-        // DTO, which the panel can't render as test results.
-        if (!resultJson && resultId) {
-          const fullResult = await api.getResult(resultId);
-          if (fullResult) {
-            resultJson = fullResult.result_json;
-            if (!resultArtifacts?.length) {
-              resultArtifacts = fullResult.result_artifacts;
-            }
-          }
-        }
-        resultPayload = resultJson ?? rawResult;
-      }
+      // The backend returns the latest *finished* result across all commits, so
+      // a prior run survives a workspace restart even though the in-memory tree
+      // item may no longer carry it (issue #273).
+      let { resultPayload, resultId, resultArtifacts } = await resolveResultPayload(
+        api,
+        scope,
+        courseContentId,
+        itemContent?.result
+      );
 
       // Persist the latest result per course content so it survives a
       // workspace restart, and fall back to it when the backend has nothing to

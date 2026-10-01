@@ -25,6 +25,8 @@ import { ScopeMembershipWebviewProvider } from '../ui/webviews/ScopeMembershipWe
 import { hasExampleAssigned, getExampleVersionId, classifyReleaseContents } from '../utils/deploymentHelpers';
 import type { ReleaseCandidate } from '../utils/deploymentHelpers';
 import { HttpError } from '../exceptions/errors/HttpError';
+import { findContentsUsingType, formatContentTypeInUseDetail } from '../utils/contentTypeUsage';
+import { showErrorWithSeverity } from '../utils/errorDisplay';
 import { pollTaskUntilComplete } from '../utils/taskPoller';
 import type { CourseContentTypeList, CourseList, CourseFamilyList, CourseTaskRequest } from '../types/generated/courses';
 import type { OrganizationList } from '../types/generated/organizations';
@@ -40,7 +42,18 @@ import {
   canPostToOrganization
 } from '../services/MessagePermissions';
 import { runLockedWithProgress } from '../utils/progressLock';
-import { canAuthorExamples, canManageAnyCourseFamilyMembers, canManageAnyOrganizationMembers } from '../services/ScopePermissions';
+import {
+  canAuthorExamples,
+  canDeleteAny,
+  canDeleteCourse,
+  canDeleteScope,
+  canManageAnyCourseFamilyMembers,
+  canManageAnyOrganizationMembers
+} from '../services/ScopePermissions';
+import type { ScopePermissionContext } from '../services/ScopePermissions';
+import { formatCascadePreview } from '../services/CascadePreview';
+import type { CascadeDeleteResult } from '../types/generated/common';
+import { CourseSelectionService } from '../services/CourseSelectionService';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
@@ -172,6 +185,47 @@ export class LecturerCommands {
 
     register('computor.lecturer.manageCourse', async (item: CourseTreeItem) => {
       await this.manageCourse(item);
+    });
+
+    // Hierarchy lifecycle. Owners (and admins) only; the menu entries are
+    // gated by the coarse `canDeleteAny` context key and each command
+    // re-checks the specific node before doing anything.
+    // Both need a tree node: from the Command Palette there is none, so say
+    // so instead of throwing on `item.organization`.
+    register('computor.lecturer.deleteOrganization', async (item?: OrganizationTreeItem) => {
+      if (!item?.organization) {
+        notify.info('Right-click an organization in the Lecturer tree to delete it.');
+        return;
+      }
+      await this.deleteOrganization(item);
+    });
+    register('computor.lecturer.deleteCourseFamily', async (item?: CourseFamilyTreeItem) => {
+      if (!item?.courseFamily) {
+        notify.info('Right-click a course family in the Lecturer tree to delete it.');
+        return;
+      }
+      await this.deleteCourseFamily(item);
+    });
+    register('computor.lecturer.deleteCourse', async (item?: CourseTreeItem) => {
+      if (item?.course) {
+        await this.deleteCourse(item.course);
+      } else {
+        await this.manageCourse(undefined);
+      }
+    });
+    register('computor.lecturer.archiveCourse', async (item?: CourseTreeItem) => {
+      if (!item?.course) {
+        notify.info('Right-click a course in the Lecturer tree to archive it.');
+        return;
+      }
+      await this.archiveCourse(item.course);
+    });
+    register('computor.lecturer.unarchiveCourse', async (item?: CourseTreeItem) => {
+      if (!item?.course) {
+        notify.info('Right-click an archived course in the Lecturer tree to unarchive it.');
+        return;
+      }
+      await this.unarchiveCourse(item.course);
     });
 
     register('computor.lecturer.configureCourseGit', async (item: CourseTreeItem) => {
@@ -412,6 +466,14 @@ export class LecturerCommands {
 
     register('computor.lecturer.setMaxSubmissions', async (item: CourseContentTreeItem) => {
       await this.setSubmissionLimit(item, 'max_submissions');
+    });
+
+    register('computor.lecturer.setCourseMaxTestRuns', async (item: CourseTreeItem) => {
+      await this.setCourseBudget(item, 'max_test_runs');
+    });
+
+    register('computor.lecturer.setCourseMaxSubmissions', async (item: CourseTreeItem) => {
+      await this.setCourseBudget(item, 'max_submissions');
     });
 
     register('computor.lecturer.renameCourseGroup', async (item: CourseGroupTreeItem) => {
@@ -1018,28 +1080,302 @@ export class LecturerCommands {
     }
   }
 
-  private async deleteCourse(course: any): Promise<void> {
-    const confirmation = await notify.confirm(
-      `Are you sure you want to delete the course "${course.title || course.path}"? This action cannot be undone.`,
-      'Delete'
-    );
+  // ---------------------------------------------------------------------
+  // Hierarchy lifecycle: archive / delete of course, family, organization
+  // ---------------------------------------------------------------------
+  //
+  // One flow for all three deletes: owner pre-check → dry run (the server
+  // says what goes, what stays and whether the real call would be refused)
+  // → preview modal → the entity's `path` typed out → the real call. The
+  // typed confirmation is the same gate a folder delete in the documents
+  // tree has (`DocumentsCommands.delete`); nothing here is undoable.
 
-    if (confirmation) {
-      try {
-        // TODO: Implement deleteCourse in ComputorApiService
-        // For now, show a message that this feature is coming soon
-        notify.info(
-          `Course deletion feature is coming soon! Would delete: "${course.title || course.path}"`
-        );
-        
-        // When API is ready, uncomment:
-        // await this.apiService.deleteCourse(course.id);
-        // notify.info('Course deleted successfully');
-        // this.treeDataProvider.refresh();
-      } catch (error) {
-        notify.error(`Failed to delete course: ${error}`);
-      }
+  private async deleteCourse(course: CourseList): Promise<void> {
+    const label = course.title || course.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteCourse(course.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course can delete it.`, {
+        detail: `"${label}" can be deleted by a course owner or an administrator. Ask one of them, or ask to be made an owner.`
+      });
+      return;
     }
+
+    const preview = await this.previewCascadeDelete(
+      `Checking what deleting "${label}" would remove…`,
+      () => this.apiService.deleteCourse(course.id, { dryRun: true })
+    );
+    if (preview === undefined) {
+      return;
+    }
+
+    if (preview.blocked_reason) {
+      // The server already knows the real call would be refused. Two cases:
+      // an admin who has not archived yet (offer to), or an owner whose
+      // course holds student submissions (only an admin can delete it).
+      const needsArchive = ctx.scopes?.is_admin === true
+        && !course.archived_at
+        && /archive/i.test(preview.blocked_reason);
+      const picked = await notify.modal('warning', `Cannot delete "${label}" yet`, {
+        detail: preview.blocked_reason,
+        actions: needsArchive ? ['Archive course'] : []
+      });
+      if (picked === 'Archive course') {
+        await this.archiveCourse(course);
+      }
+      return;
+    }
+
+    const proceed = await notify.modal('warning', `Delete course "${label}"?`, {
+      detail: formatCascadePreview(preview, { kind: 'course' }),
+      actions: ['Continue']
+    });
+    if (proceed !== 'Continue') {
+      return;
+    }
+    if (!(await this.confirmByTypingPath('course', label, course.path))) {
+      return;
+    }
+
+    try {
+      const result = await notify.progress(`Deleting course "${label}"…`, () =>
+        this.apiService.deleteCourse(course.id)
+      );
+      this.reportCascadeResult(`Course "${label}" deleted.`, result);
+      await this.forgetDeletedCourseSelection(course.id);
+      this.treeDataProvider.refresh();
+    } catch (error) {
+      this.showDeleteError(error, `Failed to delete course "${label}"`, 'course');
+    }
+  }
+
+  private async deleteCourseFamily(item: CourseFamilyTreeItem): Promise<void> {
+    const family = item.courseFamily;
+    const label = family.title || family.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteScope('course_family', family.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course family can delete it.`, {
+        detail: `"${label}" can be deleted by a course family owner or an administrator.`
+      });
+      return;
+    }
+
+    const preview = await this.previewCascadeDelete(
+      `Checking what deleting "${label}" would remove…`,
+      () => this.apiService.deleteCourseFamily(family.id, { dryRun: true })
+    );
+    if (preview === undefined) {
+      return;
+    }
+    if (preview.blocked_reason) {
+      await notify.modal('warning', `Cannot delete "${label}" yet`, { detail: preview.blocked_reason });
+      return;
+    }
+
+    const proceed = await notify.modal('warning', `Delete course family "${label}"?`, {
+      detail: formatCascadePreview(preview, { kind: 'course_family' }),
+      actions: ['Continue']
+    });
+    if (proceed !== 'Continue') {
+      return;
+    }
+    if (!(await this.confirmByTypingPath('course family', label, family.path))) {
+      return;
+    }
+
+    try {
+      const result = await notify.progress(`Deleting course family "${label}"…`, () =>
+        this.apiService.deleteCourseFamily(family.id)
+      );
+      this.reportCascadeResult(`Course family "${label}" deleted.`, result);
+      this.treeDataProvider.refresh();
+    } catch (error) {
+      this.showDeleteError(error, `Failed to delete course family "${label}"`, 'course family');
+    }
+  }
+
+  private async deleteOrganization(item: OrganizationTreeItem): Promise<void> {
+    const org = item.organization;
+    const label = org.title || org.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteScope('organization', org.id, ctx)) {
+      await notify.modal('info', `Only an owner of this organization can delete it.`, {
+        detail: `"${label}" can be deleted by an organization owner or an administrator.`
+      });
+      return;
+    }
+
+    const preview = await this.previewCascadeDelete(
+      `Checking what deleting "${label}" would remove…`,
+      () => this.apiService.deleteOrganization(org.id, { dryRun: true })
+    );
+    if (preview === undefined) {
+      return;
+    }
+    if (preview.blocked_reason) {
+      await notify.modal('warning', `Cannot delete "${label}" yet`, { detail: preview.blocked_reason });
+      return;
+    }
+
+    const proceed = await notify.modal('warning', `Delete organization "${label}"?`, {
+      detail: formatCascadePreview(preview, { kind: 'organization' }),
+      actions: ['Continue']
+    });
+    if (proceed !== 'Continue') {
+      return;
+    }
+    if (!(await this.confirmByTypingPath('organization', label, org.path))) {
+      return;
+    }
+
+    try {
+      const result = await notify.progress(`Deleting organization "${label}"…`, () =>
+        this.apiService.deleteOrganization(org.id)
+      );
+      this.reportCascadeResult(`Organization "${label}" deleted.`, result);
+      this.treeDataProvider.refresh();
+    } catch (error) {
+      this.showDeleteError(error, `Failed to delete organization "${label}"`, 'organization');
+    }
+  }
+
+  private async archiveCourse(course: CourseList): Promise<void> {
+    const label = course.title || course.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteCourse(course.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course can archive it.`);
+      return;
+    }
+    const confirmed = await notify.confirm(
+      `Archive course "${label}"?`,
+      'Archive',
+      'Students and tutors will no longer see the course, and submissions and test runs are closed. It stays in your tree marked "Archived"; use Unarchive to reopen it.'
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await this.apiService.archiveCourse(course.id);
+      this.treeDataProvider.refresh();
+      notify.info(`"${label}" is archived: hidden from students, submissions closed. Use Unarchive to reopen it.`);
+    } catch (error) {
+      showErrorWithSeverity(
+        error instanceof Error ? error : new Error(String(error)),
+        `Failed to archive course "${label}"`
+      );
+    }
+  }
+
+  private async unarchiveCourse(course: CourseList): Promise<void> {
+    const label = course.title || course.path;
+    const ctx = await this.buildScopeContext();
+    if (!canDeleteCourse(course.id, ctx)) {
+      await notify.modal('info', `Only an owner of this course can unarchive it.`);
+      return;
+    }
+    const confirmed = await notify.confirm(
+      `Unarchive course "${label}"?`,
+      'Unarchive',
+      'The course becomes visible to its students and tutors again, and submissions and test runs reopen.'
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await this.apiService.unarchiveCourse(course.id);
+      this.treeDataProvider.refresh();
+      notify.info(`"${label}" is open again for its students.`);
+    } catch (error) {
+      showErrorWithSeverity(
+        error instanceof Error ? error : new Error(String(error)),
+        `Failed to unarchive course "${label}"`
+      );
+    }
+  }
+
+  /** Dry run under a progress notification; `undefined` when it failed (already reported). */
+  private async previewCascadeDelete(
+    title: string,
+    run: () => Promise<CascadeDeleteResult>
+  ): Promise<CascadeDeleteResult | undefined> {
+    try {
+      return await notify.progress(title, () => run());
+    } catch (error) {
+      this.showDeleteError(error, 'Could not check what the delete would remove', 'item');
+      return undefined;
+    }
+  }
+
+  /** The typed gate: the entity's own `path`, exactly. Empty input cancels. */
+  private async confirmByTypingPath(kind: string, label: string, path: string): Promise<boolean> {
+    const typed = await vscode.window.showInputBox({
+      title: `Delete ${kind} "${label}"`,
+      prompt: `This permanently deletes the ${kind} and everything listed. There is no undo. Type "${path}" to confirm.`,
+      placeHolder: path,
+      ignoreFocusOut: true,
+      validateInput: (value) => value === path || value.length === 0
+        ? undefined
+        : `Type "${path}" exactly, or leave empty to cancel.`
+    });
+    return typed === path;
+  }
+
+  private reportCascadeResult(headline: string, result: CascadeDeleteResult): void {
+    const errors = result.errors ?? [];
+    if (errors.length === 0) {
+      notify.info(headline);
+      return;
+    }
+    // The database part is done; what failed is on the git server side
+    // (template/reference repos) or in storage. Say so instead of hiding it.
+    void notify.modal('warning', `${headline} Some clean-up did not complete.`, {
+      detail: errors.join('\n')
+    });
+  }
+
+  private showDeleteError(error: unknown, fallback: string, kind: string): void {
+    if (error instanceof HttpError && error.status === 409) {
+      // A 409 here is "not deletable in this state" (children left, student
+      // submissions, not archived). It arrives as CONFLICT_001, whose catalog
+      // title ("Resource Already Exists") is wrong for it — the server's own
+      // sentence is the message.
+      void notify.modal('warning', `Cannot delete this ${kind} yet`, {
+        detail: error.serverDetail || fallback
+      });
+      return;
+    }
+    if (error instanceof HttpError && error.status === 403) {
+      void notify.modal('info', `Only an owner of this ${kind} (or an administrator) can delete it.`, {
+        detail: error.serverDetail
+      });
+      return;
+    }
+    showErrorWithSeverity(error instanceof Error ? error : new Error(String(error)), fallback);
+  }
+
+  /** A deleted course must not stay the "current" one for the student side. */
+  private async forgetDeletedCourseSelection(courseId: string): Promise<void> {
+    try {
+      const selection = CourseSelectionService.getInstance();
+      if (selection.getCurrentCourseId() === courseId) {
+        await selection.clearSelection();
+      }
+    } catch {
+      // Selection service not initialized (no student side in this window).
+    }
+  }
+
+  /** The roles the current user holds, for the in-command owner checks. */
+  private async buildScopeContext(): Promise<ScopePermissionContext> {
+    const [scopes, currentUser] = await Promise.all([
+      this.apiService.getUserScopes(),
+      this.apiService.getUserAccount().catch(() => undefined)
+    ]);
+    const globalRoles = new Set(
+      (currentUser?.user_roles ?? [])
+        .map(r => r?.role_id)
+        .filter((id): id is string => typeof id === 'string')
+    );
+    return { scopes, globalRoles };
   }
 
   private resolveCreateTarget(item: CourseFolderTreeItem | CourseContentTreeItem): {
@@ -1323,7 +1659,7 @@ export class LecturerCommands {
 
     } catch (error) {
       console.error('Failed to change course content type:', error);
-      notify.error(`Failed to change content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to change content type');
     }
   }
 
@@ -1370,6 +1706,62 @@ export class LecturerCommands {
       await this.treeDataProvider.updateCourseContent(item, { [field]: value } as any);
       await this.treeDataProvider.refresh();
       notify.info(value === null ? `${label}: unlimited` : `${label}: ${value}`);
+    } catch (error: any) {
+      notify.error(`Failed to set ${label}: ${error?.message || error}`);
+    }
+  }
+
+  /**
+   * Set a course-wide default for one of the two budgets.
+   *
+   * The bottom tier of the three: an assignment that names its own limit wins
+   * over this, and a submission group's grant wins over both. It exists so a
+   * lecturer can cap a whole course once instead of per assignment
+   * (computor-org/issues#393), and stays lecturer-only — only the group-level
+   * grant is open to tutors.
+   */
+  private async setCourseBudget(
+    item: CourseTreeItem,
+    field: 'max_test_runs' | 'max_submissions'
+  ): Promise<void> {
+    if (!item?.course?.id) {
+      notify.warning('Select a course first.');
+      return;
+    }
+
+    const label = field === 'max_test_runs' ? 'Max Test Runs' : 'Max Submissions';
+    const noun = field === 'max_test_runs' ? 'test runs' : 'submissions';
+    const current = (item.course as any)[field] as number | null | undefined;
+
+    const answer = await vscode.window.showInputBox({
+      title: `Set Course Default: ${label}`,
+      prompt: `How many ${noun} may a student use for an assignment in `
+        + `"${item.course.title || item.course.path}" that does not set its own limit? `
+        + `Leave empty for unlimited.`,
+      value: typeof current === 'number' ? String(current) : '',
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const trimmed = value.trim();
+        if (trimmed.length === 0) { return undefined; }
+        if (!/^\d+$/.test(trimmed)) { return 'Enter a whole number, or leave empty for unlimited.'; }
+        return undefined;
+      }
+    });
+
+    if (answer === undefined) { return; }
+
+    const trimmed = answer.trim();
+    const value = trimmed.length === 0 ? null : Number.parseInt(trimmed, 10);
+    if (value === (current ?? null)) { return; }
+
+    try {
+      await this.apiService.updateCourse(item.course.id, { [field]: value } as any);
+      await this.treeDataProvider.refresh();
+      notify.info(
+        value === null
+          ? `Course default ${label}: unlimited`
+          : `Course default ${label}: ${value} (assignments that set their own limit are unaffected)`
+      );
     } catch (error: any) {
       notify.error(`Failed to set ${label}: ${error?.message || error}`);
     }
@@ -1723,7 +2115,7 @@ export class LecturerCommands {
       notify.info(`Content type renamed to "${newTitle}"`);
       await this.treeDataProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to rename content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to rename content type');
     }
   }
 
@@ -2073,7 +2465,12 @@ export class LecturerCommands {
       console.warn('Could not read course git binding:', error);
     }
 
-    const namespace = binding?.template_url ? parentRepositoryUrl(binding.template_url) : undefined;
+    // web_url is the browser-audience address; template_url is the CLONE URL
+    // for whoever asked, and inside a workspace that is the workspace-internal
+    // git host — dead in a browser tab (issue #356). Prefer web_url and keep
+    // template_url only for bindings from a backend that predates the field.
+    const browserUrl = binding?.web_url || binding?.template_url;
+    const namespace = browserUrl ? parentRepositoryUrl(browserUrl) : undefined;
     if (namespace) {
       return namespace;
     }
@@ -2111,47 +2508,69 @@ export class LecturerCommands {
       return;
     }
 
-    // Select content kind
+    // Select content kind. The kind titles read "Unit" and "Assignment", the
+    // same words as the contents themselves, so spell out that this step picks
+    // the category a *type* belongs to — a lecturer in issues#387 created a
+    // type called "Unit 1" believing it had created a unit.
     const kindItems = contentKinds.map(k => ({
       label: k.title || k.id,
-      description: `ID: ${k.id}`,
+      description: k.submittable ? 'submittable' : 'not submittable',
+      detail: k.has_descendants
+        ? 'Groups other content; students do not submit to it (e.g. a week or a chapter)'
+        : 'Students submit work to content of this kind',
       kindData: k
     }));
-    
+
     const selectedKind = await vscode.window.showQuickPick(
       kindItems,
-      { placeHolder: 'Select content kind' }
+      { placeHolder: 'Which kind of content will this type describe?' }
     );
 
     if (!selectedKind) {
       return;
     }
 
+    const kindLabel = selectedKind.label;
+
+    // Auto-generate slug from title: lowercase, replace spaces with underscores, remove non-alphanumeric
+    const deriveSlug = (value: string): string => value.toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+      .replace(/^_|_$/g, '');
+
     const title = await vscode.window.showInputBox({
-      prompt: 'Enter content type title',
-      placeHolder: 'e.g., Lecture, Assignment, Special Topics'
+      prompt: `Name this ${kindLabel.toLowerCase()} type. This creates a label you can put on content — it does not create a ${kindLabel.toLowerCase()}.`,
+      placeHolder: 'e.g., Lecture Notes, Homework, Bonus Task',
+      validateInput: value => deriveSlug(value || '')
+        ? undefined
+        : 'Use at least one letter or digit — the slug is derived from this name.'
     });
 
     if (!title) {
       return;
     }
 
-    // Auto-generate slug from title: lowercase, replace spaces with underscores, remove non-alphanumeric
-    const slug = title.toLowerCase()
-      .replace(/\s+/g, '_')
-      .replace(/[^a-z0-9_]/g, '')
-      .replace(/^_|_$/g, '');
-
-    if (!slug) {
-      notify.error('Invalid title: cannot generate slug');
-      return;
-    }
+    const slug = deriveSlug(title);
 
     const color = await vscode.window.showInputBox({
       prompt: 'Enter color (optional)',
       placeHolder: 'e.g., #FF5733, blue, rgb(255,87,51)',
       value: 'green'
     });
+
+    // Spell out what is about to be created. A lecturer in issues#387 named a
+    // type "Unit 1" believing they had created a unit, and only found out when
+    // deleting it failed.
+    const proceed = await notify.confirm(
+      `Create content type "${title}"?`,
+      'Create',
+      `Kind: ${kindLabel}\nSlug: ${slug}\nColor: ${color || 'green'}\n\n`
+      + `This adds a type you can assign to course content. It does not create any content.`
+    );
+
+    if (!proceed) {
+      return;
+    }
 
     try {
       await this.apiService.createCourseContentType({
@@ -2166,7 +2585,7 @@ export class LecturerCommands {
       this.treeDataProvider.refreshNode(item);
       notify.info(`Content type "${title}" created successfully (slug: ${slug})`);
     } catch (error) {
-      notify.error(`Failed to create content type: ${error}`);
+      showErrorWithSeverity(error as Error, `Failed to create content type "${title}"`);
     }
   }
 
@@ -2196,27 +2615,60 @@ export class LecturerCommands {
       this.treeDataProvider.refreshNode(parent);
       notify.info('Content type updated successfully');
     } catch (error) {
-      notify.error(`Failed to update content type: ${error}`);
+      showErrorWithSeverity(error as Error, 'Failed to update content type');
     }
   }
 
   private async deleteCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
-    const confirmation = await notify.warning(
-      `Are you sure you want to delete content type "${item.contentType.title || item.contentType.slug}"?`,
-      'Yes',
-      'No'
+    const label = item.contentType.title || item.contentType.slug;
+
+    // A type that course content still points at cannot be deleted: the FK is
+    // NOT NULL with ondelete=RESTRICT. The backend refuses with CONTENT_010,
+    // but it can only say how many — the tree already knows *which*, so name
+    // them here instead of sending a request that is bound to fail
+    // (computor-org/issues#387).
+    try {
+      // Skip the cache: a stale entry would block a delete the server would allow.
+      const contents = await this.apiService.getCourseContents(item.course.id, true);
+      const blocking = findContentsUsingType(contents, item.contentType.id);
+      if (blocking.length > 0) {
+        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+          detail: formatContentTypeInUseDetail(label, blocking)
+        });
+        return;
+      }
+    } catch {
+      // Usage unknown (offline, stale cache): fall through and let the server
+      // be the authority.
+    }
+
+    const confirmed = await notify.confirm(
+      `Are you sure you want to delete content type "${label}"?`,
+      'Delete'
     );
 
-    if (confirmation === 'Yes') {
-      try {
-        await this.apiService.deleteCourseContentType(item.contentType.id);
-        notify.info('Content type deleted successfully');
-        
-        // Refresh the tree to show the changes
-        await this.treeDataProvider.refresh();
-      } catch (error) {
-        notify.error(`Failed to delete content type: ${error}`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await this.apiService.deleteCourseContentType(item.contentType.id);
+      notify.info('Content type deleted successfully');
+
+      // Refresh the tree to show the changes
+      await this.treeDataProvider.refresh();
+    } catch (error) {
+      if (error instanceof HttpError && error.errorCode === 'CONTENT_010') {
+        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+          detail: error.serverDetail
+            || 'Course content still uses this type. Change those contents to another content type of the same kind, or delete them first.'
+        });
+        return;
       }
+      showErrorWithSeverity(
+        error instanceof Error ? error : new Error(String(error)),
+        `Failed to delete content type "${label}"`
+      );
     }
   }
 
@@ -2892,30 +3344,35 @@ export class LecturerCommands {
     );
   }
 
-  // Sets the role-derived context keys: per-scope-kind "Manage Members" and
-  // example-authoring. See `services/ScopePermissions.ts` for the rules.
+  /**
+   * Re-derive the scope context keys after a server-pushed permissions change
+   * (computor-org/issues#384). Evict the scope caches first — this re-reads
+   * /user/scopes through the API service.
+   */
+  async refreshScopeContextKeys(): Promise<void> {
+    await this.applyScopeMembershipContextKey();
+  }
+
+  // Sets the role-derived context keys: per-scope-kind "Manage Members",
+  // example-authoring and hierarchy delete/archive. See
+  // `services/ScopePermissions.ts` for the rules.
   private async applyScopeMembershipContextKey(): Promise<void> {
     try {
-      const [scopes, currentUser] = await Promise.all([
-        this.apiService.getUserScopes(),
-        this.apiService.getUserAccount().catch(() => undefined)
-      ]);
-      const globalRoles = new Set(
-        (currentUser?.user_roles ?? [])
-          .map(r => r?.role_id)
-          .filter((id): id is string => typeof id === 'string')
-      );
-      const ctx = { scopes, globalRoles };
+      const ctx = await this.buildScopeContext();
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', canManageAnyOrganizationMembers(ctx));
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', canManageAnyCourseFamilyMembers(ctx));
       // Gates the example upload / create-repository buttons — backend reserves
       // those writes to `_example_manager` (admins bypass).
       await vscode.commands.executeCommand('setContext', 'computor.examples.canAuthor', canAuthorExamples(ctx));
+      // Coarse gate for the delete/archive menu entries ("owns at least one
+      // scope"); every command re-checks its own node.
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canDeleteAny', canDeleteAny(ctx));
     } catch (err) {
       console.warn('[LecturerCommands] Failed to compute scope-membership context keys:', err);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageOrgMembers', false);
       await vscode.commands.executeCommand('setContext', 'computor.lecturer.canManageFamilyMembers', false);
       await vscode.commands.executeCommand('setContext', 'computor.examples.canAuthor', false);
+      await vscode.commands.executeCommand('setContext', 'computor.lecturer.canDeleteAny', false);
     }
   }
 }

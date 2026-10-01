@@ -20,6 +20,7 @@ import { deriveRepositoryDirectoryName, buildReviewRepoRoot } from '../../../uti
 import { extractGraderName } from '../../../utils/gradingHelpers';
 import { CTGit } from '../../../git/CTGit';
 import { WorkspaceStructureManager } from '../../../utils/workspaceStructure';
+import { sortSubmissionArtifactsByRecency } from '../../../utils/submissionArtifacts';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import { withRepoLock } from '../../../utils/repoLock';
@@ -422,11 +423,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       try {
         const artifacts = await this.api.listSubmissionArtifacts(submissionGroupId);
         if (artifacts && artifacts.length > 0) {
-          sortedArtifacts = artifacts.sort((a, b) => {
-            const dateA = new Date(a.uploaded_at || a.created_at || '').getTime();
-            const dateB = new Date(b.uploaded_at || b.created_at || '').getTime();
-            return dateB - dateA;
-          });
+          sortedArtifacts = sortSubmissionArtifactsByRecency(artifacts);
         }
       } catch {
         // Ignore fetch errors — nodes will show empty state

@@ -8,6 +8,7 @@ import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
 import type { CourseDeploymentGet, VersionUpgradeGet, CourseDeployRequest, CourseDeployResult, InstanceInfoGet } from '../types/generated';
 import type { CourseTaskRequest } from '../types/generated/courses';
+import type { CascadeDeleteResult } from '../types/generated/common';
 import type { TaskInfo } from '../types/generated/tasks';
 import { notify } from '../utils/notify';
 import type {
@@ -127,6 +128,11 @@ interface ExampleQuery {
   directory?: string;
 }
 
+/** Cache slot for one member's view of one course content, seen as staff. */
+function tutorMemberCourseContentCacheKey(memberId: string, courseContentId: string): string {
+  return `tutorMemberCourseContent-${memberId}-${courseContentId}`;
+}
+
 
 export class ComputorApiService {
   private static instance?: ComputorApiService;
@@ -163,6 +169,20 @@ export class ComputorApiService {
    */
   static getInstance(): ComputorApiService | undefined {
     return ComputorApiService.instance;
+  }
+
+  /**
+   * The live session's Authorization headers, for requests made outside the
+   * HttpClient — probing the instance's own /docs links needs them, because
+   * the static document store 401s anonymous requests (#362).
+   */
+  async sessionAuthHeaders(): Promise<Record<string, string> | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      return client.getAuthHeaders();
+    } catch {
+      return undefined;
+    }
   }
 
   private async getHttpClient(): Promise<HttpClient> {
@@ -545,6 +565,65 @@ export class ComputorApiService {
     const cacheKey = `courseContents-${courseId}`;
     multiTierCache.delete(cacheKey);
     this.invalidateCachePattern(`lecturerCourseContents-${courseId}`);
+  }
+
+  // --- Hierarchy lifecycle: archive / delete of course, family, organization ---
+  //
+  // The three deletes share one contract: `dryRun: true` returns the same
+  // `CascadeDeleteResult` the real call would, plus `blocked_reason` when the
+  // real call would be refused (409) — so the UI can preview and explain before
+  // asking for a typed confirmation. A real delete drops EVERY cache: the tree
+  // list keys (`organizations`, `courseFamilies-<org>`, `courses-<family>`) are
+  // not pattern-clearable and a stale entry would resurrect the deleted node.
+
+  async archiveCourse(courseId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch(`/courses/${courseId}/archive`);
+    this.clearCourseCache(courseId);
+    this.invalidateCachePattern('courses-');
+  }
+
+  async unarchiveCourse(courseId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.patch(`/courses/${courseId}/unarchive`);
+    this.clearCourseCache(courseId);
+    this.invalidateCachePattern('courses-');
+  }
+
+  async deleteCourse(courseId: string, options?: { dryRun?: boolean }): Promise<CascadeDeleteResult> {
+    const client = await this.getHttpClient();
+    const response = await client.delete<CascadeDeleteResult>(
+      `/courses/${courseId}`,
+      { dry_run: options?.dryRun === true }
+    );
+    if (!options?.dryRun) {
+      this.clearAllCaches();
+    }
+    return response.data;
+  }
+
+  async deleteCourseFamily(courseFamilyId: string, options?: { dryRun?: boolean }): Promise<CascadeDeleteResult> {
+    const client = await this.getHttpClient();
+    const response = await client.delete<CascadeDeleteResult>(
+      `/course-families/${courseFamilyId}`,
+      { dry_run: options?.dryRun === true }
+    );
+    if (!options?.dryRun) {
+      this.clearAllCaches();
+    }
+    return response.data;
+  }
+
+  async deleteOrganization(organizationId: string, options?: { dryRun?: boolean }): Promise<CascadeDeleteResult> {
+    const client = await this.getHttpClient();
+    const response = await client.delete<CascadeDeleteResult>(
+      `/organizations/${organizationId}`,
+      { dry_run: options?.dryRun === true }
+    );
+    if (!options?.dryRun) {
+      this.clearAllCaches();
+    }
+    return response.data;
   }
 
   async getCourseContentKinds(): Promise<CourseContentKindList[]> {
@@ -1788,6 +1867,20 @@ export class ComputorApiService {
     }
   }
 
+  /**
+   * Evict the cached permission projections (computor-org/issues#384).
+   *
+   * Called when the backend pushes `permissions:updated` on the personal
+   * websocket channel: the server has already dropped its own Principal cache,
+   * so the next `getUserViews`/`getUserScopes`/`getCurrentUser` read returns
+   * the fresh roles instead of the warm-tier copy.
+   */
+  invalidatePermissionCaches(): void {
+    multiTierCache.delete('userViews');
+    multiTierCache.delete('userScopes');
+    multiTierCache.delete('currentUser');
+  }
+
   async getUserScopes(options?: { force?: boolean }): Promise<UserScopes | undefined> {
     const cacheKey = 'userScopes';
 
@@ -2436,6 +2529,32 @@ export class ComputorApiService {
     }
   }
 
+  /**
+   * Grant (or withdraw) one submission group's budget override.
+   *
+   * Tutor-reachable, unlike the assignment and course limits, because handing a
+   * single student another attempt is the correction a tutor is there to make
+   * (computor-org/issues#393).
+   *
+   * The two fields are independent: omit one and its override is left alone;
+   * send `null` and the group inherits from the assignment, then the course.
+   */
+  async updateTutorSubmissionGroupLimits(
+    submissionGroupId: string,
+    limits: { max_submissions?: number | null; max_test_runs?: number | null }
+  ): Promise<TutorSubmissionGroupGet> {
+    const client = await this.getHttpClient();
+    const response = await client.patch<TutorSubmissionGroupGet>(
+      `/tutors/submission-groups/${submissionGroupId}`,
+      limits
+    );
+    // Exact keys rather than `invalidateCachePattern`, which clears whole
+    // cache tiers. The caller clears the member's content listing, which is
+    // the other place the budget is rendered.
+    multiTierCache.delete(`tutorSubmissionGroup-${submissionGroupId}`);
+    return response.data;
+  }
+
   // User Management: lookup by exact filter (email / username / etc).
   // Bypasses the cached "all users" list so the call still works for users
   // who lack list-all permission but have access via the filtered endpoint.
@@ -2843,12 +2962,28 @@ export class ComputorApiService {
     }
   }
 
-  // Tutor: get a specific member's course content (fresh)
-  async getTutorMemberCourseContent(memberId: string, courseContentId: string): Promise<any | undefined> {
+  // Tutor: get a specific member's course content
+  //
+  // Unlike the student endpoint this is scoped to the member in the path, so it
+  // is the only one a staff view may ask for someone else's result (#389). It
+  // serializes the detail DTO, i.e. `result` already carries result_json and
+  // result_artifacts.
+  async getTutorMemberCourseContent(
+    memberId: string,
+    courseContentId: string,
+    options?: { force?: boolean }
+  ): Promise<any | undefined> {
     try {
-      const client = await this.getHttpClient();
-      const response = await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`);
-      return response.data;
+      return await this.cachedRequest({
+        cacheKey: tutorMemberCourseContentCacheKey(memberId, courseContentId),
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<any>(`/tutors/course-members/${memberId}/course-contents/${courseContentId}`)).data;
+        },
+        retry: { maxRetries: 2 },
+        force: options?.force
+      });
     } catch (e) {
       console.error('Failed to get tutor member course content:', e);
       return undefined;
@@ -2868,9 +3003,11 @@ export class ComputorApiService {
       `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
       update
     );
-    // Invalidate caches related to this member/content so UI refresh shows changes
+    // Invalidate caches related to this member/content so UI refresh shows
+    // changes. Grading someone else never touches the grader's own student
+    // view, so the member-scoped slots are the ones that go stale here.
     multiTierCache.delete(`tutorContents-${memberId}`);
-    multiTierCache.delete(`studentCourseContent-${courseContentId}`);
+    multiTierCache.delete(tutorMemberCourseContentCacheKey(memberId, courseContentId));
     return response.data;
   }
 
@@ -2887,9 +3024,11 @@ export class ComputorApiService {
       `/tutors/course-members/${memberId}/course-contents/${courseContentId}`,
       grade
     );
-    // Invalidate caches related to this member/content so UI refresh shows changes
+    // Invalidate caches related to this member/content so UI refresh shows
+    // changes. Grading someone else never touches the grader's own student
+    // view, so the member-scoped slots are the ones that go stale here.
     multiTierCache.delete(`tutorContents-${memberId}`);
-    multiTierCache.delete(`studentCourseContent-${courseContentId}`);
+    multiTierCache.delete(tutorMemberCourseContentCacheKey(memberId, courseContentId));
     return response.data;
   }
 
@@ -3584,6 +3723,23 @@ export class ComputorApiService {
   // intentionally NOT performed here — the documents tree maintains its own
   // local mirror under <workspace>/.computor/documents and decides cache
   // freshness from the per-entry etag returned in DocumentList.
+
+  /**
+   * GET /documents/permissions — may the caller write in this scope (#361)?
+   * `undefined` when the backend cannot answer (older API, network error) —
+   * the tree then fails open and lets the server refuse the actual write.
+   */
+  async documentsCanWrite(scope: string, scopeId: string | null | undefined): Promise<boolean | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      const params: Record<string, string> = { scope };
+      if (scopeId) { params.scope_id = scopeId; }
+      const response = await client.get<{ can_write?: boolean }>('/documents/permissions', params);
+      return response.data?.can_write;
+    } catch {
+      return undefined;
+    }
+  }
 
   /** GET /documents/list — directory listing (files + subdirs). */
   async listDocuments(scope: string, scopeId: string | null | undefined, path: string): Promise<DocumentList[]> {

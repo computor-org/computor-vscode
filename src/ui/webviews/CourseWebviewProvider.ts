@@ -47,6 +47,16 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     `)}
       <form id="editForm">
         ${formGroup('Title', textInput('title', course.title, { placeholder: 'Course title' }))}
+        ${formGroup(
+          'Default Max Test Runs',
+          textInput('maxTestRuns', String((course as any).max_test_runs ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }),
+          'Applies to assignments that set no limit of their own.'
+        )}
+        ${formGroup(
+          'Default Max Submissions',
+          textInput('maxSubmissions', String((course as any).max_submissions ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }),
+          'Applies to assignments that set no limit of their own. A tutor can still grant one student extra attempts.'
+        )}
         <div class="actions">
           <button type="submit">Save Changes</button>
           <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
@@ -61,12 +71,23 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
 
       document.getElementById('editForm').addEventListener('submit', function(e) {
         e.preventDefault();
+        // Empty means unlimited, 0 means zero: \`parseInt(v) || null\` conflates
+        // the two and silently turns a deliberate 0 into unlimited.
+        function limitValue(el) {
+          if (!el) { return null; }
+          var raw = String(el.value).trim();
+          if (raw === '') { return null; }
+          var parsed = parseInt(raw, 10);
+          return isNaN(parsed) ? null : parsed;
+        }
         vscode.postMessage({
           command: 'updateCourse',
           data: {
             courseId: courseId,
             updates: {
-              title: document.getElementById('title').value
+              title: document.getElementById('title').value,
+              max_test_runs: limitValue(document.getElementById('maxTestRuns')),
+              max_submissions: limitValue(document.getElementById('maxSubmissions'))
             }
           }
         });

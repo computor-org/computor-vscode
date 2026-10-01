@@ -83,6 +83,34 @@ describe('documents tree contributions', () => {
     });
   });
 
+  describe('write actions', () => {
+    const WRITE_COMMANDS = [
+      'computor.lecturer.documents.uploadFile',
+      'computor.lecturer.documents.newFile',
+      'computor.lecturer.documents.newFolder',
+      'computor.lecturer.documents.uploadAllPending',
+      'computor.lecturer.documents.rename',
+      'computor.lecturer.documents.delete',
+      'computor.lecturer.documents.uploadFromComputer',
+      'computor.lecturer.documents.uploadFolderFromComputer'
+    ];
+
+    it('every write action requires the writable stamp (#361)', () => {
+      // The provider stamps `.writable` from the backend's own
+      // GET /documents/permissions answer; an ungated write action is a
+      // guaranteed 403 dressed up as a button.
+      const entries: Array<{ command: string; when?: string }> =
+        pkg.contributes.menus['view/item/context'];
+      for (const command of WRITE_COMMANDS) {
+        const clauses = entries.filter(e => e.command === command);
+        expect(clauses.length, command).to.be.greaterThan(0);
+        for (const clause of clauses) {
+          expect(clause.when, command).to.contain('writable');
+        }
+      }
+    });
+  });
+
   describe('viewers', () => {
     const editors: Array<{ viewType: string; priority: string; selector: Array<{ filenamePattern: string }> }> =
       pkg.contributes.customEditors;
@@ -91,19 +119,24 @@ describe('documents tree contributions', () => {
       return editors.find(e => e.viewType === viewType);
     }
 
-    it('renders PDFs', () => {
-      expect(editor('computor.pdfPreview')?.selector[0]?.filenamePattern).to.equal('*.pdf');
+    it('renders mirror PDFs', () => {
+      expect(editor('computor.pdfPreview')?.selector[0]?.filenamePattern)
+        .to.equal('**/.computor-data/documents/**/*.pdf');
     });
 
-    it('renders HTML', () => {
-      expect(editor('computor.htmlPreview')?.selector[0]?.filenamePattern).to.equal('*.html');
+    it('renders mirror HTML', () => {
+      expect(editor('computor.htmlPreview')?.selector[0]?.filenamePattern)
+        .to.equal('**/.computor-data/documents/**/*.html');
     });
 
-    it('leaves desktop VS Code alone by staying optional', () => {
-      // "option" editors only open a file when workbench.editorAssociations
-      // names them, which editorAssociations.ts does under UIKind.Web alone.
+    it('opens mirror documents by default and claims nothing else (#361)', () => {
+      // "default" makes a click on a mirror document open the viewer directly
+      // — reopening by hand on every PDF was the reported pain — while the
+      // mirror-scoped selector keeps a student's own files on their normal
+      // editors.
       for (const viewType of ['computor.pdfPreview', 'computor.htmlPreview']) {
-        expect(editor(viewType)?.priority).to.equal('option');
+        expect(editor(viewType)?.priority).to.equal('default');
+        expect(editor(viewType)?.selector[0]?.filenamePattern).to.contain('.computor-data/documents/');
       }
     });
   });

@@ -4,6 +4,7 @@ const GLOBAL_ORG_MANAGER_ROLE = '_organization_manager';
 const GLOBAL_FAMILY_MANAGER_ROLE = '_course_family_manager';
 const GLOBAL_EXAMPLE_MANAGER_ROLE = '_example_manager';
 const POSTING_ROLES: ReadonlySet<string> = new Set(['_owner', '_manager']);
+const OWNER_ROLE = '_owner';
 
 export type ScopeKind = 'organization' | 'course_family';
 
@@ -64,6 +65,56 @@ export function canManageAnyCourseFamilyMembers(ctx: ScopePermissionContext): bo
  *  is deliberately NOT true for them. Mirrors the backend claim split. */
 export function canAuthorExamples(ctx: ScopePermissionContext): boolean {
   return isAdmin(ctx) || hasGlobalRole(ctx, GLOBAL_EXAMPLE_MANAGER_ROLE);
+}
+
+function hasOwnerClaim(map: Record<string, string[]> | undefined, scopeId?: string): boolean {
+  if (!map) {
+    return false;
+  }
+  if (scopeId !== undefined) {
+    const roles = map[scopeId];
+    return Array.isArray(roles) && roles.includes(OWNER_ROLE);
+  }
+  return Object.values(map).some(roles => Array.isArray(roles) && roles.includes(OWNER_ROLE));
+}
+
+/** True when the user may delete this organization / course family.
+ *
+ *  Deleting is an OWNER decision: the backend's delete endpoints go through
+ *  the entity's permission handler (`delete` → scope `_owner`), and admins
+ *  bypass. `_organization_manager` is a manager, not an owner, and is
+ *  deliberately NOT enough — unlike member management above. */
+export function canDeleteScope(
+  scopeKind: ScopeKind,
+  scopeId: string,
+  ctx: ScopePermissionContext
+): boolean {
+  if (isAdmin(ctx)) {
+    return true;
+  }
+  const map = scopeKind === 'organization' ? ctx.scopes?.organization : ctx.scopes?.course_family;
+  return hasOwnerClaim(map, scopeId);
+}
+
+/** True when the user may archive or delete this course: admin, or course
+ *  `_owner`. Mirrors `CoursePermissionHandler` (`archive`/`delete` → `_owner`).
+ *  Whether the delete then goes through is a separate question the backend
+ *  answers (a course with student submissions is admin-only, after archiving). */
+export function canDeleteCourse(courseId: string, ctx: ScopePermissionContext): boolean {
+  if (isAdmin(ctx)) {
+    return true;
+  }
+  return hasOwnerClaim(ctx.scopes?.course, courseId);
+}
+
+/** True when the user owns at least one organization, course family or
+ *  course (or is admin) — gates the delete/archive menu entries, which then
+ *  re-check the specific node in-command. */
+export function canDeleteAny(ctx: ScopePermissionContext): boolean {
+  return isAdmin(ctx)
+    || hasOwnerClaim(ctx.scopes?.organization)
+    || hasOwnerClaim(ctx.scopes?.course_family)
+    || hasOwnerClaim(ctx.scopes?.course);
 }
 
 /** True when the user can manage members on this specific scope. */

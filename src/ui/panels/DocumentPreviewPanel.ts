@@ -14,23 +14,27 @@ import { escapeHtml } from '../webviews/shared/webviewHelpers';
  * HTML opened as source, which is right for editing it and useless for
  * checking what a student will see.
  *
- * Both render through the browser's own engine inside an iframe, reached by a
- * `blob:` URL built in the webview. The bytes travel inline like every other
+ * HTML renders through the browser's own engine inside an iframe, reached by
+ * a `blob:` URL built in the webview. The bytes travel inline like every other
  * Computor webview's assets do, because under code-server a `vscode-resource`
  * fetch goes through a service worker that Firefox and older Safari never
  * consult — the same reason ImagePreviewPanel inlines its image
- * (computor-org/issues#274, #282). A `data:` URL is not usable here either:
- * Chrome refuses to navigate a frame to one.
+ * (computor-org/issues#274, #282). The frame is sandboxed with no
+ * `allow-scripts`: these files come from the shared documents area, and a
+ * preview is not worth handing them script execution in a context that holds
+ * the lecturer's session.
  *
- * The HTML frame is sandboxed with no `allow-scripts`, so a document renders
- * with its own markup and styling but cannot run anything. These files come
- * from the shared documents area, where anyone with write access to a scope
- * can put them, and a preview is not worth handing them script execution in a
- * context that holds the lecturer's session.
+ * PDF renders through a bundled pdf.js onto canvases. It used to be handed to
+ * the browser's built-in PDF plugin via the same blob iframe, but inside a
+ * code-server webview that plugin never runs — the frame stayed empty and the
+ * iframe's `error` event never fires for a blob document, so not even the
+ * fallback showed (computor-org/issues#361). pdf.js's worker is started from
+ * a blob: URL built out of the inlined worker source, so nothing here depends
+ * on the service worker either.
  *
- * Contributed at `priority: "option"`, like the image preview: desktop VS Code
- * keeps whatever it does today, and `editorAssociations.ts` points these at
- * their viewer only in the browser.
+ * Contributed at `priority: "default"` for the documents mirror only
+ * (`.computor-data/documents/`) — a click opens the viewer directly, and
+ * student files elsewhere keep their normal editors.
  */
 
 /** Past this the inline hand-off costs more than the preview is worth. */
@@ -99,10 +103,30 @@ async function readPreviewState(uri: vscode.Uri, kind: PreviewKind): Promise<Pre
 }
 
 class DocumentPreviewProvider implements vscode.CustomReadonlyEditorProvider {
+  /** pdf.js worker source, read once — it ships in webview-ui/vendor. */
+  private workerB64: string | undefined;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly kind: PreviewKind
   ) {}
+
+  private pdfWorkerB64(): string | undefined {
+    if (this.kind !== 'pdf') {
+      return undefined;
+    }
+    if (this.workerB64 === undefined) {
+      try {
+        const workerPath = path.join(
+          this.extensionUri.fsPath, 'webview-ui', 'vendor', 'pdf.worker.min.js'
+        );
+        this.workerB64 = fs.readFileSync(workerPath).toString('base64');
+      } catch {
+        this.workerB64 = '';
+      }
+    }
+    return this.workerB64 || undefined;
+  }
 
   openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
     return { uri, dispose: (): void => {} };
@@ -171,18 +195,31 @@ class DocumentPreviewProvider implements vscode.CustomReadonlyEditorProvider {
           <button id="external" class="btn btn-secondary">Open with another editor</button>
         </p>`;
 
+    const isPdf = this.kind === 'pdf' && !state.error;
     return renderWebviewPage(webview, this.extensionUri, {
       title: state.name,
       bodyHtml: body,
-      // The frame's content is a blob built below; nothing else is embedded.
-      embedSrc: state.error ? undefined : ['blob:'],
+      // The HTML frame's content is a blob built below; the PDF worker starts
+      // from a blob built out of the inlined worker source.
+      embedSrc: state.error || isPdf ? undefined : ['blob:'],
+      workerSrc: isPdf ? ['blob:'] : undefined,
+      ...(isPdf ? { scriptFiles: ['vendor/pdf.min.js'] } : {}),
       inlineStyles: `
         html, body { height: 100%; margin: 0; padding: 0; }
         .preview-host { height: 100vh; width: 100%; }
         .preview-host iframe { border: 0; width: 100%; height: 100%; background: #fff; }
+        .pdf-pages { height: 100vh; overflow: auto; background: var(--vscode-editor-background, #1e1e1e); }
+        .pdf-pages canvas { display: block; margin: 12px auto; box-shadow: 0 1px 4px rgba(0,0,0,.4); background: #fff; }
         .notice { padding: 1rem; }
       `,
-      initialState: state.error ? null : { base64: state.base64, mime: state.mime, kind: state.kind },
+      initialState: state.error
+        ? null
+        : {
+            base64: state.base64,
+            mime: state.mime,
+            kind: state.kind,
+            workerB64: this.pdfWorkerB64() ?? null
+          },
       inlineScript: PREVIEW_SCRIPT
     });
   }
@@ -205,24 +242,69 @@ const PREVIEW_SCRIPT = `
       if (fallback) { fallback.hidden = false; }
     }
 
-    try {
-      var binary = atob(state.base64);
+    function decode(b64) {
+      var binary = atob(b64);
       var bytes = new Uint8Array(binary.length);
       for (var i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
-      var url = URL.createObjectURL(new Blob([bytes], { type: state.mime }));
+      return bytes;
+    }
 
+    function renderPdf() {
+      var host = document.getElementById('frame-host');
+      host.className = 'pdf-pages';
+      if (state.workerB64) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(
+          new Blob([decode(state.workerB64)], { type: 'text/javascript' })
+        );
+      }
+      pdfjsLib.getDocument({ data: decode(state.base64) }).promise.then(function (doc) {
+        var width = Math.max(320, (host.clientWidth || 800) - 48);
+        var ratio = window.devicePixelRatio || 1;
+        var chain = Promise.resolve();
+        var renderPage = function (pageNo) {
+          chain = chain.then(function () {
+            return doc.getPage(pageNo).then(function (page) {
+              var base = page.getViewport({ scale: 1 });
+              var scale = width / base.width;
+              var viewport = page.getViewport({ scale: scale });
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.floor(viewport.width * ratio);
+              canvas.height = Math.floor(viewport.height * ratio);
+              canvas.style.width = Math.floor(viewport.width) + 'px';
+              canvas.style.height = Math.floor(viewport.height) + 'px';
+              host.appendChild(canvas);
+              var ctx = canvas.getContext('2d');
+              return page.render({
+                canvasContext: ctx,
+                viewport: viewport,
+                transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined
+              }).promise;
+            });
+          });
+        };
+        for (var pageNo = 1; pageNo <= doc.numPages; pageNo++) { renderPage(pageNo); }
+        chain.catch(fail);
+      }).catch(fail);
+    }
+
+    function renderHtml() {
+      var url = URL.createObjectURL(new Blob([decode(state.base64)], { type: state.mime }));
       var frame = document.createElement('iframe');
       frame.src = url;
-      // HTML documents come from the shared documents area, so they render
-      // without scripts. A PDF is handed to the browser's own viewer, which
-      // needs same-origin to run.
-      if (state.kind === 'html') {
-        frame.setAttribute('sandbox', '');
-      } else {
-        frame.setAttribute('sandbox', 'allow-same-origin');
-      }
+      // Documents come from the shared area, so they render without scripts.
+      frame.setAttribute('sandbox', '');
       frame.addEventListener('error', fail);
       document.getElementById('frame-host').appendChild(frame);
+    }
+
+    try {
+      if (state.kind === 'pdf' && typeof pdfjsLib !== 'undefined') {
+        renderPdf();
+      } else if (state.kind === 'html') {
+        renderHtml();
+      } else {
+        fail();
+      }
     } catch (error) {
       fail();
     }

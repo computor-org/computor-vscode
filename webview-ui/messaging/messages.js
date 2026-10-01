@@ -40,6 +40,18 @@
   const isAnnouncement = () => state.target?.kind === 'announcement';
 
   /**
+   * Whether a card carries the unread marker and offers "Mark read".
+   *
+   * On a board that is every notice the reader has not yet seen. In a
+   * conversation it is only a message the reader flagged back to unread
+   * themselves — a conversation is read by opening it, so every other card
+   * would carry the marker (issues #322, #390).
+   */
+  const isUnread = (message) =>
+    message.is_read === false && !message.is_author
+    && (isAnnouncement() || message.manually_unread === true);
+
+  /**
    * Marks an announcement read once the reader has actually seen it.
    *
    * A board is worked through item by item, so clearing every notice because
@@ -77,7 +89,12 @@
         dwelling.set(id, setTimeout(() => {
           dwelling.delete(id);
           observer.unobserve(entry.target);
-          entry.target.classList.remove('message-unread');
+          const message = state.messages.find((m) => m.id === id);
+          if (message) {
+            setReadState(entry.target, message, { is_read: true, manually_unread: false });
+          } else {
+            entry.target.classList.remove('message-unread');
+          }
           pending.add(id);
           if (!flushTimer) { flushTimer = setTimeout(flush, BATCH_MS); }
         }, DWELL_MS));
@@ -292,10 +309,7 @@
     // and it is kept solely so those replies keep their context — so mark it
     // as spent rather than letting it read like an ordinary message.
     const announcement = isAnnouncement();
-    // Unread is only rendered on a board, where it survives being looked at
-    // and tells the reader where they left off. A conversation is read by
-    // opening it, so every card would carry the marker.
-    const unread = announcement && message.is_read === false && !message.is_author;
+    const unread = isUnread(message);
     const card = createElement('article', {
       className: [
         'message-card',
@@ -401,17 +415,8 @@
         )
       );
     }
-    // "Read it, no time to answer": flag the message back to unread so the
-    // open question keeps its badge everywhere (issue #322).
     if (!message.is_author && !message.is_deleted) {
-      actions.appendChild(
-        button('Mark unread', 'btn ghost sm message-unread-button', () => {
-          message.is_read = false;
-          card.classList.add('message-unread');
-          if (seenObserver) { seenObserver.unwatch(card); }
-          vscode.postMessage({ command: 'markUnread', data: { messageId: message.id } });
-        })
-      );
+      actions.appendChild(readToggle(message, card));
     }
 
     // On an announcement the subject leads and the byline follows it; in a
@@ -440,12 +445,57 @@
       card.appendChild(actions);
     }
 
-    if (unread && seenObserver) {
+    // Only a board is read by scrolling — and a notice the reader held back
+    // on purpose is not read by scrolling past it either.
+    if (unread && announcement && message.manually_unread !== true && seenObserver) {
       seenObserver.watch(card);
     }
 
     // Don't nest children — they are rendered flat by flattenThreads
     return card;
+  }
+
+  /**
+   * The read/unread toggle on a card.
+   *
+   * "Mark unread" is "read it, no time to answer": the message keeps its
+   * badge in every tree until the reader comes back (issue #322). "Mark read"
+   * lifts that hold again from right here — before it, the only way back was
+   * a detour through the inbox tree, which reads the whole thread (#390).
+   */
+  function readToggle(message, card) {
+    const unread = isUnread(message);
+    return button(unread ? 'Mark read' : 'Mark unread', 'btn ghost sm message-read-toggle', () => {
+      if (unread) {
+        setReadState(card, message, { is_read: true, manually_unread: false });
+        vscode.postMessage({ command: 'markRead', data: { messageIds: [message.id], explicit: true } });
+      } else {
+        setReadState(card, message, { is_read: false, manually_unread: true });
+        vscode.postMessage({ command: 'markUnread', data: { messageId: message.id } });
+      }
+    });
+  }
+
+  /**
+   * Flip one card between read and unread in every place that shows it: the
+   * state entry (cards render from copies), the accent rail, the dwell watch
+   * and the toggle button move together — whether the reader pressed the
+   * button, the dwell timer fired, or the extension rolled a failed request
+   * back. `card` may be null when the message is not on screen.
+   */
+  function setReadState(card, message, next) {
+    message.is_read = next.is_read;
+    message.manually_unread = next.manually_unread;
+    const inState = state.messages.find((m) => m.id === message.id);
+    if (inState && inState !== message) {
+      inState.is_read = next.is_read;
+      inState.manually_unread = next.manually_unread;
+    }
+    if (!card) { return; }
+    if (seenObserver) { seenObserver.unwatch(card); }
+    card.classList.toggle('message-unread', isUnread(message));
+    const toggle = card.querySelector('.message-read-toggle');
+    if (toggle) { toggle.replaceWith(readToggle(message, card)); }
   }
 
   function renderMessagesSection(container, prevScroll) {
@@ -728,6 +778,17 @@
       case 'updateState':
         setState(message.data || {});
         break;
+      case 'updateReadState': {
+        const data = message.data || {};
+        const target = state.messages.find((m) => m.id === data.messageId);
+        if (!target) break;
+        const card = document.querySelector(`[data-message-id="${data.messageId}"]`);
+        setReadState(card, target, {
+          is_read: data.is_read === true,
+          manually_unread: data.manually_unread === true
+        });
+        break;
+      }
       case 'update':
         setState(message.data || {});
         break;

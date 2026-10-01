@@ -25,17 +25,19 @@ on:
         default: false
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   vsix:
+    permissions:
+      contents: write # gh release upload
+      id-token: write # azure/login OIDC
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -63,7 +65,7 @@ jobs:
             "${{ github.event.release.prerelease }}" \
             "${{ steps.channel.outputs.channel }}"
 
-      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund --ignore-scripts
 
       - run: npm run type-check
       - run: npm run lint
@@ -88,7 +90,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: computor-vsix-${{ steps.channel.outputs.channel }}
           path: |
@@ -97,19 +99,19 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Publishes the exact bytes that were just checksummed and attached.
-      # Authentication is the federated Entra credential; set VSCE_PAT as a
-      # secret instead if a token is ever preferred.
+      # Marketplace publication is opt-in. A normal GitHub release remains a
+      # green, reproducible artifact build; the human publisher may run the
+      # documented Azure-backed command after checking the attached VSIX.
       - name: Azure login
-        if: github.event_name == 'release' || inputs.publish
-        uses: azure/login@v2
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Publish to the Marketplace
-        if: github.event_name == 'release' || inputs.publish
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
         env:
           COMPUTOR_RELEASE_CHANNEL: ${{ steps.channel.outputs.channel }}
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

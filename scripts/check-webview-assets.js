@@ -94,6 +94,11 @@ for (const ref of references) {
   }
 }
 
+// Loaded by the extension host with fs + path.join rather than through a
+// scriptFiles array: the PDF viewer inlines the worker source and starts it
+// from a blob URL (#361), so no array literal ever names it.
+referenced.add('vendor/pdf.worker.min.js');
+
 const allAssets = walk(webviewRoot, (n) => /\.(css|js)$/.test(n)).map((f) =>
   path.relative(webviewRoot, f)
 );

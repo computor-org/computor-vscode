@@ -88,6 +88,14 @@ export class CourseFamilyTreeItem extends vscode.TreeItem {
   }
 }
 
+function formatArchivedDate(value: string | null | undefined): string {
+  if (!value) {
+    return 'yes';
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
+}
+
 export class CourseTreeItem extends vscode.TreeItem {
   constructor(
     public readonly course: CourseList,
@@ -100,15 +108,33 @@ export class CourseTreeItem extends vscode.TreeItem {
     const orgTitle = organization.title || organization.path;
     super(courseTitle, collapsibleState);
     this.id = `course-${course.id}`;
-    this.contextValue = 'course';
-    this.iconPath = new vscode.ThemeIcon('book');
-    this.tooltip = tooltipWithDescription(
-      [`Course: ${courseTitle}`, `Course Family: ${familyTitle}`, `Organization: ${orgTitle}`],
-      (course as any).description
-    );
+    // An archived course is over for its students (hidden, submissions
+    // closed) but stays here so its owner can unarchive or delete it. The
+    // context-value suffix is what the archive/unarchive menu entries key
+    // on; `withDescription` appends its own suffix after this one, so the
+    // course `when` clauses match `^course(\.archived)?(\.hasDescription)?$`.
+    const archived = Boolean(course.archived_at);
+    this.contextValue = archived ? 'course.archived' : 'course';
+    this.iconPath = new vscode.ThemeIcon(archived ? 'archive' : 'book');
+
+    // The course-wide budget defaults, shown only once set: they are the
+    // bottom tier, so an assignment naming its own limit overrides them and a
+    // tutor's per-student grant overrides both.
+    const tooltipParts = [`Course: ${courseTitle}`, `Course Family: ${familyTitle}`, `Organization: ${orgTitle}`];
+    if (archived) {
+      tooltipParts.push(`Archived: ${formatArchivedDate(course.archived_at)}`);
+    }
+    const maxTestRuns = (course as any).max_test_runs;
+    const maxSubmissions = (course as any).max_submissions;
+    if (maxTestRuns != null || maxSubmissions != null) {
+      tooltipParts.push(`Default test runs: ${maxTestRuns ?? 'unlimited'}`);
+      tooltipParts.push(`Default submissions: ${maxSubmissions ?? 'unlimited'}`);
+    }
+
+    this.tooltip = tooltipWithDescription(tooltipParts, (course as any).description);
 
     // Set description to indicate this is a Course
-    this.description = 'Course';
+    this.description = archived ? 'Course · Archived' : 'Course';
     withDescription(this, courseTitle, (course as any).description);
   }
 }
@@ -419,7 +445,7 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
     
     const tooltips = {
       'contents': 'Course contents organized in a tree structure',
-      'contentTypes': 'Content types define the kinds of content in this course',
+      'contentTypes': 'Reusable labels (title, color, kind) that course content is tagged with. Creating one does not create any content.',
       'groups': 'Course groups and their members'
     };
     

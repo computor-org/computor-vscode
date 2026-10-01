@@ -128,6 +128,18 @@ export interface WsReauthed {
   expires_at?: string | null;
 }
 
+/**
+ * The current user's permissions changed server-side (computor-org/issues#384):
+ * someone granted or revoked a role or membership of theirs. Published on the
+ * personal `user:<id>` channel, which the backend auto-subscribes on connect —
+ * clients re-read /user/views and /user/scopes instead of polling.
+ */
+export interface WsPermissionsUpdated {
+  type: 'permissions:updated';
+  channel: string;
+  data: { user_id: string };
+}
+
 // Re-export deployment/course event types from generated types
 export type WsDeploymentStatusChanged = WSDeploymentStatusChanged & { type: 'deployment:status_changed' };
 export type WsDeploymentAssigned = WSDeploymentAssigned & { type: 'deployment:assigned' };
@@ -135,7 +147,7 @@ export type WsDeploymentUnassigned = WSDeploymentUnassigned & { type: 'deploymen
 export type WsCourseContentUpdated = WSCourseContentUpdated & { type: 'course:content_updated' };
 export type WsCourseUpdated = WSCourseUpdated & { type: 'course:updated' };
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated;
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsPermissionsUpdated | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -203,6 +215,7 @@ export interface WebSocketEventHandlers {
   onMaintenanceScheduled?: (scheduledAt: string, message: string) => void;
   onMaintenanceCancelled?: (message: string) => void;
   onMaintenanceReminder?: (minutesRemaining: number, scheduledAt: string, message: string) => void;
+  onPermissionsUpdated?: (event: WsPermissionsUpdated) => void;
   onDeploymentStatusChanged?: (event: WsDeploymentStatusChanged) => void;
   onDeploymentAssigned?: (event: WsDeploymentAssigned) => void;
   onDeploymentUnassigned?: (event: WsDeploymentUnassigned) => void;
@@ -713,6 +726,14 @@ export class WebSocketService {
 
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceReminder?.(minutesRemaining, reminderData.scheduled_at, reminderMessage);
+          });
+          break;
+        }
+
+        case 'permissions:updated': {
+          console.log('[WebSocket] Permissions updated for the current user');
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onPermissionsUpdated?.(message as WsPermissionsUpdated);
           });
           break;
         }

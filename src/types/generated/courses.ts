@@ -1101,6 +1101,8 @@ export interface CourseGitBindingGet {
   has_token?: boolean;
   template_repo?: string | null;
   template_url?: string | null;
+  /** Browser-audience URL of the template repository (no .git suffix), always on the public git host. template_url stays the clone URL for the requesting audience (a workspace gets its internal host there), so anything that opens a browser tab must use web_url instead. */
+  web_url?: string | null;
   default_branch?: string | null;
   student_repo_modes?: string[];
   /** True once the binding has materialized a template or student repos; its identity is then immutable (changing it would orphan student repositories). */
@@ -1261,6 +1263,7 @@ export interface CourseGet {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   visible?: boolean | null;
+  archived_at?: string | null;
   /** Creation timestamp */
   created_at?: string | null;
   /** Update timestamp */
@@ -1283,6 +1286,7 @@ export interface CourseList {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   visible?: boolean | null;
+  archived_at?: string | null;
 }
 
 export interface CourseUpdate {
@@ -1309,6 +1313,7 @@ export interface CourseQuery {
   max_test_runs?: number | null;
   max_submissions?: number | null;
   visible?: boolean | null;
+  archived?: boolean | null;
 }
 
 /**

@@ -30,13 +30,26 @@ export function isMatlabExtensionInstalled(): boolean {
 }
 
 export function registerMatlabWorkspaceView(context: vscode.ExtensionContext): void {
-  // Gates the command palette entry: on a Python workspace there is no MATLAB
-  // extension and the command would do nothing.
-  void vscode.commands.executeCommand(
-    'setContext',
-    'computor.matlabExtensionAvailable',
-    isMatlabExtensionInstalled()
-  );
+  // Gates the command's palette and menu entries: on a Python workspace there
+  // is no MATLAB extension and the command would do nothing.
+  const evaluateAvailability = () => {
+    const installed = isMatlabExtensionInstalled();
+    // Logged so "why is the command not offered?" can be answered from the
+    // Developer Tools instead of by guessing (#327).
+    console.log(
+      `[MatlabWorkspaceView] ${MATLAB_EXTENSION_ID} ${installed ? 'found' : 'not found'}; ` +
+      `computor.matlabExtensionAvailable = ${installed}`
+    );
+    void vscode.commands.executeCommand(
+      'setContext',
+      'computor.matlabExtensionAvailable',
+      installed
+    );
+  };
+  evaluateAvailability();
+  // Set once was not enough: an extension installed or enabled after
+  // activation left the gate closed forever (#327).
+  context.subscriptions.push(vscode.extensions.onDidChange(evaluateAvailability));
 
   context.subscriptions.push(
     vscode.commands.registerCommand('computor.matlab.moveWorkspaceView', async () => {

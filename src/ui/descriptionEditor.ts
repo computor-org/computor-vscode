@@ -162,7 +162,20 @@ async function editDescription(
 ): Promise<void> {
   const target = targetFromTreeItem(item);
   if (!target) {
-    notify.warning('Open "Edit Description" from a course, a unit or an assignment in the tree.');
+    notify.warning('Open "Edit Description" from a course or a unit in the tree.');
+    return;
+  }
+
+  // An assignment's description IS its README: the student view renders the
+  // README and never course_content.description, so text written here would
+  // never be seen (issue #356). The editor serves the course and units only.
+  const kindId = item?.contentType?.course_content_kind_id
+    ?? item?.courseContent?.course_content_kind_id;
+  const submittable = item?.isSubmittable ?? item?.courseContent?.is_submittable;
+  if (target.kind === 'content' && (kindId === 'assignment' || submittable === true)) {
+    notify.info(
+      'Assignments describe themselves in their README — edit the README in the example and release it instead.'
+    );
     return;
   }
 
@@ -194,7 +207,7 @@ async function editDescription(
   await renderPreview(context, document, target);
 
   if (description.trim().length === 0) {
-    notify.info(`No description yet — what you write here becomes the description of “${target.label}”. Save to apply.`);
+    notify.info(`No description yet — what you write here becomes the description of “${target.label}”. Ctrl+S/Cmd+S publishes it.`);
   }
 }
 
@@ -209,16 +222,42 @@ export function registerDescriptionEditor(
     })
   );
 
-  // Saving the scratch document is what publishes the description.
+  // `onDidSaveTextDocument` does not say WHY a document saved, and autosave
+  // (`files.autoSave`) fires it on every pause — which published half-written
+  // descriptions mid-sentence (#324). The reason is captured here, and only a
+  // deliberate Ctrl+S/Cmd+S publishes; autosave keeps the draft local.
+  const pendingSaveReasons = new Map<string, vscode.TextDocumentSaveReason>();
+  let autosaveHintShown = false;
+  context.subscriptions.push(
+    vscode.workspace.onWillSaveTextDocument((event) => {
+      if (openDescriptions.has(event.document.uri.fsPath)) {
+        pendingSaveReasons.set(event.document.uri.fsPath, event.reason);
+      }
+    })
+  );
+
+  // A manual save of the scratch document is what publishes the description.
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (document) => {
       const target = openDescriptions.get(document.uri.fsPath);
       if (!target) {
         return;
       }
+      const reason =
+        pendingSaveReasons.get(document.uri.fsPath) ?? vscode.TextDocumentSaveReason.Manual;
+      pendingSaveReasons.delete(document.uri.fsPath);
+      if (reason !== vscode.TextDocumentSaveReason.Manual) {
+        if (!autosaveHintShown) {
+          autosaveHintShown = true;
+          notify.info(
+            'Autosave keeps this draft local — press Ctrl+S/Cmd+S when you want to publish the description.'
+          );
+        }
+        return;
+      }
       try {
         await saveDescription(target, document.getText(), apiService);
-        notify.info(`Description of “${target.label}” saved.`);
+        notify.info(`Description of “${target.label}” published.`);
         onSaved?.(
           target.kind === 'course'
             ? { kind: 'course', courseId: target.courseId }

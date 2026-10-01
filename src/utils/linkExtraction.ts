@@ -20,13 +20,23 @@ export interface LinkOccurrence {
   source: string;
   /** 1-based line, when the source has lines. */
   line?: number;
+  /** The raw line the link was found on, so a report can show the hit in
+   * context — a captured target like `$$` is a mystery without it (#362). */
+  text?: string;
 }
 
 /** Markdown inline link or image: `[text](target)` / `![alt](target)`. */
 const INLINE_LINK = /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
 
-/** Link reference definition: `[id]: target "title"`. */
-const REFERENCE_DEFINITION = /^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?/gm;
+/**
+ * Link reference definition: `[id]: target "title"`.
+ *
+ * `[ \t]*` — NOT `\s*` — between the colon and the target: `\s` crosses
+ * newlines, so a `[Label]:` line directly above a `$$` math block captured the
+ * `$$` as a link target and reported "content/$$" as a missing file (#362).
+ * A reference definition's target sits on the same line by definition.
+ */
+const REFERENCE_DEFINITION = /^\s{0,3}\[[^\]]+\]:[ \t]*<?([^\s>]+)>?/gm;
 
 /** Autolink: `<https://example.org>`. */
 const AUTOLINK = /<((?:https?|ftp):\/\/[^\s>]+)>/gi;
@@ -71,6 +81,14 @@ function countChar(text: string, char: string): number {
 }
 
 /** Line number (1-based) of an offset in `text`. */
+/** The full trimmed line around `offset`, for showing a hit in context. */
+function lineTextAt(text: string, offset: number): string {
+  const start = text.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+  const endIndex = text.indexOf('\n', offset);
+  const end = endIndex === -1 ? text.length : endIndex;
+  return text.slice(start, end).trim().slice(0, 200);
+}
+
 function lineAt(text: string, offset: number): number {
   let line = 1;
   for (let index = 0; index < offset && index < text.length; index += 1) {
@@ -100,6 +118,19 @@ function codeRanges(text: string): Array<[number, number]> {
   const span = /`[^`\n]+`/g;
   while ((match = span.exec(text)) !== null) {
     ranges.push([match.index, match.index + match[0].length]);
+  }
+  // Math is prose to none of the link patterns either: a `$$…$$` display block
+  // or `$…$` inline math is notation, and what look like bracketed labels or
+  // URLs inside it are formulas (#362).
+  const displayMath = /\$\$[\s\S]*?\$\$/g;
+  while ((match = displayMath.exec(text)) !== null) {
+    ranges.push([match.index, match.index + match[0].length]);
+  }
+  const inlineMath = /\$[^$\n]+\$/g;
+  while ((match = inlineMath.exec(text)) !== null) {
+    if (!inRanges(match.index, ranges)) {
+      ranges.push([match.index, match.index + match[0].length]);
+    }
   }
   return ranges;
 }
@@ -144,7 +175,7 @@ export function extractLinks(text: string, source: string): LinkOccurrence[] {
         continue;
       }
       seen.add(key);
-      found.push({ url, source, line });
+      found.push({ url, source, line, text: lineTextAt(text, match.index) });
     }
   };
 

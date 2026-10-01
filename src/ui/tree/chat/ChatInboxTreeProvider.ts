@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { kindForScope } from '../../../services/MessagePermissions';
+import { shouldToastNewMessage } from '../../../services/messageNotificationPolicy';
 import { MessageLabelResolver, messageContextOf, shortId } from '../../../services/MessageLabelResolver';
 import { buildTargetContext } from '../../../services/messageTargets';
 import { WebSocketService } from '../../../services/WebSocketService';
@@ -1425,6 +1426,11 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     }
     const scope = (typeof inner.scope === 'string' ? inner.scope : 'global') as MessageScope;
     if (this.isMessageMuted(scope, inner)) {
+      return;
+    }
+    if (!shouldToastNewMessage(inner, this.currentUserId).notify) {
+      // Not addressed to this user (no mention, no reply to them, not their
+      // conversation, not an announcement) — the unread badge is enough.
       return;
     }
     void this.showNewMessageToast(inner);

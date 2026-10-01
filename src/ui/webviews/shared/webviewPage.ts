@@ -37,6 +37,12 @@ export interface WebviewPageOptions {
    * needs: this is the one directive that lets foreign markup render.
    */
   embedSrc?: string[];
+  /**
+   * Sources workers may be created from (`worker-src`). The PDF viewer runs
+   * pdf.js's real worker from a blob: URL built in the page (#361); without
+   * the directive, worker-src falls back to script-src and refuses it.
+   */
+  workerSrc?: string[];
 }
 
 export function getNonce(): string {
@@ -114,9 +120,11 @@ export function renderWebviewPage(
 </script>`
     : '';
 
-  const embedDirectives = options.embedSrc?.length
+  const embedDirectives = (options.embedSrc?.length
     ? ` frame-src ${options.embedSrc.join(' ')}; object-src ${options.embedSrc.join(' ')};`
-    : '';
+    : '') + (options.workerSrc?.length
+    ? ` worker-src ${options.workerSrc.join(' ')};`
+    : '');
 
   const headerHtml = options.headerHtml ? `<div class="header">${options.headerHtml}</div>` : '';
   const bodyHtml = options.bodyHtml.replace(/{{NONCE}}/g, nonce);

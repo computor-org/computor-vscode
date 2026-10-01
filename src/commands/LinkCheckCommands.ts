@@ -54,6 +54,9 @@ interface LinkFinding {
   /** File or field inside it. */
   source: string;
   line?: number;
+  /** The raw line the link sat on — shown so the reader sees WHAT was read
+   * as a link; a captured target like `$$` is a mystery without it (#362). */
+  text?: string;
 }
 
 interface RelativeFinding extends LinkFinding {
@@ -192,10 +195,24 @@ export class LinkCheckCommands {
           return;
         }
 
+        // Our own document links live behind a login wall — the /docs static
+        // store answers anonymous probes with 401, which filed every one of
+        // them under "Not checkable" (#362). They are ours to check properly:
+        // send the session credential along for URLs under this instance's
+        // /docs and they come back OK or genuinely missing like any other link.
+        let headersFor: ((url: string) => Record<string, string> | undefined) | undefined;
+        const webUrl = (await this.apiService.getInstanceInfo())?.web_url;
+        const authHeaders = webUrl ? await this.apiService.sessionAuthHeaders() : undefined;
+        if (webUrl && authHeaders && Object.keys(authHeaders).length > 0) {
+          const docsPrefix = `${webUrl.replace(/\/+$/, '')}/docs/`;
+          headersFor = (url) => (url.startsWith(docsPrefix) ? authHeaders : undefined);
+        }
+
         const results = await probeAll(urls, {
           onProgress: (done, total) =>
             progress.report({ message: `checking link ${done} of ${total}…` }),
-          isCancelled: () => token.isCancellationRequested
+          isCancelled: () => token.isCancellationRequested,
+          ...(headersFor ? { headersFor } : {})
         });
 
         if (token.isCancellationRequested) {
@@ -395,6 +412,11 @@ export class LinkCheckCommands {
           `- \`${entry.url}\` — ${entry.where}, \`${entry.source}${at}\`` +
           (entry.resolved ? ` (looked for \`${entry.resolved}\`)` : '')
         );
+        // The raw line, so the reader sees WHAT was read as a link — a target
+        // like `$$` is a mystery without it (#362).
+        if (entry.text) {
+          lines.push(`  - found in: \`${entry.text.replace(/\`/g, "'")}\``);
+        }
       }
       lines.push('');
     }
@@ -488,6 +510,7 @@ export function collectFromBundle(
         where,
         source: occurrence.source,
         ...(occurrence.line !== undefined ? { line: occurrence.line } : {}),
+        ...(occurrence.text !== undefined ? { text: occurrence.text } : {}),
         ...(resolved !== undefined ? { resolved } : {})
       });
     }

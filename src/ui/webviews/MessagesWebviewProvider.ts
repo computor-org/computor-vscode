@@ -63,6 +63,13 @@ type EnrichedMessage = MessageList & {
   can_edit?: boolean;
   can_delete?: boolean;
   is_author?: boolean;
+  /**
+   * The reader flagged this message back to unread from the panel and the
+   * hold is still on (issue #390). The card shows "Mark read" instead of
+   * "Mark unread" and the dwell observer leaves it alone — otherwise a
+   * re-render would re-watch it and scroll it read behind the reader's back.
+   */
+  manually_unread?: boolean;
 };
 
 export class MessagesWebviewProvider extends BaseWebviewProvider {
@@ -352,6 +359,13 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (held && resolvedId) {
       const index = held.findIndex((m) => m.id === resolvedId);
       if (index >= 0) {
+        // Broadcasts carry no per-recipient read state (the backend strips
+        // is_read along with is_author), so an edit must not turn what we
+        // already knew about the message into "unknown" — the read sweeps
+        // treat unknown as unread.
+        if (enrichedMessage.is_read === undefined) {
+          enrichedMessage.is_read = held[index]!.is_read;
+        }
         held[index] = enrichedMessage;
       }
     }
@@ -616,19 +630,25 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
   }
 
   /**
-   * Mark announcements the reader has actually seen.
+   * Mark messages the reader has actually seen — or says they have.
    *
    * The webview reports ids as their cards come into view, batched; this
    * applies them locally so the marker clears without a refetch, and posts
-   * the batch in one request.
+   * the batch in one request. That dwell sweep never touches a message the
+   * reader flagged back to unread. Pressing "Mark read" on such a card is
+   * `explicit`: it lifts the hold first, so the flip the reader asked for
+   * is not silently swallowed by the guard that protects the flag they set
+   * (issue #390).
    */
-  private async handleMarkRead(data: { messageIds?: string[] }): Promise<void> {
+  private async handleMarkRead(data: { messageIds?: string[]; explicit?: boolean }): Promise<void> {
     const target = this.getCurrentTarget();
     const currentUserId = this.currentUserId ?? this.apiService.getCurrentUserId();
     const ids = (data?.messageIds ?? []).filter((id) => typeof id === 'string' && id);
     if (ids.length === 0) {
       return;
     }
+    const explicit = data?.explicit === true;
+    const lifted = explicit ? ids.filter((id) => this.manuallyUnread.delete(id)) : [];
 
     const panelData = this.currentData as MessagesWebviewData | undefined;
     const seen = new Set(ids);
@@ -639,12 +659,24 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     if (toMark.length === 0) {
       return;
     }
-    toMark.forEach((m) => { m.is_read = true; });
+    toMark.forEach((m) => { m.is_read = true; m.manually_unread = false; });
 
     try {
       await this.apiService.markMessagesRead(toMark.map((m) => m.id));
     } catch (error) {
-      console.error('Failed to mark announcements as read:', error);
+      console.error('Failed to mark messages as read:', error);
+      if (explicit) {
+        // The reader pressed a button and it did not work: put the hold
+        // back and let the card say so, instead of showing a read state the
+        // backend never received.
+        for (const m of toMark) {
+          if (!lifted.includes(m.id)) { continue; }
+          this.manuallyUnread.add(m.id);
+          m.is_read = false;
+          m.manually_unread = true;
+          this.postReadState(m.id, { is_read: false, manually_unread: true });
+        }
+      }
       return;
     }
     this.notifyIndicatorsUpdated(target, toMark);
@@ -666,15 +698,30 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const message = (panelData?.messages ?? []).find((m) => m.id === messageId);
     if (message) {
       message.is_read = false;
+      message.manually_unread = true;
     }
     try {
       await this.apiService.markMessageUnread(messageId);
     } catch (error) {
       console.error(`Failed to mark message ${messageId} as unread:`, error);
       this.manuallyUnread.delete(messageId);
+      if (message) {
+        message.is_read = true;
+        message.manually_unread = false;
+      }
+      this.postReadState(messageId, { is_read: true, manually_unread: false });
       return;
     }
     this.notifyIndicatorsUpdated(this.getCurrentTarget(), message ? [message] : []);
+  }
+
+  /** Tell the card to show the read state the backend actually has — used
+   *  to roll back the webview's optimistic flip when a request failed. */
+  private postReadState(messageId: string, state: { is_read: boolean; manually_unread: boolean }): void {
+    this.panel?.webview.postMessage({
+      command: 'updateReadState',
+      data: { messageId, ...state }
+    });
   }
 
   private notifyIndicatorsUpdated(target: MessageTargetContext | undefined, messages: MessageList[]): void {
@@ -835,7 +882,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       author_name: hasFullName ? fullName : undefined,
       can_edit: isAuthor && !isDeleted,
       can_delete: isAuthor && !isDeleted,
-      is_author: isAuthor
+      is_author: isAuthor,
+      manually_unread: this.manuallyUnread.has(message.id)
     } satisfies EnrichedMessage;
   }
 
@@ -859,7 +907,8 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       author_name: hasFullName ? fullName : undefined,
       can_edit: isAuthor && !isDeleted,
       can_delete: isAuthor && !isDeleted,
-      is_author: isAuthor
+      is_author: isAuthor,
+      manually_unread: this.manuallyUnread.has(message.id)
     } satisfies EnrichedMessage;
   }
 

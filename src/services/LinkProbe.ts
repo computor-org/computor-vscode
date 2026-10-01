@@ -26,6 +26,12 @@ export interface ProbeOptions {
   timeoutMs?: number;
   /** How many probes are in flight at once. */
   concurrency?: number;
+  /**
+   * Extra headers for a URL. Lets the caller authenticate probes against
+   * hosts it owns — the instance's own /docs store 401s anonymous requests,
+   * which filed every own-document link under "Not checkable" (#362).
+   */
+  headersFor?: (url: string) => Record<string, string> | undefined;
 }
 
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -60,7 +66,12 @@ function describe(code: number): string {
 }
 
 /** One request, with its own timeout. */
-async function request(url: string, method: 'HEAD' | 'GET', timeoutMs: number) {
+async function request(
+  url: string,
+  method: 'HEAD' | 'GET',
+  timeoutMs: number,
+  extraHeaders?: Record<string, string>
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -70,7 +81,8 @@ async function request(url: string, method: 'HEAD' | 'GET', timeoutMs: number) {
       headers: {
         'User-Agent': USER_AGENT,
         // Sites that content-negotiate answer a bare request with 406.
-        Accept: '*/*'
+        Accept: '*/*',
+        ...(extraHeaders ?? {})
       },
       signal: controller.signal as any
     });
@@ -88,10 +100,11 @@ async function request(url: string, method: 'HEAD' | 'GET', timeoutMs: number) {
  */
 export async function probeLink(url: string, options: ProbeOptions = {}): Promise<ProbeResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const extraHeaders = options.headersFor?.(url);
 
   let headCode: number | undefined;
   try {
-    const head = await request(url, 'HEAD', timeoutMs);
+    const head = await request(url, 'HEAD', timeoutMs, extraHeaders);
     if (head.ok) {
       return { status: 'ok', code: head.status, reason: 'reachable' };
     }
@@ -101,7 +114,7 @@ export async function probeLink(url: string, options: ProbeOptions = {}): Promis
   }
 
   try {
-    const response = await request(url, 'GET', timeoutMs);
+    const response = await request(url, 'GET', timeoutMs, extraHeaders);
     if (response.ok) {
       return { status: 'ok', code: response.status, reason: 'reachable' };
     }
