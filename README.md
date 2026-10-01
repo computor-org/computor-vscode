@@ -22,6 +22,11 @@ Computor is a VS Code extension designed for educational institutions to manage 
 
 ## Getting Started
 
+Public learners can use **Computor: Public Courses** before signing in, read the
+examples, clone them into desktop VS Code or use their own GitHub Codespace.
+Enrolled learners can ask Luna through course messages. See [Public learning](docs/PUBLIC_LEARNING.md).
+The same 2027.3.0 extension supports both 26.10 and main/27.3 backends.
+
 ### Prerequisites
 
 - Visual Studio Code (latest version)
