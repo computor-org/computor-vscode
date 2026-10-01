@@ -26,19 +26,35 @@ describe('FigureFolderWatcher', () => {
     fs.writeFileSync(`${stem}.png`, png);
   };
 
-  /** Let the watcher notice, the way a producer's write would. */
-  const settle = async (): Promise<void> => {
+  const waitFor = async (condition: () => boolean): Promise<void> => {
+    const deadline = Date.now() + 3000;
+    while (!condition()) {
+      if (Date.now() >= deadline) throw new Error('Figure notification did not arrive');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  /** Wait for an observable notification rather than guessing filesystem timing. */
+  const settle = async (expectChange = true): Promise<void> => {
+    const before = changes.length;
     const stub = fileSystemWatchers[fileSystemWatchers.length - 1] as FileSystemWatcherStub;
     stub.fireChange();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    if (expectChange) await waitFor(() => changes.length > before);
+    else await new Promise((resolve) => setTimeout(resolve, 200));
   };
 
   beforeEach(async () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'computor-figures-test-'));
     changes = [];
+    // An initial fixture figure gives startup an observable completion signal.
+    // Remove it before the test; every test then starts with an empty folder.
+    publish(999999, 'Fixture');
     watcher = new FigureFolderWatcher(directory);
     watcher.onDidChange((change) => changes.push(change));
     watcher.start();
+    await waitFor(() => changes.length === 1);
+    fs.unlinkSync(path.join(directory, 'fig-999999.png'));
+    fs.unlinkSync(path.join(directory, 'fig-999999.json'));
     await settle();
     changes.length = 0;
   });
@@ -92,7 +108,7 @@ describe('FigureFolderWatcher', () => {
     await settle();
     changes.length = 0;
 
-    await settle();
+    await settle(false);
 
     expect(changes).to.be.empty;
   });
@@ -104,7 +120,7 @@ describe('FigureFolderWatcher', () => {
     fs.writeFileSync(path.join(directory, '.fig-000002.png.a1b2c3.tmp'), 'half-written');
     fs.writeFileSync(path.join(directory, 'fig-1.png'), 'wrong-name');
     fs.writeFileSync(path.join(directory, 'notes.txt'), 'unrelated');
-    await settle();
+    await settle(false);
 
     expect(changes).to.be.empty;
   });
@@ -116,7 +132,7 @@ describe('FigureFolderWatcher', () => {
     changes.length = 0;
 
     await watcher.closeFigure(1);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await waitFor(() => changes.length > 0);
 
     expect(fs.existsSync(path.join(directory, 'fig-000001.png'))).to.be.false;
     expect(fs.existsSync(path.join(directory, 'fig-000001.json'))).to.be.false;
@@ -140,7 +156,7 @@ describe('FigureFolderWatcher', () => {
     changes.length = 0;
 
     await watcher.closeFigures([1, 2, 3]);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await waitFor(() => changes.length > 0);
 
     expect(fs.readdirSync(directory)).to.be.empty;
     expect(changes).to.have.lengthOf(1);
@@ -160,7 +176,7 @@ describe('FigureFolderWatcher', () => {
 
     publish(3, 'Just arrived');
     await watcher.closeFigures([1, 2]);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await waitFor(() => changes.length > 0);
 
     expect(changes[changes.length - 1]!.figures.map((figure) => figure.number)).to.deep.equal([3]);
   });
@@ -193,7 +209,7 @@ describe('FigureFolderWatcher', () => {
     restarted.onDidChange((change) => seen.push(change));
     try {
       restarted.start();
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await waitFor(() => seen.length > 0);
 
       expect(seen).to.have.lengthOf(1);
       expect(seen[0]!.initial).to.be.true;
