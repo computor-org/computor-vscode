@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
 import { StatusBarService } from '../ui/StatusBarService';
 import { notify } from '../utils/notify';
+import { courseAssistantBridge } from './CourseAssistantBridge';
+import { refreshCourseAssistantSelection } from './CourseAssistantTracking';
 
 export interface CourseInfo {
     id: string;
@@ -127,8 +129,11 @@ export class CourseSelectionService {
     }
 
     async switchToCourse(course: CourseInfo): Promise<void> {
+        await courseAssistantBridge.apply({ id: 'course', course_id: course.id, title: course.title,
+            assistant_policy: { action_mode: 'ask', completion: 'off', independent_check: true } });
         this.currentCourseId = course.id;
         this.currentCourseInfo = course;
+        await refreshCourseAssistantSelection();
 
         // Workspace folder already exists; nothing else to do here.
 
@@ -164,6 +169,7 @@ export class CourseSelectionService {
      * Used to prevent stale course IDs from being loaded
      */
     async clearStoredCourseIds(): Promise<void> {
+        courseAssistantBridge.clear();
         await this.context.globalState.update('selectedCourseId', undefined);
         await this.context.globalState.update('selectedCourseInfo', undefined);
         console.log('Cleared stored course IDs from global state');
@@ -192,6 +198,7 @@ export class CourseSelectionService {
     }
 
     async clearSelection(): Promise<void> {
+        courseAssistantBridge.clear();
         this.currentCourseId = undefined;
         this.currentCourseInfo = undefined;
         

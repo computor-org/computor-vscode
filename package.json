@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "2026.10.2",
+  "version": "2027.3.0",
   "publisher": "computor-org",
   "repository": {
     "type": "git",
@@ -17,7 +17,8 @@
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:.computor"
+    "workspaceContains:.computor",
+    "workspaceContains:.computor-public.json"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -1352,6 +1353,21 @@
         "command": "computor.figures.show",
         "title": "Show Figures",
         "icon": "$(graph)",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.publicCourses",
+        "title": "Public Courses",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.openTutor",
+        "title": "Open Tutor",
+        "category": "Computor"
+      },
+      {
+        "command": "computor.reviewFigure",
+        "title": "Review Plot with Hackl",
         "category": "Computor"
       }
     ],
@@ -2991,6 +3007,7 @@
     "vendor:katex": "node scripts/vendor-katex.js",
     "test": "mocha",
     "test:unit": "mocha --config .mocharc.unit.json",
+    "test:extension-host": "npm run package && node scripts/run-extension-host.mjs",
     "test:coverage": "c8 --config .c8rc.json mocha --config .mocharc.unit.json",
     "test:integration": "jest --config jest.integration.config.js",
     "test:all": "npm run test && npm run test:integration",
@@ -3012,6 +3029,7 @@
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
+    "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "^3.6.2",
     "c8": "^10.1.3",
     "chai": "^4.3.7",

@@ -29,8 +29,9 @@ describe('quiet startup', () => {
   };
 
   describe('activation events', () => {
-    it('wakes on the Computor workspace marker and nothing else', () => {
-      assert.deepStrictEqual(manifest.activationEvents, [MARKER_ACTIVATION_EVENT]);
+    it('declares workspace-scoped triggers without broadening startup activation', () => {
+      assert.ok(manifest.activationEvents.includes(MARKER_ACTIVATION_EVENT));
+      assert.ok(manifest.activationEvents.every(event => event.startsWith('workspaceContains:')));
     });
 
     it('does not activate on plain startup', () => {

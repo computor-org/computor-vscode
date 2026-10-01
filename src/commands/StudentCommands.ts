@@ -5,6 +5,8 @@ import * as fs from 'fs';
 // import * as os from 'os';
 import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
+import { courseAssistantBridge } from '../services/CourseAssistantBridge';
+import { registerCourseAssistantTracking } from '../services/CourseAssistantTracking';
 import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
 import { TestResultService } from '../services/TestResultService';
@@ -800,6 +802,12 @@ export class StudentCommands {
 
 
   registerCommands(): void {
+    registerCourseAssistantTracking(this.context, {
+      courseId: () => CourseSelectionService.getInstance().getCurrentCourseId(),
+      repositoryRoot: courseId => this.provisioningService.localRepoPath(courseId),
+      contents: courseId => this.apiService.getStudentCourseContents(courseId),
+      detail: id => this.apiService.getStudentCourseContentDetails(id, { force: true }),
+    });
 
 
     const register = commandRegistrar(this.context);
@@ -2373,6 +2381,7 @@ export class StudentCommands {
 
       const courseContentDetails = await this.apiService.getStudentCourseContentDetails(courseContentSummary.id, { force: true });
       const courseContent = courseContentDetails ?? courseContentSummary;
+      await courseAssistantBridge.apply(courseContent);
 
       if (!submissionGroupSummary) {
         submissionGroupSummary = courseContentSummary.submission_group as SubmissionGroupStudentList | undefined;

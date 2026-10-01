@@ -5,6 +5,7 @@ import * as os from 'os';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { courseAssistantBridge } from '../services/CourseAssistantBridge';
 
 /**
  * Commands for logging out and clearing credentials
@@ -154,6 +155,7 @@ export class LogoutCommands {
    * Clear the stored SSO session token and any stored API token.
    */
   private async clearSessionTokens(): Promise<void> {
+    courseAssistantBridge.clear();
     for (const key of ['computor.auth', 'computor.apiToken']) {
       try {
         await this.context.secrets.delete(key);
