@@ -18,12 +18,47 @@ describe('registerFigureViewer', () => {
 
   let registered: string[];
   let context: any;
+  let showFigures: (() => Promise<void>) | undefined;
+
+  const waitFor = async (condition: () => boolean): Promise<void> => {
+    const deadline = Date.now() + 3000;
+    while (!condition()) {
+      if (Date.now() >= deadline) throw new Error('Figure panel did not reach the expected state');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  const lastFigures = (panel: typeof webviewPanels[number]): any[] | undefined =>
+    panel.posted.filter((message) => message.command === 'figuresUpdate').at(-1)?.data.figures;
+
+  /** Observe the initial scan and an empty rescan through the panel's public messages. */
+  const startEmptyWatcher = async (folder: string): Promise<void> => {
+    const stem = path.join(folder, 'fig-999999');
+    fs.writeFileSync(`${stem}.json`, JSON.stringify({ number: 999999, title: 'Fixture', source: 'test' }));
+    fs.writeFileSync(`${stem}.png`, 'fixture-image');
+    registerFigureViewer(context);
+    await showFigures!();
+    const panel = webviewPanels.at(-1)!;
+    await waitFor(() => lastFigures(panel)?.some((figure) => figure.number === 999999) === true);
+
+    fs.unlinkSync(`${stem}.png`);
+    fs.unlinkSync(`${stem}.json`);
+    const before = panel.posted.length;
+    fileSystemWatchers.at(-1)!.fireChange();
+    await waitFor(() => panel.posted.slice(before).some(
+      (message) => message.command === 'figuresUpdate' && message.data.figures.length === 0
+    ));
+    panel.dispose();
+    webviewPanels.length = 0;
+  };
 
   beforeEach(() => {
     registered = [];
+    showFigures = undefined;
     context = { subscriptions: [], extensionUri: { fsPath: '/ext', path: '/ext', scheme: 'file' } };
-    (commands as any).registerCommand = (id: string) => {
+    (commands as any).registerCommand = (id: string, handler: () => Promise<void>) => {
       registered.push(id);
+      if (id === 'computor.figures.show') showFigures = handler;
       return { dispose: () => {} };
     };
     (commands as any).executeCommand = async () => undefined;
@@ -71,20 +106,14 @@ describe('registerFigureViewer', () => {
         JSON.stringify({ number: 1, title: 'Test', source: 'matplotlib' }));
       fs.writeFileSync(path.join(folder, 'fig-000001.png'), bytes);
     };
-    const settle = async () => {
-      fileSystemWatchers[fileSystemWatchers.length - 1]!.fireChange();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    };
+    const settle = () => fileSystemWatchers.at(-1)!.fireChange();
 
     try {
-      registerFigureViewer(context);
-      // Let the first scan see the empty folder. Figures already there at
-      // startup are left over from an earlier session and deliberately do not
-      // open the panel, which would otherwise be what this test measured.
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await startEmptyWatcher(folder);
 
       publish('first-run');
-      await settle();
+      settle();
+      await waitFor(() => webviewPanels.length === 1);
       expect(webviewPanels.length, 'first run opens the panel').to.equal(1);
 
       // The student closes the panel with [x] — without pressing Close on the
@@ -94,7 +123,8 @@ describe('registerFigureViewer', () => {
 
       // Running the script again overwrites the same figure.
       publish('second-run-different-bytes');
-      await settle();
+      settle();
+      await waitFor(() => webviewPanels.length === 2);
 
       expect(webviewPanels.length, 'the re-run brings the panel back').to.equal(2);
       expect(webviewPanels[1]!.disposed).to.be.false;
@@ -121,23 +151,20 @@ describe('registerFigureViewer', () => {
         JSON.stringify({ number: figureNumber, title: `Figure ${figureNumber}`, source: 'matplotlib' }));
       fs.writeFileSync(`${stem}.png`, `image-${figureNumber}`);
     };
-    const settle = async () => {
-      fileSystemWatchers[fileSystemWatchers.length - 1]!.fireChange();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    };
+    const settle = () => fileSystemWatchers.at(-1)!.fireChange();
 
     try {
-      registerFigureViewer(context);
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await startEmptyWatcher(folder);
 
       publish(1);
       publish(2);
       publish(3);
-      await settle();
+      settle();
+      await waitFor(() => webviewPanels.length === 1 && lastFigures(webviewPanels[0]!)?.length === 3);
       expect(webviewPanels.length, 'the plots open the panel').to.equal(1);
 
       webviewPanels[0]!.fireMessage({ command: 'closeAll' });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => fs.readdirSync(folder).length === 0 && lastFigures(webviewPanels[0]!)?.length === 0);
 
       expect(fs.readdirSync(folder), 'every figure is closed').to.be.empty;
       const last = webviewPanels[0]!.posted[webviewPanels[0]!.posted.length - 1];
@@ -163,14 +190,13 @@ describe('registerFigureViewer', () => {
     webviewPanels.length = 0;
 
     try {
-      registerFigureViewer(context);
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await startEmptyWatcher(folder);
 
       fs.writeFileSync(path.join(folder, 'fig-000001.json'),
         JSON.stringify({ number: 1, title: 'Sales', source: 'matplotlib' }));
       fs.writeFileSync(path.join(folder, 'fig-000001.png'), 'image-bytes');
       fileSystemWatchers[fileSystemWatchers.length - 1]!.fireChange();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => webviewPanels.length === 1 && lastFigures(webviewPanels[0]!)?.length === 1);
 
       const html: string = webviewPanels[0]!.webview.html;
       const button = /<button[^>]*data-action="closeAll"[^>]*>/.exec(html);
@@ -179,7 +205,7 @@ describe('registerFigureViewer', () => {
 
       // And it still closes the one figure there is.
       webviewPanels[0]!.fireMessage({ command: 'closeAll' });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => fs.readdirSync(folder).length === 0 && lastFigures(webviewPanels[0]!)?.length === 0);
       expect(fs.readdirSync(folder)).to.be.empty;
     } finally {
       context.subscriptions.forEach((d: any) => d?.dispose?.());
