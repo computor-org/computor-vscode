@@ -19,6 +19,7 @@ import { registerTreeHandle } from './ui/treeRegistry';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
+import { registerPublicLearning } from './commands/PublicLearningCommands';
 // RepositoryTokenManager is dynamically imported in code blocks below
 // import { RepositoryTokenManager } from './services/RepositoryTokenManager';
 
@@ -1908,6 +1909,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
 // Automatic login prompt when .computor file is detected
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  registerPublicLearning(context);
   console.log('Computor extension activated');
   IconGenerator.initialize(context);
 

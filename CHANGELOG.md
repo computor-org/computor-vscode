@@ -3,6 +3,12 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.0
+
+- Public courses, desktop VS Code and GitHub Codespaces available before login.
+- Existing course messages continue to support Luna hints and feedback on submitted work.
+- Supports both 26.10 and main/27.3 under the existing Marketplace identity.
+
 ## 2026.10.2
 
 First stable release of the `2026.10` line.

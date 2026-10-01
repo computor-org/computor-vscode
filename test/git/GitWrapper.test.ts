@@ -191,6 +191,10 @@ describe('GitWrapper', () => {
       const git = await gitWrapper.getRepository(testRepoPath);
       await git.addConfig('user.name', 'Test User');
       await git.addConfig('user.email', 'test@example.com');
+      // The disposable repository must not inherit interactive signing from
+      // the developer's global Git config (annotated tags can wait for a key).
+      await git.addConfig('commit.gpgsign', 'false');
+      await git.addConfig('tag.gpgsign', 'false');
       
       const testFile = path.join(testRepoPath, 'test.txt');
       await fs.promises.writeFile(testFile, 'test content');
