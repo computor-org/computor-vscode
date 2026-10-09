@@ -314,12 +314,17 @@ function registerTreeView<T>(
   // container is the one on screen — that is what gets restored on the next
   // activation (computor-org/issues#285).
   const container = containerForView(id);
-  if (container) {
-    disposables.push(treeView.onDidChangeVisibility(event => {
-      if (event.visible) {
-        UiStateService.getInstanceOrUndefined()?.setActiveContainer(container.id);
-      }
-    }));
+  if (container && uiState) {
+    uiState.setViewVisible(id, treeView.visible);
+    disposables.push(
+      treeView.onDidChangeVisibility(event => {
+        uiState.setViewVisible(id, event.visible);
+        if (event.visible) {
+          uiState.setActiveContainer(container.id);
+        }
+      }),
+      { dispose: () => uiState.setViewVisible(id, false) }
+    );
   }
   return treeView;
 }

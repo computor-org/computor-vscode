@@ -59,6 +59,40 @@ describe('UiStateService', () => {
     expect(service.isExpanded('lecturer', 'anything')).to.equal(false);
   });
 
+  it('tracks live visibility independently of the remembered container', async () => {
+    const { service, store } = makeService({ activeContainer: 'computor-tutor' });
+    expect(service.hasVisibleViews()).to.equal(false);
+
+    service.setViewVisible('computor.tutor.courses', true);
+    await service.flush();
+    const reloaded = makeService(store.get('computor.ui.state')).service;
+    expect(reloaded.hasVisibleViews()).to.equal(false);
+    expect(reloaded.getActiveContainer()).to.equal('computor-tutor');
+
+    service.setViewVisible('computor.tutor.courses', false);
+    expect(service.hasVisibleViews()).to.equal(false);
+    expect(service.getActiveContainer()).to.equal('computor-tutor');
+  });
+
+  it('stays visible until the last visible view hides and only emits changes', () => {
+    const { service } = makeService();
+    const changes: boolean[] = [];
+    const listener = service.onDidChangeVisibility(visible => changes.push(visible));
+
+    service.setViewVisible('computor.tutor.filters', true);
+    service.setViewVisible('computor.tutor.courses', true);
+    service.setViewVisible('computor.tutor.courses', true);
+    service.setViewVisible('computor.tutor.filters', false);
+    expect(service.hasVisibleViews()).to.equal(true);
+    expect(changes).to.deep.equal([true]);
+
+    service.setViewVisible('computor.tutor.courses', false);
+    service.setViewVisible('computor.tutor.courses', false);
+    expect(service.hasVisibleViews()).to.equal(false);
+    expect(changes).to.deep.equal([true, false]);
+    listener.dispose();
+  });
+
   it('keeps trees in separate namespaces', () => {
     const { service } = makeService();
     service.setExpanded('student', 'shared-id', true);

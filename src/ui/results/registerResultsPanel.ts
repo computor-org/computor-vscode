@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../panels/TestResultsPanel';
 import { TestResultService } from '../../services/TestResultService';
+import { UiStateService } from '../../services/UiStateService';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { notify } from '../../utils/notify';
 import { resolveResultPayload, resultCacheKey, resultScopeFor } from './resolveResultPayload';
@@ -28,7 +29,18 @@ export function registerResultsPanel(
 
   const resultsTree = new TestResultsTreeDataProvider([]);
   resultsTree.setPanelProvider(panelProvider);
-  disposables.push(vscode.window.registerTreeDataProvider('computor.testResultsView', resultsTree));
+  const treeViewId = 'computor.testResultsView';
+  const treeView = vscode.window.createTreeView(treeViewId, { treeDataProvider: resultsTree });
+  const uiState = UiStateService.getInstanceOrUndefined();
+  uiState?.setViewVisible(treeViewId, treeView.visible);
+  const visibilityListener = treeView.onDidChangeVisibility(() => {
+    uiState?.setViewVisible(treeViewId, treeView.visible);
+  });
+  disposables.push({ dispose: () => {
+    visibilityListener.dispose();
+    uiState?.setViewVisible(treeViewId, false);
+    treeView.dispose();
+  } });
 
   TestResultService.getInstance().setApiService(api);
 
