@@ -3,6 +3,7 @@ import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
 import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated } from '../types/generated/websocket';
 import { CredentialRecoveryService } from './CredentialRecoveryService';
+import { UiStateService } from './UiStateService';
 import { notify } from '../utils/notify';
 import { say } from '../utils/uiLanguage';
 
@@ -236,6 +237,7 @@ export class WebSocketService {
   private settingsManager: ComputorSettingsManager;
   private httpClient?: BearerTokenHttpClient;
   private subscribedChannels: Set<string> = new Set();
+  private handlerChannels: Map<string, Set<string>> = new Map();
   private eventHandlers: Map<string, WebSocketEventHandlers> = new Map();
   private connectionState: ConnectionState = 'disconnected';
   private pingInterval?: ReturnType<typeof setInterval>;
@@ -249,6 +251,9 @@ export class WebSocketService {
   private readonly typingTimeoutMs = 5000;
   private statusBarItem: vscode.StatusBarItem;
   private maintenanceStatusBarItem: vscode.StatusBarItem;
+  private readonly uiState = UiStateService.getInstanceOrUndefined();
+  private readonly visibilitySubscription?: vscode.Disposable;
+  private reconnectRequired = false;
   /**
    * The token the server last closed us on. Reconnecting with it would be
    * answered by the same close, forever — the loop that made an expired
@@ -265,7 +270,7 @@ export class WebSocketService {
     this.settingsManager = settingsManager;
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
     this.maintenanceStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this.updateStatusBar();
+    this.visibilitySubscription = this.uiState?.onDidChangeVisibility(() => this.updateStatusBar());
   }
 
   public static getInstance(settingsManager: ComputorSettingsManager): WebSocketService {
@@ -310,6 +315,7 @@ export class WebSocketService {
     }
 
     this.connectionState = 'connecting';
+    this.reconnectRequired = false;
     this.activeToken = token;
     this.updateStatusBar();
     const connectStartTime = Date.now();
@@ -420,6 +426,7 @@ export class WebSocketService {
 
   public disconnect(): void {
     this.connectionState = 'disconnected';
+    this.reconnectRequired = false;
     this.updateStatusBar();
     this.stopPingInterval();
     this.clearConnectionTimeout();
@@ -434,7 +441,7 @@ export class WebSocketService {
       this.ws = undefined;
     }
 
-    this.subscribedChannels.clear();
+    // Keep channel ownership for reconnect; unsubscribe/dispose release it.
     this.typingTimeouts.forEach((timeout) => clearTimeout(timeout));
     this.typingTimeouts.clear();
   }
@@ -442,8 +449,16 @@ export class WebSocketService {
   public subscribe(channels: string[], handlerId: string, handlers: WebSocketEventHandlers): void {
     this.eventHandlers.set(handlerId, handlers);
 
-    const newChannels = channels.filter((ch) => !this.subscribedChannels.has(ch));
-    newChannels.forEach((ch) => this.subscribedChannels.add(ch));
+    const heldChannels = this.handlerChannels.get(handlerId) ?? new Set<string>();
+    this.handlerChannels.set(handlerId, heldChannels);
+    const newChannels: string[] = [];
+    for (const channel of channels) {
+      heldChannels.add(channel);
+      if (!this.subscribedChannels.has(channel)) {
+        this.subscribedChannels.add(channel);
+        newChannels.push(channel);
+      }
+    }
 
     if (newChannels.length > 0 && this.isConnected()) {
       this.send({
@@ -454,19 +469,22 @@ export class WebSocketService {
   }
 
   public unsubscribe(channels: string[], handlerId: string): void {
-    this.eventHandlers.delete(handlerId);
+    const heldChannels = this.handlerChannels.get(handlerId);
+    if (!heldChannels) {
+      return;
+    }
 
-    // Only unsubscribe from channels that no other handler needs
-    const channelsToRemove = channels.filter((ch) => {
-      // Check if any other handler still needs this channel
-      let stillNeeded = false;
-      this.eventHandlers.forEach(() => {
-        // In a more complex implementation, we'd track which handlers need which channels
-        // For now, we only unsubscribe if no handlers remain
-        stillNeeded = this.eventHandlers.size > 0;
-      });
-      return !stillNeeded;
-    });
+    const channelsToRemove: string[] = [];
+    for (const channel of channels) {
+      if (heldChannels.delete(channel) &&
+          !Array.from(this.handlerChannels.values()).some(held => held.has(channel))) {
+        channelsToRemove.push(channel);
+      }
+    }
+    if (heldChannels.size === 0) {
+      this.handlerChannels.delete(handlerId);
+      this.eventHandlers.delete(handlerId);
+    }
 
     if (channelsToRemove.length > 0) {
       channelsToRemove.forEach((ch) => this.subscribedChannels.delete(ch));
@@ -872,6 +890,8 @@ export class WebSocketService {
    * does on a failed request.
    */
   private async reportSessionExpired(): Promise<void> {
+    this.reconnectRequired = false;
+    this.updateStatusBar();
     await CredentialRecoveryService.getInstance().reportExpired({ kind: 'backend' });
   }
 
@@ -938,6 +958,7 @@ export class WebSocketService {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.warn('[WebSocket] Max reconnect attempts reached');
       this.connectionState = 'disconnected';
+      this.reconnectRequired = true;
       this.updateStatusBar();
       void this.diagnoseGivingUp();
       return;
@@ -991,7 +1012,11 @@ export class WebSocketService {
         this.statusBarItem.command = 'computor.websocket.reconnect';
         break;
     }
-    this.statusBarItem.show();
+    if (this.uiState?.hasVisibleViews() || this.reconnectRequired) {
+      this.statusBarItem.show();
+    } else {
+      this.statusBarItem.hide();
+    }
   }
 
   public updateMaintenanceStatusBar(state: 'active' | 'scheduled' | 'inactive', message?: string, scheduledAt?: string): void {
@@ -1017,7 +1042,10 @@ export class WebSocketService {
   }
 
   public dispose(): void {
+    this.visibilitySubscription?.dispose();
     this.disconnect();
+    this.subscribedChannels.clear();
+    this.handlerChannels.clear();
     this.eventHandlers.clear();
     this.statusBarItem.dispose();
     this.maintenanceStatusBarItem.dispose();
