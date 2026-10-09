@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ResultArtifactInfo } from '../../types/generated/common';
 import { escapeHtml } from '../webviews/shared/webviewHelpers';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
+import { UiStateService } from '../../services/UiStateService';
 
 interface ResultsTreeNode {
     id: string;
@@ -626,6 +627,11 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         token: vscode.CancellationToken
     ): void {
         this.view = webviewView;
+        const uiState = UiStateService.getInstanceOrUndefined();
+        uiState?.setViewVisible(TestResultsPanelProvider.viewType, webviewView.visible);
+        webviewView.onDidChangeVisibility(() => {
+            uiState?.setViewVisible(TestResultsPanelProvider.viewType, webviewView.visible);
+        });
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -641,6 +647,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         });
 
         webviewView.onDidDispose(() => {
+            uiState?.setViewVisible(TestResultsPanelProvider.viewType, false);
             if (this.view === webviewView) {
                 this.view = undefined;
             }
