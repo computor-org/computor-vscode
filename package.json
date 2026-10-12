@@ -24,6 +24,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "computor.student.selectCourse",
+        "title": "Switch Course",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.openFile",
         "title": "Open File",
         "category": "Computor"

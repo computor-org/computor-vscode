@@ -14,7 +14,8 @@ import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
-import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
+import { showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
+import { readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
 import { downloadFileInBrowser } from '../ui/webviews/browserDownload';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
@@ -417,6 +418,63 @@ export class StudentCommands {
       if (!silent) notify.error('Failed to open README.md');
       return false;
     }
+  }
+
+  /** Reading published instructions must not require cloning the assignment. */
+  private async openRemoteDescription(content: CourseContentStudentList, chooseLanguage = false): Promise<void> {
+    const archive = await this.apiService.downloadStudentCourseContentDescription(content.id);
+    if (!archive) {
+      notify.info('This assignment has no published description.');
+      return;
+    }
+
+    let markdown: string | undefined;
+    if (chooseLanguage) {
+      const zip = await JSZip.loadAsync(archive);
+      // The student endpoint publishes descriptions at the archive root. Do
+      // not offer dependency documents or names normalized from traversal.
+      const files = Object.values(zip.files).filter(file => {
+        const original = (file as JSZip.JSZipObject & { unsafeOriginalName?: string }).unsafeOriginalName ?? file.name;
+        return !file.dir && !file.name.includes('/') && !file.name.includes('\\') && original === file.name;
+      }).map(file => file.name);
+      const descriptions = listDescriptionFiles(files);
+      if (descriptions.length === 0) {
+        notify.info('This assignment has no description.');
+        return;
+      }
+      const names = await this.languageNames();
+      const picks: Array<vscode.QuickPickItem & { file: string }> = availableDescriptionLanguages(files).map(code => ({
+        label: names.get(code) ?? code.toUpperCase(),
+        description: code,
+        file: pickDescriptionFile(files, code)!
+      }));
+      const defaultFile = descriptions.find(description => description.language === undefined);
+      if (defaultFile) {
+        picks.push({
+          label: 'Default',
+          description: 'the description as written, without a language suffix',
+          file: defaultFile.file
+        });
+      }
+      const chosen = await vscode.window.showQuickPick(picks, { title: 'Preview description in another language' });
+      if (!chosen) return;
+      markdown = await zip.file(chosen.file)?.async('string');
+    } else {
+      let preferredLanguage: string | null = null;
+      try {
+        preferredLanguage = (await this.apiService.getUserAccount())?.profile?.language_code || null;
+      } catch (error) {
+        console.warn('[openRemoteDescription] Failed to fetch language preference:', error);
+      }
+      markdown = await readStudentDescription(archive, preferredLanguage);
+    }
+    if (!markdown) {
+      notify.info('This assignment has no description.');
+      return;
+    }
+    await showMarkdownTextPreview(this.context, markdown, content.title || content.path, {
+      inlineImages: await studentDescriptionImages(archive)
+    });
   }
 
   private async findRepoRoot(startPath: string): Promise<string | undefined> {
@@ -886,17 +944,14 @@ export class StudentCommands {
     // Show README preview for assignments
     register('computor.student.showPreview', async (item?: any) => {
       try {
-        // If item provided, check if it has a directory
         if (item?.courseContent) {
           const directoryFromItem: string | undefined = (item.courseContent as any).directory;
-          if (directoryFromItem) {
-            await this.openReadmeIfExists(directoryFromItem);
-            return;
-          } else {
-            // Assignment directory not available (likely not released yet)
-            notify.warning('Assignment not available yet. README preview cannot be shown.');
+          if (directoryFromItem && fs.existsSync(directoryFromItem)
+            && await this.openReadmeIfExists(directoryFromItem, true)) {
             return;
           }
+          await this.openRemoteDescription(item.courseContent);
+          return;
         }
 
         // Try to infer from active editor
@@ -914,7 +969,8 @@ export class StudentCommands {
           }
         }
 
-        // Fallback: let user pick an assignment directory from current course
+        // Published descriptions are readable before repository setup. Build
+        // this picker from metadata and download only the selected archive.
         const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
         if (!courseId) {
           notify.warning('No course selected. Select a course then try again.');
@@ -926,19 +982,24 @@ export class StudentCommands {
         }
         const assignables = contents
           .map(c => ({ content: c, directory: (c as any).directory as string | undefined }))
-          .filter(x => !!x.directory && fs.existsSync(x.directory!));
+          .filter(({ content, directory }) => content.course_content_kind_id === 'assignment'
+            && content.visible_effective !== false
+            && ((directory && fs.existsSync(directory))
+              || content.deployment?.deployment_status === 'deployed' || Boolean(content.deployment?.deployed_at)));
 
         if (assignables.length === 0) {
-          notify.info('No cloned assignments found for this course. Clone an assignment first.');
+          notify.info('No released assignment descriptions are available for this course.');
           return;
         }
 
         const pick = await vscode.window.showQuickPick(
           assignables.map(a => ({ label: a.content.title || a.content.path, description: a.directory, a })),
-          { title: 'Select assignment to preview README.md' }
+          { title: 'Select assignment to preview its description' }
         );
         if (!pick) return;
-        await this.openReadmeIfExists(pick.a.directory!);
+        if (pick.a.directory && fs.existsSync(pick.a.directory)
+          && await this.openReadmeIfExists(pick.a.directory, true)) return;
+        await this.openRemoteDescription(pick.a.content);
       } catch (error: any) {
         console.error('Failed to show README preview:', error);
         notify.error(`Failed to show README preview: ${error.message || error}`);
@@ -952,7 +1013,11 @@ export class StudentCommands {
       try {
         const directory: string | undefined = item?.courseContent?.directory;
         if (!directory || !fs.existsSync(directory)) {
-          notify.warning('Assignment not available yet. Its description cannot be shown.');
+          if (item?.courseContent?.id) {
+            await this.openRemoteDescription(item.courseContent, true);
+          } else {
+            notify.warning('Select an assignment to preview its description.');
+          }
           return;
         }
 
@@ -960,7 +1025,7 @@ export class StudentCommands {
         const languages = availableDescriptionLanguages(files);
         const hasDefault = listDescriptionFiles(files).some((entry) => entry.language === undefined);
         if (languages.length === 0 && !hasDefault) {
-          notify.info('This assignment has no description.');
+          await this.openRemoteDescription(item.courseContent, true);
           return;
         }
 
