@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { showMarkdownTextPreview } from './webviews/markdownPreview';
+import { MarkdownPreviewOptions, showMarkdownTextPreview } from './webviews/markdownPreview';
 import { isRestoringSelection } from './treeRestore';
 
 /**
@@ -23,27 +23,43 @@ export interface DescribedTreeItem {
 }
 
 export const SHOW_DESCRIPTION_COMMAND = 'computor.showContentDescription';
-export const PREVIEW_UNIT_DESCRIPTION_COMMAND = 'computor.student.previewUnitDescription';
+export const PREVIEW_STUDENT_DESCRIPTION_COMMAND = 'computor.student.previewDescription';
+
+interface StudentDescriptionTreeItem extends Partial<vscode.TreeItem & DescribedTreeItem> {
+  courseContent?: unknown;
+}
 
 /** Preview real student selections without replaying a restored highlight. */
-export function createUnitDescriptionSelectionHandler(context: vscode.ExtensionContext):
-  (item?: Partial<vscode.TreeItem & DescribedTreeItem>, explicit?: boolean) => Promise<void> {
+export function createStudentDescriptionSelectionHandler(
+  context: vscode.ExtensionContext,
+  previewAssignment?: (item: StudentDescriptionTreeItem, options: MarkdownPreviewOptions) => Promise<void>
+): (item?: StudentDescriptionTreeItem, explicit?: boolean) => Promise<void> {
   let revision = 0;
+  let pending: { item: StudentDescriptionTreeItem; promise: Promise<void> } | undefined;
   return async (item, explicit = false) => {
+    if (item && pending?.item === item && (explicit || !isRestoringSelection())) return pending.promise;
     const selected = ++revision;
-    if (!item || (!explicit && isRestoringSelection())
-      || !/^studentCourseUnit(?:\.|$)/.test(item.contextValue ?? '')
-      || !hasDescription(item.descriptionMarkdown)) {
-      return;
-    }
-    try {
-      await showMarkdownTextPreview(context, item.descriptionMarkdown as string, item.descriptionTitle || 'Description', {
+    pending = undefined;
+    if (!item || (!explicit && isRestoringSelection())) return;
+    const options: MarkdownPreviewOptions = {
         preserveFocus: true,
         isCurrent: () => selected === revision
-      });
-    } catch (error) {
-      console.warn('[UnitDescription] Could not show the selected description:', error);
-    }
+    };
+    const show = async () => {
+      try {
+        if (/^studentCourseUnit(?:\.|$)/.test(item.contextValue ?? '') && hasDescription(item.descriptionMarkdown)) {
+          await showMarkdownTextPreview(context, item.descriptionMarkdown as string, item.descriptionTitle || 'Description', options);
+        } else if (item.contextValue?.startsWith('studentCourseContent.assignment') && previewAssignment) {
+          await previewAssignment(item, options);
+        }
+      } catch (error) {
+        console.warn('[StudentDescription] Could not show the selected description:', error);
+      }
+    };
+    const promise = show();
+    pending = { item, promise };
+    await promise;
+    if (pending?.promise === promise) pending = undefined;
   };
 }
 

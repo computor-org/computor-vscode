@@ -32,9 +32,10 @@ assignment is a team one.
 
 ## Working on an assignment
 
-**1. Read the task.** Click the book icon on the row, or right-click →
-*Show Description*. The description opens beside your code and stays there
-while you work.
+**1. Read the task.** Click the exercise title, or use the arrow keys followed by
+Enter to select it. Its README opens beside your code without setting up a
+repository. The book icon and right-click → *Show Description* also remain
+available. Use the chevron to expand the exercise's files when ready to work.
 
 **2. Write your solution.** Expand the assignment to see its files and click one
 to open it. Keep the files the task asks for under the names it asks for —

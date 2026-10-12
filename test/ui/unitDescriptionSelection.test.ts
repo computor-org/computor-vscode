@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { commands, webviewPanels, window } from '../helpers/vscode-stub';
-import { createUnitDescriptionSelectionHandler, PREVIEW_UNIT_DESCRIPTION_COMMAND } from '../../src/ui/contentDescription';
+import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND } from '../../src/ui/contentDescription';
 import { isRestoringSelection, suppressSelectionSideEffects } from '../../src/ui/treeRestore';
 import { StudentCourseContentTreeProvider } from '../../src/ui/tree/student/StudentCourseContentTreeProvider';
 import { showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
@@ -13,7 +13,7 @@ describe('student unit description selection', () => {
   const originalExecute = commands.executeCommand;
   let created: any[][];
   let revealed: any[][];
-  let select: ReturnType<typeof createUnitDescriptionSelectionHandler>;
+  let select: ReturnType<typeof createStudentDescriptionSelectionHandler>;
 
   function unit(title: string, description = `# ${title} instructions`) {
     return { contextValue: 'studentCourseUnit.hasDescription', descriptionTitle: title, descriptionMarkdown: description };
@@ -30,7 +30,7 @@ describe('student unit description selection', () => {
     webviewPanels.length = 0;
     created = [];
     revealed = [];
-    select = createUnitDescriptionSelectionHandler(context);
+    select = createStudentDescriptionSelectionHandler(context);
     (window as any).tabGroups = { all: [{}, {}] };
     (window as any).createWebviewPanel = (...args: any[]) => {
       created.push(args);
@@ -145,8 +145,72 @@ describe('student unit description selection', () => {
     const items = (tree as any).createTreeItems(root);
     const described = items.find((item: any) => item.id === 'A');
     const empty = items.find((item: any) => item.id === 'Empty');
-    expect(described.command.command).to.equal(PREVIEW_UNIT_DESCRIPTION_COMMAND);
+    expect(described.command.command).to.equal(PREVIEW_STUDENT_DESCRIPTION_COMMAND);
     expect(described.command.arguments).to.deep.equal([described]);
     expect(empty.command).to.equal(undefined);
+  });
+
+  it('gives exercise titles the same reopen command without loading their files', () => {
+    const tree = new StudentCourseContentTreeProvider({} as any, {} as any);
+    const root = { children: new Map([['Exercise', {
+      isUnit: false, children: new Map(),
+      courseContent: { id: 'exercise', title: 'Exercise', path: 'unit.exercise' },
+      contentType: { course_content_kind_id: 'assignment' }
+    }]]) };
+    const [exercise] = (tree as any).createTreeItems(root);
+    expect(exercise.command.command).to.equal(PREVIEW_STUDENT_DESCRIPTION_COMMAND);
+    expect(exercise.command.arguments).to.deep.equal([exercise]);
+    expect(exercise.collapsibleState).to.equal(vscode.TreeItemCollapsibleState.Collapsed);
+  });
+
+  it('shares concurrent title/selection work and permits an explicit exercise reopen afterwards', async () => {
+    let finish!: () => void;
+    let loads = 0;
+    select = createStudentDescriptionSelectionHandler(context, async (_item, options) => {
+      loads++;
+      if (loads === 1) await new Promise<void>(resolve => { finish = resolve; });
+      await showMarkdownTextPreview(context, '# Exercise instructions', 'Exercise', options);
+    });
+    const exercise = { contextValue: 'studentCourseContent.assignment', courseContent: { id: 'exercise' } };
+    const first = select(exercise);
+    const duplicate = select(exercise, true);
+    expect(loads).to.equal(1);
+    finish();
+    await Promise.all([first, duplicate]);
+    webviewPanels[0]!.dispose();
+    await select(exercise, true);
+    expect(loads).to.equal(2);
+    expect(webviewPanels[1]!.title).to.equal('Exercise');
+  });
+
+  it('keeps the latest unit when an earlier exercise download completes late', async () => {
+    let finish!: () => void;
+    select = createStudentDescriptionSelectionHandler(context, async (_item, options) => {
+      await new Promise<void>(resolve => { finish = resolve; });
+      await showMarkdownTextPreview(context, '# Old exercise', 'Exercise', options);
+    });
+    const first = select({ contextValue: 'studentCourseContent.assignment', courseContent: { id: 'exercise' } });
+    await select(unit('B'));
+    finish();
+    await first;
+    expect(created).to.have.length(1);
+    expect(webviewPanels[0]!.title).to.equal('B');
+  });
+
+  it('does not let a stale exercise cancel the latest unit while its layout is pending', async () => {
+    let finish!: () => void;
+    select = createStudentDescriptionSelectionHandler(context, async (_item, options) => {
+      await new Promise<void>(resolve => { finish = resolve; });
+      await showMarkdownTextPreview(context, '# Old exercise', 'Exercise', options);
+    });
+    const first = select({ contextValue: 'studentCourseContent.assignment', courseContent: { id: 'exercise' } });
+    const pending = deferLayouts();
+    const latest = select(unit('B'));
+    finish();
+    await first;
+    pending[0]!();
+    await latest;
+    expect(created).to.have.length(1);
+    expect(webviewPanels[0]!.title).to.equal('B');
   });
 });

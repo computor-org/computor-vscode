@@ -14,7 +14,7 @@ import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
-import { showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
+import { MarkdownPreviewOptions, showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 import { readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
 import { downloadFileInBrowser } from '../ui/webviews/browserDownload';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
@@ -44,6 +44,10 @@ import {
 
 /** Workspace folder the browser-side export lands in before it is downloaded. */
 const EXPORT_DIR_NAME = 'exports';
+
+interface StudentDescriptionPreviewOptions extends MarkdownPreviewOptions {
+  silent?: boolean;
+}
 
 /** A few paths for a toast, with a count instead of a wall of text. */
 function summarizePaths(paths: string[], shown = 3): string {
@@ -361,7 +365,7 @@ export class StudentCommands {
     return names;
   }
 
-  private async openReadmeIfExists(dir: string, silent: boolean = false): Promise<boolean> {
+  private async openReadmeIfExists(dir: string, silent: boolean = false, options: MarkdownPreviewOptions = {}): Promise<boolean> {
     try {
       let readmePath: string | undefined;
       let preferredLanguage: string | null = null;
@@ -382,6 +386,7 @@ export class StudentCommands {
         console.warn('[openReadmeIfExists] Failed to fetch language preferences:', error);
       }
 
+      if (options.isCurrent && !options.isCurrent()) return true;
       const chosen = pickDescriptionFile(fs.readdirSync(dir), preferredLanguage);
       if (chosen) {
         readmePath = path.join(dir, chosen);
@@ -394,8 +399,9 @@ export class StudentCommands {
           // built-in preview's service-worker-served assets are blocked and
           // the tab renders blank (issues #267/#274). Our webview inlines
           // its assets, so it works there.
-          await showMarkdownPreview(this.context, readmePath);
+          await showMarkdownPreview(this.context, readmePath, options);
         } catch (previewError) {
+          if (options.isCurrent && !options.isCurrent()) return true;
           // The built-in preview is exactly the path that stalls blank on the
           // affected browsers, so fall back to the raw file instead.
           console.warn('[openReadmeIfExists] Custom README preview failed, opening raw file:', previewError);
@@ -403,7 +409,8 @@ export class StudentCommands {
           // top of the assignment the student is editing.
           await vscode.window.showTextDocument(vscode.Uri.file(readmePath), {
             preview: true,
-            viewColumn: AUX_COLUMN
+            viewColumn: AUX_COLUMN,
+            preserveFocus: options.preserveFocus
           });
         }
         return true;
@@ -421,10 +428,11 @@ export class StudentCommands {
   }
 
   /** Reading published instructions must not require cloning the assignment. */
-  private async openRemoteDescription(content: CourseContentStudentList, chooseLanguage = false): Promise<void> {
+  private async openRemoteDescription(content: CourseContentStudentList, chooseLanguage = false, options: StudentDescriptionPreviewOptions = {}): Promise<void> {
     const archive = await this.apiService.downloadStudentCourseContentDescription(content.id);
+    if (options.isCurrent && !options.isCurrent()) return;
     if (!archive) {
-      notify.info('This assignment has no published description.');
+      if (!options.silent) notify.info('This assignment has no published description.');
       return;
     }
 
@@ -469,12 +477,23 @@ export class StudentCommands {
       markdown = await readStudentDescription(archive, preferredLanguage);
     }
     if (!markdown) {
-      notify.info('This assignment has no description.');
+      if (!options.silent) notify.info('This assignment has no description.');
       return;
     }
+    if (options.isCurrent && !options.isCurrent()) return;
     await showMarkdownTextPreview(this.context, markdown, content.title || content.path, {
+      ...options,
       inlineImages: await studentDescriptionImages(archive)
     });
+  }
+
+  /** Read this exercise only; selection must never provision or clone its repository. */
+  async previewDescription(item: any, options: StudentDescriptionPreviewOptions = {}): Promise<void> {
+    if (!item?.courseContent || (options.isCurrent && !options.isCurrent())) return;
+    const directory: string | undefined = item.courseContent.directory;
+    if (directory && fs.existsSync(directory) && await this.openReadmeIfExists(directory, true, options)) return;
+    if (options.isCurrent && !options.isCurrent()) return;
+    await this.openRemoteDescription(item.courseContent, false, options);
   }
 
   private async findRepoRoot(startPath: string): Promise<string | undefined> {
@@ -945,12 +964,7 @@ export class StudentCommands {
     register('computor.student.showPreview', async (item?: any) => {
       try {
         if (item?.courseContent) {
-          const directoryFromItem: string | undefined = (item.courseContent as any).directory;
-          if (directoryFromItem && fs.existsSync(directoryFromItem)
-            && await this.openReadmeIfExists(directoryFromItem, true)) {
-            return;
-          }
-          await this.openRemoteDescription(item.courseContent);
+          await this.previewDescription(item);
           return;
         }
 
