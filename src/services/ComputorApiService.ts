@@ -11,6 +11,7 @@ import type { CourseTaskRequest } from '../types/generated/courses';
 import type { CascadeDeleteResult } from '../types/generated/common';
 import type { TaskInfo } from '../types/generated/tasks';
 import { notify } from '../utils/notify';
+import type { WorkspaceLaunchContext } from './WorkspaceLaunchContextService';
 import type {
   CourseGitDescriptor,
   CourseMemberRepositoryGet,
@@ -800,6 +801,30 @@ export class ComputorApiService {
       }
       console.error('Failed to download course content description:', error);
       return undefined;
+    }
+  }
+
+  /** Authenticated, short-lived intent for this user's hosted editor. Not cached. */
+  async getWorkspaceLaunchContext(owner: string, name: string): Promise<WorkspaceLaunchContext | null> {
+    try {
+      const client = await this.getHttpClient();
+      return (await client.get<WorkspaceLaunchContext | null>(
+        `/coder/workspaces/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/launch-context`
+      )).data;
+    } catch (error) {
+      // Older servers and stale/revoked intents preserve the ordinary view.
+      if (error instanceof HttpError && [401, 403, 404, 410].includes(error.status)) return null;
+      throw error;
+    }
+  }
+
+  async downloadStudentCourseContentDescription(courseContentId: string): Promise<Buffer | undefined> {
+    try {
+      const client = await this.getHttpClient();
+      return await client.getBuffer(`/students/course-contents/${encodeURIComponent(courseContentId)}/description`);
+    } catch (error) {
+      if (error instanceof HttpError && [403, 404].includes(error.status)) return undefined;
+      throw error;
     }
   }
 
@@ -2103,7 +2128,7 @@ export class ComputorApiService {
     }
   }
 
-  async getStudentCourses(options?: { force?: boolean }): Promise<any[]> {
+  async getStudentCourses(options?: { force?: boolean; throwOnError?: boolean }): Promise<any[]> {
     try {
       return await this.cachedRequest({
         cacheKey: 'studentCourses',
@@ -2117,6 +2142,7 @@ export class ComputorApiService {
       });
     } catch (error) {
       console.error('Failed to get student courses:', error);
+      if (options?.throwOnError) throw error;
       return [];
     }
   }
@@ -2141,7 +2167,7 @@ export class ComputorApiService {
 
   async getStudentCourseContents(
     courseId?: string,
-    options?: { force?: boolean }
+    options?: { force?: boolean; throwOnError?: boolean }
   ): Promise<CourseContentStudentList[]> {
     const cacheKey = courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all';
     if (options?.force && courseId) {
@@ -2167,6 +2193,7 @@ export class ComputorApiService {
       });
     } catch (error) {
       console.error('Failed to get student course contents:', error);
+      if (options?.throwOnError) throw error;
       return [];
     }
   }

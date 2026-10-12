@@ -50,6 +50,9 @@ export class CourseSelectionService {
                 apiService,
                 statusBarService
             );
+        } else if (CourseSelectionService.instance.apiService !== apiService) {
+            // A new login owns a new HTTP client; the prior session is disposed.
+            CourseSelectionService.instance.apiService = apiService;
         }
         return CourseSelectionService.instance;
     }
@@ -64,11 +67,11 @@ export class CourseSelectionService {
     // Removed loadLastSelectedCourse - we don't want to load stale course IDs
     // Course selection should come from the .computor_student marker file only
 
-    async selectCourse(courseId?: string): Promise<CourseInfo | undefined> {
+    async selectCourse(courseId?: string, options?: { throwOnError?: boolean; force?: boolean }): Promise<CourseInfo | undefined> {
         try {
             // If courseId is provided, select that course directly
             if (courseId) {
-                const courses = await this.apiService.getStudentCourses();
+                const courses = await this.apiService.getStudentCourses(options);
                 const course = courses.find(c => c.id === courseId);
                 
                 if (course) {
@@ -120,6 +123,7 @@ export class CourseSelectionService {
                 return selected.courseInfo;
             }
         } catch (error) {
+            if (options?.throwOnError) throw error;
             notify.error(`Failed to fetch courses: ${error}`);
         }
 
