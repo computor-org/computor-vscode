@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { showMarkdownTextPreview } from './webviews/markdownPreview';
+import { isRestoringSelection } from './treeRestore';
 
 /**
  * Showing the description a lecturer wrote for a course or a unit.
@@ -22,6 +23,29 @@ export interface DescribedTreeItem {
 }
 
 export const SHOW_DESCRIPTION_COMMAND = 'computor.showContentDescription';
+export const PREVIEW_UNIT_DESCRIPTION_COMMAND = 'computor.student.previewUnitDescription';
+
+/** Preview real student selections without replaying a restored highlight. */
+export function createUnitDescriptionSelectionHandler(context: vscode.ExtensionContext):
+  (item?: Partial<vscode.TreeItem & DescribedTreeItem>, explicit?: boolean) => Promise<void> {
+  let revision = 0;
+  return async (item, explicit = false) => {
+    const selected = ++revision;
+    if (!item || (!explicit && isRestoringSelection())
+      || !/^studentCourseUnit(?:\.|$)/.test(item.contextValue ?? '')
+      || !hasDescription(item.descriptionMarkdown)) {
+      return;
+    }
+    try {
+      await showMarkdownTextPreview(context, item.descriptionMarkdown as string, item.descriptionTitle || 'Description', {
+        preserveFocus: true,
+        isCurrent: () => selected === revision
+      });
+    } catch (error) {
+      console.warn('[UnitDescription] Could not show the selected description:', error);
+    }
+  };
+}
 
 /** Whether `description` holds anything worth opening a preview for. */
 export function hasDescription(description?: string | null): boolean {

@@ -11,9 +11,14 @@ export interface MarkdownPreviewOptions {
   viewColumn?: vscode.ViewColumn;
   /** Static images delivered with a server-backed description archive. */
   inlineImages?: Record<string, string>;
+  /** Keep keyboard navigation in the tree when previewing its selection. */
+  preserveFocus?: boolean;
+  /** Ignore an automatic preview if its selection changed while creating the layout. */
+  isCurrent?: () => boolean;
 }
 
 let previewPanel: vscode.WebviewPanel | undefined;
+let renderRequest = 0;
 /**
  * Directory of the document currently in the panel, and the context to reopen
  * with. Links resolve against these: the panel is a singleton whose message
@@ -111,6 +116,9 @@ async function renderMarkdownPreview(
   title: string,
   options: MarkdownPreviewOptions
 ): Promise<void> {
+  const request = ++renderRequest;
+  const isCurrent = () => request === renderRequest && (options.isCurrent?.() ?? true);
+  if (!isCurrent()) return;
   // A README belongs beside the code, never on top of it. The old
   // "Beside when an editor is active, One otherwise" put the preview in the
   // *source* group whenever focus happened to be on a webview — which is
@@ -124,6 +132,7 @@ async function renderMarkdownPreview(
   if (column === AUX_COLUMN) {
     await ensureAuxColumn();
   }
+  if (!isCurrent()) return;
 
   // The resource roots must follow the previewed file: a reused panel would
   // otherwise keep the first file's roots and images from any other
@@ -141,7 +150,7 @@ async function renderMarkdownPreview(
     previewPanel = vscode.window.createWebviewPanel(
       'computor.markdownPreview',
       title,
-      column,
+      options.preserveFocus ? { viewColumn: column, preserveFocus: true } : column,
       webviewOptions
     );
     previewPanel.onDidDispose(() => {
