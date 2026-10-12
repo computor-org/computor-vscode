@@ -64,10 +64,15 @@ the highest number of either kind.
 3. Push the branch and the tag.
 4. Create a GitHub release on that tag. **Tick "set as a pre-release" for the
    pre-release channel; leave it unticked for stable.**
-5. The `Release VSIX` workflow validates, tests, packages, attaches the VSIX
-   and `SHA256SUMS` to the release, and publishes to the Marketplace.
+5. The `Release VSIX` workflow validates, tests, packages and attaches the VSIX
+   and `SHA256SUMS` to the release. Creating a GitHub release does not publish
+   to the Marketplace.
+6. Publish the approved VSIX separately using the authenticated manual command
+   below, or the workflow's opt-in `publish` input when its credentials are
+   configured. Use the same channel as the GitHub release and verify its tag
+   resolves to the reviewed commit.
 
-Step 4 is the only place the channel is chosen. The workflow's first job step
+For a GitHub release, step 4 chooses the channel. The workflow's first job step
 runs:
 
 ```sh
@@ -82,8 +87,8 @@ the guard against ticking "pre-release" on GitHub while publishing as stable.
 
 ```sh
 npm ci
-npm run package:vsix                                  # writes computor-<version>.vsix
-COMPUTOR_RELEASE_CHANNEL=pre-release npm run publish:marketplace
+COMPUTOR_RELEASE_CHANNEL=stable npm run package:vsix    # writes computor-<version>.vsix
+COMPUTOR_RELEASE_CHANNEL=stable npm run publish:marketplace
 ```
 
 `COMPUTOR_RELEASE_CHANNEL` must be `pre-release` or `stable`; there is no
@@ -91,9 +96,10 @@ default, so a publish cannot silently pick the wrong one. Authentication uses
 `VSCE_PAT` when set, and otherwise the signed-in Microsoft Entra credential
 (`az login`) via `vsce --azure-credential` — the same path hackl uses.
 
-`publish` sends the artifact built by `package:vsix` rather than rebuilding, so
-the bytes on the Marketplace are the bytes that were checksummed and attached
-to the GitHub release.
+`publish` sends the existing VSIX rather than rebuilding. To publish the
+GitHub release artifact, download its VSIX and `SHA256SUMS`, verify the checksum,
+and place that approved VSIX in the repository root before running the publish
+command. Packaging again in a separate run does not guarantee identical bytes.
 
 ## Preview VSIX (feature branches)
 
