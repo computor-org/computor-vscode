@@ -70,6 +70,9 @@ interface AssignmentGitContext {
 export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeItem> {
     private apiService: ComputorApiService;
     private courseSelection: CourseSelectionService;
+    private workspaceCourseId?: string;
+    private readonly instructionOnlyCourses = new Set<string>();
+    private readonly workspaceExpandedNodes = new Set<string>();
     private provisioning?: StudentRepositoryProvisioningService;
     // Course-level-git model per course (descriptor + recorded repo), cached for
     // the session; cleared when a course's contents are refreshed.
@@ -406,6 +409,14 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         super.refresh();
     }
 
+    /** A web launch opens its course directly; assignment expansion still sets up code lazily. */
+    setWorkspaceCourse(courseId: string): void {
+        this.workspaceCourseId = courseId;
+        this.instructionOnlyCourses.add(courseId);
+        this.workspaceExpandedNodes.clear();
+        this.refresh();
+    }
+
     refreshNode(element?: TreeItem): void {
         this.onDidChangeTreeDataEmitter.fire(element);
     }
@@ -582,13 +593,21 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     return [new MessageItem('No courses available.', 'warning')];
                 }
 
+                if (this.workspaceCourseId) {
+                    const course = courses.find(candidate => candidate.id === this.workspaceCourseId);
+                    if (!course) return [new MessageItem('This course is no longer available.', 'warning')];
+                    this.subscribeToCourseChannels([course.id]);
+                    const item = await this.buildCourseRootItem(course, shouldForce);
+                    this.forceRefresh = false;
+                    return [item];
+                }
+
                 // Ensure content kinds cached
                 if (this.contentKinds.length === 0) {
                     this.contentKinds = await this.apiService.getCourseContentKinds() || [];
                 }
 
-                // Group courses by organization id and pre-fetch contents (preserves
-                // existing side-effects like repository path updates).
+                // Contents are fetched only for the course the learner opens.
                 this.orgGrouping.clear();
                 this.courseInfoCache.clear();
                 for (const course of courses) {
@@ -598,11 +617,6 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     if (!this.orgGrouping.has(orgId)) this.orgGrouping.set(orgId, []);
                     this.orgGrouping.get(orgId)!.push(course);
 
-                    let courseContents = this.courseContentsCache.get(course.id);
-                    if (!courseContents || shouldForce) {
-                        courseContents = await this.apiService.getStudentCourseContents(course.id, { force: shouldForce }) || [];
-                        this.courseContentsCache.set(course.id, courseContents);
-                    }
                 }
 
                 // Resolve organization names for all real org ids in parallel.
@@ -702,7 +716,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 // course repository (course-level-git model) so all its
                 // assignments are ready. external/download are deferred to
                 // per-assignment expansion (they may prompt / download).
-                if (this.provisioning && !this.coursesSetupThisSession.has(selectedCourseId)) {
+                if (this.provisioning && !this.instructionOnlyCourses.has(selectedCourseId)
+                    && !this.coursesSetupThisSession.has(selectedCourseId)) {
                     const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     const model = await this.resolveCourseGit(wsRoot, selectedCourseId);
                     if (model.configured && model.mode === 'managed') {
@@ -1230,6 +1245,9 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     }
 
     private getExpandedState(nodeId: string): boolean {
+        // Restoring an expanded assignment can trigger repository setup before
+        // its instructions appear. A new launch starts collapsed below course.
+        if (this.workspaceCourseId) return this.workspaceExpandedNodes.has(nodeId);
         // Check if we have a saved state for this node
         if (nodeId in this.expandedStates) {
             return this.expandedStates[nodeId] || false;
@@ -1340,8 +1358,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         console.log(`Setting student node ${nodeId} expanded state to: ${expanded}`);
         
         if (expanded) {
+            this.workspaceExpandedNodes.add(nodeId);
             this.expandedStates[nodeId] = true;
         } else {
+            this.workspaceExpandedNodes.delete(nodeId);
             delete this.expandedStates[nodeId];
         }
         
