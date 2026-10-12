@@ -2,6 +2,13 @@
 
 This guide covers how to use the Computor VS Code Extension as a student, tutor, or lecturer.
 
+When you open a hosted workspace from a course, the Student view opens that
+course directly and shows its welcome or first released exercise instructions.
+This also switches an already-running workspace to the course you launched.
+Reading instructions does not clone a repository; expand an exercise when you
+are ready to work. Click the course name in the status bar, or run **Computor
+Student: Switch Course**, to choose a different enrolled course.
+
 ## Table of Contents
 
 - [Getting Started](#getting-started)

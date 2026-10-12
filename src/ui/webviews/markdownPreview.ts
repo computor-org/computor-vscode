@@ -9,6 +9,8 @@ export interface MarkdownPreviewOptions {
   title?: string;
   /** Defaults to the auxiliary group, alongside the figures. */
   viewColumn?: vscode.ViewColumn;
+  /** Static images delivered with a server-backed description archive. */
+  inlineImages?: Record<string, string>;
 }
 
 let previewPanel: vscode.WebviewPanel | undefined;
@@ -185,7 +187,7 @@ async function renderMarkdownPreview(
     bodyHtml: '<div class="markdown-body" id="content"></div>',
     cssFiles: ['vendor/katex-inline.css', 'shared/markdown-preview.css'],
     scriptFiles: ['vendor/marked.min.js', 'vendor/katex.min.js', 'shared/markdown.js'],
-    initialState: { markdown, baseUri },
+    initialState: { markdown, baseUri, inlineImages: options.inlineImages },
     inlineScript: `
       const state = window.__INITIAL_STATE__ || {};
       const el = document.getElementById('content');
@@ -201,7 +203,8 @@ async function renderMarkdownPreview(
             let clean = src;
             if (clean.indexOf('./') === 0) clean = clean.slice(2);
             while (clean.indexOf('/') === 0) clean = clean.slice(1);
-            img.setAttribute('src', base + '/' + clean);
+            const images = state.inlineImages || {};
+            img.setAttribute('src', Object.prototype.hasOwnProperty.call(images, clean) ? images[clean] : base + '/' + clean);
           }
         });
       } catch (e) {

@@ -13,9 +13,12 @@ import { ArtifactsPanel } from './ui/panels/ArtifactsPanel';
 import { UiStateService } from './services/UiStateService';
 import { containerById, containerForView, isContainerAvailable } from './ui/viewContainers';
 import { focusViewContainer } from './ui/focusViewContainer';
-import { isRestoringSelection, restoreSelection, trackTree, treeItemId } from './ui/treeRestore';
+import { isRestoringSelection, restoreSelection, suppressSelectionSideEffects, trackTree, treeItemId } from './ui/treeRestore';
 import type { TrackedTree } from './ui/treeRestore';
-import { registerTreeHandle } from './ui/treeRegistry';
+import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
+import { findInTree } from './ui/tree/chat/chatJump';
+import { WorkspaceLaunchContextService, validWorkspaceLaunchContext, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
+import { showWorkspaceCourseLanding } from './services/WorkspaceCourseLanding';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -653,6 +656,7 @@ async function ensureWorkspaceMarker(baseUrl: string): Promise<void> {
 class UnifiedController {
   private context: vscode.ExtensionContext;
   private api?: ComputorApiService;
+  private workspaceLaunchFocused = false;
   private httpClient?: BearerTokenHttpClient;
   private disposables: vscode.Disposable[] = [];
   private artifactsPanel?: ArtifactsPanel;
@@ -754,7 +758,7 @@ class UnifiedController {
     await this.initializeViews(api, null, availableViews, onProgress);
 
     // Focus on the highest priority view: lecturer > tutor > student
-    await this.focusHighestPriorityView(availableViews);
+    if (!this.workspaceLaunchFocused) await this.focusHighestPriorityView(availableViews);
   }
 
   private async setupApi(client: ReturnType<typeof buildHttpClient>): Promise<ComputorApiService> {
@@ -908,8 +912,17 @@ class UnifiedController {
     const statusBar = (await import('./ui/StatusBarService')).StatusBarService.initialize(this.context);
     const courseSelectionService = CourseSelectionService.initialize(this.context, api, statusBar);
 
+    const launchIdentity = workspaceLaunchIdentity();
+    let initialLaunch = launchIdentity
+      ? await api.getWorkspaceLaunchContext(launchIdentity.owner, launchIdentity.name).catch(() => null)
+      : null;
+    const initialCourse = validWorkspaceLaunchContext(initialLaunch)
+      ? await courseSelectionService.selectCourse(initialLaunch.course_id, { force: true, throwOnError: true }).catch(() => undefined)
+      : undefined;
+
     // Initialize tree view
     const tree = new StudentCourseContentTreeProvider(api, courseSelectionService, this.context);
+    if (initialCourse) tree.setWorkspaceCourse(initialCourse.id);
     if (this.wsService) tree.setWebSocketService(this.wsService);
     // Last assignment selected in the tree, so the results view can be
     // rehydrated (rather than cleared) when it becomes visible again (#273).
@@ -949,14 +962,16 @@ class UnifiedController {
       }
     }, this.disposables);
 
-    // No course pre-selection - tree will show all courses
+    // A hosted course launch reads instructions first. Code setup remains lazy
+    // until the learner expands an assignment; unrelated courses are untouched.
 
     // Load expanded states to determine which courses need immediate update.
     // Only previously expanded courses will have their repositories updated on
     // startup. Ask the tree (backed by UiStateService, the one owner of tree
     // state since #285) — the old ComputorSettingsManager store is no longer
     // written, so reading it here silently skipped the startup update.
-    const expandedCourseIds = tree.getExpandedCourseIds();
+    const expandedCourseIds = initialCourse || validWorkspaceLaunchContext(initialLaunch)
+      ? new Set<string>() : tree.getExpandedCourseIds();
 
     console.log(`[initializeStudentView] Expanded courses for startup update: ${Array.from(expandedCourseIds).join(', ') || '(none)'}`);
 
@@ -1014,6 +1029,51 @@ class UnifiedController {
     // (computor-org/issues#352).
     const { registerSubmittedDeleteGuard } = await import('./ui/submittedDeleteGuard');
     registerSubmittedDeleteGuard(this.context, tree, api);
+
+    const openCourse = async (courseId: string): Promise<boolean> => {
+      const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
+      if (!selected) return false;
+      tree.setWorkspaceCourse(courseId);
+      // Initial launch runs before initializeViews enables its role contexts.
+      // Wait for the registered Student container to become visibly available.
+      await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
+      const studentContainer = containerById('computor-student');
+      if (!studentContainer || !await focusViewContainer(studentContainer)) {
+        throw new Error('The Student course view is not visible yet.');
+      }
+      const handle = getTreeHandle('computor.student.courses');
+      if (!handle) throw new Error('The Student course view is not ready.');
+      const item = await findInTree(handle.tracked,
+        candidate => candidate.id === `course-${courseId}`, () => false);
+      if (!item) throw new Error('The launched course is not ready in the Student view.');
+      await suppressSelectionSideEffects(async () => {
+        await handle.view.reveal(item, { select: true, focus: true, expand: true });
+      });
+      this.workspaceLaunchFocused = true;
+      const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
+      if (course) await showWorkspaceCourseLanding(this.context, api, course);
+      return true;
+    };
+    this.disposables.push(vscode.commands.registerCommand('computor.student.selectCourse', async () => {
+      const course = await courseSelectionService.selectCourse();
+      if (course) await openCourse(course.id);
+    }));
+    if (launchIdentity) {
+      const receiver = new WorkspaceLaunchContextService({
+        fetchContext: async () => {
+          if (initialLaunch) {
+            const launch = initialLaunch;
+            initialLaunch = null;
+            return launch;
+          }
+          return api.getWorkspaceLaunchContext(launchIdentity.owner, launchIdentity.name);
+        },
+        openCourse
+      });
+      this.disposables.push(receiver);
+      await receiver.poll();
+      receiver.start();
+    }
 
   }
 
