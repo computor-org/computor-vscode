@@ -3,6 +3,14 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2026.10.3
+
+- Selecting a unit or exercise title shows its own instructions beside code; keyboard selection,
+  repeated clicks and rapid switching reuse one preview without stealing focus.
+- Hosted course launches open the requested course and its released instructions,
+  including before a local repository has been set up.
+- Course, unit and assignment description actions use the same book icon.
+
 ## 2026.10.2
 
 First stable release of the `2026.10` line.
