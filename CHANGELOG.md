@@ -3,6 +3,14 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.1
+
+- Selecting a unit or exercise title shows its own instructions beside code; keyboard selection,
+  repeated clicks and rapid switching reuse one preview without stealing focus.
+- Hosted course launches open the requested course and its released instructions,
+  including before a local repository has been set up.
+- Preserves desktop, public-course and Codespaces entry points.
+
 ## 2027.3.0
 
 - Public courses, desktop VS Code and GitHub Codespaces available before login.

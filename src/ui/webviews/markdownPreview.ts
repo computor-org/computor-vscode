@@ -11,9 +11,26 @@ export interface MarkdownPreviewOptions {
   viewColumn?: vscode.ViewColumn;
   /** Static images delivered with a server-backed description archive. */
   inlineImages?: Record<string, string>;
+  /** Keep keyboard navigation in the tree when previewing its selection. */
+  preserveFocus?: boolean;
+  /** Ignore an automatic preview if its selection changed while creating the layout. */
+  isCurrent?: () => boolean;
+  /** Reserve priority before loading a description asynchronously. */
+  request?: MarkdownPreviewRequest;
+}
+
+export interface MarkdownPreviewRequest {
+  readonly isCurrent: () => boolean;
 }
 
 let previewPanel: vscode.WebviewPanel | undefined;
+let renderRequest = 0;
+
+/** A later preview supersedes this request, including while its ZIP is loading. */
+export function beginMarkdownPreviewRequest(): MarkdownPreviewRequest {
+  const request = ++renderRequest;
+  return { isCurrent: () => request === renderRequest };
+}
 /**
  * Directory of the document currently in the panel, and the context to reopen
  * with. Links resolve against these: the panel is a singleton whose message
@@ -111,6 +128,10 @@ async function renderMarkdownPreview(
   title: string,
   options: MarkdownPreviewOptions
 ): Promise<void> {
+  if (options.isCurrent && !options.isCurrent()) return;
+  const request = options.request ?? beginMarkdownPreviewRequest();
+  const isCurrent = () => request.isCurrent() && (options.isCurrent?.() ?? true);
+  if (!isCurrent()) return;
   // A README belongs beside the code, never on top of it. The old
   // "Beside when an editor is active, One otherwise" put the preview in the
   // *source* group whenever focus happened to be on a webview — which is
@@ -124,6 +145,7 @@ async function renderMarkdownPreview(
   if (column === AUX_COLUMN) {
     await ensureAuxColumn();
   }
+  if (!isCurrent()) return;
 
   // The resource roots must follow the previewed file: a reused panel would
   // otherwise keep the first file's roots and images from any other
@@ -141,7 +163,7 @@ async function renderMarkdownPreview(
     previewPanel = vscode.window.createWebviewPanel(
       'computor.markdownPreview',
       title,
-      column,
+      options.preserveFocus ? { viewColumn: column, preserveFocus: true } : column,
       webviewOptions
     );
     previewPanel.onDidDispose(() => {

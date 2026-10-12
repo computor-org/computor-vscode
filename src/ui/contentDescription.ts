@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { showMarkdownTextPreview } from './webviews/markdownPreview';
+import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, showMarkdownTextPreview } from './webviews/markdownPreview';
+import { isRestoringSelection } from './treeRestore';
 
 /**
  * Showing the description a lecturer wrote for a course or a unit.
@@ -22,6 +23,51 @@ export interface DescribedTreeItem {
 }
 
 export const SHOW_DESCRIPTION_COMMAND = 'computor.showContentDescription';
+export const PREVIEW_STUDENT_DESCRIPTION_COMMAND = 'computor.student.previewDescription';
+
+interface StudentDescriptionTreeItem extends Partial<vscode.TreeItem & DescribedTreeItem> {
+  courseContent?: unknown;
+}
+
+/** Preview real student selections without replaying a restored highlight. */
+export function createStudentDescriptionSelectionHandler(
+  context: vscode.ExtensionContext,
+  previewAssignment?: (item: StudentDescriptionTreeItem, options: MarkdownPreviewOptions) => Promise<void>
+): (item?: StudentDescriptionTreeItem, explicit?: boolean) => Promise<void> {
+  let revision = 0;
+  let pending: { item: StudentDescriptionTreeItem; promise: Promise<void>; isCurrent: () => boolean } | undefined;
+  return async (item, explicit = false) => {
+    if (item && pending?.item === item && pending.isCurrent() && (explicit || !isRestoringSelection())) return pending.promise;
+    const selected = ++revision;
+    pending = undefined;
+    if (!item || (!explicit && isRestoringSelection())) return;
+    const unit = /^studentCourseUnit(?:\.|$)/.test(item.contextValue ?? '') && hasDescription(item.descriptionMarkdown);
+    const assignment = item.contextValue?.startsWith('studentCourseContent.assignment') && previewAssignment;
+    if (!unit && !assignment) return;
+    const request = beginMarkdownPreviewRequest();
+    const isCurrent = () => selected === revision && request.isCurrent();
+    const options: MarkdownPreviewOptions = {
+      preserveFocus: true,
+      isCurrent,
+      request
+    };
+    const show = async () => {
+      try {
+        if (unit) {
+          await showMarkdownTextPreview(context, item.descriptionMarkdown as string, item.descriptionTitle || 'Description', options);
+        } else if (assignment) {
+          await assignment(item, options);
+        }
+      } catch (error) {
+        console.warn('[StudentDescription] Could not show the selected description:', error);
+      }
+    };
+    const promise = show();
+    pending = { item, promise, isCurrent };
+    await promise;
+    if (pending?.promise === promise) pending = undefined;
+  };
+}
 
 /** Whether `description` holds anything worth opening a preview for. */
 export function hasDescription(description?: string | null): boolean {

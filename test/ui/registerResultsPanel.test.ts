@@ -191,6 +191,33 @@ describe('showTestResults result scoping', () => {
     expect(openedPayload()).to.deep.equal({ whose: 'me' });
   });
 
+  it('refreshes selected exercise results without moving focus from the tree', async () => {
+    const { api } = stubApi({ studentCourseContent: { result: { id: 'r-own', result_json: { passed: true } } } });
+    registerResultsPanel(context, api, async () => {});
+    await showTestResults(STUDENT_ITEM);
+    const open = executed.find(call => call.command === 'computor.results.open');
+    expect(open?.args[0]).to.deep.equal({ passed: true });
+    expect(open?.args[3]).to.deep.equal({ preserveFocus: true });
+    expect(executed.filter(call => call.command.endsWith('.focus'))).to.be.empty;
+    executed = [];
+    await handlers.get('computor.results.open')!(...open!.args);
+    expect(executed.filter(call => call.command.endsWith('.focus'))).to.be.empty;
+  });
+
+  it('clears empty selected exercise results silently while explicit results actions still focus', async () => {
+    const { api } = stubApi();
+    registerResultsPanel(context, api, async () => {});
+    await showTestResults(STUDENT_ITEM);
+    expect(cleared()).to.equal(true);
+    expect(executed.filter(call => call.command.endsWith('.focus'))).to.be.empty;
+    executed = [];
+    await handlers.get('computor.showTestResults')!(STUDENT_ITEM);
+    expect(executed.some(call => call.command === 'computor.testResultsPanel.focus')).to.equal(true);
+    executed = [];
+    await handlers.get('computor.results.open')!({ passed: true });
+    expect(executed.some(call => call.command === 'computor.testResultsPanel.focus')).to.equal(true);
+  });
+
   it('shows nothing rather than the caller\'s own run when a staff item has no member', async () => {
     const { api, calls } = stubApi({
       studentCourseContent: { result: { id: 'r-tutor', result_json: { whose: 'tutor' } } }

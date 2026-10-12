@@ -25,7 +25,7 @@ import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../exceptions/errors/GitExecError';
 import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
-import { withDescription } from '../../contentDescription';
+import { hasDescription, PREVIEW_STUDENT_DESCRIPTION_COMMAND, withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
 import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
 import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
@@ -1525,6 +1525,11 @@ class CourseContentPathItem extends TreeItem {
 
         this.applyCounts(node);
         withDescription(this, name, node.courseContent?.description);
+        if (hasDescription(node.courseContent?.description)) {
+            // The item command also runs when an already-selected title is
+            // clicked again; the selection listener covers keyboard navigation.
+            this.command = { command: PREVIEW_STUDENT_DESCRIPTION_COMMAND, title: 'Show Description', arguments: [this] };
+        }
         // 'hidden' marks the row for staff; it comes LAST so the prefix- and
         // suffix-anchored menu clauses keep matching — leading the value cost a
         // hidden row its whole context menu (#353).
@@ -1639,8 +1644,9 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
     }
 
     private setupCommand(): void {
-        // Command removed - selection handler in extension.ts now triggers showTestResults
-        // This avoids duplicate API calls (command + selection both firing)
+        this.command = this.isAssignment()
+            ? { command: PREVIEW_STUDENT_DESCRIPTION_COMMAND, title: 'Show Description', arguments: [this] }
+            : undefined;
     }
 
     // Update this item's data from a fresh course content object
