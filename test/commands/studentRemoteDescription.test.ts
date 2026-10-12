@@ -40,6 +40,8 @@ describe('Student description commands before cloning an assignment', () => {
   let courseLanguage: string | undefined;
   let original: Record<string, any>;
   let provisioningCalls: number;
+  let studentCommands: StudentCommands;
+  let localOptions: any[];
 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'computor-remote-readme-'));
@@ -55,6 +57,7 @@ describe('Student description commands before cloning an assignment', () => {
     preferredLanguage = 'de';
     courseLanguage = 'en';
     provisioningCalls = 0;
+    localOptions = [];
     original = {
       registerCommand: vscode.commands.registerCommand,
       showQuickPick: vscode.window.showQuickPick,
@@ -83,14 +86,16 @@ describe('Student description commands before cloning an assignment', () => {
       };
     }
     (CourseSelectionService as any).getInstance = () => ({ getCurrentCourseId: () => 'selected-course' });
-    (markdownPreview as any).showMarkdownPreview = async (_context: any, file: string) => {
+    (markdownPreview as any).showMarkdownPreview = async (_context: any, file: string, options: any) => {
       localPreviews.push(file);
+      localOptions.push(options);
     };
     (markdownPreview as any).showMarkdownTextPreview = async (_context: any, text: string, title: string, options: any) => {
       rendered.push({ text, title, options });
     };
 
     const commands = Object.create(StudentCommands.prototype) as any;
+    studentCommands = commands;
     commands.context = { subscriptions: [], extensionUri: vscode.Uri.file(root) };
     commands.apiService = {
       getUserAccount: async () => ({ profile: { language_code: preferredLanguage } }),
@@ -155,6 +160,54 @@ describe('Student description commands before cloning an assignment', () => {
     expect(rendered).to.have.lengthOf(1);
     expect(rendered[0]!.text).to.equal('# Deutsch');
     expect(rendered[0]!.options.inlineImages['figures/example.png']).to.equal('data:image/png;base64,iVBORw==');
+    expect(notices).to.be.empty;
+  });
+
+  it('previews the selected exercise README remotely with images, tree focus and cancellation options', async () => {
+    archives.set('selected', await archive({ 'README_de.md': '# Selected exercise', 'image.png': Buffer.from([137, 80]) }));
+    const isCurrent = () => true;
+    await studentCommands.previewDescription({ courseContent: assignment('selected') }, {
+      silent: true, preserveFocus: true, isCurrent
+    });
+    expect(downloads).to.deep.equal(['selected']);
+    expect(rendered[0]!.text).to.equal('# Selected exercise');
+    expect(rendered[0]!.options).to.include({ preserveFocus: true, isCurrent });
+    expect(rendered[0]!.options.inlineImages).to.have.property('image.png');
+    expect(notices).to.be.empty;
+  });
+
+  it('keeps a selected exercise local README authoritative and preserves tree focus', async () => {
+    fs.writeFileSync(path.join(root, 'README_de.md'), '# Local selected exercise');
+    await studentCommands.previewDescription({ courseContent: assignment('selected', { directory: root }) }, {
+      silent: true, preserveFocus: true
+    });
+    expect(localPreviews).to.deep.equal([path.join(root, 'README_de.md')]);
+    expect(localOptions[0]).to.include({ preserveFocus: true });
+    expect(downloads).to.be.empty;
+    expect(notices).to.be.empty;
+  });
+
+  it('keeps selection of an exercise without released instructions silent', async () => {
+    (studentCommands as any).apiService.downloadStudentCourseContentDescription = async () => undefined;
+    await studentCommands.previewDescription({ courseContent: assignment('empty') }, { silent: true });
+    expect(rendered).to.be.empty;
+    expect(notices).to.be.empty;
+    await run('computor.student.showPreview', { courseContent: assignment('empty') });
+    expect(notices).to.deep.equal(['This assignment has no published description.']);
+  });
+
+  it('discards an exercise download if another row was selected before it finished', async () => {
+    let finish!: (bytes: Buffer) => void;
+    let current = true;
+    (studentCommands as any).apiService.downloadStudentCourseContentDescription = async () =>
+      new Promise<Buffer>(resolve => { finish = resolve; });
+    const pending = studentCommands.previewDescription({ courseContent: assignment('late') }, {
+      silent: true, preserveFocus: true, isCurrent: () => current
+    });
+    current = false;
+    finish(await archive({ 'README.md': '# Old exercise' }));
+    await pending;
+    expect(rendered).to.be.empty;
     expect(notices).to.be.empty;
   });
 

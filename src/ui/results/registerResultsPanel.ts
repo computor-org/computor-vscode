@@ -32,7 +32,7 @@ export function registerResultsPanel(
 
   TestResultService.getInstance().setApiService(api);
 
-  disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any, resultId?: string, artifacts?: any[]) => {
+  disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any, resultId?: string, artifacts?: any[], opts?: { preserveFocus?: boolean }) => {
     try {
       if (resultId && artifacts && artifacts.length > 0) {
         resultsTree.setResultArtifacts(resultId, artifacts);
@@ -40,7 +40,7 @@ export function registerResultsPanel(
         resultsTree.clearResultArtifacts();
       }
       resultsTree.refresh(results || {});
-      await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+      if (!opts?.preserveFocus) await vscode.commands.executeCommand('computor.testResultsPanel.focus');
     } catch (e) { console.error(e); }
   }));
 
@@ -107,7 +107,7 @@ export function registerResultsPanel(
       }
 
       if (resultPayload) {
-        await vscode.commands.executeCommand('computor.results.open', resultPayload, resultId, resultArtifacts);
+        await vscode.commands.executeCommand('computor.results.open', resultPayload, resultId, resultArtifacts, { preserveFocus: silent });
       } else {
         // Nothing to show — reflect the empty state rather than leaving a
         // previous assignment's results on screen.
@@ -122,10 +122,12 @@ export function registerResultsPanel(
         }
       }
 
-      try {
-        await vscode.commands.executeCommand('computor.testResultsPanel.focus');
-      } catch (panelError) {
-        console.warn('[ResultsPanel] Failed to focus test results panel:', panelError);
+      if (!silent) {
+        try {
+          await vscode.commands.executeCommand('computor.testResultsPanel.focus');
+        } catch (panelError) {
+          console.warn('[ResultsPanel] Failed to focus test results panel:', panelError);
+        }
       }
 
       if (!resultPayload && !silent) {

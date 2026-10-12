@@ -116,9 +116,9 @@ async function renderMarkdownPreview(
   title: string,
   options: MarkdownPreviewOptions
 ): Promise<void> {
+  if (options.isCurrent && !options.isCurrent()) return;
   const request = ++renderRequest;
   const isCurrent = () => request === renderRequest && (options.isCurrent?.() ?? true);
-  if (!isCurrent()) return;
   // A README belongs beside the code, never on top of it. The old
   // "Beside when an editor is active, One otherwise" put the preview in the
   // *source* group whenever focus happened to be on a webview — which is
