@@ -20,6 +20,10 @@ what is set per course; hovering tells you the type by name.
 Units are not work of your own: there is nothing to commit or submit on a unit
 row. What you can do is read what belongs to it.
 
+Select a unit title, with the mouse or keyboard, to read its description beside
+your code. Use the chevron to expand or collapse its children. Descriptions reuse
+one preview tab, and selecting a unit does not set up a repository.
+
 ## What a unit tells you
 
 Hover over a unit for its title, how many items it contains, its type, and the

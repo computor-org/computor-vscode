@@ -68,7 +68,7 @@ import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
 import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
-import { registerContentDescription } from './ui/contentDescription';
+import { createUnitDescriptionSelectionHandler, PREVIEW_UNIT_DESCRIPTION_COMMAND, registerContentDescription } from './ui/contentDescription';
 import { registerDescriptionEditor } from './ui/descriptionEditor';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
@@ -927,6 +927,9 @@ class UnifiedController {
     // Last assignment selected in the tree, so the results view can be
     // rehydrated (rather than cleared) when it becomes visible again (#273).
     let lastSelectedAssignment: any | undefined;
+    const previewUnitDescription = createUnitDescriptionSelectionHandler(this.context);
+    this.disposables.push(vscode.commands.registerCommand(PREVIEW_UNIT_DESCRIPTION_COMMAND,
+      (item) => previewUnitDescription(item, true)));
     registerTreeView('computor.student.courses', {
       provider: tree,
       options: { showCollapseAll: true },
@@ -938,6 +941,7 @@ class UnifiedController {
       },
       onSelection: (event) => {
         const selected = event.selection[0];
+        void previewUnitDescription(selected);
         if (!selected) return;
         if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
           lastSelectedAssignment = selected;
