@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { MarkdownPreviewOptions, showMarkdownTextPreview } from './webviews/markdownPreview';
+import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, showMarkdownTextPreview } from './webviews/markdownPreview';
 import { isRestoringSelection } from './treeRestore';
 
 /**
@@ -35,29 +35,35 @@ export function createStudentDescriptionSelectionHandler(
   previewAssignment?: (item: StudentDescriptionTreeItem, options: MarkdownPreviewOptions) => Promise<void>
 ): (item?: StudentDescriptionTreeItem, explicit?: boolean) => Promise<void> {
   let revision = 0;
-  let pending: { item: StudentDescriptionTreeItem; promise: Promise<void> } | undefined;
+  let pending: { item: StudentDescriptionTreeItem; promise: Promise<void>; isCurrent: () => boolean } | undefined;
   return async (item, explicit = false) => {
-    if (item && pending?.item === item && (explicit || !isRestoringSelection())) return pending.promise;
+    if (item && pending?.item === item && pending.isCurrent() && (explicit || !isRestoringSelection())) return pending.promise;
     const selected = ++revision;
     pending = undefined;
     if (!item || (!explicit && isRestoringSelection())) return;
+    const unit = /^studentCourseUnit(?:\.|$)/.test(item.contextValue ?? '') && hasDescription(item.descriptionMarkdown);
+    const assignment = item.contextValue?.startsWith('studentCourseContent.assignment') && previewAssignment;
+    if (!unit && !assignment) return;
+    const request = beginMarkdownPreviewRequest();
+    const isCurrent = () => selected === revision && request.isCurrent();
     const options: MarkdownPreviewOptions = {
-        preserveFocus: true,
-        isCurrent: () => selected === revision
+      preserveFocus: true,
+      isCurrent,
+      request
     };
     const show = async () => {
       try {
-        if (/^studentCourseUnit(?:\.|$)/.test(item.contextValue ?? '') && hasDescription(item.descriptionMarkdown)) {
+        if (unit) {
           await showMarkdownTextPreview(context, item.descriptionMarkdown as string, item.descriptionTitle || 'Description', options);
-        } else if (item.contextValue?.startsWith('studentCourseContent.assignment') && previewAssignment) {
-          await previewAssignment(item, options);
+        } else if (assignment) {
+          await assignment(item, options);
         }
       } catch (error) {
         console.warn('[StudentDescription] Could not show the selected description:', error);
       }
     };
     const promise = show();
-    pending = { item, promise };
+    pending = { item, promise, isCurrent };
     await promise;
     if (pending?.promise === promise) pending = undefined;
   };

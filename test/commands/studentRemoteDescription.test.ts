@@ -196,6 +196,13 @@ describe('Student description commands before cloning an assignment', () => {
     expect(notices).to.deep.equal(['This assignment has no published description.']);
   });
 
+  it('still reports a failed explicit book action', async () => {
+    (studentCommands as any).apiService.downloadStudentCourseContentDescription = async () => { throw new Error('Description unavailable'); };
+    await run('computor.student.showPreview', { courseContent: assignment('failed') });
+    expect(rendered).to.be.empty;
+    expect(notices).to.deep.equal(['Failed to show README preview: Description unavailable']);
+  });
+
   it('discards an exercise download if another row was selected before it finished', async () => {
     let finish!: (bytes: Buffer) => void;
     let current = true;
