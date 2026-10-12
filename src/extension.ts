@@ -1034,7 +1034,13 @@ class UnifiedController {
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
       tree.setWorkspaceCourse(courseId);
-      await vscode.commands.executeCommand('computor.student.courses.focus');
+      // Initial launch runs before initializeViews enables its role contexts.
+      // Wait for the registered Student container to become visibly available.
+      await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
+      const studentContainer = containerById('computor-student');
+      if (!studentContainer || !await focusViewContainer(studentContainer)) {
+        throw new Error('The Student course view is not visible yet.');
+      }
       const handle = getTreeHandle('computor.student.courses');
       if (!handle) throw new Error('The Student course view is not ready.');
       const item = await findInTree(handle.tracked,
