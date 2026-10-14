@@ -268,6 +268,14 @@
   }
 
   function onEditorKeydown(e) {
+    // Sending resolves exact plain-text mentions on the backend. Never choose
+    // the dropdown's first partial match just because the user presses Send.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      const btn = document.querySelector('.send-button');
+      if (btn && !btn.hasAttribute('disabled')) { btn.click(); }
+      return;
+    }
     // When the dropdown is open, Escape dismisses it (even on an empty status
     // row) and arrows/enter/tab drive the candidate list.
     if (mention.open) {
@@ -282,12 +290,6 @@
     // newline. Enter-to-send kept posting half-written messages — and while
     // editing, it fired Save mid-thought (computor-org/issues#316). This
     // matches the comments composer.
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      const btn = document.querySelector('.send-button');
-      if (btn && !btn.hasAttribute('disabled')) { btn.click(); }
-      return;
-    }
     if (e.key === 'Enter') {
       e.preventDefault();
       insertNewlineAtCaret();
@@ -641,7 +643,7 @@
           // that the footer hint is gone — and it costs no layout, since it
           // only shows while the editor is empty and has room to spare.
           'data-placeholder':
-            'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)'
+            'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
         }
       });
       // Use saved content or editing message content, rendered as text + chips.

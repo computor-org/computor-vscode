@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Support Lena, legacy Luna and AI tutor mention aliases in autocomplete.
+- Keep Ctrl/Cmd+Enter as Send while mention suggestions are open.
+
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
