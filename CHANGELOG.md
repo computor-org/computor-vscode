@@ -14,7 +14,7 @@ See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 ## 2027.3.0
 
 - Public courses, desktop VS Code and GitHub Codespaces available before login.
-- Existing course messages continue to support Luna hints and feedback on submitted work.
+- Existing course messages continue to support Lena hints and feedback on submitted work.
 - Supports both 26.10 and main/27.3 under the existing Marketplace identity.
 
 ## 2026.10.2

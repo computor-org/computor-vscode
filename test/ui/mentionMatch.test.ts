@@ -59,6 +59,31 @@ describe('webview-ui/shared/mention.js mentionMatches', () => {
   const muller = { given_name: 'Anna', family_name: 'Müller' };
   const weiss = { given_name: 'Jörg', family_name: 'Weiß' };
 
+  it('finds the same Lena tutor by all three aliases and alias prefixes', () => {
+    const tutor = { id: 'tutor-id', given_name: 'Lena', family_name: 'Tutor', aliases: ['lena', 'luna', 'ai'] };
+    for (const query of ['lena', 'luna', 'ai', 'LUNA', 'AI', 'lu', 'a']) {
+      expect(mentionMatches(tutor, query), query).to.equal(true);
+      expect(formatMentionName(tutor)).to.equal('Lena Tutor');
+    }
+  });
+
+  it('does not offer a same-named human for a reserved tutor alias', () => {
+    for (const name of ['Lena', 'Luna', 'Ai']) {
+      expect(mentionMatches({ given_name: name, family_name: 'Human', aliases: [] }, name)).to.equal(false);
+    }
+  });
+
+  it('keeps name matching for older servers without alias metadata', () => {
+    expect(mentionMatches({ given_name: 'Luna', family_name: 'Tutor' }, 'luna')).to.equal(true);
+  });
+
+  it('does not match a longer unrelated handle to the tutor', () => {
+    const tutor = { given_name: 'Lena', aliases: ['lena', 'luna', 'ai'] };
+    for (const query of ['lenabelle', 'lunatic', 'aimee']) {
+      expect(mentionMatches(tutor, query)).to.equal(false);
+    }
+  });
+
   it('matches everything on an empty query', () => {
     expect(mentionMatches(muller, '')).to.equal(true);
   });

@@ -81,8 +81,14 @@
     if (!needle) {
       return true;
     }
+    const aliases = Array.isArray(u && u.aliases) ? u.aliases.map(foldName) : [];
+    // Reserved tutor handles never select a human with the same given name.
+    if (['lena', 'luna', 'ai'].includes(needle) && Array.isArray(u && u.aliases)) {
+      return aliases.includes(needle);
+    }
     const full = foldName(formatMentionName(u));
     return (
+      aliases.some(alias => alias.startsWith(needle)) ||
       full.includes(needle) ||
       foldName(u && u.given_name).startsWith(needle) ||
       foldName(u && u.family_name).startsWith(needle)
