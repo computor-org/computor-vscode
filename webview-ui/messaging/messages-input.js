@@ -597,7 +597,9 @@
           });
         }
 
-        state.messageContent = '';
+        // Keep the draft until the panel confirms success with updateState,
+        // which clears it. A rejected send (e.g. an ambiguous plain @name)
+        // must leave the text in place so the learner can pick a recipient.
         state.activeTab = 'write';
       });
 
