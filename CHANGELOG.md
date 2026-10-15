@@ -3,6 +3,13 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## Unreleased
+
+- Support Lena, legacy Luna and AI tutor mention aliases in autocomplete; the
+  composer advertises `@lena`, `@luna` and `@ai` only on servers that resolve them.
+- Keep Ctrl/Cmd+Enter as Send while mention suggestions are open.
+- Keep the draft when a message is rejected, e.g. for an ambiguous plain `@name`.
+
 ## 2027.3.1
 
 - Selecting a unit or exercise title shows its own instructions beside code; keyboard selection,
