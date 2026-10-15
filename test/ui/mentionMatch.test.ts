@@ -6,9 +6,10 @@ import { expect } from 'chai';
 // @ts-ignore -- no type declarations for the plain-JS asset
 import mentionAsset from '../../webview-ui/shared/mention.js';
 
-const { matchMentionTrigger, mentionMatches, formatMentionName, foldName } =
+const { matchMentionTrigger, mentionMatches, formatMentionName, foldName, hasTutorAliases } =
   mentionAsset as {
     matchMentionTrigger: (before: unknown) => { query: string } | null;
+    hasTutorAliases: (users: unknown) => boolean;
     mentionMatches: (u: Record<string, unknown>, q: string) => boolean;
     formatMentionName: (u: Record<string, unknown> | null | undefined) => string;
     foldName: (s: unknown) => string;
@@ -135,5 +136,19 @@ describe('webview-ui/shared/mention.js foldName', () => {
   it('handles nullish input', () => {
     expect(foldName(null)).to.equal('');
     expect(foldName(undefined)).to.equal('');
+  });
+});
+
+describe('webview-ui/shared/mention.js hasTutorAliases', () => {
+  it('is true only when the server advertises tutor aliases', () => {
+    const tutor = { id: 't', given_name: 'Lena', aliases: ['lena', 'luna', 'ai'] };
+    expect(hasTutorAliases([{ id: 'h', given_name: 'Anna', aliases: [] }, tutor])).to.equal(true);
+  });
+
+  it('is false for older servers without alias metadata or without the tutor', () => {
+    expect(hasTutorAliases([{ id: 't', given_name: 'Luna', family_name: 'Tutor' }])).to.equal(false);
+    expect(hasTutorAliases([{ id: 'h', given_name: 'Anna', aliases: [] }])).to.equal(false);
+    expect(hasTutorAliases([])).to.equal(false);
+    expect(hasTutorAliases(undefined)).to.equal(false);
   });
 });

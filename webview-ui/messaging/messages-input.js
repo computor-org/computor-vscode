@@ -77,10 +77,19 @@
     active: 0,
     loading: false, // a server audience fetch is in flight
     dropdown: null,
-    debounce: null
+    debounce: null,
+    tutorAliases: false // server advertised tutor aliases (sticky)
   };
 
   const mentionMatches = mentionUtil.mentionMatches;
+
+  // Only advertise the tutor handles once the server has shown that it
+  // resolves them; older servers keep plain `@lena` as ordinary text.
+  function editorPlaceholder() {
+    return mention.tutorAliases
+      ? 'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
+      : 'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)';
+  }
 
   function closeMentionDropdown() {
     mention.open = false;
@@ -642,8 +651,7 @@
           // The placeholder is the only place any of this is documented now
           // that the footer hint is gone — and it costs no layout, since it
           // only shows while the editor is empty and has room to spare.
-          'data-placeholder':
-            'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
+          'data-placeholder': editorPlaceholder()
         }
       });
       // Use saved content or editing message content, rendered as text + chips.
@@ -741,6 +749,11 @@
         break;
       case 'mentionableUsers':
         mention.users = (message.data && message.data.users) || [];
+        if (!mention.tutorAliases && mentionUtil.hasTutorAliases(mention.users)) {
+          mention.tutorAliases = true;
+          const body = document.getElementById('message-body');
+          if (body) { body.setAttribute('data-placeholder', editorPlaceholder()); }
+        }
         mention.loading = false;
         if (mention.open) { updateMentionFilter(); }
         break;

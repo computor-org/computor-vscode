@@ -95,8 +95,20 @@
     );
   }
 
+  /**
+   * Whether the server advertises tutor mention aliases (`@lena`, `@luna`,
+   * `@ai`). Older servers send no alias metadata and leave such plain text
+   * unresolved, so the composer must not promise those handles there.
+   */
+  function hasTutorAliases(users) {
+    return Array.isArray(users) && users.some(
+      (u) => Array.isArray(u && u.aliases) && u.aliases.length > 0
+    );
+  }
+
   return {
     matchMentionTrigger: matchMentionTrigger,
+    hasTutorAliases: hasTutorAliases,
     formatMentionName: formatMentionName,
     mentionMatches: mentionMatches,
     foldName: foldName
