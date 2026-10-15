@@ -1,14 +1,14 @@
 # Changelog
 
-## Unreleased
+Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
+See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
+
+## 2026.10.4
 
 - Support Lena, legacy Luna and AI tutor mention aliases in autocomplete; the
   composer advertises `@lena`, `@luna` and `@ai` only on servers that resolve them.
 - Keep Ctrl/Cmd+Enter as Send while mention suggestions are open.
 - Keep the draft when a message is rejected, e.g. for an ambiguous plain `@name`.
-
-Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
-See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
 ## 2026.10.3
 
