@@ -3,7 +3,7 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
-## Unreleased
+## 2027.3.2
 
 - Support Lena, legacy Luna and AI tutor mention aliases in autocomplete; the
   composer advertises `@lena`, `@luna` and `@ai` only on servers that resolve them.
