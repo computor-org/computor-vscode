@@ -3,6 +3,13 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## Unreleased
+
+- Support Lena, legacy Luna and AI tutor mention aliases in autocomplete; the
+  composer advertises `@lena`, `@luna` and `@ai` only on servers that resolve them.
+- Keep Ctrl/Cmd+Enter as Send while mention suggestions are open.
+- Keep the draft when a message is rejected, e.g. for an ambiguous plain `@name`.
+
 ## 2027.3.1
 
 - Selecting a unit or exercise title shows its own instructions beside code; keyboard selection,
@@ -14,7 +21,7 @@ See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 ## 2027.3.0
 
 - Public courses, desktop VS Code and GitHub Codespaces available before login.
-- Existing course messages continue to support Luna hints and feedback on submitted work.
+- Existing course messages continue to support Lena hints and feedback on submitted work.
 - Supports both 26.10 and main/27.3 under the existing Marketplace identity.
 
 ## 2026.10.2

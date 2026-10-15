@@ -77,10 +77,19 @@
     active: 0,
     loading: false, // a server audience fetch is in flight
     dropdown: null,
-    debounce: null
+    debounce: null,
+    tutorAliases: false // server advertised tutor aliases (sticky)
   };
 
   const mentionMatches = mentionUtil.mentionMatches;
+
+  // Only advertise the tutor handles once the server has shown that it
+  // resolves them; older servers keep plain `@lena` as ordinary text.
+  function editorPlaceholder() {
+    return mention.tutorAliases
+      ? 'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
+      : 'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)';
+  }
 
   function closeMentionDropdown() {
     mention.open = false;
@@ -268,6 +277,14 @@
   }
 
   function onEditorKeydown(e) {
+    // Sending resolves exact plain-text mentions on the backend. Never choose
+    // the dropdown's first partial match just because the user presses Send.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      const btn = document.querySelector('.send-button');
+      if (btn && !btn.hasAttribute('disabled')) { btn.click(); }
+      return;
+    }
     // When the dropdown is open, Escape dismisses it (even on an empty status
     // row) and arrows/enter/tab drive the candidate list.
     if (mention.open) {
@@ -282,12 +299,6 @@
     // newline. Enter-to-send kept posting half-written messages — and while
     // editing, it fired Save mid-thought (computor-org/issues#316). This
     // matches the comments composer.
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      const btn = document.querySelector('.send-button');
-      if (btn && !btn.hasAttribute('disabled')) { btn.click(); }
-      return;
-    }
     if (e.key === 'Enter') {
       e.preventDefault();
       insertNewlineAtCaret();
@@ -586,7 +597,9 @@
           });
         }
 
-        state.messageContent = '';
+        // Keep the draft until the panel confirms success with updateState,
+        // which clears it. A rejected send (e.g. an ambiguous plain @name)
+        // must leave the text in place so the learner can pick a recipient.
         state.activeTab = 'write';
       });
 
@@ -640,8 +653,7 @@
           // The placeholder is the only place any of this is documented now
           // that the footer hint is gone — and it costs no layout, since it
           // only shows while the editor is empty and has room to spare.
-          'data-placeholder':
-            'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)'
+          'data-placeholder': editorPlaceholder()
         }
       });
       // Use saved content or editing message content, rendered as text + chips.
@@ -739,6 +751,11 @@
         break;
       case 'mentionableUsers':
         mention.users = (message.data && message.data.users) || [];
+        if (!mention.tutorAliases && mentionUtil.hasTutorAliases(mention.users)) {
+          mention.tutorAliases = true;
+          const body = document.getElementById('message-body');
+          if (body) { body.setAttribute('data-placeholder', editorPlaceholder()); }
+        }
         mention.loading = false;
         if (mention.open) { updateMentionFilter(); }
         break;

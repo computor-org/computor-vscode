@@ -20,6 +20,8 @@ import type { MessageAuthor, MessageAuthorCourseMember } from './auth';
  * is refreshed from here on render so renames never go stale.
  */
 export interface MessageMentionRef {
+  /** Supported mention handles for this user */
+  aliases?: string[];
   /** User ID of the mentioned user */
   id: string;
   /** Mentioned user's given name */
