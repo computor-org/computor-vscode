@@ -186,3 +186,9 @@ For issues and questions:
 ## Development
 
 For developers who want to contribute or extend the extension, see the [Developer Guide](docs/developer-guide.md) and [Architecture Overview](docs/architecture.md).
+
+## Lena tutor messages
+
+Type `@lena`, `@luna` or `@ai`, or choose Lena from the `@` autocomplete
+dropdown. All three handles reach the same existing tutor. This requires the
+matching backend update and its configured tutor account.
