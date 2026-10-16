@@ -3,6 +3,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { MessageCreate, MessageUpdate, MessageList, MessageMentionRef, MentionableQuery } from '../../types/generated';
 import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
 import { WebSocketService } from '../../services/WebSocketService';
+import { UiStateService } from '../../services/UiStateService';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
 import { deriveScopeFromCreatePayload, scopeHasSubject } from '../../services/MessagePermissions';
@@ -39,6 +40,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    const uiState = UiStateService.getInstanceOrUndefined();
+    uiState?.setViewVisible(MessagesInputPanelProvider.viewType, webviewView.visible);
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.extensionUri]
@@ -46,6 +49,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
 
     // Re-send state when view becomes visible (handles VS Code suspending webviews)
     webviewView.onDidChangeVisibility(() => {
+      uiState?.setViewVisible(MessagesInputPanelProvider.viewType, webviewView.visible);
       if (webviewView.visible) {
         console.log('[MessagesInputPanel] View became visible, re-sending state');
         this.postState();
@@ -53,6 +57,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     });
 
     webviewView.onDidDispose(() => {
+      uiState?.setViewVisible(MessagesInputPanelProvider.viewType, false);
       this.view = undefined;
     });
 

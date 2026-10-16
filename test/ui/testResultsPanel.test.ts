@@ -35,7 +35,8 @@ function fakeView() {
         return { dispose() {} };
       }
     },
-    onDidDispose: () => ({ dispose() {} })
+    onDidDispose: () => ({ dispose() {} }),
+    onDidChangeVisibility: () => ({ dispose() {} })
   };
   return {
     view: view as unknown as vscode.WebviewView,
