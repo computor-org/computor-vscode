@@ -191,3 +191,7 @@ For issues and questions:
 ## Development
 
 For developers who want to contribute or extend the extension, see the [Developer Guide](docs/developer-guide.md) and [Architecture Overview](docs/architecture.md).
+
+## License
+
+Code: MIT (see [LICENSE](LICENSE)). Documentation (`docs/` and Markdown guides): CC BY 4.0 (see [LICENSE-DOCS](LICENSE-DOCS)).
