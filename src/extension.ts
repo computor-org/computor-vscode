@@ -78,6 +78,7 @@ import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
 import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
 import { reportProblem } from './commands/reportProblem';
+import { registerWelcomePage, WelcomeWebviewProvider } from './ui/webviews/WelcomeWebviewProvider';
 import { IssueReportStatusBarService } from './ui/IssueReportStatusBarService';
 import { COMPUTOR_MARKER, findComputorMarker } from './activation';
 
@@ -196,6 +197,12 @@ async function activateSession(
       console.warn('Extension update check failed:', err);
     });
   }
+
+  // In a Coder workspace this is the moment the workspace opens, so it is
+  // where the welcome page belongs (computor-org/issues#374).
+  welcomePage?.afterSignIn().catch(err => {
+    console.warn('Welcome page could not be shown:', err);
+  });
 }
 
 /**
@@ -1798,6 +1805,7 @@ let activeSession: UnifiedSession | null = null;
 let offlineSession: OfflineSession | null = null;
 let isAuthenticating = false;
 let extensionUpdateService: ExtensionUpdateService | undefined;
+let welcomePage: WelcomeWebviewProvider | undefined;
 
 const backendConnectionService = BackendConnectionService.getInstance();
 
@@ -2067,6 +2075,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.commands.registerCommand('computor.gettingStarted', async () => {
     await showGettingStarted(context);
   }));
+
+  // Welcome and help (computor-org/issues#374). Registered before any sign-in
+  // can start, so the page is reachable signed out and ready for the first
+  // session; it reads the API only while that session is active.
+  welcomePage = registerWelcomePage(context, {
+    api: () => (activeSession ? ComputorApiService.getInstance() : undefined),
+    backendUrl: async () => (await new ComputorSettingsManager(context).getBaseUrl()) || undefined
+  });
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.reportProblem', async () => {
     await reportProblem(context, ComputorApiService.getInstance());
