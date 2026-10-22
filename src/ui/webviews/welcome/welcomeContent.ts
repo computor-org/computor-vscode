@@ -70,7 +70,7 @@ export const welcomeLinks = {
   contributors: 'https://github.com/computor-org/computor-vscode/graphs/contributors',
   netidee: 'https://www.netidee.at/computor',
   source: 'https://github.com/computor-org',
-  feedback: 'https://github.com/computor-org/feedback/issues'
+  feedback: 'mailto:contact@computor.at'
 } as const;
 
 export type WelcomeLinkKey = keyof typeof welcomeLinks | 'workspaces';
