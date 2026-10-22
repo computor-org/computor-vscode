@@ -3,6 +3,13 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.6
+
+- Report a Problem sends your report to the Computor support team as a ticket on servers that
+  support it (computor.at). You can attach a log file, and you follow replies and the status in
+  the web app ("My Problem Reports"). On older servers the previous behaviour stays.
+- Feedback and bug report links point to https://computor.at/problem.
+
 ## 2027.3.5
 
 - After a Computor workspace installs a newer version of the extension in place, a notice
