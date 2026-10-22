@@ -57,6 +57,17 @@
   --c-info-bg: rgba(0, 120, 212, 0.18);
   --c-muted-bg: rgba(128, 128, 128, 0.18);
 
+  /*
+   * Git change colours exactly as the editor draws them: the bars beside the
+   * line numbers and the colour of a changed file's name. A page that explains
+   * them must show the user's own theme, not a guess at it.
+   */
+  --c-git-line-added: var(--vscode-editorGutter-addedBackground, var(--c-success));
+  --c-git-line-modified: var(--vscode-editorGutter-modifiedBackground, var(--c-info));
+  --c-git-line-deleted: var(--vscode-editorGutter-deletedBackground, var(--c-error));
+  --c-git-file-untracked: var(--vscode-gitDecoration-untrackedResourceForeground, var(--c-success));
+  --c-git-file-modified: var(--vscode-gitDecoration-modifiedResourceForeground, var(--c-warning));
+
   /* hover overlay that works on light and dark themes */
   --c-hover: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
 
