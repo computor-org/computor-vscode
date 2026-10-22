@@ -3,6 +3,7 @@ import type * as vscode from 'vscode';
 import type { ComputorApiService } from './ComputorApiService';
 import type { CourseContentStudentList, CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
+import { descriptionHeading, localizedUnitTitle, resolveContentLanguage, withoutLeadingHeading } from '../utils/contentLanguage';
 import { showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 
 /** Read only the canonical description, in memory; never extract arbitrary ZIP paths. */
@@ -82,23 +83,57 @@ export async function showWorkspaceCourseLanding(
   const first = firstReleasedCourseItem(contents);
   let markdown = `# ${escapeHeading(title)}\n\n${course.description?.trim() ?? ''}`;
   let inlineImages: Record<string, string> | undefined;
+  const language = await landingLanguage(api, course.id);
+  const copy = LANDING_COPY[language === 'de' ? 'de' : 'en'];
   if (first) {
     let description = first.description?.trim();
     try {
       const archive = await api.downloadStudentCourseContentDescription(first.id);
       if (archive) {
-        const profile = await api.getUserAccount();
-        description = await readStudentDescription(archive, profile?.profile?.language_code) || description;
+        description = await readStudentDescription(archive, language) || description;
         inlineImages = await studentDescriptionImages(archive);
       }
     } catch (error) {
       console.warn('[WorkspaceCourseLanding] Could not load assignment instructions:', error);
     }
-    markdown += `\n\n## ${escapeHeading(first.title || first.path)}\n\n${description || 'Select this exercise in the course tree to start working.'}`;
+    markdown += `\n\n${landingSection(first.title || first.path, description, language, copy.selectExercise)}`;
   } else {
-    markdown += '\n\nNo exercises are available yet. Course materials will appear in the course tree when released.';
+    markdown += `\n\n${copy.noExercises}`;
   }
   await showMarkdownTextPreview(context, markdown, title, { inlineImages });
+}
+
+const LANDING_COPY = {
+  de: {
+    selectExercise: 'Wähle diese Aufgabe in der Kursübersicht, um mit der Arbeit zu beginnen.',
+    noExercises: 'Noch sind keine Aufgaben freigegeben. Kursmaterialien erscheinen in der Kursübersicht, sobald sie freigegeben sind.'
+  },
+  en: {
+    selectExercise: 'Select this exercise in the course tree to start working.',
+    noExercises: 'No exercises are available yet. Course materials will appear in the course tree when released.'
+  }
+};
+
+async function landingLanguage(api: ComputorApiService, courseId: string): Promise<string> {
+  let userLanguage: string | null | undefined;
+  let courseLanguage: string | null | undefined;
+  try {
+    userLanguage = (await api.getUserAccount())?.profile?.language_code;
+    if (!userLanguage) courseLanguage = (await api.getCourse(courseId))?.language_code;
+  } catch (error) {
+    console.warn('[WorkspaceCourseLanding] Could not load the language preference:', error);
+  }
+  return resolveContentLanguage(userLanguage, courseLanguage);
+}
+
+/**
+ * The first exercise under one heading: the description's own heading (it is
+ * in the reading language) replaces the stored title instead of following it.
+ */
+export function landingSection(title: string, description: string | undefined, language: string, fallback: string): string {
+  const heading = descriptionHeading(description);
+  const body = heading && description ? withoutLeadingHeading(description).trim() : description;
+  return `## ${heading ?? escapeHeading(localizedUnitTitle(title, language))}\n\n${body || fallback}`;
 }
 
 function escapeHeading(value: string): string {

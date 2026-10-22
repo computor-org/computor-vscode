@@ -16,6 +16,7 @@ import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '..
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 import { readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
+import { resolveContentLanguage } from '../utils/contentLanguage';
 import { downloadFileInBrowser } from '../ui/webviews/browserDownload';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
@@ -365,28 +366,33 @@ export class StudentCommands {
     return names;
   }
 
-  private async openReadmeIfExists(dir: string, silent: boolean = false, options: MarkdownPreviewOptions = {}): Promise<boolean> {
+  /** Profile language if the learner chose one, else the course's, else English. */
+  private async contentLanguage(courseId?: string | null): Promise<string> {
+    let userLanguage: string | null | undefined;
+    let courseLanguage: string | null | undefined;
+    try {
+      userLanguage = (await this.apiService.getUserAccount())?.profile?.language_code;
+    } catch (error) {
+      console.warn('[contentLanguage] Failed to fetch the profile language:', error);
+    }
+    if (!userLanguage && courseId) {
+      try {
+        courseLanguage = (await this.apiService.getCourse(courseId))?.language_code;
+      } catch (error) {
+        console.warn('[contentLanguage] Failed to fetch the course language:', error);
+      }
+    }
+    return resolveContentLanguage(userLanguage, courseLanguage);
+  }
+
+  private async openReadmeIfExists(dir: string, silent: boolean = false, options: MarkdownPreviewOptions = {}, courseId?: string): Promise<boolean> {
     const request = options.request ?? beginMarkdownPreviewRequest();
     options = { ...options, request };
     try {
       let readmePath: string | undefined;
-      let preferredLanguage: string | null = null;
-
-      try {
-        const userAccount = await this.apiService.getUserAccount();
-        const userLanguage = userAccount?.profile?.language_code || null;
-
-        const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
-        let courseLanguage: string | null = null;
-        if (courseId) {
-          const course = await this.apiService.getCourse(courseId);
-          courseLanguage = course?.language_code || null;
-        }
-
-        preferredLanguage = userLanguage || courseLanguage;
-      } catch (error) {
-        console.warn('[openReadmeIfExists] Failed to fetch language preferences:', error);
-      }
+      const preferredLanguage = await this.contentLanguage(
+        courseId ?? CourseSelectionService.getInstance().getCurrentCourseId()
+      );
 
       if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return true;
       const chosen = pickDescriptionFile(fs.readdirSync(dir), preferredLanguage);
@@ -472,13 +478,7 @@ export class StudentCommands {
       if (!chosen) return;
       markdown = await zip.file(chosen.file)?.async('string');
     } else {
-      let preferredLanguage: string | null = null;
-      try {
-        preferredLanguage = (await this.apiService.getUserAccount())?.profile?.language_code || null;
-      } catch (error) {
-        console.warn('[openRemoteDescription] Failed to fetch language preference:', error);
-      }
-      markdown = await readStudentDescription(archive, preferredLanguage);
+      markdown = await readStudentDescription(archive, await this.contentLanguage(content.course_id));
     }
     if (!markdown) {
       if (!options.silent) notify.info('This assignment has no description.');
@@ -497,7 +497,7 @@ export class StudentCommands {
     options = { ...options, request };
     if (!item?.courseContent || !request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
     const directory: string | undefined = item.courseContent.directory;
-    if (directory && fs.existsSync(directory) && await this.openReadmeIfExists(directory, true, options)) return;
+    if (directory && fs.existsSync(directory) && await this.openReadmeIfExists(directory, true, options, item.courseContent.course_id)) return;
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
     await this.openRemoteDescription(item.courseContent, false, options);
   }
