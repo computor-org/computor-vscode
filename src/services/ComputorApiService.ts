@@ -354,7 +354,8 @@ export class ComputorApiService {
   /** Submit a user report; GitHub credentials remain entirely on the backend. */
   async submitIssueReport(
     payload: IssueReportPayload,
-    screenshot?: { buffer: Buffer; fileName: string; contentType: string }
+    screenshot?: { buffer: Buffer; fileName: string; contentType: string },
+    log?: { buffer: Buffer; fileName: string }
   ): Promise<IssueReportCreated> {
     const client = await this.getHttpClient();
     const form = new FormData();
@@ -367,6 +368,13 @@ export class ComputorApiService {
       form.append('steps', payload.steps);
     }
     form.append('context', JSON.stringify(payload.context));
+    if (payload.channel) {
+      form.append('channel', payload.channel);
+    }
+    // Only ever sent in tickets mode; the 2026.10 backends have no log field.
+    if (log) {
+      form.append('log', log.buffer, { filename: log.fileName, contentType: 'text/plain' });
+    }
     if (screenshot) {
       form.append('screenshot', screenshot.buffer, {
         filename: screenshot.fileName,

@@ -2197,6 +2197,8 @@ export interface TestCreate {
 export interface IssueReportingInfo {
   /** Whether to offer a reporting entry point at all. False when the deployment has no tracker configured or its probe is failing. */
   enabled: boolean;
+  /** Where reports go: tickets, github or off. Absent on backends that predate support tickets (the 2026.10 line); treat those as github. */
+  mode?: "tickets" | "github" | "off" | null;
   /** Visibility of the configured repository; null while unknown. */
   visibility?: "public" | "private" | null;
   /** GitHub issues page to open directly. Set only for a public repository — a private board is never linked to a reporter. */

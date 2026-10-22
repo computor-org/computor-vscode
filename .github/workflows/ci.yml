@@ -57,6 +57,9 @@ jobs:
       - name: Check webview asset paths
         run: npm run check:assets
 
+      - name: Backend compatibility (live semester lines, compat/lines.json)
+        run: npm run check:backend-compat
+
       - name: Unit tests (with coverage)
         run: npm run test:coverage
 

@@ -79,7 +79,7 @@ import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
 import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
-import { reportProblem } from './commands/reportProblem';
+import { openMyProblemReports, reportProblem } from './commands/reportProblem';
 import { registerWelcomePage, WelcomeWebviewProvider } from './ui/webviews/WelcomeWebviewProvider';
 import { IssueReportStatusBarService } from './ui/IssueReportStatusBarService';
 import { COMPUTOR_MARKER, findComputorMarker } from './activation';
@@ -2095,6 +2095,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.reportProblem', async () => {
     await reportProblem(context, ComputorApiService.getInstance());
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('computor.myProblemReports', async () => {
+    await openMyProblemReports(ComputorApiService.getInstance());
   }));
 
   // Check backend connection command

@@ -6,6 +6,11 @@ export interface IssueReportCreated {
   issue_url?: string | null;
   /** False when a screenshot was sent but could not be stored. */
   screenshot_attached?: boolean;
+  /** Support ticket the report became; absent on backends without tickets (2026.10). */
+  ticket_id?: string | null;
+  ticket_number?: number | null;
+  /** Whether an attached log was stored; absent on backends without tickets. */
+  log_attached?: boolean;
 }
 
 export interface IssueReportPayload {
@@ -14,4 +19,6 @@ export interface IssueReportPayload {
   expected?: string;
   steps?: string;
   context: Record<string, unknown>;
+  /** Sent as the `channel` form field; backends without tickets ignore it. */
+  channel?: 'vscode';
 }

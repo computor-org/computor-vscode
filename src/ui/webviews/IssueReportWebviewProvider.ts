@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
+import type { IssueReportingMode } from '../IssueReportStatusBarService';
 
 /** Mirrors what the backend accepts; kept small so nothing implicit is sent. */
 interface SubmitMessage {
@@ -11,9 +12,12 @@ interface SubmitMessage {
   expected?: string;
   steps?: string;
   screenshot?: { dataUrl: string; fileName: string } | null;
+  log?: { text: string; fileName: string } | null;
 }
 
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
+/** Matches the backend's default SUPPORT_REPORT_MAX_LOG_BYTES. */
+export const MAX_LOG_BYTES = 1024 * 1024;
 
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   'image/png': 'png',
@@ -34,10 +38,16 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = {
  */
 export class IssueReportWebviewProvider extends BaseWebviewProvider {
   private readonly api: ComputorApiService;
+  private mode: IssueReportingMode = 'github';
 
   constructor(context: vscode.ExtensionContext, api: ComputorApiService) {
     super(context, 'computor.issueReportView');
     this.api = api;
+  }
+
+  /** Tickets mode adds the log upload and a ticket receipt. */
+  setMode(mode: IssueReportingMode): void {
+    this.mode = mode;
   }
 
   protected async getWebviewContent(): Promise<string> {
@@ -46,11 +56,19 @@ export class IssueReportWebviewProvider extends BaseWebviewProvider {
       bodyHtml: '<div id="app" class="page-root"></div>',
       cssFiles: ['support/issue-report.css'],
       scriptFiles: ['support/issue-report.js'],
-      initialState: { maxScreenshotBytes: MAX_SCREENSHOT_BYTES }
+      initialState: {
+        maxScreenshotBytes: MAX_SCREENSHOT_BYTES,
+        maxLogBytes: MAX_LOG_BYTES,
+        mode: this.mode
+      }
     });
   }
 
   protected async handleMessage(message: any): Promise<void> {
+    if (message?.command === 'openReport') {
+      await this.openReport(String(message.data?.ticketId || ''));
+      return;
+    }
     if (message?.command !== 'submit') {
       if (message?.command === 'cancel') {
         this.panel?.dispose();
@@ -83,8 +101,19 @@ export class IssueReportWebviewProvider extends BaseWebviewProvider {
       return;
     }
 
+    const tickets = this.mode === 'tickets';
+    let log;
+    try {
+      // The log field exists only on ticket backends; never sent otherwise.
+      log = tickets ? encodeLog(message.log) : undefined;
+    } catch (error) {
+      this.postError(error instanceof Error ? error.message : String(error));
+      return;
+    }
+
     const settings = new ComputorSettingsManager(this.context);
     const payload = {
+      channel: tickets ? ('vscode' as const) : undefined,
       title: (message.title || '').trim() || description.split('\n')[0]!.trim().slice(0, 140),
       description,
       expected: (message.expected || '').trim() || undefined,
@@ -93,8 +122,13 @@ export class IssueReportWebviewProvider extends BaseWebviewProvider {
     };
 
     try {
-      const result = await this.api.submitIssueReport(payload, screenshot);
+      const result = await this.api.submitIssueReport(payload, screenshot, log);
+      const webUrl = tickets ? (await this.api.getInstanceInfo())?.web_url : undefined;
       this.post('submitted', {
+        ticketId: result.ticket_id ?? null,
+        ticketNumber: result.ticket_number ?? null,
+        canOpen: !!(webUrl && result.ticket_id),
+        logDropped: !!log && result.log_attached === false,
         reportId: result.report_id,
         issueNumber: result.issue_number,
         issueUrl: result.issue_url ?? null,
@@ -106,6 +140,28 @@ export class IssueReportWebviewProvider extends BaseWebviewProvider {
       this.postError(submitFailureMessage(error));
     }
   }
+
+  private async openReport(ticketId: string): Promise<void> {
+    const webUrl = (await this.api.getInstanceInfo())?.web_url;
+    if (!webUrl || !/^[0-9a-f-]{36}$/i.test(ticketId)) {
+      return;
+    }
+    await vscode.env.openExternal(vscode.Uri.parse(`${webUrl}/support/${ticketId}`));
+  }
+}
+
+/** The webview's text log as an upload; refuses oversized or empty logs. */
+export function encodeLog(
+  log: SubmitMessage['log']
+): { buffer: Buffer; fileName: string } | undefined {
+  if (!log || typeof log.text !== 'string' || log.text.length === 0) {
+    return undefined;
+  }
+  const buffer = Buffer.from(log.text, 'utf8');
+  if (buffer.length > MAX_LOG_BYTES) {
+    throw new Error('The attached log is larger than 1 MB.');
+  }
+  return { buffer, fileName: 'computor.log' };
 }
 
 /** Turn a submission failure into something the user can act on. */
@@ -183,6 +239,7 @@ function diagnosticContext(baseUrl: string): Record<string, unknown> {
     client_version: extensionVersion() || 'unknown',
     vscode_version: vscode.version,
     platform: process.platform,
+    command: 'computor.reportProblem',
     backend_origin: backendOrigin(baseUrl),
     workspace_folder_count: vscode.workspace.workspaceFolders?.length || 0,
     editor: editor ? { language_id: editor.document.languageId } : null

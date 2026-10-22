@@ -138,6 +138,11 @@
         "category": "Computor"
       },
       {
+        "command": "computor.myProblemReports",
+        "title": "My Problem Reports",
+        "category": "Computor"
+      },
+      {
         "command": "computor.settings",
         "title": "Settings",
         "category": "Computor"
@@ -1582,6 +1587,10 @@
           "when": "computor.issueReporting.enabled"
         },
         {
+          "command": "computor.myProblemReports",
+          "when": "computor.issueReporting.tickets"
+        },
+        {
           "command": "computor.settings",
           "when": "false"
         },
@@ -3023,7 +3032,8 @@
     "package:vsix": "npm run package && node scripts/vsce.mjs package",
     "publish:marketplace": "node scripts/vsce.mjs publish",
     "release:check": "node scripts/release-channel.mjs check-github",
-    "test:release": "mocha --config .mocharc.unit.json test/release/*.test.ts"
+    "test:release": "mocha --config .mocharc.unit.json test/release/*.test.ts",
+    "check:backend-compat": "node scripts/check-backend-compat.mjs"
   },
   "devDependencies": {
     "@types/chai": "^4.3.4",
@@ -3073,6 +3083,6 @@
   ],
   "homepage": "https://computor.at",
   "bugs": {
-    "url": "https://github.com/computor-org/feedback/issues"
+    "url": "https://computor.at/problem"
   }
 }
