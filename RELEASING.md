@@ -101,6 +101,29 @@ GitHub release artifact, download its VSIX and `SHA256SUMS`, verify the checksum
 and place that approved VSIX in the repository root before running the publish
 command. Packaging again in a separate run does not guarantee identical bytes.
 
+## Rolling a release out to the Computor workspaces
+
+Hosted Coder workspaces do not take Marketplace updates. Each Computor instance
+approves one release through a pin in
+[computor-backend](https://github.com/computor-org/computor-backend), and its
+workspaces install that version in place (no rebuild, home untouched; see
+`ops/coder/templates/README.md`, "Extension updates", there). After the GitHub
+release above has its VSIX and `SHA256SUMS`:
+
+1. In computor-backend, on the branch the instance deploys (`main` for
+   computor.at and the 2027.3 line, `release/2026.10` for code.tugraz.at and
+   the 2026.10 line), run `ops/coder/pin-extension.py <version>`. It verifies
+   the release VSIX against `SHA256SUMS` and rewrites
+   `computor-backend/src/computor_backend/coder/approved_extension.json`.
+2. Open a PR with that one-file change, merge it, and deploy the backend as
+   usual (`./computor.sh update run prod`). The backend registers the pinned
+   release at startup, running workspaces install it within 30 minutes and
+   offer "Reload Window", stopped ones install it on their next start.
+
+Only release versions (`x.y.z`) are pinned. A workspace never installs a
+version older than the one it already has, so a template push with a newer
+image is not undone; going back to an older release needs a template push.
+
 ## Preview VSIX (feature branches)
 
 Preview builds are **sideload-only** and never reach the Marketplace: they
