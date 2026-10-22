@@ -70,6 +70,7 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm run check:assets
+      - run: npm run check:backend-compat
       - run: npm run test:coverage
 
       - name: Package VSIX

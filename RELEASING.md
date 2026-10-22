@@ -101,6 +101,47 @@ GitHub release artifact, download its VSIX and `SHA256SUMS`, verify the checksum
 and place that approved VSIX in the repository root before running the publish
 command. Packaging again in a separate run does not guarantee identical bytes.
 
+## Backend compatibility
+
+**Rule: while a semester line is live, every Marketplace release must stay
+compatible with that line's backend.** The Marketplace has one extension for
+every deployment, so a 2027.3.x release also reaches users of
+code.tugraz.at, which runs backend `release/2026.10`. A newer endpoint or
+response field may be used only behind feature detection: a capability the
+backend advertises (for example `issue_reporting.mode` on `GET /instance-info`),
+or an optional field whose absence the code handles.
+
+`compat/lines.json` lists the live lines. For each, `compat/backend-<line>.json`
+is a snapshot of that backend's API contract (paths, methods and response
+schemas from its own OpenAPI). `npm run check:backend-compat`, part of CI and
+of the release workflow, fails when:
+
+- the extension calls a path/method that a live line lacks, unless the calling
+  function is marked `@backendCompat <how it is feature-detected>` in its JSDoc
+  (its callers must check that capability first);
+- a response type the extension declares (`client.get<T>(…)`) has a required
+  field, at any depth, that a live line does not return. Make it optional and
+  handle its absence.
+
+`compat/known-gaps.json` lists findings that predate the guard and fail
+against backend main as well (dead or mistyped calls). It may only shrink.
+
+The `backend-contract` workflow regenerates each snapshot from the public
+backend branch weekly and when `compat/` changes, and fails if it is stale. To
+refresh a snapshot by hand, in a computor-backend checkout of that branch:
+
+```sh
+uv run --project computor-backend python <vscode>/scripts/compat/dump-backend-contract.py \
+  "computor-backend release/2026.10 $(git rev-parse --short=12 HEAD)" > <vscode>/compat/backend-2026.10.json
+```
+
+When a semester line is retired, remove its entry from `compat/lines.json`
+and its snapshot. When a new line goes live on a deployment that keeps it
+while main moves on, add it.
+
+Before publishing, also smoke-test the VSIX against each live deployment with
+a test account (read-only calls on the older line).
+
 ## Rolling a release out to the Computor workspaces
 
 Hosted Coder workspaces do not take Marketplace updates. Each Computor instance

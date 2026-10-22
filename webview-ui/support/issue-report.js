@@ -14,6 +14,11 @@
   var state = window.__INITIAL_STATE__ || {};
   var maxBytes = state.maxScreenshotBytes || 5 * 1024 * 1024;
   var screenshot = null;
+  var log = null;
+  // 'tickets': the backend files a support ticket (issues#520). Anything else is
+  // the older GitHub issue path of the 2026.10 backends.
+  var tickets = state.mode === 'tickets';
+  var maxLogBytes = state.maxLogBytes || 1024 * 1024;
 
   var ALLOWED = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
@@ -30,8 +35,28 @@
     );
   }
 
+  var ticketsIntro =
+    '<p class="report-intro">Your report goes to the Computor support team as a ticket. ' +
+    'Nothing is published. Replies appear in the web app under your reports.</p>' +
+    '<div class="notice warning report-warning">' +
+    '<strong>Only include what is needed.</strong>' +
+    'Leave out passwords, tokens and other people\'s data, and check a screenshot or log ' +
+    'before attaching it.' +
+    '</div>';
+
+  var logSection = tickets
+    ? '<div class="section">' +
+      '<h2>Log file (optional)</h2>' +
+      '<p class="report-hint">Attach a text log only if you want to, for example saved test ' +
+      'output. Up to ' + Math.round(maxLogBytes / 1024) + ' KB.</p>' +
+      '<input type="file" id="log-file" accept=".log,.txt,text/plain">' +
+      '<div id="log-meta" class="report-hint is-hidden"></div>' +
+      '</div>'
+    : '';
+
   app.innerHTML =
     '<div class="header"><h1>Report a Problem</h1></div>' +
+    (tickets ? ticketsIntro :
     '<p class="report-intro">Your report is sent to the Computor maintainers as an issue. ' +
     'Everything you write below becomes part of it.</p>' +
 
@@ -44,7 +69,7 @@
     '<li>grades, marks and feedback about a specific person</li>' +
     '<li>passwords, tokens and anything else that would let someone sign in</li>' +
     '</ul>' +
-    '</div>' +
+    '</div>') +
 
     '<div class="section">' +
     '<h2>What went wrong</h2>' +
@@ -79,6 +104,7 @@
     '</div>' +
     '</div>' +
 
+    logSection +
     '<div id="feedback" class="notice error is-hidden"></div>' +
     '<div id="result" class="notice success report-result is-hidden"></div>' +
 
@@ -177,6 +203,35 @@
     }
   });
 
+  var logInput = document.getElementById('log-file');
+  if (logInput) {
+    logInput.addEventListener('change', function () {
+      clearError();
+      log = null;
+      var meta = document.getElementById('log-meta');
+      meta.classList.add('is-hidden');
+      var file = logInput.files && logInput.files[0];
+      if (!file) {
+        return;
+      }
+      if (file.size > maxLogBytes) {
+        showError('That log is larger than ' + Math.round(maxLogBytes / 1024) + ' KB.');
+        logInput.value = '';
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        log = { text: String(reader.result), fileName: file.name || 'computor.log' };
+        meta.textContent = 'Attached: ' + log.fileName;
+        meta.classList.remove('is-hidden');
+      };
+      reader.onerror = function () {
+        showError('That log could not be read.');
+      };
+      reader.readAsText(file);
+    });
+  }
+
   function value(id) {
     return (document.getElementById(id).value || '').trim();
   }
@@ -195,7 +250,8 @@
       description: value('description'),
       expected: value('expected'),
       steps: value('steps'),
-      screenshot: screenshot
+      screenshot: screenshot,
+      log: log
     });
   });
 
@@ -226,6 +282,27 @@
       ? '<p class="report-hint">Your screenshot could not be attached — the report was sent ' +
         'without it. Mention it when you follow up if it matters.</p>'
       : '';
+    if (data && data.ticketNumber) {
+      var logDropped = data.logDropped
+        ? '<p class="report-hint">Your log could not be attached.</p>'
+        : '';
+      result.innerHTML =
+        '<strong>Thank you — your report was received.</strong>' +
+        '<dl><dt>Ticket</dt><dd>#' + CW.escapeHtml(String(data.ticketNumber)) + '</dd></dl>' +
+        '<p class="report-hint">The support team answers in the web app, where you can also ' +
+        'follow the status of your report.</p>' +
+        (data.canOpen ? '<button type="button" class="btn secondary" id="open-report">' +
+          'Open in browser</button>' : '') +
+        dropped + logDropped;
+      result.classList.remove('is-hidden');
+      var open = document.getElementById('open-report');
+      if (open) {
+        open.addEventListener('click', function () {
+          CW.post('openReport', { ticketId: data.ticketId });
+        });
+      }
+      return;
+    }
     result.innerHTML =
       '<strong>Thank you — your report was submitted.</strong>' +
       '<dl><dt>Reference</dt><dd>' + CW.escapeHtml(String(data.reportId)) + '</dd>' + link + '</dl>' +

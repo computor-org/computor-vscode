@@ -1,0 +1,22 @@
+{
+  "comment": "Findings that predate the guard and also fail against backend main (dead or mistyped calls). Fix them and remove the entry; never add a gap that main provides.",
+  "gaps": [
+    "2026.10 DELETE /course-contents/${\u2026}/deployment",
+    "2026.10 GET /coder/workspaces/${\u2026}/${\u2026}/launch-context",
+    "2026.10 GET /course-contents/${\u2026}/deployment CourseContentDeploymentGet.assigned_at",
+    "2026.10 GET /course-contents/${\u2026}/deployment CourseContentDeploymentGet.course_content_id",
+    "2026.10 GET /course-contents/${\u2026}/deployment CourseContentDeploymentGet.deployment_status",
+    "2026.10 GET /course-contents/${\u2026}/deployment CourseContentDeploymentGet.example_version_id",
+    "2026.10 GET /course-contents/${\u2026}/deployment CourseContentDeploymentGet.id",
+    "2026.10 GET /course-contents/${\u2026}/deployment/history",
+    "2026.10 PATCH /submissions/artifacts/${\u2026} SubmissionUploadResponseModel.artifacts",
+    "2026.10 PATCH /submissions/artifacts/${\u2026} SubmissionUploadResponseModel.files_count",
+    "2026.10 PATCH /submissions/artifacts/${\u2026} SubmissionUploadResponseModel.total_size",
+    "2026.10 POST /course-contents/${\u2026}/deploy",
+    "2026.10 POST /course-member-import/upload/${\u2026}",
+    "2026.10 POST /examples/upload ExampleGet.directory",
+    "2026.10 POST /examples/upload ExampleGet.example_repository_id",
+    "2026.10 POST /examples/upload ExampleGet.identifier",
+    "2026.10 PUT /user"
+  ]
+}

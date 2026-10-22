@@ -4,15 +4,37 @@ import type { IssueReportingInfo } from '../types/generated/common';
 
 /** Context key gating every problem-reporting entry point in `package.json`. */
 export const ISSUE_REPORTING_CONTEXT_KEY = 'computor.issueReporting.enabled';
+/** Context key for entry points that exist only when reports become tickets. */
+export const ISSUE_REPORTING_TICKETS_CONTEXT_KEY = 'computor.issueReporting.tickets';
+
+export type IssueReportingMode = 'tickets' | 'github' | 'off';
+
+/**
+ * Where a report goes on this deployment.
+ *
+ * Backends from computor-org/issues#520 step 2 on say so in
+ * `issue_reporting.mode`. The 2026.10 line (code.tugraz.at) predates that field
+ * and only reports `enabled`/`visibility`/`issues_url` for its GitHub path, so a
+ * missing mode means "github if enabled". Unknown future modes are treated as
+ * off rather than guessed at.
+ */
+export function issueReportingMode(info: IssueReportingInfo | null | undefined): IssueReportingMode {
+  if (!info || info.enabled !== true) {
+    return 'off';
+  }
+  const mode = info.mode;
+  if (mode === undefined || mode === null) {
+    return 'github';
+  }
+  return mode === 'tickets' || mode === 'github' ? mode : 'off';
+}
 
 /**
  * Persistent entry point for reports, independent of the active Computor role.
  *
- * Visibility follows the backend: a deployment that has not configured an issue
- * tracker — or whose tracker is failing its connectivity probe — reports
- * `issue_reporting.enabled: false` on `GET /instance-info`, and then there is
- * nothing here to click. Showing the button anyway would offer a feature every
- * use of which ends in an error.
+ * Visibility follows the backend: in tickets mode the button no longer depends
+ * on GitHub at all; on the GitHub path a deployment without a working tracker
+ * reports `enabled: false` and there is nothing here to click.
  */
 export class IssueReportStatusBarService implements vscode.Disposable {
   private static instance: IssueReportStatusBarService | undefined;
@@ -22,7 +44,7 @@ export class IssueReportStatusBarService implements vscode.Disposable {
   private constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
     this.item.text = '$(bug) Report problem';
-    this.item.tooltip = 'Report a problem to the Computor maintainers';
+    this.item.tooltip = 'Report a problem to the Computor team';
     this.item.command = 'computor.reportProblem';
     // Deliberately not shown yet: nothing is known about the deployment until
     // the first authenticated /instance-info call.
@@ -44,13 +66,14 @@ export class IssueReportStatusBarService implements vscode.Disposable {
   static async apply(info: IssueReportingInfo | undefined): Promise<void> {
     const service = IssueReportStatusBarService.initialize();
     service.info = info;
-    const enabled = info?.enabled === true;
-    if (enabled) {
+    const mode = issueReportingMode(info);
+    if (mode !== 'off') {
       service.item.show();
     } else {
       service.item.hide();
     }
-    await vscode.commands.executeCommand('setContext', ISSUE_REPORTING_CONTEXT_KEY, enabled);
+    await vscode.commands.executeCommand('setContext', ISSUE_REPORTING_CONTEXT_KEY, mode !== 'off');
+    await vscode.commands.executeCommand('setContext', ISSUE_REPORTING_TICKETS_CONTEXT_KEY, mode === 'tickets');
   }
 
   dispose(): void {

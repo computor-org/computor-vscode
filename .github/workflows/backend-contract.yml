@@ -1,0 +1,47 @@
+name: backend-contract
+
+# Keeps compat/backend-<line>.json in step with the live backend branches
+# listed in compat/lines.json. The contract is regenerated from the public
+# computor-backend repository (its own OpenAPI schema, no database needed)
+# and must match the committed snapshot. A difference means the backend line
+# changed: refresh the snapshot with the command printed below and re-run
+# `npm run check:backend-compat`.
+
+on:
+  pull_request:
+    branches: [main, 'release/**']
+    paths: ['compat/**', 'scripts/compat/**', '.github/workflows/backend-contract.yml']
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+      - name: Regenerate every live contract and compare
+        run: |
+          set -euo pipefail
+          for row in $(jq -c '.lines[]' compat/lines.json); do
+            branch=$(jq -r .branch <<<"$row")
+            contract=$(jq -r .contract <<<"$row")
+            dir="$RUNNER_TEMP/backend-${branch//\//-}"
+            git clone --quiet --depth 1 --branch "$branch" https://github.com/computor-org/computor-backend.git "$dir"
+            sha=$(git -C "$dir" rev-parse --short=12 HEAD)
+            uv sync --quiet --project "$dir/computor-backend" --python 3.12 --locked
+            uv run --project "$dir/computor-backend" python -W ignore scripts/compat/dump-backend-contract.py \
+              "computor-backend $branch $sha" > "$RUNNER_TEMP/contract.json"
+            # The source label carries the commit; compare everything else.
+            if ! diff <(jq 'del(.source)' "$contract") <(jq 'del(.source)' "$RUNNER_TEMP/contract.json") > "$RUNNER_TEMP/contract.diff"; then
+              head -100 "$RUNNER_TEMP/contract.diff"
+              echo "::error::$contract is stale against $branch ($sha). Refresh: uv run --project <backend>/computor-backend python scripts/compat/dump-backend-contract.py \"computor-backend $branch <sha>\" > $contract"
+              exit 1
+            fi
+            echo "$contract matches $branch ($sha)"
+          done
