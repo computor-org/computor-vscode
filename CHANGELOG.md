@@ -3,6 +3,12 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.3
+
+- Instructions follow the course language when you have not chosen a language in your
+  profile: a German course shows the German README, also before the repository is cloned.
+- The course start page shows the exercise heading once, in the reading language.
+
 ## 2027.3.2
 
 - Support Lena, legacy Luna and AI tutor mention aliases in autocomplete; the
