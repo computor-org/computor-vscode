@@ -3,6 +3,12 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.4
+
+- A new Welcome to Computor page opens after sign-in and walks you through your first assignment.
+  Open it again any time from Computor: Welcome and Help.
+- Links inside the help pages now stay in the help view in the browser editor.
+
 ## 2027.3.3
 
 - Instructions follow the course language when you have not chosen a language in your
