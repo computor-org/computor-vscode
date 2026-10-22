@@ -1320,6 +1320,12 @@
         "category": "Computor"
       },
       {
+        "command": "computor.welcome",
+        "title": "Welcome and Help",
+        "icon": "$(question)",
+        "category": "Computor"
+      },
+      {
         "command": "computor.lecturer.releaseCourseContent",
         "title": "Release Content",
         "icon": "$(rocket)",
@@ -1645,6 +1651,11 @@
           "command": "computor.reportProblem",
           "when": "view =~ /computor\\./ && computor.issueReporting.enabled",
           "group": "navigation@99"
+        },
+        {
+          "command": "computor.welcome",
+          "when": "view == computor.student.courses || view == computor.tutor.filters || view == computor.lecturer.courses",
+          "group": "navigation@98"
         },
         {
           "command": "computor.lecturer.refreshExamples",

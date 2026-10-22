@@ -63,6 +63,7 @@ export const window = {
   createWebviewPanel: (viewType: string, title: string, _column?: any, _options?: any): WebviewPanelStub => {
     const disposeEmitter = new EventEmitterStub<void>();
     const messageEmitter = new EventEmitterStub<any>();
+    const viewStateEmitter = new EventEmitterStub<any>();
     const panel: WebviewPanelStub = {
       viewType,
       title,
@@ -78,6 +79,8 @@ export const window = {
         postMessage: async (message: any) => { panel.posted.push(message); return true; }
       },
       onDidDispose: disposeEmitter.event,
+      // BaseWebviewProvider.show() subscribes to it; nothing in a Node test fires it.
+      onDidChangeViewState: viewStateEmitter.event,
       reveal: () => {},
       // What a click in the webview does, for a test that needs one.
       fireMessage: (message: any) => messageEmitter.fire(message),
@@ -102,6 +105,7 @@ export interface WebviewPanelStub {
   posted: any[];
   webview: any;
   onDidDispose: (listener: (e: void) => void) => Disposable;
+  onDidChangeViewState: (listener: (e: any) => void) => Disposable;
   reveal(): void;
   /** Deliver a message as the webview's script would have posted it. */
   fireMessage(message: any): void;

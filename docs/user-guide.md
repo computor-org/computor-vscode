@@ -2,6 +2,13 @@
 
 This guide covers how to use the Computor VS Code Extension as a student, tutor, or lecturer.
 
+After you sign in, the **Welcome to Computor** page opens: your courses, a
+step-by-step start on your first assignment, the help pages, what the Git
+colours in the editor mean, and a pointer to the browser or desktop edition.
+Reopen it with **Computor: Welcome and Help** or the question-mark icon at the
+top of the Student, Tutor and Lecturer views; untick *Show this page when
+Computor starts* to stop it opening by itself.
+
 When you open a hosted workspace from a course, the Student view opens that
 course directly and shows its welcome or first released exercise instructions.
 This also switches an already-running workspace to the course you launched.
