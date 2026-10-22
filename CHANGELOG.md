@@ -3,6 +3,10 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2026.10.7
+
+- The retired feedback repository is no longer linked; the welcome page and the extension's bug-report link use contact@computor.at.
+
 ## 2026.10.6
 
 - A new Welcome to Computor page opens after sign-in and walks you through your first assignment.
