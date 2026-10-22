@@ -3,6 +3,10 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2026.10.5
+
+- Links inside the help pages now stay in the help view in the browser editor.
+
 ## 2026.10.4
 
 - Support Lena, legacy Luna and AI tutor mention aliases in autocomplete; the
