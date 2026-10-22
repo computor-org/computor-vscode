@@ -17,6 +17,8 @@ export interface MarkdownPreviewOptions {
   isCurrent?: () => boolean;
   /** Reserve priority before loading a description asynchronously. */
   request?: MarkdownPreviewRequest;
+  /** Heading to scroll to once rendered (the `#part` of a link that led here). */
+  fragment?: string;
 }
 
 export interface MarkdownPreviewRequest {
@@ -173,8 +175,8 @@ async function renderMarkdownPreview(
     });
     // Registered once for the panel's lifetime; every render retargets it via
     // previewDir. A link between two documents (the help pages point at each
-    // other) is otherwise a dead click: the webview resolves it against its own
-    // vscode-webview: origin and VS Code drops the navigation
+    // other) would otherwise resolve against the webview's own origin: a dead
+    // click on the desktop, a "Not found" browser tab on code-server
     // (computor-org/issues#325).
     previewPanel.webview.onDidReceiveMessage(async (message) => {
       if (message?.command !== 'openRelativeDocument' || typeof message.href !== 'string') {
@@ -192,7 +194,10 @@ async function renderMarkdownPreview(
         void vscode.window.showWarningMessage(`Cannot open '${message.href}' — no such document.`);
         return;
       }
-      await showMarkdownPreview(previewContext, target);
+      const hash = message.href.indexOf('#');
+      await showMarkdownPreview(previewContext, target, {
+        fragment: hash >= 0 ? message.href.slice(hash + 1) : undefined
+      });
     });
   } else {
     previewPanel.webview.options = webviewOptions;
@@ -208,8 +213,13 @@ async function renderMarkdownPreview(
     title,
     bodyHtml: '<div class="markdown-body" id="content"></div>',
     cssFiles: ['vendor/katex-inline.css', 'shared/markdown-preview.css'],
-    scriptFiles: ['vendor/marked.min.js', 'vendor/katex.min.js', 'shared/markdown.js'],
-    initialState: { markdown, baseUri, inlineImages: options.inlineImages },
+    scriptFiles: [
+      'vendor/marked.min.js',
+      'vendor/katex.min.js',
+      'shared/markdown.js',
+      'shared/markdown-links.js'
+    ],
+    initialState: { markdown, baseUri, inlineImages: options.inlineImages, fragment: options.fragment },
     inlineScript: `
       const state = window.__INITIAL_STATE__ || {};
       const el = document.getElementById('content');
@@ -233,32 +243,17 @@ async function renderMarkdownPreview(
         el.textContent = state.markdown || '';
       }
 
+      if (state.fragment) {
+        window.ComputorWebview.scrollToFragment(document, state.fragment);
+      }
+
+      // Links to other documents open here, through the host; see
+      // webview-ui/shared/markdown-links.js for why they must not reach
+      // VS Code's own link handler (computor-org/issues#325).
       el.addEventListener('click', function (event) {
-        const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
-        if (!anchor) return;
-        const href = anchor.getAttribute('href') || '';
-        if (!href) return;
-
-        // Table-of-contents links: the webview has no navigable location, so
-        // scroll to the heading ourselves.
-        if (href.charAt(0) === '#') {
-          event.preventDefault();
-          let id = href.slice(1);
-          try { id = decodeURIComponent(id); } catch (e) { /* keep the raw id */ }
-          const heading = document.getElementById(id);
-          if (heading && heading.scrollIntoView) heading.scrollIntoView({ block: 'start' });
-          return;
-        }
-
-        // Leave real URLs to the host — it opens them in the browser.
-        const lower = href.toLowerCase();
-        const external = lower.indexOf('http:') === 0 || lower.indexOf('https:') === 0
-          || lower.indexOf('mailto:') === 0 || lower.indexOf('command:') === 0
-          || lower.indexOf('data:') === 0 || href.indexOf('//') === 0 || href.indexOf('vscode-') === 0;
-        if (external) return;
-
-        event.preventDefault();
-        vscode.postMessage({ command: 'openRelativeDocument', href: href });
+        window.ComputorWebview.handleMarkdownLinkClick(event, document, function (message) {
+          vscode.postMessage(message);
+        });
       });
     `
   });
