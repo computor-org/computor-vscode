@@ -1,0 +1,107 @@
+/*
+ * Layout for the welcome page. Primitives (header, section, stack, btn, badge,
+ * notice, table) come from shared/base.css, and so do the colours: the Git
+ * samples use its --c-git-* tokens, which follow the user's theme.
+ */
+
+/* Paragraphs sit in .stack columns, whose gap owns the spacing. */
+.welcome-page p {
+  margin: 0;
+}
+
+.welcome-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.welcome-logo {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  border-radius: var(--radius-lg);
+}
+
+.welcome-courses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.welcome-course {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.welcome-steps {
+  margin: 0;
+  padding-left: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  line-height: 1.5;
+}
+
+/* A button beside the sentence that says what is behind it. */
+.welcome-links {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+}
+@media (max-width: 480px) {
+  .welcome-links {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Gutter bar, as the editor draws it beside a changed line. */
+.git-line {
+  display: inline-block;
+  width: 3px;
+  height: 1.2em;
+  margin-right: var(--sp-2);
+  vertical-align: middle;
+}
+.git-line.added {
+  background: var(--c-git-line-added);
+}
+.git-line.modified {
+  background: var(--c-git-line-modified);
+}
+.git-line.deleted {
+  background: var(--c-git-line-deleted);
+}
+
+/* A file name as the Explorer colours it, with its status letter. */
+.git-file {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+.git-file.untracked {
+  color: var(--c-git-file-untracked);
+}
+.git-file.modified {
+  color: var(--c-git-file-modified);
+}
+.git-letter {
+  margin-left: var(--sp-3);
+  font-weight: 600;
+}
+
+.welcome-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.welcome-startup {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+}
