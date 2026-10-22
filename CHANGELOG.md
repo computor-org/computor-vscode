@@ -3,6 +3,13 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2026.10.6
+
+- A new Welcome to Computor page opens after sign-in and walks you through your first assignment.
+  Open it again any time from Computor: Welcome and Help.
+- After a Computor workspace installs a newer version of the extension in place, a notice
+  offers Reload Window to switch to it. Nothing reloads on its own.
+
 ## 2026.10.5
 
 - Links inside the help pages now stay in the help view in the browser editor.
