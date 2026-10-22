@@ -3,6 +3,11 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.5
+
+- After a Computor workspace installs a newer version of the extension in place, a notice
+  offers Reload Window to switch to it. Nothing reloads on its own.
+
 ## 2027.3.4
 
 - A new Welcome to Computor page opens after sign-in and walks you through your first assignment.
