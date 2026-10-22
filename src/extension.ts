@@ -32,6 +32,7 @@ import { BackendConnectionService } from './services/BackendConnectionService';
 import { CredentialRecoveryService } from './services/CredentialRecoveryService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
 import { ExtensionUpdateService } from './services/ExtensionUpdateService';
+import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
@@ -1993,6 +1994,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const settingsManager = new ComputorSettingsManager(context);
   extensionUpdateService = new ExtensionUpdateService(context, settingsManager);
+  // A workspace that installed a newer version of this extension in place
+  // offers a window reload (set only in Coder workspaces).
+  context.subscriptions.push(watchInstalledUpdates(
+    process.env.COMPUTOR_EXTENSION_UPDATE_MARKER,
+    String((context.extension.packageJSON as { version?: string }).version ?? '0.0.0')
+  ));
 
   // How the workspace looked when it was last closed: which container was
   // open, which nodes were expanded, what was selected. Set up before any
