@@ -17,6 +17,7 @@ import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '..
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { notify } from '../utils/notify';
+import { resolveContentLanguage } from '../utils/contentLanguage';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { pickLatestSubmissionArtifactId, sortSubmissionArtifactsByRecency } from '../utils/submissionArtifacts';
 import { tutorTestTargetFor } from '../ui/tree/tutor/tutorTestTarget';
@@ -1227,7 +1228,7 @@ export class TutorCommands {
       }
 
       // Find and open README file
-      await this.openReadmeFromDirectory(descriptionPath);
+      await this.openReadmeFromDirectory(descriptionPath, content.course_id);
     } catch (error: any) {
       notify.error(`Failed to show README: ${error?.message || error}`);
     }
@@ -1238,16 +1239,19 @@ export class TutorCommands {
    * Supports both README and index naming patterns (e.g., README_en.md, index_de.md).
    * Searches recursively in case files are in subdirectories.
    */
-  private async openReadmeFromDirectory(dir: string): Promise<void> {
-    let preferredLanguage: string | null = null;
-
-    // Try to get language preference
+  private async openReadmeFromDirectory(dir: string, courseId?: string): Promise<void> {
+    // Profile language, else the course's own language, else English.
+    let userLanguage: string | null | undefined;
+    let courseLanguage: string | null | undefined;
     try {
-      const userAccount = await this.apiService.getUserAccount();
-      preferredLanguage = userAccount?.profile?.language_code || null;
+      userLanguage = (await this.apiService.getUserAccount())?.profile?.language_code;
+      if (!userLanguage && courseId) {
+        courseLanguage = (await this.apiService.getCourse(courseId))?.language_code;
+      }
     } catch {
       // Ignore language preference errors
     }
+    const preferredLanguage = resolveContentLanguage(userLanguage, courseLanguage);
 
     // Matches README.md, README_en.md, index.md, index_de.md, etc.
     const descriptionPattern = /^(README|index)(_[a-z]{2})?\.md$/i;
