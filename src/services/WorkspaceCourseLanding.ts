@@ -1,10 +1,13 @@
 import JSZip from 'jszip';
 import type * as vscode from 'vscode';
 import type { ComputorApiService } from './ComputorApiService';
-import type { CourseContentStudentList, CourseStudentList } from '../types/generated';
+import type { CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { descriptionHeading, localizedUnitTitle, resolveContentLanguage, withoutLeadingHeading } from '../utils/contentLanguage';
 import { showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
+import { courseWelcomeItem, firstReleasedCourseItem } from '../utils/courseStart';
+
+export { firstReleasedCourseItem };
 
 /** Read only the canonical description, in memory; never extract arbitrary ZIP paths. */
 export async function readStudentDescription(archive: Buffer, preferred?: string | null): Promise<string | undefined> {
@@ -21,23 +24,6 @@ export async function readStudentDescription(archive: Buffer, preferred?: string
   if (!chosen) return undefined;
   const file = zip.file(chosen);
   return file ? file.async('string') : undefined;
-}
-
-export function firstReleasedCourseItem(contents: CourseContentStudentList[]): CourseContentStudentList | undefined {
-  const byPath = new Map(contents.map(content => [content.path, content]));
-  const ancestry = (content: CourseContentStudentList): number[] => content.path.split('.')
-    .map((_, index, parts) => byPath.get(parts.slice(0, index + 1).join('.'))?.position ?? 0);
-  return contents.filter(content => content.visible_effective !== false
-    && content.course_content_kind_id === 'assignment'
-    && (content.deployment?.deployment_status === 'deployed' || Boolean(content.deployment?.deployed_at)))
-    .sort((a, b) => {
-      const left = ancestry(a), right = ancestry(b);
-      for (let index = 0; index < Math.min(left.length, right.length); index++) {
-        const difference = left[index]! - right[index]!;
-        if (difference) return difference;
-      }
-      return left.length - right.length || a.path.localeCompare(b.path);
-    })[0];
 }
 
 /** Inline only static instruction images; no workspace files or repository checkout. */
@@ -60,13 +46,6 @@ export async function studentDescriptionImages(archive: Buffer): Promise<Record<
   return images;
 }
 
-function welcomeItem(contents: CourseContentStudentList[]): CourseContentStudentList | undefined {
-  return contents.find(content => content.visible_effective !== false
-    && content.course_content_kind_id !== 'assignment' && Boolean(content.description?.trim())
-    && (/^(welcome(?:\s*\/\s*start here)?|willkommen|getting[ _-]started|start[ _-]here|start|introduction|einführung)$/i.test(content.title?.trim() ?? '')
-      || /^(welcome|willkommen|start_here|getting_started|introduction)$/.test(content.path.split('.').pop()?.toLowerCase() ?? '')));
-}
-
 /** Open instructions without cloning, provisioning, or inspecting other courses. */
 export async function showWorkspaceCourseLanding(
   context: vscode.ExtensionContext,
@@ -74,7 +53,7 @@ export async function showWorkspaceCourseLanding(
   course: CourseStudentList
 ): Promise<void> {
   const contents = await api.getStudentCourseContents(course.id, { throwOnError: true });
-  const welcome = welcomeItem(contents);
+  const welcome = courseWelcomeItem(contents);
   const title = course.title || course.path;
   if (welcome) {
     await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`);
