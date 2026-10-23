@@ -11,6 +11,7 @@ import {
   renderWelcomeBody,
   resolveWelcomeMessage,
   welcomeRoleContainers,
+  welcomeLanguage,
   welcomeTitle,
   WelcomeApi,
   WelcomeIntent,
@@ -97,6 +98,9 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
     const facts = await collectWelcomeFacts(this.sources.api(), this.sources.launchedCourseId?.());
     return {
       ...facts,
+      // Before sign-in there is no profile to ask, so the page follows the
+      // display language VS Code itself uses (computor-org/issues#366).
+      language: facts.language ?? welcomeLanguage(vscode.env.language),
       inBrowser: vscode.env.uiKind === vscode.UIKind.Web,
       workbenchLanguage: vscode.env.language?.toLowerCase().startsWith('de') ? 'de' : 'en',
       backendUrl: await this.sources.backendUrl().catch(() => undefined),
@@ -170,6 +174,10 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
       }
       case 'login':
         await vscode.commands.executeCommand('computor.login');
+        return;
+      case 'setBackend':
+        await vscode.commands.executeCommand('computor.changeRealmUrl');
+        await this.refresh();
         return;
       case 'reportProblem':
         await vscode.commands.executeCommand('computor.reportProblem');
