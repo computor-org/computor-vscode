@@ -596,10 +596,12 @@ async function handleComputorWorkspaceDetected(
       });
 
       if (ok) {
-        notify.info(`Logged in (workspace token): ${baseUrl}`);
+        // Managed workspaces sign in automatically; the status bar shows the connection.
+        console.log(`Logged in with workspace token: ${baseUrl}`);
         return;
       }
       console.warn('Workspace API token login failed, falling back to stored session');
+      void notify.warning('Automatic sign-in to this Computor workspace failed. Trying your stored session instead.');
     }
 
     // Priority 2: silently restore a stored session (if auto-login is enabled)
