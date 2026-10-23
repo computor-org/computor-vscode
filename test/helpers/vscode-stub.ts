@@ -226,6 +226,7 @@ export const env = {
   clipboard: { readText: notImplemented('env.clipboard.readText'), writeText: notImplemented('env.clipboard.writeText') },
   openExternal: notImplemented('env.openExternal'),
   uiKind: UIKind.Desktop as number,
+  language: 'en',
   remoteName: undefined as string | undefined
 };
 
