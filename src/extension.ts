@@ -1071,7 +1071,21 @@ class UnifiedController {
       });
       this.workspaceLaunchFocused = true;
       const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
-      if (course) await showWorkspaceCourseLanding(this.context, api, course);
+      const resumeAt = course ? await showWorkspaceCourseLanding(this.context, api, course) : undefined;
+      if (resumeAt) {
+        // A returning learner sees the row they go on with, inside its expanded unit (computor-org/issues#525).
+        const row = await findInTree(handle.tracked, candidate => candidate.id === resumeAt.id, candidate => {
+          const id = typeof candidate.id === 'string' ? candidate.id : '';
+          if (id.startsWith('course-')) return id === `course-${courseId}`;
+          return candidate.collapsibleState !== vscode.TreeItemCollapsibleState.None
+            && !(candidate.contextValue ?? '').startsWith('studentCourseContent.assignment');
+        });
+        if (row) {
+          await suppressSelectionSideEffects(async () => {
+            await handle.view.reveal(row, { select: true, focus: false, expand: false });
+          }).catch(err => console.warn('[openCourse] Could not reveal the next exercise:', err));
+        }
+      }
       void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
       return true;
     };
