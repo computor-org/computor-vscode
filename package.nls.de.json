@@ -1,0 +1,11 @@
+{
+  "walkthrough.student.title": "Erste Schritte mit Computor",
+  "walkthrough.student.description": "Von deinem Kurs zur abgegebenen Lösung, mit den Symbolen, wie sie an einer Aufgabenzeile erscheinen.",
+  "walkthrough.student.row.altText": "Eine Aufgabenzeile in der Student-Ansicht mit ihrer Markierung (A), ihren Zählern (B) und ihren fünf Symbolen, von links nach rechts nummeriert von 1 bis 5.",
+  "walkthrough.student.openCourse.title": "Öffne deinen Kurs",
+  "walkthrough.student.openCourse.description": "Deine Kurse findest du in der Student-Ansicht hinter dem Buch in der Aktivitätsleiste. Ein Klick auf den Titel einer Aufgabe zeigt die Anleitung, ein Klick auf den Pfeil davor holt ihre Dateien.\n[Student-Ansicht öffnen](command:computor.student.courses.focus)",
+  "walkthrough.student.testAndSubmit.title": "Testen und abgeben",
+  "walkthrough.student.testAndSubmit.description": "Die Symbole an einer Aufgabenzeile erscheinen, sobald die Maus über der Zeile steht: (1) Show README Preview, (2) Commit Assignment, (3) Test Assignment, (4) Submit, (5) Show Messages. Teste zuerst und gib dann ab. Erledigt ist die Aufgabe, wenn ihr Quadrat das grüne Doppelhäkchen trägt.",
+  "walkthrough.student.welcomePage.title": "Willkommensseite und Hilfe",
+  "walkthrough.student.welcomePage.description": "Die Willkommensseite erklärt jedes Symbol und jede Markierung an einer Zeile und verlinkt die Hilfeseiten.\n[Willkommensseite öffnen](command:computor.welcome)"
+}

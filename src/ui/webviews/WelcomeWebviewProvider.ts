@@ -98,8 +98,18 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
       backendUrl: await this.sources.backendUrl().catch(() => undefined),
       version: this.context.extension?.packageJSON?.version,
       showOnStartup: isWelcomeShownOnStartup(this.context),
-      logoDataUri: this.logoDataUri()
+      logoDataUri: this.logoDataUri(),
+      rowPictureSvg: this.rowPictureSvg()
     };
+  }
+
+  /** The annotated assignment row, shared with the walkthrough (package.json). */
+  private rowPictureSvg(): string | undefined {
+    try {
+      return fs.readFileSync(path.join(this.context.extensionPath, 'media', 'welcome', 'assignment-row.svg'), 'utf8').trim();
+    } catch {
+      return undefined;
+    }
   }
 
   private logoDataUri(): string | undefined {

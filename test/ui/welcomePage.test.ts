@@ -11,6 +11,8 @@ import {
   WelcomeModel
 } from '../../src/ui/webviews/welcome/welcomeContent';
 import { isWelcomeShownOnStartup, WelcomeWebviewProvider } from '../../src/ui/webviews/WelcomeWebviewProvider';
+import { codicon, codiconPaths, CodiconName } from '../../src/ui/webviews/welcome/codicons';
+import { contentIconSvg } from '../../src/utils/contentIconSvg';
 
 /**
  * The welcome page (computor-org/issues#374).
@@ -112,6 +114,69 @@ describe('welcome page content', () => {
       expect(html).to.contain(`class="${sample}"`);
     }
     expect(html).to.contain('<span class="git-letter">M</span>');
+  });
+
+  describe('anchored on the icons a row really shows (computor-org/issues#526)', () => {
+    const rowPicture = fs.readFileSync(path.join(process.cwd(), 'media/welcome/assignment-row.svg'), 'utf8').trim();
+
+    it('draws each icon a step names next to its tooltip text', () => {
+      const html = renderWelcomeBody(model());
+
+      const named: Array<[CodiconName, string]> = [['open-preview', 'Show README Preview'], ['git-commit', 'Commit Assignment'],
+        ['beaker', 'Test Assignment'], ['cloud-upload', 'Submit'], ['comment-discussion', 'Show Messages'], ['book', 'Show Description']];
+      for (const [icon, label] of named) {
+        expect(html, label).to.contain(`${codicon(icon)}<em>${label}</em>`);
+      }
+      expect(html).to.contain(`${codicon('book')} <strong>Computor Student</strong>`);
+    });
+
+    it('says the icons appear on hover and numbers them in the order of the row', () => {
+      const html = renderWelcomeBody(model({ rowPictureSvg: rowPicture }));
+
+      expect(html).to.contain('Its icons appear only while the mouse is over the row or the row is selected.');
+      expect(html).to.contain(rowPicture);
+      const legend = html.slice(html.indexOf('class="welcome-row-legend"'));
+      const order = ['Show README Preview', 'Commit Assignment', 'Test Assignment', 'Submit', 'Show Messages']
+        .map(label => legend.indexOf(`<em>${label}</em>`));
+      expect(order.every(position => position >= 0)).to.equal(true);
+      expect([...order].sort((a, b) => a - b)).to.deep.equal(order);
+      // Test and Submit are explained before the long step list, so they sit above the fold.
+      expect(html.indexOf('<em>Submit</em>')).to.be.lessThan(html.indexOf('<strong>Open the Student view.</strong>'));
+    });
+
+    it('leaves the picture and its letters out when the picture cannot be read', () => {
+      const html = renderWelcomeBody(model());
+
+      expect(html).to.not.contain('welcome-row-picture');
+      expect(html).to.not.contain('welcome-callout letter');
+      expect(html).to.contain('<em>Test Assignment</em>');
+    });
+
+    it('explains the row marks with the markers the tree draws, and what done looks like', () => {
+      const html = renderWelcomeBody(model({ language: 'de' }));
+
+      expect(has(html, 'welcome-marks')).to.equal(true);
+      const done = contentIconSvg('#FFFF00', 'square', 'success-submitted');
+      expect(html).to.contain(`${done}</span></div><p><strong>Erledigt:</strong> alle Tests bestanden und abgegeben.</p>`);
+      expect(html).to.contain('wenn ihr Quadrat das grüne Doppelhäkchen trägt');
+      for (const badge of ['success', 'failure', 'failure-submitted', 'submitted'] as const) {
+        expect(html, badge).to.contain(contentIconSvg('#FFFF00', 'square', badge));
+      }
+      expect(html).to.contain(contentIconSvg('#00FF00', 'circle'));
+      expect(html).to.contain('<code>(1)(1) 100%</code>');
+      expect(html).to.contain('<code>●</code> <code>↑</code> <code>⚠</code>');
+    });
+
+    it('keeps the Git colours, the other edition and the staff help below a More heading', () => {
+      const html = renderWelcomeBody(model({ roles: ['student', 'tutor'] }));
+
+      const more = html.indexOf('id="welcome-more"');
+      expect(more).to.be.greaterThan(html.indexOf('id="welcome-marks"'));
+      expect(more).to.be.greaterThan(html.indexOf('id="welcome-help"'));
+      for (const below of ['welcome-staff', 'welcome-git-colours', 'welcome-browser', 'welcome-credits']) {
+        expect(html.indexOf(`id="${below}"`), below).to.be.greaterThan(more);
+      }
+    });
   });
 
   describe('the other edition', () => {
@@ -467,6 +532,14 @@ describe('WelcomeWebviewProvider', () => {
     expect(html).to.contain('Computor extension 9.9.9');
   });
 
+  it('inlines the annotated assignment row from media/', async () => {
+    await provider().open();
+
+    const svg = fs.readFileSync(path.join(extensionRoot, 'media/welcome/assignment-row.svg'), 'utf8').trim();
+    expect(latestHtml()).to.contain(`class="welcome-row-picture" role="img"`);
+    expect(latestHtml()).to.contain(svg);
+  });
+
   it('shows the desktop pointer in the browser and the browser pointer on the desktop', async () => {
     env.uiKind = UIKind.Web;
     await provider().open();
@@ -549,5 +622,46 @@ describe('welcome page contributions', () => {
       expect(entry?.when).to.contain(`view == ${view}`);
     }
     expect(entry?.group).to.match(/^navigation@/);
+  });
+
+  it('draws the assignment row with the icons of package.json, in their order', () => {
+    const svg = fs.readFileSync(path.join(process.cwd(), 'media/welcome/assignment-row.svg'), 'utf8');
+    const icons = pkg.contributes.menus['view/item/context']
+      .filter((m: { when?: string; group?: string; command: string }) =>
+        (m.when ?? '').includes('^studentCourseContent\\.assignment') && m.when!.includes('view == computor.student.courses')
+        && /^inline@/.test(m.group ?? '') && m.command !== 'computor.student.submitDownload')
+      .sort((a: { group: string }, b: { group: string }) => Number(a.group.split('@')[1]) - Number(b.group.split('@')[1]))
+      .map((m: { command: string }) => pkg.contributes.commands.find((c: { command: string }) => c.command === m.command).icon.replace(/^\$\((.*)\)$/, '$1'));
+
+    expect(icons).to.deep.equal(['open-preview', 'git-commit', 'beaker', 'cloud-upload', 'comment-discussion']);
+    const positions = icons.map((icon: CodiconName) => svg.indexOf(codiconPaths[icon]));
+    expect(positions.every((position: number) => position >= 0), 'every icon is drawn').to.equal(true);
+    expect([...positions].sort((a, b) => a - b)).to.deep.equal(positions);
+    expect(svg).to.contain(contentIconSvg('#FFFF00', 'square', 'success-submitted'));
+  });
+
+  it('offers a walkthrough that reuses the row picture, in English and German', () => {
+    const [walkthrough] = pkg.contributes.walkthroughs;
+    const en = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
+    const de = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.de.json'), 'utf8'));
+    const keys = JSON.stringify(walkthrough).match(/%[^%"]+%/g)!.map(key => key.slice(1, -1));
+
+    expect(keys.length).to.be.greaterThan(0);
+    for (const key of keys) {
+      expect(en[key], key).to.be.a('string');
+      expect(de[key], key).to.be.a('string');
+    }
+    expect(Object.keys(de).sort()).to.deep.equal(Object.keys(en).sort());
+    for (const step of walkthrough.steps) {
+      expect(fs.existsSync(path.join(process.cwd(), step.media.svg)), step.id).to.equal(true);
+    }
+    const commands = new Set(pkg.contributes.commands.map((c: { command: string }) => c.command));
+    for (const text of Object.values(en) as string[]) {
+      for (const [, command] of text.matchAll(/\(command:([\w.]+)\)/g)) {
+        const view = command!.replace(/\.focus$/, '');
+        const known = commands.has(command!) || pkg.contributes.views['computor-student']?.some((v: { id: string }) => v.id === view);
+        expect(known, command).to.equal(true);
+      }
+    }
   });
 });

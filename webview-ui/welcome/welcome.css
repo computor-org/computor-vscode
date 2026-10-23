@@ -105,3 +105,106 @@
   gap: var(--sp-2);
   cursor: pointer;
 }
+
+/* A codicon in running text, the size of the text beside it. */
+.welcome-page .codicon {
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+}
+
+/* A row action as the tree shows it: icon, then tooltip text. */
+.welcome-action {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  white-space: nowrap;
+}
+.welcome-action .codicon {
+  align-self: center;
+}
+
+/* The annotated assignment row (media/welcome/assignment-row.svg). */
+.welcome-row {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.welcome-row-picture svg {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+}
+.welcome-row-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  gap: var(--sp-1) var(--sp-2);
+  align-items: center;
+}
+.welcome-row-legend li {
+  display: contents;
+}
+/* A letter has no icon: its text spans the icon and meaning columns. */
+.welcome-row-legend .letter + span {
+  grid-column: span 2;
+}
+.welcome-callout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--vscode-focusBorder, #0078d4);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+}
+.welcome-callout.letter {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: 1.5px solid var(--vscode-focusBorder, #0078d4);
+}
+@media (max-width: 480px) {
+  .welcome-row-legend {
+    grid-template-columns: max-content 1fr;
+  }
+  .welcome-row-legend li > .text-muted {
+    grid-column: 2;
+  }
+}
+
+/* The marks on a row, each drawn as the tree draws it. */
+.welcome-marks {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+}
+.welcome-mark-sample {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.welcome-mark svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* Divides what a learner needs on day one from the rest. */
+.welcome-more {
+  margin: var(--sp-4) 0 0;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--c-border);
+}
+@media (max-width: 480px) {
+  .welcome-row-legend .letter + span {
+    grid-column: auto;
+  }
+}

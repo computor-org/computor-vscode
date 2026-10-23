@@ -3004,7 +3004,52 @@
           "group": "4_explorer@6"
         }
       ]
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "computor.student.getStarted",
+        "title": "%walkthrough.student.title%",
+        "description": "%walkthrough.student.description%",
+        "steps": [
+          {
+            "id": "openCourse",
+            "title": "%walkthrough.student.openCourse.title%",
+            "description": "%walkthrough.student.openCourse.description%",
+            "media": {
+              "svg": "media/welcome/assignment-row.svg",
+              "altText": "%walkthrough.student.row.altText%"
+            },
+            "completionEvents": [
+              "onView:computor.student.courses"
+            ]
+          },
+          {
+            "id": "testAndSubmit",
+            "title": "%walkthrough.student.testAndSubmit.title%",
+            "description": "%walkthrough.student.testAndSubmit.description%",
+            "media": {
+              "svg": "media/welcome/assignment-row.svg",
+              "altText": "%walkthrough.student.row.altText%"
+            },
+            "completionEvents": [
+              "onCommand:computor.student.submitAssignment"
+            ]
+          },
+          {
+            "id": "welcomePage",
+            "title": "%walkthrough.student.welcomePage.title%",
+            "description": "%walkthrough.student.welcomePage.description%",
+            "media": {
+              "svg": "media/welcome/assignment-row.svg",
+              "altText": "%walkthrough.student.row.altText%"
+            },
+            "completionEvents": [
+              "onCommand:computor.welcome"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
