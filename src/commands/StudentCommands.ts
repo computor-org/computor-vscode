@@ -30,6 +30,8 @@ import { execAsyncWithTimeout } from '../utils/exec';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
 import { notify } from '../utils/notify';
+import { getTreeHandle } from '../ui/treeRegistry';
+import { assignmentForFile, assignmentFromSelection, AssignmentItem, confirmationPrompt, NO_ASSIGNMENT_HINT, submittedMessage } from '../utils/assignmentTarget';
 import { revealUri } from '../utils/reveal';
 import { submissionBudget, testBudget, type Budget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
@@ -95,6 +97,58 @@ export class StudentCommands {
     }
     this.contentDetailsWebviewProvider = new StudentCourseContentDetailsWebviewProvider(context);
     void this.courseContentTreeProvider; // Unused for now
+  }
+
+  /**
+   * The assignment a test/submit command acts on: the row it was invoked on,
+   * else the highlighted row of the Student tree, else the assignment that owns
+   * the file in the active editor. `implicit` marks the last two, which come
+   * from the palette and therefore get a confirmation (computor-org/issues#470).
+   */
+  private async resolveAssignmentTarget(
+    arg: any,
+    action: string
+  ): Promise<{ item: AssignmentItem; implicit: boolean } | undefined> {
+    if (arg?.courseContent) {
+      return { item: arg, implicit: false };
+    }
+
+    const selected = assignmentFromSelection(getTreeHandle('computor.student.courses')?.view.selection);
+    if (selected) {
+      return { item: selected, implicit: true };
+    }
+
+    const filePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+    if (filePath) {
+      try {
+        const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
+        if (courseId) {
+          const contents = await this.apiService.getStudentCourseContents(courseId) || [];
+          if (this.repositoryManager) {
+            this.repositoryManager.updateExistingRepositoryPaths(courseId, contents);
+          }
+          const fromFile = assignmentForFile(
+            contents, filePath, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+          );
+          if (fromFile) {
+            return { item: fromFile, implicit: true };
+          }
+        }
+      } catch (error) {
+        console.warn('[resolveAssignmentTarget] Could not resolve the open file:', error);
+      }
+    }
+
+    notify.warning(NO_ASSIGNMENT_HINT(action));
+    return undefined;
+  }
+
+  /** Name the assignment a palette command is about to act on and ask first. */
+  private async confirmAssignmentAction(item: any, kind: 'test' | 'submit'): Promise<boolean> {
+    const title = item?.courseContent?.title || item?.courseContent?.path || 'this assignment';
+    const { message, detail, verb } = confirmationPrompt(kind, title);
+    const choice = await vscode.window.showInformationMessage(message, { modal: true, detail }, verb);
+    return choice === verb;
   }
 
   /**
@@ -1178,10 +1232,22 @@ export class StudentCommands {
     });
 
     register('computor.student.submitAssignment', async (
-      itemOrSubmissionGroup: any,
+      arg?: any,
       options?: { budgetConfirmed?: boolean }
     ) => {
       try {
+        let itemOrSubmissionGroup: any = arg;
+        if (!arg) {
+          const resolved = await this.resolveAssignmentTarget(arg, 'Submit');
+          if (!resolved) {
+            return;
+          }
+          itemOrSubmissionGroup = resolved.item;
+          if (!options?.budgetConfirmed && !await this.confirmAssignmentAction(resolved.item, 'submit')) {
+            return;
+          }
+        }
+
         // Hidden content refuses everything, so check it before the budget:
         // "not available" is the true reason, a quota message would mislead.
         if (await this.visibilityBlocks(itemOrSubmissionGroup)) {
@@ -1640,7 +1706,7 @@ export class StudentCommands {
               + 'Make a change, then submit again.'
             );
           } else if (submissionResponse) {
-            const successMessage = 'Assignment submitted successfully.';
+            const successMessage = submittedMessage(assignmentTitle ?? 'the assignment', submissionVersion);
 
             notify.info(successMessage);
           } else {
@@ -1756,12 +1822,18 @@ export class StudentCommands {
     });
 
     // Test assignment (includes commit, push, and test submission)
-    register('computor.student.testAssignment', async (item: any) => {
-      console.log('[TestAssignment] Item received:', item);
-      
-      // The item is a CourseContentItem from StudentCourseContentTreeProvider
-      if (!item || !item.courseContent) {
-        notify.error('No assignment selected');
+    register('computor.student.testAssignment', async (arg?: any) => {
+      console.log('[TestAssignment] Item received:', arg);
+
+      // A tree row or its icon passes the item; the Command Palette passes
+      // nothing, so the target comes from the selection or the open file and
+      // the student confirms it before anything is committed or uploaded.
+      const resolved = await this.resolveAssignmentTarget(arg, 'Test Assignment');
+      if (!resolved) {
+        return;
+      }
+      const item: any = resolved.item;
+      if (resolved.implicit && !await this.confirmAssignmentAction(item, 'test')) {
         return;
       }
 
