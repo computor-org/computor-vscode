@@ -5,6 +5,7 @@ on:
     branches: [main, 'release/**', 'refactor/**', 'tests/**', 'feat/**', 'fix/**', 'chore/**', 'ci/**']
   pull_request:
     branches: [main, 'release/**']
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,6 +16,8 @@ permissions:
 
 jobs:
   public-extension-host:
+    # Required jobs run in the merge queue, not on pull request events.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -31,6 +34,8 @@ jobs:
         env:
           VSCODE_TEST_VERSION: ${{ matrix.vscode }}
   check:
+    # Required jobs run in the merge queue, not on pull request events.
+    if: github.event_name != 'pull_request'
     name: type-check + lint + unit tests + build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -74,3 +79,12 @@ jobs:
           path: coverage/
           if-no-files-found: ignore
           retention-days: 7
+
+  # The single required check. On pull requests the jobs above are skipped and
+  # this passes; in the merge queue it fails unless every job succeeded.
+  ci-gate:
+    if: always()
+    needs: [public-extension-host, check]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = false
