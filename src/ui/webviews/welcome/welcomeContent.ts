@@ -2,7 +2,7 @@ import { escapeHtml } from '../shared/webviewHelpers';
 import { HELP_PAGES } from '../../../utils/studentHelpPages';
 import { TUTOR_HELP_PAGES } from '../../../utils/tutorHelpPages';
 import { resolveContentLanguage } from '../../../utils/contentLanguage';
-import { courseStartPointer } from '../../../utils/courseStart';
+import { courseStartPointer, hasStartedCourse } from '../../../utils/courseStart';
 import { contentIconSvg, ContentIconBadge, ContentIconCorner, ContentIconShape } from '../../../utils/contentIconSvg';
 import { codicon, CodiconName } from './codicons';
 import type { CourseContentStudentList } from '../../../types/generated';
@@ -32,6 +32,8 @@ export interface WelcomeLaunch {
   title: string;
   /** Where to begin, as the course tree shows it: "Woche 1 → Mathematische Konstanten". */
   startHere?: string;
+  /** The learner has started, so `startHere` is the next open assignment (computor-org/issues#525). */
+  resume?: boolean;
   /**
    * Listed in the self-enrolment catalog. Such a course has no human tutors;
    * questions go to the AI tutor Lena (computor-org/issues#458). Undefined
@@ -226,6 +228,7 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedC
     launch: launchedCourseId && launchedTitle ? {
       title: launchedTitle,
       startHere: courseStartPointer(contents, language),
+      resume: hasStartedCourse(contents),
       selfEnrolment: typeof launchedCourse?.public === 'boolean' ? launchedCourse.public : undefined
     } : undefined
   };
@@ -382,7 +385,7 @@ function renderHero(model: WelcomeModel, say: Say): string {
 function renderLaunch(launch: WelcomeLaunch, say: Say): string {
   const title = escapeHtml(launch.title);
   const start = launch.startHere
-    ? ` ${say('Start with', 'Beginne mit')} <strong>${escapeHtml(launch.startHere)}</strong>.`
+    ? ` ${launch.resume ? say('Continue with', 'Weiter mit') : say('Start with', 'Beginne mit')} <strong>${escapeHtml(launch.startHere)}</strong>.`
     : '';
   return `<div class="notice info welcome-launch">${say(
     `<strong>${title}</strong> is already open on the left.`,

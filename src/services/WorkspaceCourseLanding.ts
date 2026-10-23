@@ -1,12 +1,12 @@
 import JSZip from 'jszip';
 import type * as vscode from 'vscode';
 import type { ComputorApiService } from './ComputorApiService';
-import type { CourseStudentList } from '../types/generated';
+import type { CourseContentStudentList, CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { descriptionHeading, localizedUnitTitle, resolveContentLanguage, withoutLeadingHeading } from '../utils/contentLanguage';
 import { showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 import { SOURCE_COLUMN } from '../ui/editorLayout';
-import { courseWelcomeItem, firstReleasedCourseItem } from '../utils/courseStart';
+import { courseItemTrail, courseWelcomeItem, firstReleasedCourseItem, hasStartedCourse, nextOpenCourseItem } from '../utils/courseStart';
 
 export { firstReleasedCourseItem };
 
@@ -47,14 +47,18 @@ export async function studentDescriptionImages(archive: Buffer): Promise<Record<
   return images;
 }
 
-/** Open instructions without cloning, provisioning, or inspecting other courses. */
+/**
+ * Open instructions without cloning, provisioning, or inspecting other courses. A new learner lands on the course welcome or the first
+ * exercise; a returning learner on the next open exercise, which is returned so the caller can reveal its row (computor-org/issues#525).
+ */
 export async function showWorkspaceCourseLanding(
   context: vscode.ExtensionContext,
   api: ComputorApiService,
   course: CourseStudentList
-): Promise<void> {
+): Promise<CourseContentStudentList | undefined> {
   const contents = await api.getStudentCourseContents(course.id, { throwOnError: true });
-  const welcome = courseWelcomeItem(contents);
+  const started = hasStartedCourse(contents);
+  const welcome = started ? undefined : courseWelcomeItem(contents);
   const title = course.title || course.path;
   // A launch opens one document, full width in the first group, with the
   // Computor welcome page as a tab behind it rather than a second column
@@ -62,17 +66,17 @@ export async function showWorkspaceCourseLanding(
   // the auxiliary group as usual.
   if (welcome) {
     await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`, { viewColumn: SOURCE_COLUMN });
-    return;
+    return undefined;
   }
-  const first = firstReleasedCourseItem(contents);
-  let markdown = `# ${escapeHeading(title)}\n\n${course.description?.trim() ?? ''}`;
+  const item = started ? nextOpenCourseItem(contents) : firstReleasedCourseItem(contents);
+  let markdown = `# ${escapeHeading(title)}`;
   let inlineImages: Record<string, string> | undefined;
   const language = await landingLanguage(api, course.id);
   const copy = LANDING_COPY[language === 'de' ? 'de' : 'en'];
-  if (first) {
-    let description = first.description?.trim();
+  if (item) {
+    let description = item.description?.trim();
     try {
-      const archive = await api.downloadStudentCourseContentDescription(first.id);
+      const archive = await api.downloadStudentCourseContentDescription(item.id);
       if (archive) {
         description = await readStudentDescription(archive, language) || description;
         inlineImages = await studentDescriptionImages(archive);
@@ -80,21 +84,39 @@ export async function showWorkspaceCourseLanding(
     } catch (error) {
       console.warn('[WorkspaceCourseLanding] Could not load assignment instructions:', error);
     }
-    markdown += `\n\n${landingSection(first.title || first.path, description, language, copy.selectExercise)}`;
+    const name = item.title || item.path;
+    markdown += started
+      ? `\n\n${resumeLine(contents, item, language)}\n\n${landingSection(name, description, language, copy.selectExercise, null)}`
+      : `\n\n${course.description?.trim() ?? ''}\n\n${landingSection(name, description, language, copy.selectExercise)}`;
   } else {
-    markdown += `\n\n${copy.noExercises}`;
+    markdown += `\n\n${course.description?.trim() ?? ''}\n\n${started ? copy.allDone : copy.noExercises}`;
   }
   await showMarkdownTextPreview(context, markdown, title, { inlineImages, viewColumn: SOURCE_COLUMN });
+  return started ? item : undefined;
+}
+
+/** "**Weiter mit:** Woche 3 → Beta-Absorption (zuletzt getestet: 0 %)" */
+export function resumeLine(contents: CourseContentStudentList[], item: CourseContentStudentList, language: string): string {
+  const de = language === 'de';
+  const trail = courseItemTrail(contents, item, language) ?? (item.title || item.path);
+  const result = item.result?.result;
+  const percent = typeof result === 'number' ? Math.round(result * 100) : undefined;
+  const state = percent !== undefined
+    ? (de ? `zuletzt getestet: ${percent} %` : `last tested: ${percent}%`)
+    : (de ? 'noch nicht getestet' : 'not tested yet');
+  return `**${de ? 'Weiter mit' : 'Continue with'}:** ${escapeInline(trail)} (${state})`;
 }
 
 const LANDING_COPY = {
   de: {
     selectExercise: 'Wähle diese Aufgabe in der Kursübersicht, um mit der Arbeit zu beginnen.',
-    noExercises: 'Noch sind keine Aufgaben freigegeben. Kursmaterialien erscheinen in der Kursübersicht, sobald sie freigegeben sind.'
+    noExercises: 'Noch sind keine Aufgaben freigegeben. Kursmaterialien erscheinen in der Kursübersicht, sobald sie freigegeben sind.',
+    allDone: 'Du hast alle freigegebenen Aufgaben bestanden und abgegeben. Neue Aufgaben erscheinen in der Kursübersicht, sobald sie freigegeben sind.'
   },
   en: {
     selectExercise: 'Select this exercise in the course tree to start working.',
-    noExercises: 'No exercises are available yet. Course materials will appear in the course tree when released.'
+    noExercises: 'No exercises are available yet. Course materials will appear in the course tree when released.',
+    allDone: 'You have passed and handed in every released exercise. New exercises will appear in the course tree when released.'
   }
 };
 
@@ -111,16 +133,23 @@ async function landingLanguage(api: ComputorApiService, courseId: string): Promi
 }
 
 /**
- * The first exercise, set off from the course description by a rule and a label, under one heading: the description's own heading (it is
- * in the reading language) replaces the stored title instead of following it.
+ * The exercise, set off from what precedes it by a rule and, for a new learner, the label "First exercise", under one heading: the
+ * description's own heading (it is in the reading language) replaces the stored title instead of following it.
  */
-export function landingSection(title: string, description: string | undefined, language: string, fallback: string): string {
+export function landingSection(
+  title: string, description: string | undefined, language: string, fallback: string,
+  label: string | null = language === 'de' ? 'Erste Aufgabe' : 'First exercise'
+): string {
   const heading = descriptionHeading(description);
   const body = heading && description ? withoutLeadingHeading(description).trim() : description;
-  const label = language === 'de' ? 'Erste Aufgabe' : 'First exercise';
-  return `---\n\n*${label}*\n\n## ${heading ?? escapeHeading(localizedUnitTitle(title, language))}\n\n${body || fallback}`;
+  const labelLine = label ? `*${label}*\n\n` : '';
+  return `---\n\n${labelLine}## ${heading ?? escapeHeading(localizedUnitTitle(title, language))}\n\n${body || fallback}`;
 }
 
 function escapeHeading(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').replace(/([\\`*_{}[\]()#+.!<>])/g, '\\$1');
+}
+
+function escapeInline(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').replace(/([\\`*_{}[\]<>])/g, '\\$1');
 }
