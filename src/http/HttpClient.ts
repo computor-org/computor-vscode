@@ -217,6 +217,21 @@ export abstract class HttpClient {
 
       clearTimeout(timeoutId);
 
+      // After the session ends elsewhere (e.g. signing out in another tab) the
+      // gateway answers an API call with a redirect to the identity provider's
+      // login page, which fetch follows to a 200 text/html. No endpoint here
+      // returns a page, so that is an expired session, not data
+      // (computor-org/issues#481).
+      if (response.ok && config.responseType !== 'arraybuffer'
+        && (response.headers.get('content-type') ?? '').toLowerCase().includes('text/html')) {
+        throw new HttpError(
+          'Your session has expired. Please sign in again.',
+          401,
+          'Unauthorized',
+          null
+        );
+      }
+
       const responseData = await this.parseResponse<T>(response, config.responseType);
       const responseHeaders = this.parseHeaders(response.headers);
 
