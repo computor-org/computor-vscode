@@ -37,6 +37,7 @@ import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
+import { setUiCourseLanguage, setUiProfileLanguage } from './utils/uiLanguage';
 import { revealUri } from './utils/reveal';
 import {
   OrganizationTreeItem as LecturerOrganizationTreeItem,
@@ -890,6 +891,9 @@ class UnifiedController {
   ): Promise<void> {
     const report = onProgress || (() => {});
 
+    // The language of the extension's own rows and messages (uiLanguage).
+    setUiProfileLanguage((await api.getUserAccount().catch(() => undefined))?.profile?.language_code);
+
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
 
@@ -984,8 +988,9 @@ class UnifiedController {
       }
     }, this.disposables);
 
-    // A hosted course launch reads instructions first. Code setup remains lazy
-    // until the learner expands an assignment; unrelated courses are untouched.
+    // A hosted course launch reads instructions first; openCourse sets up the
+    // launched course's repository in the background after that. Unrelated
+    // courses are untouched.
 
     // Load expanded states to determine which courses need immediate update.
     // Only previously expanded courses will have their repositories updated on
@@ -1054,6 +1059,7 @@ class UnifiedController {
     const openCourse = async (courseId: string): Promise<boolean> => {
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
+      setUiCourseLanguage((await api.getCourse(courseId).catch(() => undefined))?.language_code);
       tree.setWorkspaceCourse(courseId);
       workspaceLaunchCourseId = courseId;
       // Initial launch runs before initializeViews enables its role contexts.
@@ -1075,6 +1081,10 @@ class UnifiedController {
       const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
       if (course) await showWorkspaceCourseLanding(this.context, api, course);
       void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
+      // With the instructions open, the code follows in the background, so Test
+      // and Submit are on the rows before the learner expands one.
+      void tree.prepareCourseRepository(courseId)
+        .catch(err => console.warn('[openCourse] Repository setup failed:', err));
       return true;
     };
     this.disposables.push(vscode.commands.registerCommand('computor.student.selectCourse', async () => {

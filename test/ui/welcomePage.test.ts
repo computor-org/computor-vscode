@@ -93,6 +93,18 @@ describe('welcome page content', () => {
     expect(html).to.contain('Commit Course');
   });
 
+  it('names commands and views as VS Code shows them, and the role badge in the page language', () => {
+    const german = renderWelcomeBody(model({ language: 'de', workbenchLanguage: 'de' }));
+    expect(german).to.contain('<em>Aufgabe testen</em>');
+    expect(german).to.contain('<strong>Ergebnisse</strong>');
+    expect(german).to.not.contain('Test Assignment');
+    expect(german).to.contain('>Studierende</span>');
+
+    // An English VS Code shows English tooltips, so a German page names those.
+    const mixed = renderWelcomeBody(model({ language: 'de' }));
+    expect(mixed).to.contain('<em>Test Assignment</em>');
+  });
+
   it('leaves the tutorial out for an account without a student role', () => {
     const html = renderWelcomeBody(model({ roles: ['lecturer'], courses: [] }));
 

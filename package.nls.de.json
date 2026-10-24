@@ -7,5 +7,17 @@
   "walkthrough.student.testAndSubmit.title": "Testen und abgeben",
   "walkthrough.student.testAndSubmit.description": "Die Symbole an einer Aufgabenzeile erscheinen, sobald die Maus über der Zeile steht: (1) Show README Preview, (2) Commit Assignment, (3) Test Assignment, (4) Submit, (5) Show Messages. Teste zuerst und gib dann ab. Erledigt ist die Aufgabe, wenn ihr Quadrat das grüne Doppelhäkchen trägt.",
   "walkthrough.student.welcomePage.title": "Willkommensseite und Hilfe",
-  "walkthrough.student.welcomePage.description": "Die Willkommensseite erklärt jedes Symbol und jede Markierung an einer Zeile und verlinkt die Hilfeseiten.\n[Willkommensseite öffnen](command:computor.welcome)"
+  "walkthrough.student.welcomePage.description": "Die Willkommensseite erklärt jedes Symbol und jede Markierung an einer Zeile und verlinkt die Hilfeseiten.\n[Willkommensseite öffnen](command:computor.welcome)",
+  "command.student.showPreview": "Anleitung anzeigen",
+  "command.student.commitAssignment": "Aufgabe sichern (Commit)",
+  "command.student.commitCourse": "Kurs sichern (Commit)",
+  "command.student.testAssignment": "Aufgabe testen",
+  "command.student.submit": "Abgeben",
+  "command.student.showMessages": "Nachrichten anzeigen",
+  "command.student.help": "Hilfe",
+  "command.showContentDescription": "Beschreibung anzeigen",
+  "view.results": "Ergebnisse",
+  "view.resultDetails": "Ergebnisdetails",
+  "view.resultTree": "Ergebnisliste",
+  "view.student.courses": "Kurse"
 }

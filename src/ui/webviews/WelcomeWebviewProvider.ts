@@ -98,6 +98,7 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
     return {
       ...facts,
       inBrowser: vscode.env.uiKind === vscode.UIKind.Web,
+      workbenchLanguage: vscode.env.language?.toLowerCase().startsWith('de') ? 'de' : 'en',
       backendUrl: await this.sources.backendUrl().catch(() => undefined),
       version: this.context.extension?.packageJSON?.version,
       showOnStartup: isWelcomeShownOnStartup(this.context),

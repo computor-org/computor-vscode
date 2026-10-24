@@ -7,5 +7,17 @@
   "walkthrough.student.testAndSubmit.title": "Test and submit",
   "walkthrough.student.testAndSubmit.description": "The icons on an assignment row appear while the mouse is over the row: (1) Show README Preview, (2) Commit Assignment, (3) Test Assignment, (4) Submit, (5) Show Messages. Test first, then submit. The assignment is done when its square carries the green double check.",
   "walkthrough.student.welcomePage.title": "Welcome page and help",
-  "walkthrough.student.welcomePage.description": "The welcome page explains every icon and every mark on a row and links the help pages.\n[Open the welcome page](command:computor.welcome)"
+  "walkthrough.student.welcomePage.description": "The welcome page explains every icon and every mark on a row and links the help pages.\n[Open the welcome page](command:computor.welcome)",
+  "command.student.showPreview": "Show README Preview",
+  "command.student.commitAssignment": "Commit Assignment",
+  "command.student.commitCourse": "Commit Course",
+  "command.student.testAssignment": "Test Assignment",
+  "command.student.submit": "Submit",
+  "command.student.showMessages": "Show Messages",
+  "command.student.help": "Help",
+  "command.showContentDescription": "Show Description",
+  "view.results": "Results",
+  "view.resultDetails": "Result Details",
+  "view.resultTree": "Result Tree",
+  "view.student.courses": "Courses"
 }

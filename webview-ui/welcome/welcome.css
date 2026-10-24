@@ -193,6 +193,17 @@
   }
 }
 
+/* A group narrower than the longest action name (a phone, or a wide tree
+   beside the page): the names wrap instead of pushing the page sideways. */
+@media (max-width: 360px) {
+  .welcome-row-legend {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .welcome-action {
+    white-space: normal;
+  }
+}
+
 /* The marks on a row, each drawn as the tree draws it. */
 .welcome-marks {
   display: grid;
@@ -220,5 +231,27 @@
 @media (max-width: 480px) {
   .welcome-row-legend .letter + span {
     grid-column: auto;
+  }
+}
+@media (max-width: 360px) {
+  .welcome-marks,
+  .welcome-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .page-root.welcome-page {
+    padding: var(--sp-2);
+  }
+  .welcome-page .section {
+    padding: var(--sp-3) var(--sp-2);
+  }
+  .welcome-page .table {
+    width: 100%;
+    table-layout: fixed;
+    overflow-wrap: anywhere;
+  }
+  .welcome-page .btn {
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
   }
 }

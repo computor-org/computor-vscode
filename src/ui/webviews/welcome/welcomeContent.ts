@@ -50,6 +50,37 @@ const roleLabels: Record<WelcomeRole, string> = {
   lecturer: 'Lecturer'
 };
 
+/** A course's role badge in the page language, as the web app names it. */
+const roleBadges: Record<WelcomeRole, [string, string]> = {
+  student: ['Student', 'Studierende'],
+  tutor: ['Tutor', 'Tutor'],
+  lecturer: ['Lecturer', 'Lehrende']
+};
+
+/**
+ * The names VS Code shows for Computor's commands and views, English and
+ * German as in package.nls.json and package.nls.de.json (a test keeps them
+ * equal).
+ */
+export const workbenchNames = {
+  'computor.student.showPreview': ['Show README Preview', 'Anleitung anzeigen'],
+  'computor.student.commitAssignment': ['Commit Assignment', 'Aufgabe sichern (Commit)'],
+  'computor.student.commitCourse': ['Commit Course', 'Kurs sichern (Commit)'],
+  'computor.student.testAssignment': ['Test Assignment', 'Aufgabe testen'],
+  'computor.student.submitAssignment': ['Submit', 'Abgeben'],
+  'computor.student.showMessages': ['Show Messages', 'Nachrichten anzeigen'],
+  'computor.showContentDescription': ['Show Description', 'Beschreibung anzeigen'],
+  'computor-test-results': ['Results', 'Ergebnisse'],
+  'computor.student.courses': ['Courses', 'Kurse']
+} as const;
+
+export type WorkbenchName = keyof typeof workbenchNames;
+type Names = (key: WorkbenchName) => string;
+
+function namer(model: WelcomeModel): Names {
+  return key => workbenchNames[key][model.workbenchLanguage === 'de' ? 1 : 0];
+}
+
 /** The activity-bar container each role's view lives in. */
 export const welcomeRoleContainers: Record<WelcomeRole, string> = {
   student: 'computor-student',
@@ -72,6 +103,12 @@ export interface WelcomeModel {
   courses: WelcomeCourse[];
   /** Absent means English. */
   language?: WelcomeLanguage;
+  /**
+   * The VS Code display language. Command and view names on the page follow
+   * it rather than the page language, so that they read as the tooltips and
+   * panel titles on screen do. Absent means English.
+   */
+  workbenchLanguage?: WelcomeLanguage;
   /** Only in a workspace launched for one course. */
   launch?: WelcomeLaunch;
   /** VS Code running in the browser (code-server) rather than on the desktop. */
@@ -367,7 +404,7 @@ function renderCourses(model: WelcomeModel, say: Say): string {
     ? `<ul class="welcome-courses">${listed.map(course => `
         <li class="welcome-course">
           <span>${escapeHtml(course.title)}</span>
-          ${course.roles.map(role => `<span class="badge badge-info xs">${roleLabels[role]}</span>`).join(' ')}
+          ${course.roles.map(role => `<span class="badge badge-info xs">${say(...roleBadges[role])}</span>`).join(' ')}
         </li>`).join('')}
       </ul>${hidden > 0 ? `<p class="text-muted">${say(`…and ${hidden} more.`, `…und ${hidden} weitere.`)}</p>` : ''}`
     : `<p class="text-muted">${say(
@@ -397,13 +434,14 @@ function action(name: CodiconName, label: string): string {
  * The five icons on an assignment row, in the order the row shows them
  * (package.json, view/item/context, group inline), numbered as in the picture.
  */
-function rowActions(say: Say): Array<[CodiconName, string, string]> {
+function rowActions(say: Say, n: Names): Array<[CodiconName, string, string]> {
+  const results = n('computor-test-results');
   return [
-    ['open-preview', 'Show README Preview', say('Read the task.', 'Aufgabe lesen.')],
-    ['git-commit', 'Commit Assignment', say('Back up your work on the server. Not a submission.', 'Arbeit auf dem Server sichern. Das ist keine Abgabe.')],
-    ['beaker', 'Test Assignment', say('Run the tests. The result appears under <strong>Results</strong>.', 'Tests ausführen. Das Ergebnis erscheint unter <strong>Results</strong>.')],
-    ['cloud-upload', 'Submit', say('Hand the assignment in for grading.', 'Aufgabe zur Bewertung abgeben.')],
-    ['comment-discussion', 'Show Messages', say('Messages and questions about this assignment.', 'Nachrichten und Fragen zu dieser Aufgabe.')]
+    ['open-preview', n('computor.student.showPreview'), say('Read the task.', 'Aufgabe lesen.')],
+    ['git-commit', n('computor.student.commitAssignment'), say('Back up your work on the server. Not a submission.', 'Arbeit auf dem Server sichern. Das ist keine Abgabe.')],
+    ['beaker', n('computor.student.testAssignment'), say(`Run the tests. The result appears under <strong>${results}</strong>.`, `Tests ausführen. Das Ergebnis erscheint unter <strong>${results}</strong>.`)],
+    ['cloud-upload', n('computor.student.submitAssignment'), say('Hand the assignment in for grading.', 'Aufgabe zur Bewertung abgeben.')],
+    ['comment-discussion', n('computor.student.showMessages'), say('Messages and questions about this assignment.', 'Nachrichten und Fragen zu dieser Aufgabe.')]
   ];
 }
 
@@ -414,7 +452,7 @@ function renderRowPicture(model: WelcomeModel, say: Say): string {
       'An assignment row in the Student view with its five icons, numbered 1 to 5 from left to right.',
       'Eine Aufgabenzeile in der Student-Ansicht mit ihren fünf Symbolen, von links nach rechts nummeriert von 1 bis 5.'))}">${model.rowPictureSvg}</div>`
     : '';
-  const actions = rowActions(say).map(([icon, label, meaning], index) => `
+  const actions = rowActions(say, namer(model)).map(([icon, label, meaning], index) => `
       <li><span class="welcome-callout" aria-hidden="true">${index + 1}</span>${action(icon, label)}<span class="text-muted">${meaning}</span></li>`).join('');
   const letters = model.rowPictureSvg ? `
       <li><span class="welcome-callout letter" aria-hidden="true">A</span><span>${say('The mark shows what state the assignment is in.', 'Die Markierung zeigt, in welchem Zustand die Aufgabe ist.')}</span></li>
@@ -433,7 +471,7 @@ function renderRowPicture(model: WelcomeModel, say: Say): string {
 function renderAskForHelp(model: WelcomeModel, say: Say): string {
   const stuck = `<strong>${say('Stuck?', 'Kommst du nicht weiter?')}</strong>`;
   const lena = '<code>@lena</code>';
-  const messages = action('comment-discussion', 'Show Messages');
+  const messages = action('comment-discussion', namer(model)('computor.student.showMessages'));
   const selfEnrolment = model.launch?.selfEnrolment;
   const ask = selfEnrolment === true
     ? say(`${stuck} This course has no human tutors. Lena, the AI tutor, gives hints instead of complete solutions: click the speech-bubble icon ${messages} on an assignment and mention ${lena} in your message.`,
@@ -459,19 +497,21 @@ function renderAskForHelp(model: WelcomeModel, say: Say): string {
  *
  * Every step names what is on screen in the Student view — the container
  * title, the row actions and their icons (package.json), the Results panel —
- * so a student can follow it without knowing VS Code. The labels VS Code
- * shows stay in English in the German text, because the workbench shows them so.
+ * so a student can follow it without knowing VS Code. The labels follow the
+ * VS Code display language (workbenchLanguage), because the workbench shows
+ * them so: English names in a German text when VS Code itself is English.
  */
 function renderTutorial(model: WelcomeModel, say: Say): string {
+  const n = namer(model);
   const openCourse: [string, string] = model.launch
     ? [say('Your course is already open.', 'Dein Kurs ist schon geöffnet.'),
       say(`In the Student view on the left, <strong>${escapeHtml(model.launch.title)}</strong> is already expanded. Units group the material; assignments sit inside them.`,
         `Links in der Student-Ansicht ist <strong>${escapeHtml(model.launch.title)}</strong> schon aufgeklappt. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.`)]
     : [say('Open your course.', 'Öffne deinen Kurs.'),
-      say('Under <strong>Courses</strong>, click your course to expand it. If your university or department is listed first, expand it until you reach the course. Units group the material; assignments sit inside them.',
-        'Klicke unter <strong>Courses</strong> auf deinen Kurs, um ihn aufzuklappen. Steht davor deine Universität oder dein Institut, klappe weiter auf, bis du beim Kurs bist. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.')];
-  const description = say(` If a unit has a description, open it with the book ${action('book', 'Show Description')} on its row.`,
-    ` Hat eine Einheit eine Beschreibung, öffnest du sie mit dem Buch ${action('book', 'Show Description')} in ihrer Zeile.`);
+      say(`Under <strong>${n('computor.student.courses')}</strong>, click your course to expand it. If your university or department is listed first, expand it until you reach the course. Units group the material; assignments sit inside them.`,
+        `Klicke unter <strong>${n('computor.student.courses')}</strong> auf deinen Kurs, um ihn aufzuklappen. Steht davor deine Universität oder dein Institut, klappe weiter auf, bis du beim Kurs bist. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.`)];
+  const description = say(` If a unit has a description, open it with the book ${action('book', n('computor.showContentDescription'))} on its row.`,
+    ` Hat eine Einheit eine Beschreibung, öffnest du sie mit dem Buch ${action('book', n('computor.showContentDescription'))} in ihrer Zeile.`);
   openCourse[1] += description;
   const steps: Array<[string, string]> = [
     [say('Open the Student view.', 'Öffne die Student-Ansicht.'),
@@ -479,8 +519,8 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
         `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>Computor Student</strong>. In einem Arbeitsbereich, der für einen Kurs gestartet wurde, ist sie schon offen.`)],
     openCourse,
     [say('Read the task.', 'Lies die Aufgabe.'),
-      say(`Click an assignment's title or ${action('open-preview', 'Show README Preview')}. Its instructions open beside your code; nothing is downloaded yet.`,
-        `Klicke auf den Titel einer Aufgabe oder auf ${action('open-preview', 'Show README Preview')}. Die Anleitung öffnet sich neben deinem Code, heruntergeladen wird dabei noch nichts.`)],
+      say(`Click an assignment's title or ${action('open-preview', n('computor.student.showPreview'))}. Its instructions open beside your code; nothing is downloaded yet.`,
+        `Klicke auf den Titel einer Aufgabe oder auf ${action('open-preview', n('computor.student.showPreview'))}. Die Anleitung öffnet sich neben deinem Code, heruntergeladen wird dabei noch nichts.`)],
     [say('Get the files.', 'Hol dir die Dateien.'),
       say('Click the arrow in front of the assignment to expand it. The first time, Computor sets up your personal course repository, which takes a moment. Then the assignment\'s starting files appear underneath.',
         'Klicke auf den Pfeil vor der Aufgabe, um sie aufzuklappen. Beim ersten Mal richtet Computor dein persönliches Kurs-Repository ein, das dauert einen Moment. Danach erscheinen darunter die Ausgangsdateien der Aufgabe.')],
@@ -488,11 +528,11 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
       say('Click a file to open and edit it. Keep the file names the task asks for: the tests look for them.',
         'Klicke auf eine Datei, um sie zu öffnen und zu bearbeiten. Behalte die Dateinamen bei, die die Aufgabe verlangt, denn die Tests suchen genau nach ihnen.')],
     [say('Test it.', 'Teste sie.'),
-      say(`Click the beaker ${action('beaker', 'Test Assignment')} on the assignment row, or right-click the row and choose the entry from the menu. Computor saves, commits and uploads your work and runs the tests on the server; the results appear in the <strong>Results</strong> panel. If test runs are limited, each one counts.`,
-        `Klicke in der Zeile der Aufgabe auf das Becherglas ${action('beaker', 'Test Assignment')}, oder klicke die Zeile mit der rechten Maustaste an und wähle den Eintrag im Menü. Computor speichert und committet deine Arbeit, lädt sie hoch und führt die Tests auf dem Server aus. Die Ergebnisse erscheinen im Bereich <strong>Results</strong>. Wenn die Testläufe begrenzt sind, zählt jeder einzelne.`)],
+      say(`Click the beaker ${action('beaker', n('computor.student.testAssignment'))} on the assignment row, or right-click the row and choose the entry from the menu. Computor saves, commits and uploads your work and runs the tests on the server; the results appear in the <strong>${n('computor-test-results')}</strong> panel. If test runs are limited, each one counts.`,
+        `Klicke in der Zeile der Aufgabe auf das Becherglas ${action('beaker', n('computor.student.testAssignment'))}, oder klicke die Zeile mit der rechten Maustaste an und wähle den Eintrag im Menü. Computor speichert und committet deine Arbeit, lädt sie hoch und führt die Tests auf dem Server aus. Die Ergebnisse erscheinen im Bereich <strong>${n('computor-test-results')}</strong>. Wenn die Testläufe begrenzt sind, zählt jeder einzelne.`)],
     [say('Submit.', 'Gib ab.'),
-      say(`When you are happy with the result, click the cloud with the arrow ${action('cloud-upload', 'Submit')}. This hands the assignment in for grading — the version you last tested. Submissions may be limited too.`,
-        `Wenn du mit dem Ergebnis zufrieden bist, klicke auf die Wolke mit dem Pfeil ${action('cloud-upload', 'Submit')}. Damit gibst du die Aufgabe zur Bewertung ab, und zwar in der Fassung, die du zuletzt getestet hast. Auch die Abgaben können begrenzt sein.`)]
+      say(`When you are happy with the result, click the cloud with the arrow ${action('cloud-upload', n('computor.student.submitAssignment'))}. This hands the assignment in for grading — the version you last tested. Submissions may be limited too.`,
+        `Wenn du mit dem Ergebnis zufrieden bist, klicke auf die Wolke mit dem Pfeil ${action('cloud-upload', n('computor.student.submitAssignment'))}. Damit gibst du die Aufgabe zur Bewertung ab, und zwar in der Fassung, die du zuletzt getestet hast. Auch die Abgaben können begrenzt sein.`)]
   ];
 
   return section('welcome-tutorial', say('Start working on an assignment', 'Mit einer Aufgabe beginnen'), `
@@ -500,8 +540,8 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
     <ol class="welcome-steps">
       ${steps.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
     </ol>
-    <p>${say(`<strong>Commit as you go.</strong> ${action('git-commit', 'Commit Assignment')} on an assignment, or <em>Commit Course</em> on the course row, saves your work on the server. That is your backup; it is not a submission.`,
-      `<strong>Committe zwischendurch.</strong> ${action('git-commit', 'Commit Assignment')} an einer Aufgabe oder <em>Commit Course</em> in der Kurszeile speichert deine Arbeit auf dem Server. Das ist deine Sicherung, aber keine Abgabe.`)}</p>
+    <p>${say(`<strong>Commit as you go.</strong> ${action('git-commit', n('computor.student.commitAssignment'))} on an assignment, or <em>${n('computor.student.commitCourse')}</em> on the course row, saves your work on the server. That is your backup; it is not a submission.`,
+      `<strong>Committe zwischendurch.</strong> ${action('git-commit', n('computor.student.commitAssignment'))} an einer Aufgabe oder <em>${n('computor.student.commitCourse')}</em> in der Kurszeile speichert deine Arbeit auf dem Server. Das ist deine Sicherung, aber keine Abgabe.`)}</p>
     ${renderAskForHelp(model, say)}
     <p class="text-muted">${say('Not every course uses every step. If an icon is missing, right-click the assignment to see what your course offers.',
       'Nicht jeder Kurs nutzt jeden Schritt. Fehlt ein Symbol, klicke die Aufgabe mit der rechten Maustaste an, um zu sehen, was dein Kurs anbietet.')}</p>`,

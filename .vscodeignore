@@ -43,6 +43,8 @@ tsconfig.json
 media/**
 # The extension icon shown on the Marketplace listing.
 !media/icon.png
+# The annotated assignment row of the welcome page and the walkthrough.
+!media/welcome/**
 schemas/**
 
 # IDE and editor files

@@ -3,7 +3,7 @@ import { AUX_COLUMN } from '../ui/editorLayout';
 import * as path from 'path';
 import * as fs from 'fs';
 // import * as os from 'os';
-import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
+import { RETRY_COURSE_SETUP_COMMAND, StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
@@ -891,6 +891,11 @@ export class StudentCommands {
     // Optional arg: a course id string, or a tree item carrying `courseId`.
     register('computor.student.setupCourseRepository', async (arg?: any) => {
       await this.setupCourseRepository(arg);
+    });
+
+    // The "repository not ready" row of a course whose setup failed.
+    register(RETRY_COURSE_SETUP_COMMAND, async (courseId?: string) => {
+      if (typeof courseId === 'string') await this.treeDataProvider.retryCourseRepository(courseId);
     });
 
     // Download the course template as a ZIP (download mode / offline work).
