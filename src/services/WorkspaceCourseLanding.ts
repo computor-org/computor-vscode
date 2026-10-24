@@ -102,7 +102,8 @@ export function resumeLine(contents: CourseContentStudentList[], item: CourseCon
   const result = item.result?.result;
   const percent = typeof result === 'number' ? Math.round(result * 100) : undefined;
   const state = percent !== undefined
-    ? (de ? `zuletzt getestet: ${percent} %` : `last tested: ${percent}%`)
+    // A no-break space keeps "0 %" together when the line wraps.
+    ? (de ? `zuletzt getestet: ${percent}\u00a0%` : `last tested: ${percent}%`)
     : (de ? 'noch nicht getestet' : 'not tested yet');
   return `**${de ? 'Weiter mit' : 'Continue with'}:** ${escapeInline(trail)} (${state})`;
 }

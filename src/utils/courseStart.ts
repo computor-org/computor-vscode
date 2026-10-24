@@ -19,12 +19,14 @@ export function hasStartedCourse(contents: CourseContentStudentList[]): boolean 
       || (content.result_count ?? 0) > 0 || (content.submission_count ?? 0) > 0));
 }
 
-/** Handed in with a passing test (or one without tests), or already marked corrected. */
+/**
+ * Handed in. Submitting is the step a learner takes on purpose to say "this one
+ * is finished", whatever its test result. The web course page uses the same
+ * rule (computor-web studentProgress.ts, computor-org/issues#408), so both name
+ * the same assignment after "Weiter mit".
+ */
 export function isCourseItemDone(content: CourseContentStudentList): boolean {
-  if (content.status?.toLowerCase() === 'corrected') return true;
-  if (content.submitted !== true) return false;
-  const result = content.result?.result;
-  return typeof result !== 'number' || result >= 1;
+  return content.submitted === true;
 }
 
 /** The first released assignment, in course order, that is not done yet (computor-org/issues#525). */

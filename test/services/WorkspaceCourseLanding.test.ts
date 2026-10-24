@@ -222,7 +222,7 @@ describe('showWorkspaceCourseLanding', () => {
     const target = await showWorkspaceCourseLanding(context, api(contents), course);
 
     expect(target).to.equal(beta);
-    expect(shown()).to.contain('**Weiter mit:** Woche 3 → Beta-Absorption (zuletzt getestet: 0 %)');
+    expect(shown()).to.contain('**Weiter mit:** Woche 3 → Beta-Absorption (zuletzt getestet: 0\u00a0%)');
     expect(shown()).to.contain('week_3.beta (de)');
     expect(shown()).to.not.contain('Kursbeschreibung');
     expect(shown()).to.not.contain('Erste Aufgabe');
@@ -265,6 +265,6 @@ describe('resumeLine', () => {
   it('rounds the last test result to a percentage', () => {
     const tested = { ...contents[1]!, result: { id: 'r', result: 0.666 } } as CourseContentStudentList;
     expect(resumeLine([contents[0]!, tested], tested, 'en')).to.contain('(last tested: 67%)');
-    expect(resumeLine([contents[0]!, tested], tested, 'de')).to.contain('(zuletzt getestet: 67 %)');
+    expect(resumeLine([contents[0]!, tested], tested, 'de')).to.contain('(zuletzt getestet: 67\u00a0%)');
   });
 });

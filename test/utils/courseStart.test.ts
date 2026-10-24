@@ -59,19 +59,19 @@ describe('nextOpenCourseItem', () => {
   }
   const result = (value: number) => ({ id: 'r', result: value });
 
-  it('skips assignments handed in with a passing test and stops at the first one that is not', () => {
+  it('skips handed-in assignments, whatever their test result, as the web course page does', () => {
     const contents = [
       item('c', 3),
       item('a', 1, { submitted: true, result: result(1) }),
       item('b', 2, { submitted: true, result: result(0.5) })
     ];
-    expect(nextOpenCourseItem(contents)?.id).to.equal('b');
+    expect(nextOpenCourseItem(contents)?.id).to.equal('c');
   });
 
-  it('counts a passing test that was not handed in as open, and a submission without tests or a corrected one as done', () => {
+  it('counts a passing test that was not handed in as open, and any submission as done', () => {
     expect(isCourseItemDone(item('a', 1, { result: result(1) }))).to.equal(false);
     expect(isCourseItemDone(item('a', 1, { submitted: true }))).to.equal(true);
-    expect(isCourseItemDone(item('a', 1, { status: 'corrected', result: result(0.2) }))).to.equal(true);
+    expect(isCourseItemDone(item('a', 1, { submitted: true, result: result(0) }))).to.equal(true);
   });
 
   it('ignores hidden and unreleased assignments', () => {
