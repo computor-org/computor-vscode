@@ -5,6 +5,7 @@ import type { CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { descriptionHeading, localizedUnitTitle, resolveContentLanguage, withoutLeadingHeading } from '../utils/contentLanguage';
 import { showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
+import { SOURCE_COLUMN } from '../ui/editorLayout';
 import { courseWelcomeItem, firstReleasedCourseItem } from '../utils/courseStart';
 
 export { firstReleasedCourseItem };
@@ -55,8 +56,12 @@ export async function showWorkspaceCourseLanding(
   const contents = await api.getStudentCourseContents(course.id, { throwOnError: true });
   const welcome = courseWelcomeItem(contents);
   const title = course.title || course.path;
+  // A launch opens one document, full width in the first group, with the
+  // Computor welcome page as a tab behind it rather than a second column
+  // competing for the first click. A README shown later moves the panel to
+  // the auxiliary group as usual.
   if (welcome) {
-    await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`);
+    await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`, { viewColumn: SOURCE_COLUMN });
     return;
   }
   const first = firstReleasedCourseItem(contents);
@@ -79,7 +84,7 @@ export async function showWorkspaceCourseLanding(
   } else {
     markdown += `\n\n${copy.noExercises}`;
   }
-  await showMarkdownTextPreview(context, markdown, title, { inlineImages });
+  await showMarkdownTextPreview(context, markdown, title, { inlineImages, viewColumn: SOURCE_COLUMN });
 }
 
 const LANDING_COPY = {

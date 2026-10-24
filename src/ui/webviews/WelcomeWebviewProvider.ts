@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { showMarkdownPreview } from './markdownPreview';
+import { revealMarkdownPreview, showMarkdownPreview } from './markdownPreview';
 import { focusViewContainer } from '../focusViewContainer';
 import { containerById } from '../viewContainers';
 import { notify } from '../../utils/notify';
@@ -76,6 +76,9 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
     }
     this.shownAutomatically = true;
     await this.open({ preserveFocus: true });
+    // In a course launch the course's own landing is the first document; this
+    // page waits as the tab behind it in the same group.
+    if (this.sources.launchedCourseId?.()) revealMarkdownPreview();
   }
 
   /**

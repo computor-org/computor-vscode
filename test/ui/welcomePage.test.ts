@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as fs from 'fs';
 import * as path from 'path';
-import { env, UIKind, webviewPanels } from '../helpers/vscode-stub';
+import { env, UIKind, ViewColumn, webviewPanels } from '../helpers/vscode-stub';
 import { SimpleMockMemento } from '../helpers/SimpleMockContext';
 import {
   collectWelcomeFacts,
@@ -11,6 +11,7 @@ import {
   WelcomeModel
 } from '../../src/ui/webviews/welcome/welcomeContent';
 import { isWelcomeShownOnStartup, WelcomeWebviewProvider } from '../../src/ui/webviews/WelcomeWebviewProvider';
+import { showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
 
 /**
  * The welcome page (computor-org/issues#374).
@@ -526,6 +527,22 @@ describe('WelcomeWebviewProvider', () => {
     expect(webviewPanels).to.have.length(1);
     expect(webviewPanels[0]!.title).to.equal('Willkommen bei Computor');
     expect(latestHtml()).to.contain('<strong>Grundlagen</strong> ist links schon geöffnet.');
+  });
+
+  it('stays behind the course landing it opens with after a course launch', async () => {
+    await showMarkdownTextPreview(context, '# Willkommen', 'Grundlagen: Willkommen', { viewColumn: ViewColumn.One });
+    const landing = webviewPanels[0]!;
+    let revealed = 0;
+    landing.reveal = () => { revealed++; };
+    const page = new WelcomeWebviewProvider(context, {
+      api: () => fakeApi, backendUrl: async () => undefined, launchedCourseId: () => 'c1'
+    });
+
+    await page.afterSignIn();
+
+    expect(webviewPanels.at(-1)!.viewColumn).to.equal(ViewColumn.One);
+    expect(revealed).to.equal(1);
+    landing.dispose();
   });
 
   it('does not open a closed page on refresh', async () => {

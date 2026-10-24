@@ -28,6 +28,11 @@ export interface MarkdownPreviewRequest {
 let previewPanel: vscode.WebviewPanel | undefined;
 let renderRequest = 0;
 
+/** Bring an open preview back to the front of its group, without taking focus. */
+export function revealMarkdownPreview(): void {
+  previewPanel?.reveal(undefined, true);
+}
+
 /** A later preview supersedes this request, including while its ZIP is loading. */
 export function beginMarkdownPreviewRequest(): MarkdownPreviewRequest {
   const request = ++renderRequest;
