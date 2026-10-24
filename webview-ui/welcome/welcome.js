@@ -22,6 +22,9 @@
     },
     login: function () {
       CW.post('login');
+    },
+    reportProblem: function () {
+      CW.post('reportProblem');
     }
   });
 
