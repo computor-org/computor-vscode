@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { say } from '../utils/uiLanguage';
 import { ComputorApiService } from './ComputorApiService';
-import { showErrorWithSeverity } from '../utils/errorDisplay';
+import { isSessionError, showErrorWithSeverity } from '../utils/errorDisplay';
 //import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/panels/TestResultsPanel';
 import { notify } from '../utils/notify';
 
@@ -170,6 +170,12 @@ export class TestResultService {
                 return;
               }
             } catch (pollError) {
+              if (isSessionError(pollError)) {
+                this.stopPolling(resultId);
+                showErrorWithSeverity(pollError as Error);
+                resolve({ status: 'ERROR' });
+                return;
+              }
               consecutiveFailures++;
               console.warn(
                 `[TestResultService] Poll ${pollCount} failed ` +
