@@ -29,7 +29,10 @@ import { listStudentRepositories } from '../services/ForgejoCredentialFanout';
 import { execAsyncWithTimeout } from '../utils/exec';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
+import { say, uiLanguage } from '../utils/uiLanguage';
 import { notify } from '../utils/notify';
+import { getTreeHandle } from '../ui/treeRegistry';
+import { assignmentForFile, assignmentFromSelection, AssignmentItem, confirmationPrompt, NO_ASSIGNMENT_HINT, submittedMessage } from '../utils/assignmentTarget';
 import { revealUri } from '../utils/reveal';
 import { submissionBudget, testBudget, type Budget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
@@ -95,6 +98,58 @@ export class StudentCommands {
     }
     this.contentDetailsWebviewProvider = new StudentCourseContentDetailsWebviewProvider(context);
     void this.courseContentTreeProvider; // Unused for now
+  }
+
+  /**
+   * The assignment a test/submit command acts on: the row it was invoked on,
+   * else the highlighted row of the Student tree, else the assignment that owns
+   * the file in the active editor. `implicit` marks the last two, which come
+   * from the palette and therefore get a confirmation (computor-org/issues#470).
+   */
+  private async resolveAssignmentTarget(
+    arg: any,
+    action: string
+  ): Promise<{ item: AssignmentItem; implicit: boolean } | undefined> {
+    if (arg?.courseContent) {
+      return { item: arg, implicit: false };
+    }
+
+    const selected = assignmentFromSelection(getTreeHandle('computor.student.courses')?.view.selection);
+    if (selected) {
+      return { item: selected, implicit: true };
+    }
+
+    const filePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+    if (filePath) {
+      try {
+        const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
+        if (courseId) {
+          const contents = await this.apiService.getStudentCourseContents(courseId) || [];
+          if (this.repositoryManager) {
+            this.repositoryManager.updateExistingRepositoryPaths(courseId, contents);
+          }
+          const fromFile = assignmentForFile(
+            contents, filePath, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+          );
+          if (fromFile) {
+            return { item: fromFile, implicit: true };
+          }
+        }
+      } catch (error) {
+        console.warn('[resolveAssignmentTarget] Could not resolve the open file:', error);
+      }
+    }
+
+    notify.warning(NO_ASSIGNMENT_HINT(action));
+    return undefined;
+  }
+
+  /** Name the assignment a palette command is about to act on and ask first. */
+  private async confirmAssignmentAction(item: any, kind: 'test' | 'submit'): Promise<boolean> {
+    const title = item?.courseContent?.title || item?.courseContent?.path || say('this assignment', 'diese Aufgabe');
+    const { message, detail, verb } = confirmationPrompt(kind, title, uiLanguage());
+    const choice = await vscode.window.showInformationMessage(message, { modal: true, detail }, verb);
+    return choice === verb;
   }
 
   /**
@@ -693,7 +748,7 @@ export class StudentCommands {
 
     const courses = await this.apiService.getStudentCourses();
     if (!courses.length) {
-      notify.info('No student courses found.');
+      notify.info(say('No student courses found.', 'Du bist noch keinem Kurs beigetreten.'));
       return undefined;
     }
     const picked = await vscode.window.showQuickPick(
@@ -717,17 +772,17 @@ export class StudentCommands {
    * (computor-org/issues#352).
    */
   private async updateFromTemplate(arg?: any): Promise<void> {
-    const courseId = await this.resolveCourseIdArg(arg, 'Update repository from template — pick a course');
+    const courseId = await this.resolveCourseIdArg(arg, say('Update repository from template — pick a course', 'Repository aus Kursvorlage aktualisieren – Kurs auswählen'));
     if (!courseId) { return; }
 
     const cid = courseId;
 
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: 'Updating repository from course template...',
+      title: say('Updating repository from course template...', 'Repository wird aus der Kursvorlage aktualisiert …'),
       cancellable: true
     }, async (progress, token) => {
-      const report = (message: string) => progress.report({ message });
+      const report = (message: string) => progress.report({ message: say(message, 'Repository wird mit der Kursvorlage abgeglichen …') });
       try {
         // Legacy submission-group repositories.
         if (this.repositoryManager) {
@@ -750,19 +805,20 @@ export class StudentCommands {
         this.treeDataProvider.refresh();
 
         if (restored === undefined) {
-          notify.info('Repository updated from the course template.');
+          notify.info(say('Repository updated from the course template.', 'Das Repository wurde aus der Kursvorlage aktualisiert.'));
         } else if (restored.length === 0) {
-          notify.info('Repository updated from the course template. No files were missing.');
+          notify.info(say('Repository updated from the course template. No files were missing.', 'Das Repository wurde aus der Kursvorlage aktualisiert. Es haben keine Dateien gefehlt.'));
         } else {
           notify.info(
-            `Repository updated from the course template. Restored ${restored.length} missing file(s): `
+            say(`Repository updated from the course template. Restored ${restored.length} missing file(s): `,
+              `Das Repository wurde aus der Kursvorlage aktualisiert. Wiederhergestellte Dateien (${restored.length}): `)
             + summarizePaths(restored)
           );
         }
       } catch (error: any) {
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Template update failed:', message);
-        notify.error(`Template update failed: ${message}`);
+        notify.error(say(`Template update failed: ${message}`, 'Das Repository konnte nicht aus der Kursvorlage aktualisiert werden. Versuche es bitte erneut.'));
       }
     });
   }
@@ -920,7 +976,7 @@ export class StudentCommands {
       // Show progress notification while refreshing
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Refreshing student view...',
+        title: say('Refreshing student view...', 'Kursübersicht wird aktualisiert …'),
         cancellable: true
       }, async (progress, token) => {
         // Update repositories only for expanded courses
@@ -929,7 +985,7 @@ export class StudentCommands {
           try {
             await this.repositoryManager.autoSetupRepositories(
               undefined,
-              (msg) => progress.report({ message: msg }),
+              (msg) => progress.report({ message: say(msg, 'Repository wird mit der Kursvorlage abgeglichen …') }),
               expandedCourseIds,
               token
             );
@@ -943,13 +999,13 @@ export class StudentCommands {
         // submission-group plumbing above.
         if (expandedCourseIds.size > 0) {
           await this.provisioningService.syncClonedManagedRepos(expandedCourseIds, {
-            onProgress: (msg) => progress.report({ message: msg }),
+            onProgress: (msg) => progress.report({ message: say(msg, 'Repository wird mit der Kursvorlage abgeglichen …') }),
             cancellationToken: token
           });
         }
 
         // Refresh the tree view
-        progress.report({ message: 'Refreshing tree view...' });
+        progress.report({ message: say('Refreshing tree view...', 'Kursübersicht wird aktualisiert …') });
         this.treeDataProvider.refresh();
       });
     });
@@ -1178,10 +1234,22 @@ export class StudentCommands {
     });
 
     register('computor.student.submitAssignment', async (
-      itemOrSubmissionGroup: any,
+      arg?: any,
       options?: { budgetConfirmed?: boolean }
     ) => {
       try {
+        let itemOrSubmissionGroup: any = arg;
+        if (!arg) {
+          const resolved = await this.resolveAssignmentTarget(arg, 'Submit');
+          if (!resolved) {
+            return;
+          }
+          itemOrSubmissionGroup = resolved.item;
+          if (!options?.budgetConfirmed && !await this.confirmAssignmentAction(resolved.item, 'submit')) {
+            return;
+          }
+        }
+
         // Hidden content refuses everything, so check it before the budget:
         // "not available" is the true reason, a quota message would mislead.
         if (await this.visibilityBlocks(itemOrSubmissionGroup)) {
@@ -1251,16 +1319,16 @@ export class StudentCommands {
         }
 
         if (!directory || !fs.existsSync(directory)) {
-          notify.error('Assignment directory not found. Please clone the repository first.');
+          notify.error(say('Assignment directory not found. Please clone the repository first.', 'Der Aufgabenordner fehlt. Richte zuerst das Repository ein.'));
           return;
         }
         if (!assignmentPath) {
-          notify.error('Assignment path is missing.');
+          notify.error(say('Assignment path is missing.', 'Der Pfad zur Aufgabe fehlt. Lade den Kurs erneut.'));
           return;
         }
 
         if (!submissionGroup?.id) {
-          notify.error('Submission group information missing; cannot create submission.');
+          notify.error(say('Submission group information missing; cannot create submission.', 'Die Angaben zur Abgabe fehlen. Lade den Kurs erneut und versuche es noch einmal.'));
           return;
         }
 
@@ -1269,7 +1337,7 @@ export class StudentCommands {
 
         const repoPath = await this.findRepoRoot(submissionDirectory);
         if (!repoPath) {
-          notify.error('Could not determine repository root.');
+          notify.error(say('Could not determine repository root.', 'Das Repository wurde nicht gefunden. Richte es zuerst ein.'));
           return;
         }
 
@@ -1279,8 +1347,9 @@ export class StudentCommands {
         // After saving, so unsaved work in open editors counts as work.
         if (!await this.directoryHasNonEmptyFile(submissionDirectory)) {
           notify.warning(
-            'Nothing to submit yet: this assignment\'s files are all empty. '
-            + 'Write your solution first, then submit again.'
+            say('Nothing to submit yet: this assignment\'s files are all empty. '
+            + 'Write your solution first, then submit again.',
+            'Es gibt noch nichts abzugeben: Alle Dateien dieser Aufgabe sind leer. Schreibe zuerst deine Lösung und gib sie dann ab.')
           );
           return;
         }
@@ -1301,10 +1370,10 @@ export class StudentCommands {
 
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: 'Preparing submission...',
+            title: say('Preparing submission...', 'Abgabe wird vorbereitet …'),
             cancellable: false
           }, async (progress) => {
-            progress.report({ message: 'Staging changes...' });
+            progress.report({ message: say('Staging changes...', 'Änderungen werden vorgemerkt …') });
             await this.gitService.stageAll(repoPath);
 
             const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
@@ -1312,7 +1381,7 @@ export class StudentCommands {
               const now = new Date();
               const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
               const commitMessage = `Update ${commitLabel} - ${timestamp}`;
-              progress.report({ message: 'Committing changes...' });
+              progress.report({ message: say('Committing changes...', 'Änderungen werden gespeichert …') });
               await this.gitService.commitChanges(repoPath, commitMessage);
             }
 
@@ -1321,7 +1390,7 @@ export class StudentCommands {
               throw new Error('Could not determine current branch.');
             }
 
-            progress.report({ message: `Pushing ${currentBranch}...` });
+            progress.report({ message: say(`Pushing ${currentBranch}...`, `${currentBranch} wird hochgeladen …`) });
             await this.pushWithAuthRetry(repoPath);
           });
         }
@@ -1410,7 +1479,7 @@ export class StudentCommands {
           if (!options?.budgetConfirmed) {
             const group = (budgetContent as any)?.submission_group ?? submissionGroup;
             if (!await this.confirmTestSpendsSubmission(budgetContent, group)) {
-              notify.info('Submission cancelled. Nothing was submitted.');
+              notify.info(say('Submission cancelled. Nothing was submitted.', 'Abgabe abgebrochen. Es wurde nichts abgegeben.'));
               return;
             }
           }
@@ -1428,14 +1497,14 @@ export class StudentCommands {
           if (!testArtifactId) {
             await vscode.window.withProgress({
               location: vscode.ProgressLocation.Notification,
-              title: `Testing ${assignmentTitle}...`,
+              title: say(`Testing ${assignmentTitle}...`, `${assignmentTitle} wird getestet …`),
               cancellable: false
             }, async (progress) => {
-              progress.report({ message: 'Packaging submission archive...' });
+              progress.report({ message: say('Packaging submission archive...', 'Dateien werden gepackt …') });
               const archive = await this.createSubmissionArchive(submissionDirectory);
               console.log(`[submitAssignment] Archive created for testing`);
 
-              progress.report({ message: 'Uploading for testing...' });
+              progress.report({ message: say('Uploading for testing...', 'Dateien werden zum Testen hochgeladen …') });
               const testSubmissionResponse = await this.apiService.createStudentSubmission({
                 submission_group_id: submissionGroupId,
                 version_identifier: currentCommitHash,
@@ -1467,7 +1536,7 @@ export class StudentCommands {
             // Test is considered successful if status is SUCCESS (regardless of score)
             // We allow submission even with partial test scores
             if (!testResult || testResult.status === 'ERROR' || testResult.status === 'TIMEOUT') {
-              notify.error('Test execution failed. Please try again.');
+              notify.error(say('Test execution failed. Please try again.', 'Der Test konnte nicht ausgeführt werden. Versuche es bitte erneut.'));
               // Clear cache and refresh tree
               if (courseContentId) {
                 this.apiService.clearStudentCourseContentCache(courseContentId);
@@ -1477,7 +1546,7 @@ export class StudentCommands {
             }
 
             if (testResult.status === 'CANCELLED') {
-              notify.warning('Test was cancelled. Submission aborted.');
+              notify.warning(say('Test was cancelled. Submission aborted.', 'Der Test wurde abgebrochen. Es wurde nichts abgegeben.'));
               if (courseContentId) {
                 this.apiService.clearStudentCourseContentCache(courseContentId);
                 this.treeDataProvider.refresh();
@@ -1529,16 +1598,19 @@ export class StudentCommands {
         // saying so. Reachable when the test run could not be started (e.g. the
         // upload returned no artifact) and an older tested commit is all we have.
         if (submissionVersion !== currentCommitHash) {
-          const submitOlder = 'Submit the tested commit';
+          const submitOlder = say('Submit the tested commit', 'Getestete Version abgeben');
           const choice = await vscode.window.showWarningMessage(
-            `Your latest commit (${currentCommitHash.substring(0, 8)}) has not been tested.\n\n` +
+            say(`Your latest commit (${currentCommitHash.substring(0, 8)}) has not been tested.\n\n` +
             `Continuing submits the last tested commit (${submissionVersion.substring(0, 8)}) instead — ` +
             'your newest work will not be graded.',
+            `Deine neueste Version (${currentCommitHash.substring(0, 8)}) wurde noch nicht getestet.\n\n` +
+            `Wenn du fortfährst, wird die zuletzt getestete Version (${submissionVersion.substring(0, 8)}) abgegeben. ` +
+            'Deine neuesten Änderungen werden dann nicht bewertet.'),
             { modal: true },
             submitOlder
           );
           if (choice !== submitOlder) {
-            notify.info('Submission cancelled. Run a test on your latest commit, then submit again.');
+            notify.info(say('Submission cancelled. Run a test on your latest commit, then submit again.', 'Abgabe abgebrochen. Teste zuerst deine neueste Version und gib sie dann ab.'));
             return;
           }
           console.log(`[submitAssignment] Student confirmed submitting older commit ${submissionVersion}`);
@@ -1562,13 +1634,13 @@ export class StudentCommands {
 
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
-          title: `Submitting ${assignmentTitle}...`,
+          title: say(`Submitting ${assignmentTitle}...`, `${assignmentTitle} wird abgegeben …`),
           cancellable: false
         }, async (progress) => {
           if (action === 'already-submitted') {
             reusedExistingSubmission = true;
             submissionOk = true;
-            progress.report({ message: 'Submission already exists for this version.' });
+            progress.report({ message: say('Submission already exists for this version.', 'Diese Version wurde bereits abgegeben.') });
             return;
           }
 
@@ -1576,7 +1648,7 @@ export class StudentCommands {
             // Marking an artifact that already carries `submit` is a no-op
             // server-side and spends no budget, so this stays correct even when
             // the test run above was what set it.
-            progress.report({ message: 'Marking existing artifact as submitted...' });
+            progress.report({ message: say('Marking existing artifact as submitted...', 'Vorhandene Version wird als abgegeben markiert …') });
             submissionResponse = await this.apiService.updateStudentSubmission(
               targetArtifact!.id,
               { submit: true }
@@ -1586,10 +1658,10 @@ export class StudentCommands {
           }
 
           // Nothing is stored for this version yet - upload it as the submission.
-          progress.report({ message: 'Packaging submission archive...' });
+          progress.report({ message: say('Packaging submission archive...', 'Dateien werden gepackt …') });
           const archive = await this.createSubmissionArchive(submissionDirectory);
 
-          progress.report({ message: 'Creating submission...' });
+          progress.report({ message: say('Creating submission...', 'Abgabe wird erstellt …') });
           submissionResponse = await this.apiService.createStudentSubmission({
             submission_group_id: submissionGroupId,
             version_identifier: submissionVersion || undefined,
@@ -1636,15 +1708,16 @@ export class StudentCommands {
             // no longer claims "no action taken" about a submission that did
             // happen (computor-org/issues#381).
             notify.info(
-              'This commit was already submitted — there is nothing new to send. '
-              + 'Make a change, then submit again.'
+              say('This commit was already submitted — there is nothing new to send. '
+              + 'Make a change, then submit again.',
+              'Diese Version hast du bereits abgegeben. Ändere deine Lösung, bevor du sie erneut abgibst.')
             );
           } else if (submissionResponse) {
-            const successMessage = 'Assignment submitted successfully.';
+            const successMessage = submittedMessage(assignmentTitle ?? say('the assignment', 'die Aufgabe'), submissionVersion, uiLanguage());
 
             notify.info(successMessage);
           } else {
-            notify.warning('Submission completed without a response from the server.');
+            notify.warning(say('Submission completed without a response from the server.', 'Der Server hat die Abgabe nicht bestätigt. Prüfe den Abgabestatus, bevor du es erneut versuchst.'));
           }
         }
       } catch (error: any) {
@@ -1671,7 +1744,7 @@ export class StudentCommands {
       
       // The item is a CourseContentItem from StudentCourseContentTreeProvider
       if (!item || !item.courseContent) {
-        notify.error('No assignment selected');
+        notify.error(say('No assignment selected', 'Keine Aufgabe ausgewählt.'));
         return;
       }
 
@@ -1685,7 +1758,7 @@ export class StudentCommands {
       // Get the assignment directory
       const directory = (item.courseContent as any).directory;
       if (!directory || !fs.existsSync(directory)) {
-        notify.error('Assignment directory not found. Please clone the repository first.');
+        notify.error(say('Assignment directory not found. Please clone the repository first.', 'Der Aufgabenordner fehlt. Richte zuerst das Repository ein.'));
         return;
       }
 
@@ -1699,7 +1772,7 @@ export class StudentCommands {
         // Check if there are any changes to commit
         const hasChanges = await this.gitService.hasChanges(directory);
         if (!hasChanges) {
-          notify.info('No changes to commit in this assignment.');
+          notify.info(say('No changes to commit in this assignment.', 'In dieser Aufgabe gibt es keine Änderungen zu speichern.'));
           return;
         }
 
@@ -1711,10 +1784,10 @@ export class StudentCommands {
         // Show progress while committing and pushing
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
-          title: `Committing and pushing ${assignmentTitle}...`,
+          title: say(`Committing and pushing ${assignmentTitle}...`, `${assignmentTitle}: Änderungen werden gespeichert und hochgeladen …`),
           cancellable: false
         }, async (progress) => {
-          progress.report({ increment: 0, message: 'Preparing to commit...' });
+          progress.report({ increment: 0, message: say('Preparing to commit...', 'Änderungen werden vorbereitet …') });
 
           // Find repository root
           const repoPath = await this.findRepoRoot(directory);
@@ -1722,7 +1795,7 @@ export class StudentCommands {
             throw new Error('Could not determine repository root');
           }
 
-          progress.report({ increment: 40, message: 'Committing changes...' });
+          progress.report({ increment: 40, message: say('Committing changes...', 'Änderungen werden gespeichert …') });
           // Stage only the assignment directory
           await this.gitService.stagePath(repoPath, directory);
 
@@ -1734,20 +1807,20 @@ export class StudentCommands {
 
           await this.gitService.commitChanges(repoPath, commitMessage);
 
-          progress.report({ increment: 60, message: 'Pushing to remote...' });
+          progress.report({ increment: 60, message: say('Pushing to remote...', 'Änderungen werden hochgeladen …') });
           // Push to main branch, prompting for new token if required
           await this.pushWithAuthRetry(repoPath);
 
-          progress.report({ increment: 100, message: 'Successfully committed and pushed!' });
+          progress.report({ increment: 100, message: say('Successfully committed and pushed!', 'Änderungen wurden gespeichert und hochgeladen.') });
         });
 
-        notify.info(`Successfully committed and pushed ${assignmentTitle}`);
+        notify.info(say(`Successfully committed and pushed ${assignmentTitle}`, `Änderungen für ${assignmentTitle} wurden gespeichert und hochgeladen.`));
 
         // Optionally refresh the tree to update any status indicators
         this.treeDataProvider.refreshNode(item);
       } catch (error: any) {
         console.error('Failed to commit assignment:', error);
-        notify.error(`Failed to commit assignment: ${error.message}`);
+        notify.error(say(`Failed to commit assignment: ${error.message}`, 'Die Änderungen konnten nicht gespeichert und hochgeladen werden. Versuche es bitte erneut.'));
       }
     });
 
@@ -1756,12 +1829,18 @@ export class StudentCommands {
     });
 
     // Test assignment (includes commit, push, and test submission)
-    register('computor.student.testAssignment', async (item: any) => {
-      console.log('[TestAssignment] Item received:', item);
-      
-      // The item is a CourseContentItem from StudentCourseContentTreeProvider
-      if (!item || !item.courseContent) {
-        notify.error('No assignment selected');
+    register('computor.student.testAssignment', async (arg?: any) => {
+      console.log('[TestAssignment] Item received:', arg);
+
+      // A tree row or its icon passes the item; the Command Palette passes
+      // nothing, so the target comes from the selection or the open file and
+      // the student confirms it before anything is committed or uploaded.
+      const resolved = await this.resolveAssignmentTarget(arg, 'Test Assignment');
+      if (!resolved) {
+        return;
+      }
+      const item: any = resolved.item;
+      if (resolved.implicit && !await this.confirmAssignmentAction(item, 'test')) {
         return;
       }
 
@@ -1789,12 +1868,12 @@ export class StudentCommands {
       }
 
       if (!directory || !fs.existsSync(directory)) {
-        notify.error('Assignment directory not found. Please clone the repository first.');
+        notify.error(say('Assignment directory not found. Please clone the repository first.', 'Der Aufgabenordner fehlt. Richte zuerst das Repository ein.'));
         return;
       }
 
       if (!submissionGroup?.id) {
-        notify.error('Submission group information missing; cannot upload for testing.');
+        notify.error(say('Submission group information missing; cannot upload for testing.', 'Die Angaben zur Aufgabe fehlen. Lade den Kurs erneut und starte den Test noch einmal.'));
         return;
       }
 
@@ -1827,8 +1906,9 @@ export class StudentCommands {
         // After saving, so unsaved work in open editors counts as work.
         if (!await this.directoryHasNonEmptyFile(submissionDirectory)) {
           notify.warning(
-            'Nothing to test yet: this assignment\'s files are all empty. '
-            + 'Write your solution first, then test again.'
+            say('Nothing to test yet: this assignment\'s files are all empty. '
+            + 'Write your solution first, then test again.',
+            'Es gibt noch nichts zu testen: Alle Dateien dieser Aufgabe sind leer. Schreibe zuerst deine Lösung und teste sie dann.')
           );
           return;
         }
@@ -1840,26 +1920,26 @@ export class StudentCommands {
         if (hasChanges) {
           await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: `Preparing ${assignmentTitle}...`,
+            title: say(`Preparing ${assignmentTitle}...`, `${assignmentTitle} wird vorbereitet …`),
             cancellable: true
           }, async (progress, token) => {
-            progress.report({ message: 'Committing changes...' });
+            progress.report({ message: say('Committing changes...', 'Änderungen werden gespeichert …') });
             await this.gitService.stageAll(submissionDirectory);
             const now = new Date();
             const timestamp = now.toISOString().replace('T', ' ').split('.')[0];
             const commitMessage = `Update ${assignmentTitle} - ${timestamp}`;
             await this.gitService.commitChanges(submissionDirectory, commitMessage);
 
-            progress.report({ message: 'Pushing to remote...' });
+            progress.report({ message: say('Pushing to remote...', 'Änderungen werden hochgeladen …') });
             try {
               await this.pushWithAuthRetry(submissionDirectory);
-              progress.report({ message: 'Successfully pushed to remote.' });
+              progress.report({ message: say('Successfully pushed to remote.', 'Änderungen wurden hochgeladen.') });
             } catch (pushError) {
               console.error('[TestAssignment] Git push failed:', pushError);
               throw new Error(`Failed to push changes to remote: ${pushError instanceof Error ? pushError.message : String(pushError)}`);
             }
 
-            progress.report({ message: 'Getting commit hash...' });
+            progress.report({ message: say('Getting commit hash...', 'Version wird ermittelt …') });
             currentCommitHash = await this.gitService.getLatestCommitHash(submissionDirectory);
           });
         }
@@ -1898,14 +1978,14 @@ export class StudentCommands {
               console.log(`[TestAssignment] No artifact found for commit ${currentCommitHash}, creating new one`);
               await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: `Preparing ${assignmentTitle}...`,
+                title: say(`Preparing ${assignmentTitle}...`, `${assignmentTitle} wird vorbereitet …`),
                 cancellable: false
               }, async (progress) => {
-                progress.report({ message: 'Packaging submission archive...' });
+                progress.report({ message: say('Packaging submission archive...', 'Dateien werden gepackt …') });
                 const archive = await this.createSubmissionArchive(submissionDirectory);
                 console.log(`[TestAssignment] Archive created successfully`);
 
-                progress.report({ message: 'Uploading submission package...' });
+                progress.report({ message: say('Uploading submission package...', 'Dateien werden hochgeladen …') });
                 submissionResponse = await this.apiService.createStudentSubmission({
                   submission_group_id: submissionGroupId,
                   version_identifier: currentCommitHash,
@@ -1936,7 +2016,7 @@ export class StudentCommands {
           console.error('[TestAssignment] No artifact ID available, cannot submit test');
           throw new Error('Failed to create or retrieve submission artifact');
         } else {
-          notify.warning('Could not determine commit hash or content ID for testing');
+          notify.warning(say('Could not determine commit hash or content ID for testing', 'Die Version oder Aufgabe für den Test wurde nicht gefunden. Lade den Kurs erneut.'));
         }
 
         // Only refresh if test completed successfully
@@ -2307,7 +2387,7 @@ export class StudentCommands {
     const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
     const submissionGroupId = submissionGroup?.id;
     if (!submissionGroupId) {
-      notify.warning('Open "Submit (without git)" from an assignment in the student tree.');
+      notify.warning(say('Open "Submit (without git)" from an assignment in the student tree.', 'Wähle bei einer Aufgabe in der Kursübersicht „Ohne Git abgeben“.'));
       return;
     }
 
@@ -2315,34 +2395,35 @@ export class StudentCommands {
       canSelectFolders: true,
       canSelectFiles: false,
       canSelectMany: false,
-      openLabel: 'Submit this folder',
-      title: 'Choose the folder with your work to submit'
+      openLabel: say('Submit this folder', 'Diesen Ordner abgeben'),
+      title: say('Choose the folder with your work to submit', 'Wähle den Ordner mit deiner Lösung aus')
     });
     if (!folder || !folder[0]) { return; }
     const dir = folder[0].fsPath;
 
     if (!await this.directoryHasNonEmptyFile(dir)) {
-      notify.warning('Nothing to submit: the chosen folder has no files or only empty files.');
+      notify.warning(say('Nothing to submit: the chosen folder has no files or only empty files.', 'Es gibt noch nichts abzugeben: Der ausgewählte Ordner enthält keine Dateien oder nur leere Dateien.'));
       return;
     }
 
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Submitting…', cancellable: false },
+      { location: vscode.ProgressLocation.Notification, title: say('Submitting…', 'Abgabe wird erstellt …'), cancellable: false },
       async (progress) => {
         try {
-          progress.report({ message: 'Packaging your work…' });
+          progress.report({ message: say('Packaging your work…', 'Deine Dateien werden gepackt …') });
           const archive = await this.createSubmissionArchive(dir);
-          progress.report({ message: 'Uploading…' });
+          progress.report({ message: say('Uploading…', 'Dateien werden hochgeladen …') });
           // No version_identifier → the backend content-addresses the upload.
           const res = await this.apiService.createStudentSubmission(
             { submission_group_id: submissionGroupId, version_identifier: null, submit: true } as SubmissionCreate,
             archive
           );
           if (res) {
-            void notify.info('Submitted your work (no git).');
+            void notify.info(say('Submitted your work (no git).', 'Deine Lösung wurde ohne Git abgegeben.'));
           }
         } catch (e: any) {
-          notify.error(`Submit failed: ${e?.message || String(e)}`);
+          console.error('[StudentCommands] Submit without git failed:', e);
+          notify.error(say(`Submit failed: ${e?.message || String(e)}`, 'Deine Lösung konnte nicht abgegeben werden. Versuche es bitte erneut.'));
         }
       }
     );

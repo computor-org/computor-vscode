@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../panels/TestResultsPanel';
 import { TestResultService } from '../../services/TestResultService';
 import { ComputorApiService } from '../../services/ComputorApiService';
+import { showErrorWithSeverity } from '../../utils/errorDisplay';
+import { say } from '../../utils/uiLanguage';
 import { notify } from '../../utils/notify';
 import { resolveResultPayload, resultCacheKey, resultScopeFor } from './resolveResultPayload';
 
@@ -131,12 +133,15 @@ export function registerResultsPanel(
       }
 
       if (!resultPayload && !silent) {
-        notify.info('No stored test results yet. Run tests to generate new results.');
+        notify.info(say('No stored test results yet. Run tests to generate new results.', 'Es gibt noch keine gespeicherten Testergebnisse. Starte einen Test, um Ergebnisse zu erhalten.'));
       }
     } catch (error) {
       console.error('[ResultsPanel] Failed to show test results:', error);
       if (!silent) {
-        notify.error('Failed to open test results. Please run tests again.');
+        showErrorWithSeverity(error instanceof Error ? error : new Error(String(error)), say(
+          'Could not open test results. Please try again.',
+          'Die Testergebnisse konnten nicht geöffnet werden. Versuche es bitte erneut.'
+        ));
       }
     }
   }));

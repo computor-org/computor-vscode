@@ -1,5 +1,7 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
+import { HttpError } from '../../src/exceptions/errors';
+import { setUiProfileLanguage } from '../../src/utils/uiLanguage';
 import { TestResultService } from '../../src/services/TestResultService';
 
 // The poll callback is async. Without a try/catch inside it, a transient
@@ -70,6 +72,26 @@ describe('TestResultService polling resilience', () => {
     expect(outcome?.status).to.equal('CANCELLED');
     expect(calls).to.be.greaterThan(2);
     expect(unhandled, 'a failed poll must not become an unhandled rejection').to.deep.equal([]);
+  });
+
+  it('stops on an expired session and asks the learner to sign in again', async () => {
+    const service = freshService();
+    let calls = 0;
+    const messages: string[] = [];
+    setUiProfileLanguage('de');
+    (vscode.window as any).showErrorMessage = async (message: string) => { messages.push(message); };
+    service.setApiService({
+      submitTest: async () => ({ id: 'expired-result' }),
+      getResultStatus: async () => { calls++; throw new HttpError('HTTP 401', 401, 'Unauthorized'); }
+    } as any);
+    try {
+      const outcome = await service.submitTestByArtifactAndAwaitResults('artifact', 'Assignment', false, { progress });
+      expect(outcome?.status).to.equal('ERROR');
+      expect(calls).to.equal(1);
+      expect(messages).to.deep.equal(['Deine Sitzung ist abgelaufen. Melde dich bitte erneut an.']);
+    } finally {
+      setUiProfileLanguage(undefined);
+    }
   });
 
   it('gives up with an error rather than hanging until the timeout', async () => {
