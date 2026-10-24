@@ -3,6 +3,8 @@ import { HELP_PAGES } from '../../../utils/studentHelpPages';
 import { TUTOR_HELP_PAGES } from '../../../utils/tutorHelpPages';
 import { resolveContentLanguage } from '../../../utils/contentLanguage';
 import { courseStartPointer } from '../../../utils/courseStart';
+import { contentIconSvg, ContentIconBadge, ContentIconCorner, ContentIconShape } from '../../../utils/contentIconSvg';
+import { codicon, CodiconName } from './codicons';
 import type { CourseContentStudentList } from '../../../types/generated';
 
 /**
@@ -30,12 +32,6 @@ export interface WelcomeLaunch {
   title: string;
   /** Where to begin, as the course tree shows it: "Woche 1 → Mathematische Konstanten". */
   startHere?: string;
-  /**
-   * Listed in the self-enrolment catalog. Such a course has no human tutors;
-   * questions go to the AI tutor Lena (computor-org/issues#458). Undefined
-   * when the course could not be read, and the page then names both.
-   */
-  selfEnrolment?: boolean;
 }
 
 export type WelcomeRole = 'student' | 'tutor' | 'lecturer';
@@ -47,6 +43,38 @@ const roleLabels: Record<WelcomeRole, string> = {
   tutor: 'Tutor',
   lecturer: 'Lecturer'
 };
+
+/** A course's role badge in the page language, as the web app names it. */
+const roleBadges: Record<WelcomeRole, [string, string]> = {
+  student: ['Student', 'Studierende'],
+  tutor: ['Tutor', 'Tutor'],
+  lecturer: ['Lecturer', 'Lehrende']
+};
+
+/**
+ * The names VS Code shows for Computor's commands, views and menus, English and
+ * German as in package.nls.json and package.nls.de.json (a test keeps them
+ * equal).
+ */
+export const workbenchNames = {
+  'computor.student.help': ['Help', 'Hilfe'],
+  'computor.student.showPreview': ['Show README Preview', 'Anleitung anzeigen'],
+  'computor.student.commitAssignment': ['Commit Assignment', 'Aufgabe sichern (Commit)'],
+  'computor.student.commitCourse': ['Commit Course', 'Kurs sichern (Commit)'],
+  'computor.student.testAssignment': ['Test Assignment', 'Aufgabe testen'],
+  'computor.student.submitAssignment': ['Submit', 'Abgeben'],
+  'computor.student.showMessages': ['Show Messages', 'Nachrichten anzeigen'],
+  'computor.showContentDescription': ['Show Description', 'Beschreibung anzeigen'],
+  'computor-test-results': ['Results', 'Ergebnisse'],
+  'computor.student.courses': ['Courses', 'Kurse']
+} as const;
+
+export type WorkbenchName = keyof typeof workbenchNames;
+type Names = (key: WorkbenchName) => string;
+
+function namer(model: Pick<WelcomeModel, 'workbenchLanguage'>): Names {
+  return key => workbenchNames[key][model.workbenchLanguage === 'de' ? 1 : 0];
+}
 
 /** The activity-bar container each role's view lives in. */
 export const welcomeRoleContainers: Record<WelcomeRole, string> = {
@@ -70,6 +98,12 @@ export interface WelcomeModel {
   courses: WelcomeCourse[];
   /** Absent means English. */
   language?: WelcomeLanguage;
+  /**
+   * The VS Code display language. Command and view names on the page follow
+   * it rather than the page language, so that they read as the tooltips and
+   * panel titles on screen do. Absent means English.
+   */
+  workbenchLanguage?: WelcomeLanguage;
   /** Only in a workspace launched for one course. */
   launch?: WelcomeLaunch;
   /** VS Code running in the browser (code-server) rather than on the desktop. */
@@ -86,6 +120,12 @@ export interface WelcomeModel {
    * the picture travels inside the document like every other asset.
    */
   logoDataUri?: string;
+  /**
+   * The annotated assignment row (media/welcome/assignment-row.svg), as
+   * markup. Inline for the same reason as the logo, and so that it draws in
+   * the theme's own colours (computor-org/issues#526).
+   */
+  rowPictureSvg?: string;
 }
 
 /** Fixed external destinations. The webview names one by key; it never sends a URL. */
@@ -113,6 +153,7 @@ const maxListedCourses = 8;
 // ------------------------------------------------------------------ facts
 
 interface CourseLike {
+  position?: number | null;
   id?: string | null;
   title?: string | null;
   path?: string | null;
@@ -126,7 +167,7 @@ export interface WelcomeApi {
   getTutorCourses(): Promise<CourseLike[]>;
   getLecturerCourses(): Promise<CourseLike[] | undefined>;
   getInstanceInfo(): Promise<{ web_url?: string | null } | undefined>;
-  getCourse(courseId: string): Promise<{ title?: string | null; path?: string; language_code?: string | null; public?: boolean | null } | undefined>;
+  getCourse(courseId: string): Promise<{ title?: string | null; path?: string; language_code?: string | null } | undefined>;
   getStudentCourseContents(courseId: string): Promise<CourseContentStudentList[]>;
 }
 
@@ -181,7 +222,6 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedC
     launch: launchedCourseId && launchedTitle ? {
       title: launchedTitle,
       startHere: courseStartPointer(contents, language),
-      selfEnrolment: typeof launchedCourse?.public === 'boolean' ? launchedCourse.public : undefined
     } : undefined
   };
 }
@@ -191,9 +231,22 @@ export function welcomeLanguage(userLanguage?: string | null, courseLanguage?: s
   return resolveContentLanguage(userLanguage, courseLanguage).startsWith('de') ? 'de' : 'en';
 }
 
+/** Mirror the server's course order when combining separately ordered role lists. */
+function compareCourses(a: CourseLike, b: CourseLike): number {
+  const aPosition = typeof a.position === 'number' && Number.isFinite(a.position) ? a.position : Infinity;
+  const bPosition = typeof b.position === 'number' && Number.isFinite(b.position) ? b.position : Infinity;
+  if (aPosition !== bPosition) return aPosition < bPosition ? -1 : 1;
+  const aTitle = a.title ?? null;
+  const bTitle = b.title ?? null;
+  if (aTitle === null && bTitle !== null) return 1;
+  if (aTitle !== null && bTitle === null) return -1;
+  const titleOrder = (aTitle ?? '').localeCompare(bTitle ?? '');
+  return titleOrder || (a.id ?? '').localeCompare(b.id ?? '');
+}
+
 /** One row per course, carrying every role the user has in it. */
 export function mergeCourses(byRole: Record<WelcomeRole, CourseLike[]>): WelcomeCourse[] {
-  const courses = new Map<string, WelcomeCourse>();
+  const courses = new Map<string, CourseLike & { id: string; roles: WelcomeRole[] }>();
   for (const role of roleOrder) {
     for (const course of byRole[role] ?? []) {
       if (!course?.id) continue;
@@ -202,14 +255,14 @@ export function mergeCourses(byRole: Record<WelcomeRole, CourseLike[]>): Welcome
         if (!known.roles.includes(role)) known.roles.push(role);
         continue;
       }
-      courses.set(course.id, {
-        id: course.id,
-        title: course.title?.trim() || course.path?.trim() || 'Untitled course',
-        roles: [role]
-      });
+      courses.set(course.id, { ...course, id: course.id, roles: [role] });
     }
   }
-  return [...courses.values()].sort((a, b) => a.title.localeCompare(b.title));
+  return [...courses.values()].sort(compareCourses).map(course => ({
+    id: course.id,
+    title: course.title?.trim() || course.path?.trim() || 'Untitled course',
+    roles: course.roles
+  }));
 }
 
 /** A server-supplied address is only ever used as an http(s) link. */
@@ -278,7 +331,7 @@ export function resolveWelcomeMessage(message: unknown, model: WelcomeModel): We
 /** English first, German second: the page picks one by the model's language. */
 type Say = (en: string, de: string) => string;
 
-function sayer(model: WelcomeModel): Say {
+function sayer(model: Pick<WelcomeModel, 'language'>): Say {
   return (en, de) => (model.language === 'de' ? de : en);
 }
 
@@ -348,7 +401,7 @@ function renderCourses(model: WelcomeModel, say: Say): string {
     ? `<ul class="welcome-courses">${listed.map(course => `
         <li class="welcome-course">
           <span>${escapeHtml(course.title)}</span>
-          ${course.roles.map(role => `<span class="badge badge-info xs">${roleLabels[role]}</span>`).join(' ')}
+          ${course.roles.map(role => `<span class="badge badge-info xs">${say(...roleBadges[role])}</span>`).join(' ')}
         </li>`).join('')}
       </ul>${hidden > 0 ? `<p class="text-muted">${say(`…and ${hidden} more.`, `…und ${hidden} weitere.`)}</p>` : ''}`
     : `<p class="text-muted">${say(
@@ -368,29 +421,54 @@ function renderCourses(model: WelcomeModel, say: Say): string {
     ${buttons ? `<div class="actions">${buttons}</div>` : ''}`);
 }
 
+/** A row action as the tree shows it: its icon, then its tooltip text. */
+function action(name: CodiconName, label: string): string {
+  return `<span class="welcome-action">${codicon(name)}<em>${escapeHtml(label)}</em></span>`;
+}
+
 /**
- * Where a question goes. A self-enrolment course has no human tutors, only
- * the AI tutor Lena (computor-org/issues#458); an unknown course gets both.
+ * The five actions on the assignment row, in their native inline order
+ * (package.json), numbered for the guide.
  */
+function rowActions(say: Say, n: Names): Array<[CodiconName, string, string]> {
+  const results = n('computor-test-results');
+  return [
+    ['open-preview', n('computor.student.showPreview'), say('Read the task.', 'Aufgabe lesen.')],
+    ['git-commit', n('computor.student.commitAssignment'), say('Back up your work on the server. Not a submission.', 'Arbeit auf dem Server sichern. Das ist keine Abgabe.')],
+    ['beaker', n('computor.student.testAssignment'), say(`Run the tests. The result appears under <strong>${results}</strong>.`, `Tests ausführen. Das Ergebnis erscheint unter <strong>${results}</strong>.`)],
+    ['cloud-upload', n('computor.student.submitAssignment'), say('Hand the assignment in for grading.', 'Aufgabe zur Bewertung abgeben.')],
+    ['comment-discussion', n('computor.student.showMessages'), say('Messages and questions about this assignment.', 'Nachrichten und Fragen zu dieser Aufgabe.')]
+  ];
+}
+
+/** The native assignment row and its action legend. */
+function renderRowPicture(model: Pick<WelcomeModel, 'rowPictureSvg' | 'workbenchLanguage'>, say: Say, compact = false): string {
+  const picture = model.rowPictureSvg
+    ? `<div class="welcome-row-picture" role="img" aria-label="${escapeHtml(say(
+      'An assignment row with its title and action icons.',
+      'Eine Aufgabenzeile mit ihrem Titel und ihren Aktionssymbolen.'))}">${model.rowPictureSvg}</div>`
+    : '';
+  const actions = rowActions(say, namer(model)).map((row, index) => ({ row, index }))
+    .filter(({ index }) => !compact || [0, 2, 3].includes(index))
+    .map(({ row: [icon, label, meaning], index }) => `
+      <li>${compact ? '' : `<span class="welcome-callout" aria-hidden="true">${index + 1}</span>`}${action(icon, label)}${compact ? '' : `<span class="text-muted">${meaning}</span>`}</li>`).join('');
+  return `<figure class="welcome-row">
+      ${picture}
+      <ol class="welcome-row-legend">${actions}
+      </ol>
+    </figure>`;
+}
+
+/** Course questions use Messages; technical problems use support tickets. */
 function renderAskForHelp(model: WelcomeModel, say: Say): string {
   const stuck = `<strong>${say('Stuck?', 'Kommst du nicht weiter?')}</strong>`;
-  const lena = '<code>@lena</code>';
-  const selfEnrolment = model.launch?.selfEnrolment;
-  const ask = selfEnrolment === true
-    ? say(`${stuck} This course has no human tutors. Lena, the AI tutor, gives hints instead of complete solutions: click the speech-bubble icon on an assignment (<em>Show Messages</em>) and mention ${lena} in your message.`,
-      `${stuck} In diesem Kurs gibt es keine menschlichen Tutorinnen und Tutoren. Die KI-Tutorin Lena gibt Hinweise statt fertiger Lösungen: Klicke an einer Aufgabe auf das Sprechblasen-Symbol (<em>Show Messages</em>) und erwähne ${lena} in deiner Nachricht.`)
-    : selfEnrolment === false
-      ? say(`${stuck} The speech-bubble icon on an assignment (<em>Show Messages</em>) lets you ask your lecturer and tutors.`,
-        `${stuck} Über das Sprechblasen-Symbol an einer Aufgabe (<em>Show Messages</em>) kannst du den Lehrenden und den Tutorinnen und Tutoren deines Kurses Fragen stellen.`)
-      : say(`${stuck} The speech-bubble icon on an assignment (<em>Show Messages</em>) lets you ask for help: your lecturer and tutors, or in courses with the AI tutor Lena, ${lena}.`,
-        `${stuck} Über das Sprechblasen-Symbol an einer Aufgabe (<em>Show Messages</em>) bittest du um Hilfe: je nach Kurs die Lehrenden und die Tutorinnen und Tutoren oder die KI-Tutorin Lena mit ${lena}.`);
+  const messages = action('comment-discussion', namer(model)('computor.student.showMessages'));
+  const ask = say(`${stuck} Choose ${messages} on an assignment row to ask for help in this course.`,
+    `${stuck} Wähle ${messages} an einer Aufgabenzeile, um in diesem Kurs um Hilfe zu bitten.`);
   if (!model.signedIn) return `<p>${ask}</p>`;
 
-  const ticket = selfEnrolment === true
-    ? say('For anything Lena cannot help with, such as a technical problem or leaving the course, open a support ticket.',
-      'Für alles, wobei Lena nicht helfen kann, etwa ein technisches Problem oder die Abmeldung vom Kurs, eröffne ein Support-Ticket.')
-    : say('For a technical problem with Computor itself, open a support ticket.',
-      'Bei einem technischen Problem mit Computor selbst eröffne ein Support-Ticket.');
+  const ticket = say('For a technical problem with Computor itself, open a support ticket.',
+    'Bei einem technischen Problem mit Computor selbst eröffne ein Support-Ticket.');
   return `<p>${ask}</p>
     <div class="welcome-links"><div><button type="button" class="btn secondary sm" data-action="reportProblem">${say('Report a problem', 'Problem melden')}</button></div><p class="text-muted">${ticket}</p></div>`;
 }
@@ -400,25 +478,30 @@ function renderAskForHelp(model: WelcomeModel, say: Say): string {
  *
  * Every step names what is on screen in the Student view — the container
  * title, the row actions and their icons (package.json), the Results panel —
- * so a student can follow it without knowing VS Code. The labels VS Code
- * shows stay in English in the German text, because the workbench shows them so.
+ * so a student can follow it without knowing VS Code. The labels follow the
+ * VS Code display language (workbenchLanguage), because the workbench shows
+ * them so: English names in a German text when VS Code itself is English.
  */
 function renderTutorial(model: WelcomeModel, say: Say): string {
+  const n = namer(model);
   const openCourse: [string, string] = model.launch
     ? [say('Your course is already open.', 'Dein Kurs ist schon geöffnet.'),
       say(`In the Student view on the left, <strong>${escapeHtml(model.launch.title)}</strong> is already expanded. Units group the material; assignments sit inside them.`,
         `Links in der Student-Ansicht ist <strong>${escapeHtml(model.launch.title)}</strong> schon aufgeklappt. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.`)]
     : [say('Open your course.', 'Öffne deinen Kurs.'),
-      say('Under <strong>Courses</strong>, click your course to expand it. If your university or department is listed first, expand it until you reach the course. Units group the material; assignments sit inside them.',
-        'Klicke unter <strong>Courses</strong> auf deinen Kurs, um ihn aufzuklappen. Steht davor deine Universität oder dein Institut, klappe weiter auf, bis du beim Kurs bist. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.')];
+      say(`Under <strong>${n('computor.student.courses')}</strong>, click your course to expand it. If your university or department is listed first, expand it until you reach the course. Units group the material; assignments sit inside them.`,
+        `Klicke unter <strong>${n('computor.student.courses')}</strong> auf deinen Kurs, um ihn aufzuklappen. Steht davor deine Universität oder dein Institut, klappe weiter auf, bis du beim Kurs bist. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.`)];
+  const description = say(` If a unit has a description, open it with the book ${action('book', n('computor.showContentDescription'))} on its row.`,
+    ` Hat eine Einheit eine Beschreibung, öffnest du sie mit dem Buch ${action('book', n('computor.showContentDescription'))} in ihrer Zeile.`);
+  openCourse[1] += description;
   const steps: Array<[string, string]> = [
     [say('Open the Student view.', 'Öffne die Student-Ansicht.'),
-      say('Click the <strong>Computor Student</strong> icon (a book) in the Activity Bar on the far left. In a workspace started for a course, it is already open.',
-        'Klicke in der Aktivitätsleiste ganz links auf das Symbol <strong>Computor Student</strong> (ein Buch). In einem Arbeitsbereich, der für einen Kurs gestartet wurde, ist sie schon offen.')],
+      say(`Click the book ${codicon('book')} <strong>Computor Student</strong> in the Activity Bar on the far left. In a workspace started for a course, it is already open.`,
+        `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>Computor Student</strong>. In einem Arbeitsbereich, der für einen Kurs gestartet wurde, ist sie schon offen.`)],
     openCourse,
     [say('Read the task.', 'Lies die Aufgabe.'),
-      say('Click an assignment\'s title. Its instructions open beside your code; nothing is downloaded yet.',
-        'Klicke auf den Titel einer Aufgabe. Die Anleitung öffnet sich neben deinem Code, heruntergeladen wird dabei noch nichts.')],
+      say(`Click an assignment's title or choose ${action('open-preview', n('computor.student.showPreview'))}. Its instructions open in the editor; nothing is downloaded yet.`,
+        `Klicke auf den Titel einer Aufgabe oder wähle ${action('open-preview', n('computor.student.showPreview'))}. Die Anleitung öffnet sich im Editor, heruntergeladen wird dabei noch nichts.`)],
     [say('Get the files.', 'Hol dir die Dateien.'),
       say('Click the arrow in front of the assignment to expand it. The first time, Computor sets up your personal course repository, which takes a moment. Then the assignment\'s starting files appear underneath.',
         'Klicke auf den Pfeil vor der Aufgabe, um sie aufzuklappen. Beim ersten Mal richtet Computor dein persönliches Kurs-Repository ein, das dauert einen Moment. Danach erscheinen darunter die Ausgangsdateien der Aufgabe.')],
@@ -426,26 +509,81 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
       say('Click a file to open and edit it. Keep the file names the task asks for: the tests look for them.',
         'Klicke auf eine Datei, um sie zu öffnen und zu bearbeiten. Behalte die Dateinamen bei, die die Aufgabe verlangt, denn die Tests suchen genau nach ihnen.')],
     [say('Test it.', 'Teste sie.'),
-      say('Click the beaker icon on the assignment row, or right-click it and choose <em>Test Assignment</em>. Computor saves, commits and uploads your work and runs the tests on the server; the results appear in the <strong>Results</strong> panel. If test runs are limited, each one counts.',
-        'Klicke in der Zeile der Aufgabe auf das Becherglas-Symbol, oder klicke sie mit der rechten Maustaste an und wähle <em>Test Assignment</em>. Computor speichert und committet deine Arbeit, lädt sie hoch und führt die Tests auf dem Server aus. Die Ergebnisse erscheinen im Bereich <strong>Results</strong>. Wenn die Testläufe begrenzt sind, zählt jeder einzelne.')],
+      say(`On the assignment row, choose the beaker ${action('beaker', n('computor.student.testAssignment'))}. The same actions are available in the context menu. Computor saves, commits and uploads your work and runs the tests on the server; the results appear in the <strong>${n('computor-test-results')}</strong> panel. If test runs are limited, each one counts.`,
+        `Wähle an der Aufgabenzeile das Becherglas ${action('beaker', n('computor.student.testAssignment'))}. Dieselben Aktionen findest du im Kontextmenü. Computor speichert und committet deine Arbeit, lädt sie hoch und führt die Tests auf dem Server aus. Die Ergebnisse erscheinen im Bereich <strong>${n('computor-test-results')}</strong>. Wenn die Testläufe begrenzt sind, zählt jeder einzelne.`)],
     [say('Submit.', 'Gib ab.'),
-      say('When you are happy with the result, click the cloud icon with the arrow (<em>Submit</em>). This hands the assignment in for grading — the version you last tested. Submissions may be limited too.',
-        'Wenn du mit dem Ergebnis zufrieden bist, klicke auf das Wolken-Symbol mit dem Pfeil (<em>Submit</em>). Damit gibst du die Aufgabe zur Bewertung ab, und zwar in der Fassung, die du zuletzt getestet hast. Auch die Abgaben können begrenzt sein.')]
+      say(`When you are happy with the result, choose the cloud with the arrow ${action('cloud-upload', n('computor.student.submitAssignment'))}. This hands the assignment in for grading — the version you last tested. Submissions may be limited too.`,
+        `Wenn du mit dem Ergebnis zufrieden bist, wähle die Wolke mit dem Pfeil ${action('cloud-upload', n('computor.student.submitAssignment'))}. Damit gibst du die Aufgabe zur Bewertung ab, und zwar in der Fassung, die du zuletzt getestet hast. Auch die Abgaben können begrenzt sein.`)]
   ];
 
   return section('welcome-tutorial', say('Start working on an assignment', 'Mit einer Aufgabe beginnen'), `
+    ${renderRowPicture(model, say)}
     <ol class="welcome-steps">
       ${steps.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
     </ol>
-    <p>${say('<strong>Commit as you go.</strong> The commit icon on an assignment, or <em>Commit Course</em> on the course row, saves your work on the server. That is your backup; it is not a submission.',
-      '<strong>Committe zwischendurch.</strong> Das Commit-Symbol an einer Aufgabe oder <em>Commit Course</em> in der Kurszeile speichert deine Arbeit auf dem Server. Das ist deine Sicherung, aber keine Abgabe.')}</p>
+    <p>${say(`<strong>Commit as you go.</strong> ${action('git-commit', n('computor.student.commitAssignment'))} on an assignment row, or <em>${n('computor.student.commitCourse')}</em> on the course row, saves your work on the server. That is your backup; it is not a submission.`,
+      `<strong>Committe zwischendurch.</strong> ${action('git-commit', n('computor.student.commitAssignment'))} an einer Aufgabenzeile oder <em>${n('computor.student.commitCourse')}</em> in der Kurszeile speichert deine Arbeit auf dem Server. Das ist deine Sicherung, aber keine Abgabe.`)}</p>
     ${renderAskForHelp(model, say)}
-    <p class="text-muted">${say('Not every course uses every step. If an icon is missing, right-click the assignment to see what your course offers.',
-      'Nicht jeder Kurs nutzt jeden Schritt. Fehlt ein Symbol, klicke die Aufgabe mit der rechten Maustaste an, um zu sehen, was dein Kurs anbietet.')}</p>`,
-  say('Seven steps from your course to a submitted solution.', 'Sieben Schritte von deinem Kurs zur abgegebenen Lösung.'));
+    <p class="text-muted">${say('Not every course uses every step. The assignment row shows the actions available in your course.',
+      'Nicht jeder Kurs nutzt jeden Schritt. Die Aufgabenzeile zeigt dir, welche Aktionen dein Kurs anbietet.')}</p>`,
+  say('Every assignment is a row in the Student view. Point to an assignment or focus its row to show its action icons. The same actions are available in the context menu.',
+    'Jede Aufgabe ist eine Zeile in der Student-Ansicht. Zeige auf eine Aufgabe oder fokussiere ihre Zeile, damit ihre Aktionssymbole erscheinen. Dieselben Aktionen findest du im Kontextmenü.'));
 }
 
-function renderHelp(say: Say): string {
+/** A content marker drawn by the same code as the tree's. */
+function mark(shape: ContentIconShape, color: string, badge: ContentIconBadge = 'none', corner: ContentIconCorner = 'none'): string {
+  return `<span class="welcome-mark" aria-hidden="true">${contentIconSvg(color, shape, badge, corner)}</span>`;
+}
+
+/** Example colours: in the tree, a row's colour comes from its content type. */
+const unitColour = '#00FF00';
+const assignmentColour = '#FFFF00';
+
+/**
+ * What the marks on a row mean, each drawn as the tree draws it, and what
+ * "done" looks like (computor-org/issues#526).
+ */
+function renderMarks(say: Say, includeHelp = true): string {
+  const rows: Array<[string, string]> = [
+    [mark('circle', unitColour),
+      say('A unit, such as a week. Its colour stands for the kind of content.', 'Eine Einheit, etwa eine Woche. Ihre Farbe steht für die Art des Inhalts.')],
+    [mark('square', assignmentColour),
+      say('An assignment that has not been tested yet.', 'Eine Aufgabe, die noch nicht getestet ist.')],
+    [mark('square', assignmentColour, 'success'),
+      say('All tests passed, not submitted yet.', 'Alle Tests bestanden, noch nicht abgegeben.')],
+    [mark('square', assignmentColour, 'failure'),
+      say('Not all tests passed yet. Improve your solution and test again.', 'Noch nicht alle Tests bestanden. Verbessere deine Lösung und teste noch einmal.')],
+    [mark('square', assignmentColour, 'success-submitted'),
+      say('<strong>Done:</strong> all tests passed and submitted.', '<strong>Erledigt:</strong> alle Tests bestanden und abgegeben.')],
+    [mark('square', assignmentColour, 'failure-submitted'),
+      say('Submitted, but not all tests passed.', 'Abgegeben, aber nicht alle Tests bestanden.')],
+    [mark('square', assignmentColour, 'submitted'),
+      say('Submitted, not tested yet.', 'Abgegeben, noch nicht getestet.')],
+    [`${mark('square', assignmentColour, 'none', 'corrected')}${mark('square', assignmentColour, 'none', 'correction_necessary')}${mark('square', assignmentColour, 'none', 'correction_possible')}`,
+      say('Dot in the corner, once your work has been graded: green corrected, red correction necessary, orange improvement possible.',
+        'Punkt in der Ecke, sobald deine Arbeit bewertet ist: grün korrigiert, rot Korrektur nötig, orange Verbesserung möglich.')],
+    ['<code>(1)(1) 100%</code>',
+      say('Test runs, submissions and the result of the last test. With a limit, as in <code>(1/5)</code>, the second number is the limit. A second percentage is your grade.',
+        'Testläufe, Abgaben und das Ergebnis des letzten Tests. Bei einer Grenze, etwa <code>(1/5)</code>, ist die zweite Zahl die Grenze. Eine zweite Prozentzahl ist deine Bewertung.')],
+    ['<code>●</code> <code>↑</code> <code>⚠</code>',
+      say('Changes not committed yet, committed but not uploaded yet, uploading fails.',
+        'Änderungen noch nicht committet, committet, aber noch nicht hochgeladen, das Hochladen schlägt fehl.')],
+    ['<code>🔔 2</code>', say('Unread messages.', 'Ungelesene Nachrichten.')]
+  ];
+
+  return section('welcome-marks', say('The marks on a row', 'Die Markierungen an einer Zeile'), `
+    <div class="welcome-marks">${rows.map(([sample, meaning]) => `<div class="welcome-mark-sample">${sample}</div><p>${meaning}</p>`).join('')}</div>
+    ${includeHelp ? `<div class="actions">${helpButton(HELP_PAGES.course, say('More about the marks', 'Mehr über die Markierungen'))}</div>` : ''}`,
+  say('An assignment is done when its square carries the green double check: all tests passed and submitted.',
+    'Eine Aufgabe ist erledigt, wenn ihr Quadrat das grüne Doppelhäkchen trägt: alle Tests bestanden und abgegeben.'));
+}
+
+/** Sections that matter less on the first day sit below this heading. */
+function renderMoreHeading(say: Say): string {
+  return `<h2 class="welcome-more" id="welcome-more">${say('More', 'Mehr')}</h2>`;
+}
+
+function renderHelp(say: Say, n: Names): string {
   return section('welcome-help', say('Help pages', 'Hilfeseiten'), linkRows([
     [helpButton(HELP_PAGES.course, say('Courses', 'Kurse')),
       say('Your course repository, committing versus submitting, and the marks on a row.',
@@ -456,8 +594,8 @@ function renderHelp(say: Say): string {
     [helpButton(HELP_PAGES.assignment, say('Assignments', 'Aufgaben')),
       say('Working, testing and submitting, managing files, and getting a file back.',
         'Bearbeiten, Testen und Abgeben, Dateien verwalten und eine Datei zurückholen.')]
-  ]), say('Short guides that come with the extension. In the Student view, right-click any row and choose <em>Help</em> to open the page for it.',
-    'Kurze Anleitungen auf Englisch, die mit der Erweiterung kommen. In der Student-Ansicht öffnet ein Rechtsklick auf eine Zeile und <em>Help</em> die passende Seite.'));
+  ]), say(`Short guides that come with the extension. In the Student view, right-click any row and choose <em>${n('computor.student.help')}</em> to open the page for it.`,
+    `Kurze Anleitungen auf Englisch, die mit der Erweiterung kommen. In der Student-Ansicht öffnet ein Rechtsklick auf eine Zeile und <em>${n('computor.student.help')}</em> die passende Seite.`));
 }
 
 /**
@@ -486,9 +624,8 @@ function renderGitColours(say: Say): string {
     </table>
     <p>${say('The bars appear in the editor next to the line numbers; the coloured names with a letter appear in the Explorer and in the Student view. The exact colours depend on your theme.',
       'Die Balken erscheinen im Editor neben den Zeilennummern, die farbigen Namen mit einem Buchstaben im Explorer und in der Student-Ansicht. Die genauen Farben hängen von deinem Farbschema ab.')}</p>
-    <p>${say('The Student view adds its own marks to a row: <code>●</code> changes not committed yet, <code>↑</code> committed but not uploaded yet, <code>⚠</code> uploading fails.',
-      'Die Student-Ansicht setzt eigene Markierungen an eine Zeile: <code>●</code> Änderungen, die noch nicht committet sind, <code>↑</code> committet, aber noch nicht hochgeladen, <code>⚠</code> das Hochladen schlägt fehl.')}</p>
-    <div class="actions">${helpButton(HELP_PAGES.course, say('More about the marks', 'Mehr über die Markierungen'))}</div>`,
+    <p>${say('The Student view adds its own marks to a row: <code>●</code>, <code>↑</code> and <code>⚠</code>, explained under <em>The marks on a row</em>.',
+      'Die Student-Ansicht setzt dazu eigene Markierungen an eine Zeile: <code>●</code>, <code>↑</code> und <code>⚠</code>, erklärt unter <em>Die Markierungen an einer Zeile</em>.')}</p>`,
   say('They come from Git and compare your files with your last commit. Nothing is wrong when you see them; they go away when you commit.',
     'Sie stammen von Git und vergleichen deine Dateien mit deinem letzten Commit. Wenn du sie siehst, ist nichts falsch, und nach dem nächsten Commit verschwinden sie.'));
 }
@@ -603,11 +740,27 @@ export function renderWelcomeBody(model: WelcomeModel): string {
     ${renderHero(model, say)}
     ${renderCourses(model, say)}
     ${showTutorial ? renderTutorial(model, say) : ''}
-    ${renderHelp(say)}
+    ${showTutorial ? renderMarks(say) : ''}
+    ${renderHelp(say, namer(model))}
+    ${renderMoreHeading(say)}
     ${renderStaff(model, say)}
     ${renderGitColours(say)}
     ${renderOtherEdition(model, say)}
     ${renderCredits(model, say)}
     ${renderStartupToggle(model, say)}
   </div>`;
+}
+
+/** The shared guide split around course text, keeping Test and Submit visible first. */
+export function renderCourseWelcomeGuide(model: Pick<WelcomeModel, 'language' | 'workbenchLanguage' | 'rowPictureSvg'>, title: string): { intro: string; details: string } {
+  const say = sayer(model);
+  const wrapper = (body: string) => `<div class="page-root welcome-page welcome-course-guide" lang="${model.language ?? 'en'}">${body}</div>`;
+  return {
+    intro: wrapper(`<h1>${escapeHtml(title)}</h1>${section('welcome-tutorial', say('Read, test, submit', 'Lesen, testen, abgeben'),
+      renderRowPicture(model, say, true), say(
+        'Point to an assignment or focus its row, then choose an action icon. The same actions are available in the context menu.',
+        'Zeige auf eine Aufgabe oder fokussiere ihre Zeile und wähle ein Aktionssymbol. Dieselben Aktionen findest du im Kontextmenü.'))}`),
+    details: wrapper(`${section('welcome-actions', say('All assignment actions', 'Alle Aufgabensymbole'),
+      renderRowPicture({ ...model, rowPictureSvg: undefined }, say))}${renderMarks(say, false)}`)
+  };
 }
