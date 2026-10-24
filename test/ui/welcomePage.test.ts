@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as fs from 'fs';
 import * as path from 'path';
-import { env, UIKind, webviewPanels } from '../helpers/vscode-stub';
+import { env, UIKind, ViewColumn, webviewPanels } from '../helpers/vscode-stub';
 import { SimpleMockMemento } from '../helpers/SimpleMockContext';
 import {
   collectWelcomeFacts,
@@ -11,6 +11,7 @@ import {
   WelcomeModel
 } from '../../src/ui/webviews/welcome/welcomeContent';
 import { isWelcomeShownOnStartup, WelcomeWebviewProvider } from '../../src/ui/webviews/WelcomeWebviewProvider';
+import { showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
 
 /**
  * The welcome page (computor-org/issues#374).
@@ -190,6 +191,74 @@ describe('welcome page content', () => {
     expect(renderWelcomeBody(model({ showOnStartup: true }))).to.contain('id="show-on-startup" checked');
     expect(renderWelcomeBody(model({ showOnStartup: false }))).to.not.contain('id="show-on-startup" checked');
   });
+
+  // computor-org/issues#527 and #458.
+  describe('in German, for a launched course', () => {
+    const launched = (selfEnrolment?: boolean) => model({
+      language: 'de',
+      launch: { title: 'Data Science mit Python – Grundlagen', startHere: 'Woche 1 → Mathematische Konstanten', selfEnrolment }
+    });
+
+    it('speaks German throughout and keeps the labels VS Code shows', () => {
+      const html = renderWelcomeBody(launched(true));
+
+      expect(html).to.contain('Willkommen bei Computor, Ada!');
+      const steps = ['Öffne die Student-Ansicht.', 'Dein Kurs ist schon geöffnet.', 'Lies die Aufgabe.', 'Hol dir die Dateien.',
+        'Schreib deine Lösung.', 'Teste sie.', 'Gib ab.'];
+      const positions = steps.map(step => html.indexOf(`<strong>${step}</strong>`));
+      expect(positions.every(position => position >= 0), 'every step is present').to.equal(true);
+      expect([...positions].sort((a, b) => a - b)).to.deep.equal(positions);
+      for (const english of ['Welcome to', 'Start working on an assignment', 'Help pages', 'You see', 'About Computor', 'Show this page']) {
+        expect(html, english).to.not.contain(english);
+      }
+      expect(html).to.contain('<em>Test Assignment</em>');
+      expect(html).to.contain('<em>Submit</em>');
+    });
+
+    it('says the course is open, where to start, and does not offer the open Student view again', () => {
+      const html = renderWelcomeBody(launched(true));
+
+      expect(html).to.contain('<strong>Data Science mit Python – Grundlagen</strong> ist links schon geöffnet.');
+      expect(html).to.contain('Beginne mit <strong>Woche 1 → Mathematische Konstanten</strong>.');
+      expect(html).to.not.contain('Öffne deinen Kurs.');
+      expect(html).to.not.contain('data-action="view" data-role="student"');
+    });
+
+    it('sends a self-enrolled learner to Lena and to a support ticket, not to tutors', () => {
+      const html = renderWelcomeBody(launched(true));
+
+      expect(html).to.contain('keine menschlichen Tutorinnen und Tutoren');
+      expect(html).to.contain('<code>@lena</code>');
+      expect(html).to.contain('data-action="reportProblem"');
+      expect(html).to.contain('Abmeldung vom Kurs');
+    });
+
+    it('sends a learner in a staffed course to the lecturer and tutors', () => {
+      const html = renderWelcomeBody(launched(false));
+
+      expect(html).to.contain('den Lehrenden und den Tutorinnen und Tutoren deines Kurses');
+      expect(html).to.not.contain('@lena');
+    });
+  });
+
+  it('in English, replaces step 2 for a launched course and names Lena for a self-enrolment course', () => {
+    const html = renderWelcomeBody(model({ launch: { title: 'Grundlagen', startHere: 'Week 1 → Constants', selfEnrolment: true } }));
+
+    expect(html).to.contain('<strong>Your course is already open.</strong>');
+    expect(html).to.not.contain('<strong>Open your course.</strong>');
+    expect(html).to.contain('Start with <strong>Week 1 → Constants</strong>.');
+    expect(html).to.contain('This course has no human tutors.');
+    expect(html).to.not.contain('lecturer and tutors');
+  });
+
+  it('names both kinds of help when the course is not known, and offers a ticket only when signed in', () => {
+    const html = renderWelcomeBody(model());
+    expect(html).to.contain('your lecturer and tutors, or in courses with the AI tutor Lena, <code>@lena</code>');
+    expect(html).to.contain('data-action="reportProblem"');
+
+    const signedOut = renderWelcomeBody(model({ signedIn: false, givenName: undefined, roles: [], courses: [] }));
+    expect(signedOut).to.not.contain('data-action="reportProblem"');
+  });
 });
 
 describe('collectWelcomeFacts', () => {
@@ -202,6 +271,12 @@ describe('collectWelcomeFacts', () => {
       getTutorCourses: record('tutor', [{ id: 'c1', title: 'Physics' }, { id: 'c2', title: null, path: 'algebra' }]),
       getLecturerCourses: record('lecturer', [{ id: 'c2', title: 'Algebra' }]),
       getInstanceInfo: record('info', { web_url: 'https://computor.example/' }),
+      getCourse: record('course', { title: 'Grundlagen', language_code: 'de', public: true }),
+      getStudentCourseContents: record('contents', [
+        { id: 'u1', path: 'woche_1', title: 'Week 1', position: 1, course_content_kind_id: 'unit' },
+        { id: 'a1', path: 'woche_1.konstanten', title: 'Mathematische Konstanten', position: 1, course_content_kind_id: 'assignment',
+          deployment: { deployment_status: 'deployed' } }
+      ] as any),
       ...overrides
     };
   }
@@ -240,6 +315,43 @@ describe('collectWelcomeFacts', () => {
     expect(facts.givenName).to.equal(undefined);
     expect(facts.courses.map(course => course.id)).to.deep.equal(['c2', 'c1']);
     expect(facts.webUrl).to.equal(undefined);
+  });
+
+  it('reads neither a course nor its contents without a launched course, and stays English', async () => {
+    const calls: string[] = [];
+    const facts = await collectWelcomeFacts(api({}, calls));
+
+    expect(calls).to.not.include('course');
+    expect(calls).to.not.include('contents');
+    expect(facts.launch).to.equal(undefined);
+    expect(facts.language).to.equal('en');
+  });
+
+  it('describes the launched course in its language, with where to start', async () => {
+    const facts = await collectWelcomeFacts(api(), 'c1');
+
+    expect(facts.language).to.equal('de');
+    expect(facts.launch).to.deep.equal({
+      title: 'Grundlagen',
+      startHere: 'Woche 1 → Mathematische Konstanten',
+      selfEnrolment: true
+    });
+  });
+
+  it('lets the learner\'s own language win over the course language', async () => {
+    const facts = await collectWelcomeFacts(api({
+      getUserAccount: async () => ({ given_name: 'Ada', profile: { language_code: 'en' } })
+    }), 'c1');
+
+    expect(facts.language).to.equal('en');
+    expect(facts.launch?.startHere).to.equal('Week 1 → Mathematische Konstanten');
+  });
+
+  it('keeps the launched course but leaves its kind open when the course cannot be read', async () => {
+    const facts = await collectWelcomeFacts(api({ getCourse: async () => { throw new Error('down'); } }), 'c1');
+
+    expect(facts.launch?.title).to.equal('Physics');
+    expect(facts.launch?.selfEnrolment).to.equal(undefined);
   });
 
   it('uses only an http(s) web app address', async () => {
@@ -287,6 +399,11 @@ describe('resolveWelcomeMessage', () => {
     expect(resolveWelcomeMessage({ command: 'showOnStartup', data: { value: 'no' } }, signedIn)).to.equal(undefined);
   });
 
+  it('opens a support ticket only while signed in', () => {
+    expect(resolveWelcomeMessage({ command: 'reportProblem' }, signedIn)).to.deep.equal({ kind: 'reportProblem' });
+    expect(resolveWelcomeMessage({ command: 'reportProblem' }, model({ signedIn: false }))).to.equal(undefined);
+  });
+
   it('ignores anything else', () => {
     for (const message of [undefined, null, 'help', { command: 'runCommand', data: { id: 'workbench.action.quit' } }]) {
       expect(resolveWelcomeMessage(message, signedIn)).to.equal(undefined);
@@ -305,7 +422,9 @@ describe('WelcomeWebviewProvider', () => {
     getStudentCourses: async () => [{ id: 'c1', title: 'Programming in Physics' }],
     getTutorCourses: async () => [],
     getLecturerCourses: async () => [],
-    getInstanceInfo: async () => ({ web_url: 'https://computor.example' })
+    getInstanceInfo: async () => ({ web_url: 'https://computor.example' }),
+    getCourse: async () => ({ title: 'Grundlagen', language_code: 'de', public: true }),
+    getStudentCourseContents: async () => []
   };
 
   let context: any;
@@ -393,6 +512,43 @@ describe('WelcomeWebviewProvider', () => {
     await page.afterSignIn();
     expect(webviewPanels).to.have.length(1);
     expect(latestHtml()).to.contain('Programming in Physics');
+  });
+
+  it('speaks to a course launched into the open page, in place and in its language', async () => {
+    let launched: string | undefined;
+    const page = new WelcomeWebviewProvider(context, {
+      api: () => fakeApi, backendUrl: async () => undefined, launchedCourseId: () => launched
+    });
+    await page.open();
+    expect(latestHtml()).to.contain('Welcome to Computor, Ada!');
+
+    launched = 'c1';
+    await page.refresh();
+    expect(webviewPanels).to.have.length(1);
+    expect(webviewPanels[0]!.title).to.equal('Willkommen bei Computor');
+    expect(latestHtml()).to.contain('<strong>Grundlagen</strong> ist links schon geöffnet.');
+  });
+
+  it('keeps the course landing as the only automatic document after a course launch', async () => {
+    await showMarkdownTextPreview(context, '# Willkommen', 'Grundlagen: Willkommen', { viewColumn: ViewColumn.One });
+    const landing = webviewPanels[0]!;
+    const page = new WelcomeWebviewProvider(context, {
+      api: () => fakeApi, backendUrl: async () => undefined, launchedCourseId: () => 'c1'
+    });
+
+    await page.afterSignIn();
+
+    expect(webviewPanels).to.deep.equal([landing]);
+
+    // General help is still available when explicitly requested.
+    await page.open();
+    expect(webviewPanels).to.have.length(2);
+    landing.dispose();
+  });
+
+  it('does not open a closed page on refresh', async () => {
+    await provider().refresh();
+    expect(webviewPanels).to.have.length(0);
   });
 });
 

@@ -10,6 +10,8 @@
   max-width: 900px;
   margin: 0 auto;
   padding: var(--sp-3) var(--sp-4);
+  /* A long German word in a heading must not run out of a narrow group. */
+  overflow-wrap: break-word;
 }
 
 .markdown-body p {
