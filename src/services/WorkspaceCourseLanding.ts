@@ -127,13 +127,14 @@ async function landingLanguage(api: ComputorApiService, courseId: string): Promi
 }
 
 /**
- * The first exercise under one heading: the description's own heading (it is
+ * The first exercise, set off from the course description by a rule and a label, under one heading: the description's own heading (it is
  * in the reading language) replaces the stored title instead of following it.
  */
 export function landingSection(title: string, description: string | undefined, language: string, fallback: string): string {
   const heading = descriptionHeading(description);
   const body = heading && description ? withoutLeadingHeading(description).trim() : description;
-  return `## ${heading ?? escapeHeading(localizedUnitTitle(title, language))}\n\n${body || fallback}`;
+  const label = language === 'de' ? 'Erste Aufgabe' : 'First exercise';
+  return `---\n\n*${label}*\n\n## ${heading ?? escapeHeading(localizedUnitTitle(title, language))}\n\n${body || fallback}`;
 }
 
 function escapeHeading(value: string): string {
