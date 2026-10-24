@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { say } from '../utils/uiLanguage';
 import fetch from 'node-fetch';
 import { notify } from '../utils/notify';
 
@@ -153,19 +154,19 @@ export class BackendConnectionService {
   private updateStatusBar(status: 'connected' | 'disconnected' | 'error', errorHint?: string): void {
     switch (status) {
       case 'connected':
-        this.statusBarItem.text = '$(check) Backend Connected';
+        this.statusBarItem.text = `$(check) ${say('Backend Connected', 'Server verbunden')}`;
         this.statusBarItem.backgroundColor = undefined;
-        this.statusBarItem.tooltip = 'Backend is connected and responding';
+        this.statusBarItem.tooltip = say('Backend is connected and responding', 'Der Computor-Server ist verbunden und antwortet');
         break;
       case 'disconnected':
-        this.statusBarItem.text = '$(x) Backend Disconnected';
+        this.statusBarItem.text = `$(x) ${say('Backend Disconnected', 'Server nicht erreichbar')}`;
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         this.statusBarItem.tooltip = errorHint
           ? `Backend is not reachable: ${errorHint}`
           : 'Backend is not reachable';
         break;
       case 'error':
-        this.statusBarItem.text = '$(warning) Backend Error';
+        this.statusBarItem.text = `$(warning) ${say('Backend Error', 'Serverfehler')}`;
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         this.statusBarItem.tooltip = 'Backend returned an error response';
         break;
