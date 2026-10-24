@@ -77,6 +77,8 @@ describe('student help', () => {
     it('every link between help pages resolves', () => {
       const pages = fs.readdirSync(HELP_DIR).filter(name => name.endsWith('.md'));
       const broken: string[] = [];
+      const manifest = JSON.parse(fs.readFileSync(path.join(HELP_DIR, '..', '..', 'package.json'), 'utf8'));
+      const registeredCommands = new Set(manifest.contributes.commands.map((command: { command: string }) => command.command));
 
       for (const page of pages) {
         const text = fs.readFileSync(path.join(HELP_DIR, page), 'utf8');
@@ -85,6 +87,12 @@ describe('student help', () => {
         for (const [, targetRaw] of links) {
           const target = targetRaw ?? '';
           if (/^(https?:|mailto:|#)/.test(target)) {
+            continue;
+          }
+          if (target.startsWith('command:')) {
+            if (!registeredCommands.has(target.slice('command:'.length))) {
+              broken.push(`${page} → ${target} (unregistered command)`);
+            }
             continue;
           }
           const [file, anchor] = target.split('#');

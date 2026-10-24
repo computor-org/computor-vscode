@@ -1,7 +1,11 @@
 import { expect } from 'chai';
+import { trackTree } from '../../src/ui/treeRestore';
+import { StudentCourseContentTreeProvider } from '../../src/ui/tree/student/StudentCourseContentTreeProvider';
 import {
   WorkspaceLaunchContext,
   WorkspaceLaunchContextService,
+  findWorkspaceLaunchTarget,
+  workspaceLaunchContent,
   workspaceLaunchIdentity
 } from '../../src/services/WorkspaceLaunchContextService';
 
@@ -46,7 +50,7 @@ describe('WorkspaceLaunchContextService', () => {
 
   function service(
     fetchContext: () => Promise<WorkspaceLaunchContext | null>,
-    openCourse: (id: string) => Promise<boolean>,
+    openCourse: (id: string, courseContentId?: string | null) => Promise<boolean>,
     intervalMs = 10
   ): WorkspaceLaunchContextService {
     const value = new WorkspaceLaunchContextService({ fetchContext, openCourse, now: () => NOW, intervalMs });
@@ -81,6 +85,52 @@ describe('WorkspaceLaunchContextService', () => {
     await value.poll();
 
     expect(opened).to.deep.equal(['course-1', 'course-1', 'course-2']);
+  });
+
+  it('forwards exact material intents once, including repeated clicks, another assignment and a unit', async () => {
+    let context: WorkspaceLaunchContext = { ...request(), course_content_id: 'exercise-1' };
+    const opened: Array<[string, string | null | undefined]> = [];
+    const value = service(async () => context, async (courseId, contentId) => {
+      opened.push([courseId, contentId]);
+      return true;
+    });
+    await value.poll();
+    await value.poll();
+    context = { ...request('launch-2'), course_content_id: 'exercise-1' };
+    await value.poll();
+    context = { ...request('launch-3'), course_content_id: 'exercise-2' };
+    await value.poll();
+    context = { ...request('launch-4'), course_content_id: 'unit-1' };
+    await value.poll();
+    expect(opened).to.deep.equal([
+      ['course-1', 'exercise-1'], ['course-1', 'exercise-1'], ['course-1', 'exercise-2'], ['course-1', 'unit-1']
+    ]);
+  });
+
+  it('preserves course-only launches with omitted or null exercise targets', async () => {
+    let context = request();
+    const opened: Array<string | null | undefined> = [];
+    const value = service(async () => context, async (_courseId, contentId) => {
+      opened.push(contentId);
+      return true;
+    });
+    await value.poll();
+    context = { ...request('launch-2'), course_content_id: null };
+    await value.poll();
+    expect(opened).to.deep.equal([undefined, null]);
+  });
+
+  it('ignores malformed exercise targets instead of degrading them to course-only launches', async () => {
+    const contexts = ['', ' ', 42, {}, false].map((course_content_id, index) => ({
+      ...request(`invalid-${index}`), course_content_id
+    }));
+    const opened: string[] = [];
+    const value = service(async () => contexts.shift() as WorkspaceLaunchContext | null, async id => {
+      opened.push(id);
+      return true;
+    });
+    for (let index = 0; index < 5; index++) await value.poll();
+    expect(opened).to.deep.equal([]);
   });
 
   it('remembers older consumed requests when a server response returns to an earlier request', async () => {
@@ -287,5 +337,69 @@ describe('WorkspaceLaunchContextService', () => {
       global.setInterval = realSetInterval;
       global.clearInterval = realClearInterval;
     }
+  });
+});
+
+describe('native workspace launch target resolution', () => {
+  function fixture() {
+    const expanded: string[] = [];
+    const content = (id: string, kind: string, path: string, extra = {}) => ({
+      id, path, title: id, course_id: 'course-1', course_content_kind_id: kind,
+      course_content_type: { id: kind, course_content_kind_id: kind }, position: 1,
+      visible_effective: true, ...extra
+    });
+    const contents = [
+      content('welcome-1', 'unit', 'welcome', { description: '# Authored welcome' }),
+      content('unit-1', 'unit', 'week_1', { description: '# Week instructions' }),
+      content('exercise-1', 'assignment', 'week_1.exercise_1'),
+      content('exercise-2', 'assignment', 'week_1.exercise_2'),
+      content('reading-1', 'reading', 'reading'),
+      content('hidden-1', 'assignment', 'hidden', { visible_effective: false }),
+      content('foreign-1', 'assignment', 'foreign', { course_id: 'course-2' })
+    ];
+    const api = {
+      getStudentCourses: async () => [
+        { id: 'course-1', title: 'Course 1', path: 'one' },
+        { id: 'course-2', title: 'Course 2', path: 'two' }
+      ],
+      getStudentCourseContents: async () => contents,
+      getCourseContentKinds: async () => [
+        { id: 'unit', has_descendants: true }, { id: 'assignment', has_descendants: false }
+      ],
+      getCourseGitDescriptor: async () => ({ configured: false })
+    };
+    const tree = new StudentCourseContentTreeProvider(api as any, { getCurrentCourseId: () => undefined } as any);
+    const getChildren = tree.getChildren.bind(tree);
+    tree.getChildren = async element => {
+      if ((element as any)?.courseId) expanded.push((element as any).courseId);
+      return getChildren(element);
+    };
+    const tracked = trackTree(tree);
+    return { tracked, expanded };
+  }
+
+  it('resolves exact assignment and unit identities through the native provider without descending sibling courses', async () => {
+    const { tracked, expanded } = fixture();
+    try {
+      const assignment = await findWorkspaceLaunchTarget(tracked, 'course-1', 'exercise-2');
+      const unit = await findWorkspaceLaunchTarget(tracked, 'course-1', 'unit-1');
+      const welcome = await findWorkspaceLaunchTarget(tracked, 'course-1', 'welcome-1');
+      expect(workspaceLaunchContent(assignment)?.id).to.equal('exercise-2');
+      expect(workspaceLaunchContent(unit)?.id).to.equal('unit-1');
+      expect((unit as any).command).to.equal(undefined);
+      expect((welcome as any).command?.command).to.equal('computor.student.previewDescription');
+      expect(expanded).not.to.include('course-2');
+      expect(tracked.find('exercise-2')).to.equal(assignment);
+    } finally { tracked.dispose(); }
+  });
+
+  it('does not substitute another assignment for a missing, hidden, foreign or unsupported target', async () => {
+    const { tracked, expanded } = fixture();
+    try {
+      for (const id of ['missing', 'hidden-1', 'foreign-1', 'reading-1']) {
+        expect(await findWorkspaceLaunchTarget(tracked, 'course-1', id)).to.equal(undefined);
+      }
+      expect(expanded).not.to.include('course-2');
+    } finally { tracked.dispose(); }
   });
 });

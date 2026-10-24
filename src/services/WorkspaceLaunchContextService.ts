@@ -1,10 +1,46 @@
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
+import type { CourseContentStudentList } from '../types/generated';
+import type { TreeHandle } from '../ui/treeRegistry';
+import { findInTree } from '../ui/tree/chat/chatJump';
 
 export interface WorkspaceLaunchContext {
   course_id: string;
+  course_content_id?: string | null;
   request_id: string;
   expires_at: string;
   ui_language?: 'de' | 'en' | null;
+}
+
+interface LaunchContentRow extends vscode.TreeItem {
+  courseContent?: CourseContentStudentList;
+  contentType?: { course_content_kind_id?: string };
+  node?: { courseContent?: CourseContentStudentList; contentType?: { course_content_kind_id?: string } };
+}
+
+export function workspaceLaunchContent(item: unknown): CourseContentStudentList | undefined {
+  const row = item as LaunchContentRow | undefined;
+  return row?.courseContent ?? row?.node?.courseContent;
+}
+
+export function workspaceLaunchContentKind(item: unknown): string | undefined {
+  const row = item as LaunchContentRow | undefined;
+  return workspaceLaunchContent(row)?.course_content_kind_id
+    ?? row?.contentType?.course_content_kind_id ?? row?.node?.contentType?.course_content_kind_id;
+}
+
+/** Resolve the existing native row, without walking assignment files or another course. */
+export function findWorkspaceLaunchTarget(tracked: TreeHandle['tracked'], courseId: string, contentId: string): Promise<unknown | undefined> {
+  return findInTree(tracked, candidate => {
+    const content = workspaceLaunchContent(candidate);
+    const kind = workspaceLaunchContentKind(candidate);
+    return content?.id === contentId && (!content.course_id || content.course_id === courseId)
+      && content.visible_effective !== false && (kind === 'assignment' || kind === 'unit');
+  }, candidate => {
+    const id = typeof candidate.id === 'string' ? candidate.id : '';
+    if (id.startsWith('course-')) return id === `course-${courseId}`;
+    return candidate.collapsibleState !== vscode.TreeItemCollapsibleState.None
+      && workspaceLaunchContentKind(candidate) !== 'assignment';
+  });
 }
 
 export function workspaceLaunchIdentity(env: NodeJS.ProcessEnv = process.env): { owner: string; name: string } | undefined {
@@ -15,6 +51,8 @@ export function workspaceLaunchIdentity(env: NodeJS.ProcessEnv = process.env): {
 
 export function validWorkspaceLaunchContext(value: WorkspaceLaunchContext | null, now = Date.now()): value is WorkspaceLaunchContext {
   return Boolean(value && typeof value.course_id === 'string' && value.course_id.trim()
+    && (value.course_content_id === undefined || value.course_content_id === null
+      || (typeof value.course_content_id === 'string' && Boolean(value.course_content_id.trim())))
     && typeof value.request_id === 'string' && value.request_id.trim()
     && typeof value.expires_at === 'string' && Date.parse(value.expires_at) > now
     && (value.ui_language === undefined || value.ui_language === null || value.ui_language === 'de' || value.ui_language === 'en'));
@@ -22,7 +60,7 @@ export function validWorkspaceLaunchContext(value: WorkspaceLaunchContext | null
 
 interface LaunchContextOptions {
   fetchContext(): Promise<WorkspaceLaunchContext | null>;
-  openCourse(courseId: string): Promise<boolean>;
+  openCourse(courseId: string, courseContentId?: string | null): Promise<boolean>;
   onLaunch?(): Promise<void>;
   now?: () => number;
   intervalMs?: number;
@@ -55,7 +93,7 @@ export class WorkspaceLaunchContextService implements vscode.Disposable {
       requestId = launch.request_id;
       await this.options.onLaunch?.();
       if (this.disposed) return;
-      await this.options.openCourse(launch.course_id);
+      await this.options.openCourse(launch.course_id, launch.course_content_id);
       // false means permanently unavailable. A thrown transient error retries.
       this.handled.add(requestId);
       this.failures.delete(requestId);

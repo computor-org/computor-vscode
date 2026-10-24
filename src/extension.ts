@@ -17,8 +17,9 @@ import { isRestoringSelection, restoreSelection, suppressSelectionSideEffects, t
 import type { TrackedTree } from './ui/treeRestore';
 import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
 import { findInTree } from './ui/tree/chat/chatJump';
-import { WorkspaceLaunchContextService, validWorkspaceLaunchContext, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
-import { showWorkspaceCourseLanding } from './services/WorkspaceCourseLanding';
+import { WorkspaceLaunchContextService, findWorkspaceLaunchTarget, validWorkspaceLaunchContext, workspaceLaunchContent, workspaceLaunchContentKind, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
+import { beginMarkdownPreviewRequest, MarkdownPreviewOptions } from './ui/webviews/markdownPreview';
+import { readingLanguage, isCourseWelcomeContent, openWorkspaceCourseLaunch, showWorkspaceCourseLanding, showWorkspaceCourseUnit } from './services/WorkspaceCourseLanding';
 import { WorkspaceDisplayLocale, workspaceLocaleFile } from './services/WorkspaceDisplayLocale';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
@@ -38,7 +39,7 @@ import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
-import { setUiCourseLanguage, setUiProfileLanguage } from './utils/uiLanguage';
+import { say, setUiCourseLanguage, setUiProfileLanguage } from './utils/uiLanguage';
 import { revealUri } from './utils/reveal';
 import {
   OrganizationTreeItem as LecturerOrganizationTreeItem,
@@ -72,7 +73,7 @@ import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
 import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
-import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND, registerContentDescription } from './ui/contentDescription';
+import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND, registerContentDescription, setDescriptionLanguageResolver } from './ui/contentDescription';
 import { registerDescriptionEditor } from './ui/descriptionEditor';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
@@ -979,8 +980,45 @@ class UnifiedController {
     // rehydrated (rather than cleared) when it becomes visible again (#273).
     let lastSelectedAssignment: any | undefined;
     const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
+    // A unit description can carry one section per language (the course welcome item).
+    setDescriptionLanguageResolver(item => {
+      const content = (item as any).courseContent ?? (item as any).node?.courseContent;
+      return readingLanguage(api, content?.course_id ?? workspaceLaunchCourseId ?? '');
+    });
+    const unavailableTarget = () => {
+      void notify.info(say('This material is no longer available in this course.',
+        'Dieses Material ist in diesem Kurs nicht mehr verfügbar.'));
+    };
+    const openAssignment = async (item: any, options: MarkdownPreviewOptions): Promise<boolean> => {
+      const request = options.request ?? beginMarkdownPreviewRequest();
+      const isCurrent = () => request.isCurrent() && (!options.isCurrent || options.isCurrent());
+      if (!isCurrent()) return true;
+      const content = workspaceLaunchContent(item);
+      const courseId = content?.course_id ?? workspaceLaunchCourseId;
+      if (!courseId || !content?.id) { unavailableTarget(); return false; }
+      await tree.prepareCourseRepository(courseId);
+      if (!isCurrent()) return true;
+      const handle = getTreeHandle('computor.student.courses');
+      if (!handle) throw new Error('The Student course view is not ready.');
+      const row = await findWorkspaceLaunchTarget(handle.tracked, courseId, content.id);
+      if (!isCurrent()) return true;
+      if (!row || workspaceLaunchContentKind(row) !== 'assignment') { unavailableTarget(); return false; }
+      await suppressSelectionSideEffects(async () => {
+        if (!isCurrent()) return;
+        await handle.view.reveal(row, { select: true, focus: false, expand: false });
+      });
+      if (!isCurrent()) return true;
+      const sourceFiles = await tree.getChildren(row as any);
+      if (!isCurrent()) return true;
+      await commands.openWorkspaceAssignment(row, { ...options, request, isCurrent, sourceFiles });
+      return true;
+    };
     const previewDescription = createStudentDescriptionSelectionHandler(this.context,
-      (item, options) => commands.previewDescription(item, { ...options, silent: true }));
+      async (item, options) => { await openAssignment(item, options); },
+      async (item, options) => {
+        const content = workspaceLaunchContent(item);
+        if (content) await showWorkspaceCourseUnit(this.context, api, content, options);
+      });
     this.disposables.push(vscode.commands.registerCommand(PREVIEW_STUDENT_DESCRIPTION_COMMAND,
       (item) => previewDescription(item, true)));
     registerTreeView('computor.student.courses', {
@@ -1087,10 +1125,15 @@ class UnifiedController {
     const { registerSubmittedDeleteGuard } = await import('./ui/submittedDeleteGuard');
     registerSubmittedDeleteGuard(this.context, tree, api);
 
-    const openCourse = async (courseId: string): Promise<boolean> => {
+    const openCourse = async (courseId: string, courseContentId?: string | null): Promise<boolean> => {
+      const readingRequest = beginMarkdownPreviewRequest();
+      return openWorkspaceCourseLaunch(this.context, api, courseId, readingRequest, async (hasIntroduction) => {
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
-      setUiCourseLanguage((await api.getCourse(courseId).catch(() => undefined))?.language_code);
+      if (!readingRequest.isCurrent()) return true;
+      const openedCourse = await api.getCourse(courseId).catch(() => undefined);
+      if (!readingRequest.isCurrent()) return true;
+      setUiCourseLanguage(openedCourse?.language_code);
       tree.setWorkspaceCourse(courseId);
       workspaceLaunchCourseId = courseId;
       // Initial launch runs before initializeViews enables its role contexts.
@@ -1104,33 +1147,42 @@ class UnifiedController {
       if (!handle) throw new Error('The Student course view is not ready.');
       const item = await findInTree(handle.tracked,
         candidate => candidate.id === `course-${courseId}`, () => false);
+      if (!readingRequest.isCurrent()) return true;
       if (!item) throw new Error('The launched course is not ready in the Student view.');
       await suppressSelectionSideEffects(async () => {
         await handle.view.reveal(item, { select: true, focus: true, expand: true });
       });
       this.workspaceLaunchFocused = true;
-      const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
-      const resumeAt = course ? await showWorkspaceCourseLanding(this.context, api, course) : undefined;
-      if (resumeAt) {
-        // A returning learner sees the row they go on with, inside its expanded unit (computor-org/issues#525).
-        const row = await findInTree(handle.tracked, candidate => candidate.id === resumeAt.id, candidate => {
-          const id = typeof candidate.id === 'string' ? candidate.id : '';
-          if (id.startsWith('course-')) return id === `course-${courseId}`;
-          return candidate.collapsibleState !== vscode.TreeItemCollapsibleState.None
-            && !(candidate.contextValue ?? '').startsWith('studentCourseContent.assignment');
+      if (courseContentId) {
+        const row = await findWorkspaceLaunchTarget(handle.tracked, courseId, courseContentId);
+        if (!readingRequest.isCurrent()) return true;
+        if (!row) { unavailableTarget(); return false; }
+        await suppressSelectionSideEffects(async () => {
+          if (!readingRequest.isCurrent()) return;
+          await handle.view.reveal(row, { select: true, focus: false, expand: false });
         });
-        if (row) {
-          await suppressSelectionSideEffects(async () => {
-            await handle.view.reveal(row, { select: true, focus: false, expand: false });
-          }).catch(err => console.warn('[openCourse] Could not reveal the next exercise:', err));
+        if (!readingRequest.isCurrent()) return true;
+        if (workspaceLaunchContentKind(row) === 'unit') {
+          const content = workspaceLaunchContent(row)!;
+          if (!hasIntroduction || !isCourseWelcomeContent(content)) {
+            await showWorkspaceCourseUnit(this.context, api, content, { request: readingRequest });
+          }
+        } else {
+          if (!await openAssignment(row, { request: readingRequest, studentReading: true })) return false;
         }
+      } else {
+        const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
+        if (!readingRequest.isCurrent()) return true;
+        if (course && !hasIntroduction) await showWorkspaceCourseLanding(this.context, api, course, readingRequest);
       }
+      if (!readingRequest.isCurrent()) return true;
       void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
       // With the instructions open, the code follows in the background, so Test
       // and Submit are on the rows before the learner expands one.
       void tree.prepareCourseRepository(courseId)
         .catch(err => console.warn('[openCourse] Repository setup failed:', err));
       return true;
+      });
     };
     this.disposables.push(vscode.commands.registerCommand('computor.student.selectCourse', async () => {
       const course = await courseSelectionService.selectCourse();

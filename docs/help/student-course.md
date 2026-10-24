@@ -88,9 +88,13 @@ back.
 
 ### Show Messages
 
-Announcements and discussions for the whole course. Lecturers and tutors post
-updates, deadlines and clarifications here, and you can ask questions. Units and
-assignments have their own messages for narrower topics.
+Course announcements contain updates, deadlines and clarifications from lecturers.
+You can read them here, while posting announcements is reserved for lecturers and above.
+
+[Ask a course question](command:computor.student.askCourseQuestion) to open your
+conversation with the teaching team about the course whose Help you opened.
+For a question about a particular exercise, use *Show Messages* on that
+assignment instead.
 
 ### Export Course Examples
 

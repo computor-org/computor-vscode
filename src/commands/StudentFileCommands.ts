@@ -6,7 +6,7 @@ import { commandRegistrar } from './commandHelpers';
 import { copyToClipboard } from '../utils/clipboard';
 import { notify } from '../utils/notify';
 import { revealUri } from '../utils/reveal';
-import { openFile } from '../ui/editorLayout';
+import { openStudentFile } from '../ui/editorLayout';
 import type { ComputorApiService } from '../services/ComputorApiService';
 import type { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { checkSubmitted, submittedWarning } from '../utils/submittedFiles';
@@ -278,7 +278,7 @@ export class StudentFileCommands {
 
     this.treeDataProvider.refreshNode(target.refresh);
     if (!isDirectory) {
-      await openFile(vscode.Uri.file(created), { preview: false });
+      await openStudentFile(vscode.Uri.file(created), { preview: false });
     }
   }
 
