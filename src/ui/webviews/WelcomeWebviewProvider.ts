@@ -11,6 +11,7 @@ import {
   renderWelcomeBody,
   resolveWelcomeMessage,
   welcomeRoleContainers,
+  welcomeTitle,
   WelcomeApi,
   WelcomeIntent,
   WelcomeModel
@@ -31,6 +32,8 @@ export interface WelcomeSources {
   api(): WelcomeApi | undefined;
   /** The backend URL this window is configured for. */
   backendUrl(): Promise<string | undefined>;
+  /** The course this hosted workspace was launched for, once known. */
+  launchedCourseId?(): string | undefined;
 }
 
 /**
@@ -52,7 +55,7 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
 
   async open(options?: { preserveFocus?: boolean }): Promise<void> {
     const model = await this.buildModel();
-    await this.show('Welcome to Computor', model, options);
+    await this.show(welcomeTitle(model), model, options);
     if (this.panel) {
       this.panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'icon.png');
     }
@@ -68,15 +71,29 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
       await this.open({ preserveFocus: true });
       return;
     }
-    if (this.shownAutomatically || !isWelcomeShownOnStartup(this.context)) {
+    // A course launch already opens its welcome or resumed assignment. Keep
+    // general help available through the command without adding a second document.
+    if (this.sources.launchedCourseId?.() || this.shownAutomatically || !isWelcomeShownOnStartup(this.context)) {
       return;
     }
     this.shownAutomatically = true;
     await this.open({ preserveFocus: true });
   }
 
+  /**
+   * Re-render an open page in place, without bringing it to the front: a
+   * course launched into a running workspace changes what the page says.
+   */
+  async refresh(): Promise<void> {
+    if (!this.panel) return;
+    const model = await this.buildModel();
+    if (!this.panel) return;
+    this.panel.title = welcomeTitle(model);
+    this.panel.webview.html = await this.getWebviewContent(model);
+  }
+
   private async buildModel(): Promise<WelcomeModel> {
-    const facts = await collectWelcomeFacts(this.sources.api());
+    const facts = await collectWelcomeFacts(this.sources.api(), this.sources.launchedCourseId?.());
     return {
       ...facts,
       inBrowser: vscode.env.uiKind === vscode.UIKind.Web,
@@ -99,10 +116,10 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
   protected async getWebviewContent(model?: WelcomeModel): Promise<string> {
     this.model = model;
     if (!model) {
-      return this.getBaseHtml('Welcome to Computor', '<p>Loading…</p>');
+      return this.getBaseHtml(welcomeTitle(), '<p>Loading…</p>');
     }
     return this.renderPage({
-      title: 'Welcome to Computor',
+      title: welcomeTitle(model),
       bodyHtml: renderWelcomeBody(model),
       cssFiles: ['welcome/welcome.css'],
       scriptFiles: ['welcome/welcome.js']
@@ -141,6 +158,9 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
       }
       case 'login':
         await vscode.commands.executeCommand('computor.login');
+        return;
+      case 'reportProblem':
+        await vscode.commands.executeCommand('computor.reportProblem');
         return;
       case 'showOnStartup':
         await this.context.globalState.update(showOnStartupKey, intent.value);
