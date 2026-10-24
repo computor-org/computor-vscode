@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import {
   descriptionHeading,
+  descriptionInLanguage,
   localizedUnitTitle,
   resolveContentLanguage,
   withoutLeadingHeading
@@ -8,6 +9,24 @@ import {
 import { landingSection } from '../../src/services/WorkspaceCourseLanding';
 
 describe('contentLanguage', () => {
+  describe('descriptionInLanguage', () => {
+    const both = 'Gemeinsam\n<!-- lang: de -->\nDeutsch **du**\n\n<!-- LANG: en -->\nEnglish\n';
+
+    it('picks the section in the reading language after the common text', () => {
+      expect(descriptionInLanguage(both, 'en')).to.equal('Gemeinsam\n\nEnglish');
+      expect(descriptionInLanguage(both, 'de-AT')).to.equal('Gemeinsam\n\nDeutsch **du**');
+    });
+
+    it('falls back to the first section for another language', () => {
+      expect(descriptionInLanguage(both, 'fr')).to.equal('Gemeinsam\n\nDeutsch **du**');
+      expect(descriptionInLanguage(both, '')).to.equal('Gemeinsam\n\nDeutsch **du**');
+    });
+
+    it('leaves a description without markers unchanged', () => {
+      expect(descriptionInLanguage('# Woche 1\n\n<!-- note -->', 'en')).to.equal('# Woche 1\n\n<!-- note -->');
+    });
+  });
+
   describe('resolveContentLanguage', () => {
     it('uses the language the learner chose', () => {
       expect(resolveContentLanguage('en', 'de')).to.equal('en');

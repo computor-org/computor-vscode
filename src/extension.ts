@@ -18,7 +18,7 @@ import type { TrackedTree } from './ui/treeRestore';
 import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
 import { findInTree } from './ui/tree/chat/chatJump';
 import { WorkspaceLaunchContextService, validWorkspaceLaunchContext, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
-import { showWorkspaceCourseLanding } from './services/WorkspaceCourseLanding';
+import { readingLanguage, showWorkspaceCourseLanding } from './services/WorkspaceCourseLanding';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -71,7 +71,7 @@ import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
 import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
-import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND, registerContentDescription } from './ui/contentDescription';
+import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND, registerContentDescription, setDescriptionLanguageResolver } from './ui/contentDescription';
 import { registerDescriptionEditor } from './ui/descriptionEditor';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
@@ -948,6 +948,11 @@ class UnifiedController {
     // rehydrated (rather than cleared) when it becomes visible again (#273).
     let lastSelectedAssignment: any | undefined;
     const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
+    // A unit description can carry one section per language (the course welcome item).
+    setDescriptionLanguageResolver(item => {
+      const content = (item as any).courseContent ?? (item as any).node?.courseContent;
+      return readingLanguage(api, content?.course_id ?? workspaceLaunchCourseId ?? '');
+    });
     const previewDescription = createStudentDescriptionSelectionHandler(this.context,
       (item, options) => commands.previewDescription(item, { ...options, silent: true }));
     this.disposables.push(vscode.commands.registerCommand(PREVIEW_STUDENT_DESCRIPTION_COMMAND,

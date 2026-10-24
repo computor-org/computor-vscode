@@ -3,7 +3,7 @@ import type * as vscode from 'vscode';
 import type { ComputorApiService } from './ComputorApiService';
 import type { CourseContentStudentList, CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
-import { descriptionHeading, localizedUnitTitle, resolveContentLanguage, withoutLeadingHeading } from '../utils/contentLanguage';
+import { descriptionHeading, descriptionInLanguage, localizedUnitTitle, resolveContentLanguage, withoutLeadingHeading } from '../utils/contentLanguage';
 import { showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 import { SOURCE_COLUMN } from '../ui/editorLayout';
 import { courseItemTrail, courseWelcomeItem, firstReleasedCourseItem, hasStartedCourse, nextOpenCourseItem } from '../utils/courseStart';
@@ -64,14 +64,14 @@ export async function showWorkspaceCourseLanding(
   // Computor welcome page as a tab behind it rather than a second column
   // competing for the first click. A README shown later moves the panel to
   // the auxiliary group as usual.
+  const language = await readingLanguage(api, course.id);
   if (welcome) {
-    await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`, { viewColumn: SOURCE_COLUMN });
+    await showMarkdownTextPreview(context, descriptionInLanguage(welcome.description!, language), `${title}: ${welcome.title}`, { viewColumn: SOURCE_COLUMN });
     return undefined;
   }
   const item = started ? nextOpenCourseItem(contents) : firstReleasedCourseItem(contents);
   let markdown = `# ${escapeHeading(title)}`;
   let inlineImages: Record<string, string> | undefined;
-  const language = await landingLanguage(api, course.id);
   const copy = LANDING_COPY[language === 'de' ? 'de' : 'en'];
   if (item) {
     let description = item.description?.trim();
@@ -121,12 +121,13 @@ const LANDING_COPY = {
   }
 };
 
-async function landingLanguage(api: ComputorApiService, courseId: string): Promise<string> {
+/** The learner's profile language, else the course's, else English. */
+export async function readingLanguage(api: ComputorApiService, courseId: string): Promise<string> {
   let userLanguage: string | null | undefined;
   let courseLanguage: string | null | undefined;
   try {
     userLanguage = (await api.getUserAccount())?.profile?.language_code;
-    if (!userLanguage) courseLanguage = (await api.getCourse(courseId))?.language_code;
+    if (!userLanguage && courseId) courseLanguage = (await api.getCourse(courseId))?.language_code;
   } catch (error) {
     console.warn('[WorkspaceCourseLanding] Could not load the language preference:', error);
   }

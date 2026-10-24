@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, showMarkdownTextPreview } from './webviews/markdownPreview';
 import { isRestoringSelection } from './treeRestore';
+import { descriptionInLanguage } from '../utils/contentLanguage';
 
 /**
  * Showing the description a lecturer wrote for a course or a unit.
@@ -29,6 +30,25 @@ interface StudentDescriptionTreeItem extends Partial<vscode.TreeItem & Described
   courseContent?: unknown;
 }
 
+type DescriptionLanguageResolver = (item: object) => Promise<string>;
+let descriptionLanguage: DescriptionLanguageResolver | undefined;
+
+/** How the description views find the reading language once the API is available. */
+export function setDescriptionLanguageResolver(resolver: DescriptionLanguageResolver | undefined): void {
+  descriptionLanguage = resolver;
+}
+
+/** The item's description in the reading language (see descriptionInLanguage). */
+async function localizedDescription(item: object, markdown: string): Promise<string> {
+  if (!descriptionLanguage) return markdown;
+  try {
+    return descriptionInLanguage(markdown, await descriptionLanguage(item));
+  } catch (error) {
+    console.warn('[StudentDescription] Could not resolve the reading language:', error);
+    return markdown;
+  }
+}
+
 /** Preview real student selections without replaying a restored highlight. */
 export function createStudentDescriptionSelectionHandler(
   context: vscode.ExtensionContext,
@@ -54,7 +74,12 @@ export function createStudentDescriptionSelectionHandler(
     const show = async () => {
       try {
         if (unit) {
-          await showMarkdownTextPreview(context, item.descriptionMarkdown as string, item.descriptionTitle || 'Description', options);
+          let markdown = item.descriptionMarkdown as string;
+          if (descriptionLanguage) {
+            markdown = await localizedDescription(item, markdown);
+            if (!isCurrent()) return;
+          }
+          await showMarkdownTextPreview(context, markdown, item.descriptionTitle || 'Description', options);
         } else if (assignment) {
           await assignment(item, options);
         }
@@ -125,7 +150,7 @@ function escapeMarkdown(text: string): string {
  * or word boundary rather than mid-word, with the rest behind the icon.
  */
 function summarise(description: string, limit = 400): string {
-  const text = description.trim();
+  const text = descriptionInLanguage(description, '').trim();
   if (text.length <= limit) {
     return text;
   }
@@ -143,7 +168,7 @@ export function registerContentDescription(context: vscode.ExtensionContext): vo
       }
       await showMarkdownTextPreview(
         context,
-        item.descriptionMarkdown,
+        await localizedDescription(item, item.descriptionMarkdown),
         item.descriptionTitle || 'Description'
       );
     })

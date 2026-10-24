@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { commands, webviewPanels, window } from '../helpers/vscode-stub';
-import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND } from '../../src/ui/contentDescription';
+import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND, setDescriptionLanguageResolver } from '../../src/ui/contentDescription';
 import { isRestoringSelection, suppressSelectionSideEffects } from '../../src/ui/treeRestore';
 import { StudentCourseContentTreeProvider } from '../../src/ui/tree/student/StudentCourseContentTreeProvider';
 import { showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
@@ -53,6 +53,17 @@ describe('student unit description selection', () => {
     expect(created).to.have.length(1);
     expect(created[0]![2]).to.deep.equal({ viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
     expect(webviewPanels[0]!.webview.html).to.contain('# A instructions');
+  });
+
+  it('shows a unit description in the reading language', async () => {
+    setDescriptionLanguageResolver(async () => 'en');
+    try {
+      await select(unit('Willkommen', '<!-- lang: de -->\nHallo du\n<!-- lang: en -->\nHello you'));
+    } finally {
+      setDescriptionLanguageResolver(undefined);
+    }
+    expect(webviewPanels[0]!.webview.html).to.contain('Hello you');
+    expect(webviewPanels[0]!.webview.html).to.not.contain('Hallo du');
   });
 
   it('reuses one preview for successive keyboard selections', async () => {

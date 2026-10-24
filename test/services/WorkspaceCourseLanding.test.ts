@@ -242,6 +242,18 @@ describe('showWorkspaceCourseLanding', () => {
     expect(shown()).to.not.contain('Continue with');
   });
 
+  it('shows the welcome item in the reading language when it carries one section per language', async () => {
+    const description = '<!-- lang: de -->\nSo kommst du zur ersten Abgabe.\n\n<!-- lang: en -->\nHow to reach your first submission.\n';
+    const welcome = item('willkommen', 'Willkommen', { course_content_kind_id: 'unit', description, deployment: null });
+    await showWorkspaceCourseLanding(context, api([welcome, unit('week_1', 'Woche 1', 1), item('week_1.constants', 'Konstanten')], 'en'), course);
+    expect(shown()).to.contain('How to reach your first submission.');
+    expect(shown()).to.not.contain('So kommst du');
+    expect(shown()).to.not.contain('lang:');
+    await showWorkspaceCourseLanding(context, api([welcome, unit('week_1', 'Woche 1', 1), item('week_1.constants', 'Konstanten')], 'de'), course);
+    expect(shown()).to.contain('So kommst du zur ersten Abgabe.');
+    expect(shown()).to.not.contain('How to reach');
+  });
+
   it('says so when every released exercise is done, and reveals nothing', async () => {
     const target = await showWorkspaceCourseLanding(context,
       api([unit('week_1', 'Week 1', 1), item('week_1.constants', 'Konstanten', done)], 'en'), course);

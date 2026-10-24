@@ -53,3 +53,28 @@ export function localizedUnitTitle(title: string, language: string): string {
   }
   return language === 'de' ? `Woche ${unit[1]}` : language === 'en' ? `Week ${unit[1]}` : title;
 }
+
+// A course or unit description may hold one section per language, each behind
+// a "<!-- lang: xx -->" line, because the field itself has no languages.
+const LANGUAGE_MARKER = /^<!--\s*lang:\s*([a-z]{2})\s*-->[ \t]*$/gim;
+
+/**
+ * The section of a description in the reading language, after any text that
+ * precedes the first marker. Without a section in that language the first
+ * section is used; text without markers is returned unchanged.
+ */
+export function descriptionInLanguage(markdown: string, language: string): string {
+  const parts = markdown.split(LANGUAGE_MARKER);
+  if (parts.length === 1) {
+    return markdown;
+  }
+  const wanted = language.trim().toLowerCase().slice(0, 2);
+  let index = 1;
+  for (let candidate = 1; candidate < parts.length; candidate += 2) {
+    if (parts[candidate]!.toLowerCase() === wanted) {
+      index = candidate;
+      break;
+    }
+  }
+  return `${parts[0]!.trim()}\n\n${parts[index + 1]!.trim()}`.trim();
+}
