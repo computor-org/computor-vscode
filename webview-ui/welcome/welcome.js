@@ -23,6 +23,9 @@
     login: function () {
       CW.post('login');
     },
+    setBackend: function () {
+      CW.post('setBackend');
+    },
     reportProblem: function () {
       CW.post('reportProblem');
     }
