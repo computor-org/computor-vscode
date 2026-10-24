@@ -1,11 +1,12 @@
 import { expect } from 'chai';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { commands, webviewPanels, window } from '../helpers/vscode-stub';
-import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND } from '../../src/ui/contentDescription';
+import { runInNewContext } from 'vm';
+import { commands, webviewPanels, window, env } from '../helpers/vscode-stub';
+import { createStudentDescriptionSelectionHandler, registerContentDescription, PREVIEW_STUDENT_DESCRIPTION_COMMAND, setDescriptionLanguageResolver } from '../../src/ui/contentDescription';
 import { isRestoringSelection, suppressSelectionSideEffects } from '../../src/ui/treeRestore';
 import { StudentCourseContentTreeProvider } from '../../src/ui/tree/student/StudentCourseContentTreeProvider';
-import { showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
+import { beginMarkdownPreviewRequest, showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
 
 describe('student unit description selection', () => {
   const context = { extensionUri: vscode.Uri.file(path.resolve(__dirname, '../..')) } as vscode.ExtensionContext;
@@ -46,6 +47,7 @@ describe('student unit description selection', () => {
     (window as any).createWebviewPanel = originalCreate;
     (commands as any).executeCommand = originalExecute;
     delete (window as any).tabGroups;
+    env.uiKind = vscode.UIKind.Desktop;
   });
 
   it('opens a selected unit beside source code while leaving focus in the tree', async () => {
@@ -53,6 +55,193 @@ describe('student unit description selection', () => {
     expect(created).to.have.length(1);
     expect(created[0]![2]).to.deep.equal({ viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
     expect(webviewPanels[0]!.webview.html).to.contain('# A instructions');
+  });
+
+  function welcomeUnit() {
+    return { ...unit('Willkommen'), courseContent: {
+      id: 'welcome', path: 'welcome', title: 'Willkommen',
+      course_content_kind_id: 'unit', description: '# Willkommen'
+    } as any };
+  }
+
+  it('opens the course welcome in the source group without creating a split', async () => {
+    (window as any).tabGroups = { all: [{}] };
+    const layoutCommands: string[] = [];
+    (commands as any).executeCommand = async (command: string) => { layoutCommands.push(command); };
+    await select(welcomeUnit());
+    expect(created[0]![2]).to.deep.equal({ viewColumn: vscode.ViewColumn.One, preserveFocus: true });
+    expect(layoutCommands).not.to.include('vscode.setEditorLayout');
+    await select(unit('Week 1'));
+    expect(revealed).to.deep.equal([[vscode.ViewColumn.Two, true]]);
+  });
+
+  it('uses the same welcome placement from the explicit description command', async () => {
+    const originalRegister = commands.registerCommand;
+    let show: ((item: any) => Promise<void>) | undefined;
+    (commands as any).registerCommand = (_id: string, handler: typeof show) => {
+      show = handler;
+      return { dispose() {} };
+    };
+    try {
+      registerContentDescription({ ...context, subscriptions: [] });
+      await show!(welcomeUnit());
+      expect(created[0]![2]).to.equal(vscode.ViewColumn.One);
+    } finally {
+      (commands as any).registerCommand = originalRegister;
+    }
+  });
+
+  it('keeps hosted student reading in the source group with other tabs present', async () => {
+    env.uiKind = vscode.UIKind.Web;
+    await select(unit('Week 1'));
+    expect(created[0]![2]).to.deep.equal({ viewColumn: vscode.ViewColumn.One, preserveFocus: true });
+  });
+
+  it('leaves generic web previews and explicit side previews in the auxiliary group', async () => {
+    env.uiKind = vscode.UIKind.Web;
+    await showMarkdownTextPreview(context, '# Help', 'Help');
+    expect(created[0]![2]).to.equal(vscode.ViewColumn.Two);
+    await showMarkdownTextPreview(context, '# Task', 'Task', { studentReading: true, viewColumn: vscode.ViewColumn.Two });
+    expect(revealed).to.deep.equal([[vscode.ViewColumn.Two, true]]);
+  });
+
+  it('closes only an obsolete empty auxiliary group for hosted student reading', async () => {
+    env.uiKind = vscode.UIKind.Web;
+    const source = { viewColumn: vscode.ViewColumn.One, tabs: [{ label: 'mathc.py' }] };
+    const auxiliary = { viewColumn: vscode.ViewColumn.Two, tabs: [] };
+    const closed: unknown[] = [];
+    (window as any).tabGroups = { all: [source, auxiliary], close: async (group: unknown, preserveFocus: boolean) => {
+      closed.push([group, preserveFocus]); return true;
+    } };
+    await select(unit('Week 1'));
+    expect(closed).to.deep.equal([[auxiliary, true]]);
+    expect(source.tabs).to.deep.equal([{ label: 'mathc.py' }]);
+    closed.length = 0;
+    auxiliary.tabs = [{ label: 'Figure' }] as any;
+    await select(unit('Week 2'));
+    expect(closed).to.deep.equal([]);
+  });
+
+  it('waits for a reused preview to move before closing its old empty group', async () => {
+    env.uiKind = vscode.UIKind.Web;
+    await showMarkdownTextPreview(context, '# Help', 'Help');
+    const panel = webviewPanels[0]!;
+    let moved: (() => void) | undefined;
+    panel.onDidChangeViewState = (listener: any) => { moved = listener; return { dispose() {} }; };
+    const closed: unknown[] = [];
+    const auxiliary = { viewColumn: vscode.ViewColumn.Two, tabs: [] };
+    (window as any).tabGroups = { all: [{ viewColumn: vscode.ViewColumn.One, tabs: [] }, auxiliary],
+      close: async (group: unknown) => { closed.push(group); return true; } };
+    await select(unit('Week 1'));
+    expect(closed).to.deep.equal([]);
+    panel.viewColumn = vscode.ViewColumn.One;
+    moved!();
+    await Promise.resolve();
+    expect(closed).to.deep.equal([auxiliary]);
+  });
+
+  it('waits for lagging tab state and disposes cleanup listeners after the auxiliary group empties', async () => {
+    env.uiKind = vscode.UIKind.Web;
+    const auxiliary = { viewColumn: vscode.ViewColumn.Two, tabs: [{ label: 'old preview' }] };
+    const closed: unknown[] = [];
+    let changed: (() => void) | undefined;
+    let disposed = 0;
+    (window as any).tabGroups = { all: [{ viewColumn: vscode.ViewColumn.One, tabs: [] }, auxiliary],
+      close: async (group: unknown) => { closed.push(group); return true; },
+      onDidChangeTabs: (listener: () => void) => { changed = listener; return { dispose() { disposed++; } }; },
+      onDidChangeTabGroups: () => ({ dispose() { disposed++; } }) };
+    await select(unit('Week 1'));
+    expect(closed).to.deep.equal([]);
+    auxiliary.tabs = [];
+    changed!();
+    await Promise.resolve();
+    expect(closed).to.deep.equal([auxiliary]);
+    expect(disposed).to.equal(2);
+    auxiliary.tabs = [{ label: 'old preview' }];
+    await select(unit('Week 2'));
+    beginMarkdownPreviewRequest();
+    expect(disposed).to.equal(4);
+  });
+
+  it('starts a different reading document at the top without resetting the same document', async () => {
+    async function render(markdown: string, title: string, fragment?: string) {
+      await showMarkdownTextPreview(context, markdown, title, { viewColumn: vscode.ViewColumn.One, fragment });
+      const html = webviewPanels[0]!.webview.html;
+      const script = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
+      let scrollY = 0;
+      const frames: Array<() => void> = [];
+      // The native webview bootstrap restores the previous frame's Y on load
+      // when the new document has not already scrolled to a fragment.
+      const loads: Array<() => void> = [() => { if (scrollY === 0) scrollY = 700; }];
+      const element = { innerHTML: '', querySelectorAll: () => [], addEventListener() {} };
+      runInNewContext(script, {
+        acquireVsCodeApi: () => ({}),
+        requestAnimationFrame: (callback: () => void) => frames.push(callback),
+        document: { getElementById: () => element },
+        window: { __INITIAL_STATE__: { markdown, fragment },
+          ComputorWebview: { renderMarkdown: (text: string) => text, scrollToFragment: () => { scrollY = 350; } },
+          scrollTo: (_x: number, y: number) => { scrollY = y; },
+          addEventListener: (name: string, callback: () => void) => { if (name === 'load') loads.push(callback); } }
+      });
+      loads.forEach(callback => callback());
+      frames.forEach(callback => callback());
+      return scrollY;
+    }
+    await render('# Welcome', 'Welcome');
+    expect(await render('# First exercise', 'Exercise')).to.equal(0);
+    expect(await render('# First exercise', 'Exercise')).to.equal(700);
+    expect(await render('# Another exercise', 'Another', 'part')).to.equal(350);
+    expect(webviewPanels).to.have.length(1);
+  });
+
+  it('fits fully visible frame resizes in the same hosted reading document', async () => {
+    env.uiKind = vscode.UIKind.Web;
+    await showMarkdownTextPreview(context, '# Same document', 'Reading', { studentReading: true });
+    const html = webviewPanels[0]!.webview.html;
+    const script = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
+    let width = 162;
+    let resized: (() => void) | undefined;
+    let pagehide: (() => void) | undefined;
+    let disconnected = 0;
+    const body = { style: {} as Record<string, string>, classList: { add() {} }, appendChild() {} };
+    const sentinel = { style: {}, setAttribute() {} };
+    const element = { innerHTML: '', querySelectorAll: () => [], addEventListener() {} };
+    class IntersectionObserver {
+      constructor(private notify: (entries: unknown[]) => void) {}
+      observe() { this.notify([{ intersectionRect: { width }, intersectionRatio: 1 }]); }
+      unobserve() {}
+      disconnect() { disconnected++; }
+    }
+    class ResizeObserver {
+      constructor(notify: () => void) { resized = notify; }
+      observe() {}
+      disconnect() { disconnected++; }
+    }
+    runInNewContext(script, { IntersectionObserver, ResizeObserver,
+      acquireVsCodeApi: () => ({}), document: { body, createElement: () => sentinel, getElementById: () => element },
+      window: { __INITIAL_STATE__: { markdown: '# Same document' }, ComputorWebview: { renderMarkdown: (text: string) => text },
+        addEventListener: (_name: string, listener: () => void) => { pagehide = listener; } } });
+    expect(body.style.maxWidth).to.equal('162px');
+    width = 1212;
+    resized?.();
+    expect(body.style.maxWidth).to.equal('1212px');
+    width = 162;
+    resized?.();
+    expect(body.style.maxWidth).to.equal('162px');
+    expect(element.innerHTML).to.equal('# Same document');
+    pagehide!();
+    expect(disconnected).to.equal(2);
+  });
+
+  it('shows a unit description in the reading language', async () => {
+    setDescriptionLanguageResolver(async () => 'en');
+    try {
+      await select(unit('Willkommen', '<!-- lang: de -->\nHallo du\n<!-- lang: en -->\nHello you'));
+    } finally {
+      setDescriptionLanguageResolver(undefined);
+    }
+    expect(webviewPanels[0]!.webview.html).to.contain('Hello you');
+    expect(webviewPanels[0]!.webview.html).to.not.contain('Hallo du');
   });
 
   it('reuses one preview for successive keyboard selections', async () => {

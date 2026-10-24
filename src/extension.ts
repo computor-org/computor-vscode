@@ -18,7 +18,8 @@ import type { TrackedTree } from './ui/treeRestore';
 import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
 import { findInTree } from './ui/tree/chat/chatJump';
 import { WorkspaceLaunchContextService, validWorkspaceLaunchContext, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
-import { showWorkspaceCourseLanding } from './services/WorkspaceCourseLanding';
+import { beginMarkdownPreviewRequest } from './ui/webviews/markdownPreview';
+import { readingLanguage, showWorkspaceCourseLanding } from './services/WorkspaceCourseLanding';
 import { WorkspaceDisplayLocale, workspaceLocaleFile } from './services/WorkspaceDisplayLocale';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
@@ -72,7 +73,7 @@ import { MessagesInputPanelProvider } from './ui/panels/MessagesInputPanel';
 import { CourseMemberCommentsInputPanelProvider } from './ui/panels/CourseMemberCommentsInputPanel';
 import { registerFigureViewer } from './ui/panels/FiguresPanel';
 import { registerMatlabWorkspaceView } from './ui/matlabWorkspaceView';
-import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND, registerContentDescription } from './ui/contentDescription';
+import { createStudentDescriptionSelectionHandler, PREVIEW_STUDENT_DESCRIPTION_COMMAND, registerContentDescription, setDescriptionLanguageResolver } from './ui/contentDescription';
 import { registerDescriptionEditor } from './ui/descriptionEditor';
 import { registerOpenUrlWatcher } from './services/OpenUrlFolderWatcher';
 import { registerImageViewer } from './ui/panels/ImagePreviewPanel';
@@ -979,6 +980,11 @@ class UnifiedController {
     // rehydrated (rather than cleared) when it becomes visible again (#273).
     let lastSelectedAssignment: any | undefined;
     const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
+    // A unit description can carry one section per language (the course welcome item).
+    setDescriptionLanguageResolver(item => {
+      const content = (item as any).courseContent ?? (item as any).node?.courseContent;
+      return readingLanguage(api, content?.course_id ?? workspaceLaunchCourseId ?? '');
+    });
     const previewDescription = createStudentDescriptionSelectionHandler(this.context,
       (item, options) => commands.previewDescription(item, { ...options, silent: true }));
     this.disposables.push(vscode.commands.registerCommand(PREVIEW_STUDENT_DESCRIPTION_COMMAND,
@@ -1088,9 +1094,13 @@ class UnifiedController {
     registerSubmittedDeleteGuard(this.context, tree, api);
 
     const openCourse = async (courseId: string): Promise<boolean> => {
+      const readingRequest = beginMarkdownPreviewRequest();
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
-      setUiCourseLanguage((await api.getCourse(courseId).catch(() => undefined))?.language_code);
+      if (!readingRequest.isCurrent()) return true;
+      const openedCourse = await api.getCourse(courseId).catch(() => undefined);
+      if (!readingRequest.isCurrent()) return true;
+      setUiCourseLanguage(openedCourse?.language_code);
       tree.setWorkspaceCourse(courseId);
       workspaceLaunchCourseId = courseId;
       // Initial launch runs before initializeViews enables its role contexts.
@@ -1104,13 +1114,15 @@ class UnifiedController {
       if (!handle) throw new Error('The Student course view is not ready.');
       const item = await findInTree(handle.tracked,
         candidate => candidate.id === `course-${courseId}`, () => false);
+      if (!readingRequest.isCurrent()) return true;
       if (!item) throw new Error('The launched course is not ready in the Student view.');
       await suppressSelectionSideEffects(async () => {
         await handle.view.reveal(item, { select: true, focus: true, expand: true });
       });
       this.workspaceLaunchFocused = true;
       const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
-      const resumeAt = course ? await showWorkspaceCourseLanding(this.context, api, course) : undefined;
+      if (!readingRequest.isCurrent()) return true;
+      const resumeAt = course ? await showWorkspaceCourseLanding(this.context, api, course, readingRequest) : undefined;
       if (resumeAt) {
         // A returning learner sees the row they go on with, inside its expanded unit (computor-org/issues#525).
         const row = await findInTree(handle.tracked, candidate => candidate.id === resumeAt.id, candidate => {
@@ -1119,8 +1131,9 @@ class UnifiedController {
           return candidate.collapsibleState !== vscode.TreeItemCollapsibleState.None
             && !(candidate.contextValue ?? '').startsWith('studentCourseContent.assignment');
         });
-        if (row) {
+        if (row && readingRequest.isCurrent()) {
           await suppressSelectionSideEffects(async () => {
+            if (!readingRequest.isCurrent()) return;
             await handle.view.reveal(row, { select: true, focus: false, expand: false });
           }).catch(err => console.warn('[openCourse] Could not reveal the next exercise:', err));
         }

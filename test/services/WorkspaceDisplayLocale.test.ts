@@ -3,6 +3,10 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { parse } from 'jsonc-parser';
+import { readingLanguage } from '../../src/services/WorkspaceCourseLanding';
+import { StudentCommands } from '../../src/commands/StudentCommands';
+import { collectWelcomeFacts } from '../../src/ui/webviews/welcome/welcomeContent';
+import { descriptionInLanguage } from '../../src/utils/contentLanguage';
 import { WorkspaceLaunchContext } from '../../src/services/WorkspaceLaunchContextService';
 import { WorkspaceDisplayLocale, workspaceLocaleFile, withDisplayLocale } from '../../src/services/WorkspaceDisplayLocale';
 
@@ -177,15 +181,96 @@ describe('WorkspaceDisplayLocale', () => {
     expect(reloads).to.equal(0);
   });
 
+  async function assertReadingLanguage(expected: 'de' | 'en', courseLanguage: string | undefined): Promise<void> {
+    const api = {
+      getUserAccount: async () => ({ profile: { language_code: language } }),
+      getCourse: async () => ({ title: 'Course', language_code: courseLanguage }),
+      getUserViews: async () => ['student'],
+      getStudentCourses: async () => [],
+      getTutorCourses: async () => [],
+      getLecturerCourses: async () => [],
+      getInstanceInfo: async () => undefined,
+      getStudentCourseContents: async () => []
+    };
+    const commands = Object.create(StudentCommands.prototype) as any;
+    commands.apiService = api;
+    const languages = [
+      await readingLanguage(api as any, 'course-1'),
+      await commands.contentLanguage('course-1'),
+      (await collectWelcomeFacts(api, 'course-1')).language
+    ];
+    expect(languages).to.deep.equal([expected, expected, expected]);
+    for (const selected of languages) {
+      expect(descriptionInLanguage('<!-- lang: de -->\nDeutsch\n<!-- lang: en -->\nEnglish', selected!))
+        .to.equal(expected === 'de' ? 'Deutsch' : 'English');
+    }
+  }
+
+  for (const target of ['de', 'en'] as const) {
+    const opposite = target === 'de' ? 'en' : 'de';
+    it(`uses shared ${target} launch language for new and returning Automatic readers`, async () => {
+      language = '';
+      launch = context(target);
+      const first = service(opposite);
+      await first.poll();
+      await assertReadingLanguage(target, opposite);
+      first.dispose();
+      launch = null;
+      await service(target).poll();
+      await assertReadingLanguage(target, opposite);
+    });
+
+    it(`keeps explicit ${target} ahead of the opposite launch and course for every reader`, async () => {
+      language = target;
+      launch = context(opposite);
+      await service(target).poll();
+      await assertReadingLanguage(target, opposite);
+    });
+
+    it(`preserves ${target} course fallback without a managed launch and explicit profile precedence`, async () => {
+      language = '';
+      await assertReadingLanguage(target, target);
+      language = target;
+      await assertReadingLanguage(target, opposite);
+    });
+  }
+
+  it('keeps English as the safe default without a profile, launch or course language', async () => {
+    language = '';
+    await assertReadingLanguage('en', undefined);
+  });
+
+  it('awaits an initial in-flight resolution before rendering the course body', async () => {
+    language = '';
+    launch = context('en');
+    let resolve!: (value: string) => void;
+    const account = new Promise<string>(done => { resolve = done; });
+    const instance = service('de', async () => account);
+    const initial = instance.poll();
+    let rendered = false;
+    const opening = instance.poll().then(async () => {
+      await assertReadingLanguage('en', 'de');
+      rendered = true;
+    });
+    await new Promise<void>(done => setImmediate(done));
+    expect(rendered).to.equal(false);
+    resolve('');
+    await Promise.all([initial, opening]);
+    expect(rendered).to.equal(true);
+    expect(parse(await fs.readFile(argvFile, 'utf8')).locale).to.equal('en');
+    expect(reloads).to.equal(1);
+  });
+
   it('does not overlap reads or change settings after disposal during a read', async () => {
     let resolve!: (value: string) => void;
     const result = new Promise<string>(done => { resolve = done; });
     const instance = service('en', async () => { calls++; return result; });
     const pending = instance.poll();
-    await instance.poll();
+    const overlapping = instance.poll();
+    expect(overlapping).to.equal(pending);
     instance.dispose();
     resolve('de');
-    await pending;
+    await Promise.all([pending, overlapping]);
     await instance.poll();
     expect(calls).to.equal(1);
     expect(reloads).to.equal(0);
