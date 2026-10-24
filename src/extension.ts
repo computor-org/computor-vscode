@@ -571,8 +571,10 @@ async function handleComputorWorkspaceDetected(
 
     // Priority 1: injected API token (Coder workspace injection / CI)
     if (envToken) {
+      // Status bar, not a toast: a managed workspace signs in by itself and
+      // the learner has nothing to do with this step (computor-org/issues#528).
       const ok = await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
+        location: vscode.ProgressLocation.Window,
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
