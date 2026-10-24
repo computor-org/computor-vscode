@@ -2,10 +2,12 @@ import { expect } from 'chai';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import JSZip from 'jszip';
+import { beginMarkdownPreviewRequest, showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
 import { webviewPanels } from '../helpers/vscode-stub';
 import {
-  firstReleasedCourseItem, readStudentDescription, resumeLine, showWorkspaceCourseLanding, studentDescriptionImages
+  readStudentDescription, showWorkspaceCourseLanding, studentDescriptionImages
 } from '../../src/services/WorkspaceCourseLanding';
+import { firstReleasedCourseItem } from '../../src/utils/courseStart';
 import type { ComputorApiService } from '../../src/services/ComputorApiService';
 import type { CourseContentStudentList, CourseStudentList } from '../../src/types/generated';
 
@@ -178,93 +180,52 @@ describe('studentDescriptionImages', () => {
 /** A returning learner lands where they left off, a new one on the first exercise (computor-org/issues#525). */
 describe('showWorkspaceCourseLanding', () => {
   const context = { subscriptions: [], extensionUri: vscode.Uri.file(path.resolve(__dirname, '../..')) } as unknown as vscode.ExtensionContext;
-  const course = { id: 'course-1', path: 'ds', title: 'Data Science mit Python – Grundlagen', description: 'Kursbeschreibung' } as CourseStudentList;
-  function item(path: string, title: string, overrides: Partial<CourseContentStudentList> = {}): CourseContentStudentList {
-    return {
-      id: path, path, title, course_id: 'course-1', position: 1, course_content_kind_id: 'assignment', visible_effective: true,
-      result_count: 0, submission_count: 0, deployment: { deployment_status: 'deployed' }, ...overrides
-    } as CourseContentStudentList;
-  }
-  const unit = (path: string, title: string, position: number) =>
-    item(path, title, { course_content_kind_id: 'unit', deployment: null, position });
-  const done = { submitted: true, submission_count: 1, result_count: 1, result: { id: 'r', result: 1 } };
-  function api(contents: CourseContentStudentList[], language = 'de') {
-    return {
-      getStudentCourseContents: async () => contents,
-      getUserAccount: async () => ({ profile: { language_code: language } }),
-      getCourse: async () => ({ language_code: 'de' }),
-      downloadStudentCourseContentDescription: async (id: string) =>
-        archive({ 'README_de.md': `# ${id} (de)\n\nAufgabentext`, 'README_en.md': `# ${id} (en)\n\nTask text` })
-    } as unknown as ComputorApiService;
-  }
-  /** The Markdown the preview renders, from the state handed to its webview. */
-  const shown = (): string => {
-    const state = /window\.__INITIAL_STATE__ = (.*?);<\/script>/s.exec(webviewPanels.at(-1)!.webview.html as string)![1]!;
-    return JSON.parse(state).markdown;
-  };
+  const course = { id: 'course', title: 'Course', path: 'course', description: '# Authored course description' } as CourseStudentList;
+  const welcome = { id: 'welcome', course_id: 'course', path: 'welcome', title: 'Welcome', course_content_kind_id: 'unit',
+    description: '<!-- lang: de -->\nHallo du\n<!-- lang: en -->\nHello you' } as CourseContentStudentList;
+  const api = (contents: CourseContentStudentList[], language = 'en') => ({
+    getStudentCourseContents: async () => contents,
+    getUserAccount: async () => ({ profile: { language_code: language } })
+  }) as unknown as ComputorApiService;
+  const closePanels = () => { webviewPanels.forEach(panel => panel.dispose()); webviewPanels.length = 0; };
+  const shown = () => JSON.parse(/window\.__INITIAL_STATE__ = (.*?);<\/script>/s.exec(webviewPanels.at(-1)!.webview.html)![1]!).markdown;
+  beforeEach(closePanels); afterEach(closePanels);
 
-  // The preview panel is a module singleton: close it so later suites get their own.
-  const closePanels = () => {
-    for (const panel of webviewPanels) panel.dispose();
-    webviewPanels.length = 0;
-  };
-  beforeEach(closePanels);
-  afterEach(closePanels);
-
-  it('points a returning learner at the next open exercise, with its last result, and returns it to reveal', async () => {
-    const beta = item('week_3.beta', 'Beta-Absorption', { position: 1, result_count: 2, result: { id: 'r', result: 0 } });
-    const contents = [
-      unit('week_1', 'Week 1', 1), item('week_1.constants', 'Mathematische Konstanten', done),
-      unit('week_3', 'Week 3', 3), beta, item('week_3.review', 'Python Grundlagen Review', { position: 2 }),
-      item('willkommen', 'Willkommen', { course_content_kind_id: 'unit', description: '# Willkommen', deployment: null })
-    ];
-
-    const target = await showWorkspaceCourseLanding(context, api(contents), course);
-
-    expect(target).to.equal(beta);
-    expect(shown()).to.contain('**Weiter mit:** Woche 3 → Beta-Absorption (zuletzt getestet: 0\u00a0%)');
-    expect(shown()).to.contain('week_3.beta (de)');
-    expect(shown()).to.not.contain('Kursbeschreibung');
-    expect(shown()).to.not.contain('Erste Aufgabe');
-    expect(shown()).to.not.contain('Mathematische Konstanten');
+  it('opens only the authored Welcome for both fresh and returning learners', async () => {
+    for (const language of ['de', 'en']) {
+      closePanels();
+      const done = { id: 'done', course_id: 'course', path: 'week.done', course_content_kind_id: 'assignment', submitted: true } as CourseContentStudentList;
+      await showWorkspaceCourseLanding(context, api([welcome, done], language), course);
+      expect(webviewPanels).to.have.length(1);
+      expect(webviewPanels[0]!.viewColumn).to.equal(vscode.ViewColumn.One);
+      expect(shown()).to.equal(language === 'de' ? 'Hallo du' : 'Hello you');
+      expect(webviewPanels[0]!.webview.html).not.to.contain('welcome-row-picture');
+      expect(webviewPanels[0]!.webview.html).not.to.contain('welcome-tutorial');
+    }
   });
 
-  it('keeps the course welcome and the first exercise for a learner who has not started', async () => {
-    const welcome = item('willkommen', 'Willkommen', { course_content_kind_id: 'unit', description: '# Willkommen\n\nHallo', deployment: null });
-    const target = await showWorkspaceCourseLanding(context, api([unit('week_1', 'Week 1', 1), item('week_1.constants', 'Konstanten'), welcome]), course);
-    expect(target).to.equal(undefined);
-    expect(webviewPanels.at(-1)!.title).to.equal('Data Science mit Python – Grundlagen: Willkommen');
-
-    const first = await showWorkspaceCourseLanding(context, api([unit('week_1', 'Week 1', 1), item('week_1.constants', 'Konstanten')], 'en'), course);
-    expect(first).to.equal(undefined);
-    expect(shown()).to.contain('Kursbeschreibung');
-    expect(shown()).to.contain('First exercise');
-    expect(shown()).to.not.contain('Continue with');
+  it('falls back to the authored course description without a synthetic task or guide', async () => {
+    await showWorkspaceCourseLanding(context, api([]), course);
+    expect(shown()).to.equal('# Authored course description');
+    expect(webviewPanels[0]!.title).to.equal('Course');
   });
 
-  it('says so when every released exercise is done, and reveals nothing', async () => {
-    const target = await showWorkspaceCourseLanding(context,
-      api([unit('week_1', 'Week 1', 1), item('week_1.constants', 'Konstanten', done)], 'en'), course);
-    expect(target).to.equal(undefined);
-    expect(shown()).to.contain('You have handed in every released exercise.');
-    expect(shown()).to.not.contain('First exercise');
-  });
-});
-
-describe('resumeLine', () => {
-  const contents = [
-    { id: 'w1', path: 'week_1', title: 'Woche 1', course_content_kind_id: 'unit' },
-    { id: 'a', path: 'week_1.loops', title: 'Schleifen_[1]', course_content_kind_id: 'assignment' }
-  ] as CourseContentStudentList[];
-
-  it('names an untested exercise as such, in English and German, and escapes Markdown in titles', () => {
-    expect(resumeLine(contents, contents[1]!, 'en')).to.equal('**Continue with:** Week 1 → Schleifen\\_\\[1\\] (not tested yet)');
-    expect(resumeLine(contents, contents[1]!, 'de')).to.equal('**Weiter mit:** Woche 1 → Schleifen\\_\\[1\\] (noch nicht getestet)');
+  it('does not replace a newer explicit task when startup contents arrive late', async () => {
+    let release!: (contents: CourseContentStudentList[]) => void;
+    const delayed = api([]);
+    delayed.getStudentCourseContents = () => new Promise(resolve => { release = resolve; });
+    const launch = showWorkspaceCourseLanding(context, delayed, course);
+    await showMarkdownTextPreview(context, '# Exact task', 'Task', { studentReading: true });
+    release([welcome]); await launch;
+    expect(webviewPanels).to.have.length(1);
+    expect(webviewPanels[0]!.title).to.equal('Task');
   });
 
-  it('rounds the last test result to a percentage', () => {
-    const tested = { ...contents[1]!, result: { id: 'r', result: 0.666 } } as CourseContentStudentList;
-    expect(resumeLine([contents[0]!, tested], tested, 'en')).to.contain('(last tested: 67%)');
-    expect(resumeLine([contents[0]!, tested], tested, 'de')).to.contain('(zuletzt getestet: 67\u00a0%)');
+  it('retains the request reserved before fetching a course', async () => {
+    const request = beginMarkdownPreviewRequest();
+    await showMarkdownTextPreview(context, '# Manual read', 'Manual');
+    await showWorkspaceCourseLanding(context, api([welcome]), course, request);
+    expect(webviewPanels).to.have.length(1);
+    expect(webviewPanels[0]!.title).to.equal('Manual');
   });
 });

@@ -250,6 +250,11 @@
         "category": "Computor Student"
       },
       {
+        "command": "computor.student.askCourseQuestion",
+        "title": "%command.student.askCourseQuestion%",
+        "category": "Computor Student"
+      },
+      {
         "command": "computor.student.help",
         "title": "%command.student.help%",
         "icon": "$(question)",

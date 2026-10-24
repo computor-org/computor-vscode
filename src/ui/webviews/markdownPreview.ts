@@ -1,18 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AUX_COLUMN, SOURCE_COLUMN, ensureAuxColumn } from '../editorLayout';
-import { renderCourseWelcomeGuide, welcomeLanguage } from './welcome/welcomeContent';
+import { AUX_COLUMN, LEARNER_READING_COLUMN, ensureAuxColumn, updateLearnerReadingWidth, trackLearnerReadingPanel, setStudentNavigationInvalidator } from '../editorLayout';
 import { renderWebviewPage } from './shared/webviewPage';
 
 export interface MarkdownPreviewOptions {
-  /** Student reading stays in the main group in a hosted browser. */
+  /** Learner instructions use the left editor group on desktop and mobile. */
   studentReading?: boolean;
-  /** Include the shared assignment icon guide in the course launch document. */
-  courseGuideLanguage?: string;
+  /** Stable separate tab for the authored course Welcome. */
+  welcomeContentId?: string;
   /** Panel/tab title; defaults to the file's basename. */
   title?: string;
-  /** Explicit placement wins; hosted student reading otherwise uses the main group. */
+  /** Explicit placement wins over the default learner reading group. */
   viewColumn?: vscode.ViewColumn;
   /** Static images delivered with a server-backed description archive. */
   inlineImages?: Record<string, string>;
@@ -30,30 +29,28 @@ export interface MarkdownPreviewRequest {
   readonly isCurrent: () => boolean;
 }
 
-let previewPanel: vscode.WebviewPanel | undefined;
+interface PreviewState {
+  studentReading?: boolean;
+  generation?: number;
+  panel?: vscode.WebviewPanel;
+  identity?: string;
+  dir?: string;
+  context?: vscode.ExtensionContext;
+}
+const previews = new Map<string, PreviewState>();
 let renderRequest = 0;
-let previewDocumentIdentity: string | undefined;
-let cancelEmptyAuxCleanup: (() => void) | undefined;
+let currentStudentPreview: PreviewState | undefined;
 
-/** Bring an open preview back to the front of its group, without taking focus. */
-export function revealMarkdownPreview(): void {
-  previewPanel?.reveal(undefined, true);
+/** Bring the current task reading tab back without taking focus. */
+export function revealMarkdownPreview(preserveFocus = true): void {
+  previews.get('current')?.panel?.reveal(undefined, preserveFocus);
 }
 
-/** A later preview supersedes this request, including while its ZIP is loading. */
+/** Reserve priority before any asynchronous description work. */
 export function beginMarkdownPreviewRequest(): MarkdownPreviewRequest {
-  cancelEmptyAuxCleanup?.();
   const request = ++renderRequest;
   return { isCurrent: () => request === renderRequest };
 }
-/**
- * Directory of the document currently in the panel, and the context to reopen
- * with. Links resolve against these: the panel is a singleton whose message
- * handler is registered once, so the handler reads the current document from
- * here instead of closing over whichever file happened to create the panel.
- */
-let previewDir: string | undefined;
-let previewContext: vscode.ExtensionContext | undefined;
 
 /**
  * Resolve a link written inside a markdown document to a file worth opening,
@@ -95,8 +92,8 @@ export function resolveMarkdownLink(
  * resolve against the file's directory via the webview resource origin
  * (text and math render even where the browser blocks those image loads).
  *
- * One singleton panel is shared by every caller (READMEs, help pages,
- * tutor previews) and retargeted per file. Throws if the file can't be
+ * A current-reading panel is shared by READMEs/help/tutor previews; each
+ * authored course Welcome retains its own tab. Throws if the file can't be
  * read — callers decide their own fallback.
  */
 export async function showMarkdownPreview(
@@ -109,7 +106,9 @@ export async function showMarkdownPreview(
     fs.readFileSync(filePath, 'utf8'),
     path.dirname(filePath),
     options.title ?? path.basename(filePath),
-    options
+    options,
+    path.resolve(filePath) === path.join(context.extensionUri.fsPath, 'docs', 'help', 'student-course.md')
+      ? ['computor.student.askCourseQuestion'] : undefined
   );
 }
 
@@ -141,20 +140,25 @@ async function renderMarkdownPreview(
   markdown: string,
   dir: string,
   title: string,
-  options: MarkdownPreviewOptions
+  options: MarkdownPreviewOptions,
+  enabledCommands?: string[]
 ): Promise<void> {
   if (options.isCurrent && !options.isCurrent()) return;
   const request = options.request ?? beginMarkdownPreviewRequest();
   const isCurrent = () => request.isCurrent() && (options.isCurrent?.() ?? true);
   if (!isCurrent()) return;
-  // Native desktop instructions belong beside the code. The old
-  // "Beside when an editor is active, One otherwise" put the preview in the
-  // *source* group whenever focus happened to be on a webview — which is
-  // always true when the student is looking at a figure
-  // (computor-org/issues#286).
-  const hostedReading = options.studentReading && vscode.env.uiKind === vscode.UIKind.Web;
-  const column = options.viewColumn ?? (hostedReading ? SOURCE_COLUMN : AUX_COLUMN);
-
+  const hostedReading = options.studentReading === true;
+  const column = options.viewColumn ?? (hostedReading ? LEARNER_READING_COLUMN : AUX_COLUMN);
+  const slot = options.welcomeContentId ? `welcome:${options.welcomeContentId}` : 'current';
+  let state = previews.get(slot);
+  if (!state) {
+    state = {};
+    previews.set(slot, state);
+  }
+  const preview = state;
+  preview.studentReading = hostedReading && column === LEARNER_READING_COLUMN;
+  preview.generation = (preview.generation ?? 0) + 1;
+  if (preview.studentReading) currentStudentPreview = preview;
   // Opened before any source file, a webview panel's column request is
   // silently dropped when the only group is empty — force the second group
   // to exist first (computor-org/issues#286 follow-up).
@@ -169,102 +173,89 @@ async function renderMarkdownPreview(
   // extension-bundled documents (help pages, getting started).
   const webviewOptions: vscode.WebviewOptions = {
     enableScripts: true,
+    enableCommandUris: enabledCommands ?? false,
     localResourceRoots: [vscode.Uri.file(dir), context.extensionUri]
   };
 
-  const documentIdentity = JSON.stringify([dir, title, markdown, options.courseGuideLanguage]);
-  const changedDocument = previewDocumentIdentity !== undefined && previewDocumentIdentity !== documentIdentity;
-  previewDocumentIdentity = documentIdentity;
-  previewDir = dir;
-  previewContext = context;
+  const documentIdentity = JSON.stringify([dir, title, markdown]);
+  const changedDocument = preview.identity !== undefined && preview.identity !== documentIdentity;
+  preview.identity = documentIdentity;
+  preview.dir = dir;
+  preview.context = context;
 
-  if (!previewPanel) {
-    previewPanel = vscode.window.createWebviewPanel(
+  if (!preview.panel) {
+    preview.panel = vscode.window.createWebviewPanel(
       'computor.markdownPreview',
       title,
       options.preserveFocus ? { viewColumn: column, preserveFocus: true } : column,
       webviewOptions
     );
-    previewPanel.onDidDispose(() => {
-      previewPanel = undefined;
-      previewDir = undefined;
-      previewContext = undefined;
-      previewDocumentIdentity = undefined;
+    preview.panel.onDidDispose(() => {
+      if (previews.get(slot) === preview) previews.delete(slot);
+      if (currentStudentPreview === preview) currentStudentPreview = undefined;
+      preview.panel = undefined;
+      preview.dir = undefined;
+      preview.context = undefined;
+      preview.identity = undefined;
+    });
+    preview.panel.onDidChangeViewState(({ webviewPanel }) => {
+      if (preview.studentReading && webviewPanel.visible && webviewPanel.active) currentStudentPreview = preview;
     });
     // Registered once for the panel's lifetime; every render retargets it via
-    // previewDir. A link between two documents (the help pages point at each
+    // preview.dir. A link between two documents (the help pages point at each
     // other) would otherwise resolve against the webview's own origin: a dead
     // click on the desktop, a "Not found" browser tab on code-server
     // (computor-org/issues#325).
-    previewPanel.webview.onDidReceiveMessage(async (message) => {
+    preview.panel.webview.onDidReceiveMessage(async (message) => {
+      if (message?.command === 'readingWidth' && preview.studentReading) {
+        if (typeof message.width === 'number' && preview.panel?.visible && currentStudentPreview === preview
+          && message.generation === preview.generation) {
+          const owner = preview.panel;
+          const generation = preview.generation;
+          const request = renderRequest;
+          const isOwnerCurrent = () => preview.panel === owner && currentStudentPreview === preview
+            && preview.generation === generation && renderRequest === request;
+          // Visibility admits the message above; selecting code can hide the owner while it waits.
+          await updateLearnerReadingWidth(message.width, isOwnerCurrent);
+        }
+        return;
+      }
       if (message?.command !== 'openRelativeDocument' || typeof message.href !== 'string') {
         return;
       }
-      if (!previewDir || !previewContext) {
+      if (!preview.dir || !preview.context) {
         return;
       }
       const target = resolveMarkdownLink(
         message.href,
-        previewDir,
-        previewContext.extensionUri.fsPath
+        preview.dir,
+        preview.context.extensionUri.fsPath
       );
       if (!target) {
         void vscode.window.showWarningMessage(`Cannot open '${message.href}' — no such document.`);
         return;
       }
       const hash = message.href.indexOf('#');
-      await showMarkdownPreview(previewContext, target, {
+      await showMarkdownPreview(preview.context, target, {
+        studentReading: preview.studentReading,
         fragment: hash >= 0 ? message.href.slice(hash + 1) : undefined
       });
     });
   } else {
-    previewPanel.webview.options = webviewOptions;
+    preview.panel.webview.options = webviewOptions;
     // preserveFocus: re-showing a README must not pull the cursor out of the
     // editor the student is typing in.
-    previewPanel.reveal(column, true);
+    preview.panel.reveal(column, true);
   }
 
-  const panel = previewPanel;
-  // A hosted reading view can leave its old auxiliary group empty after reveal.
-  // Wait for the native move, and only close that empty group in our two-column layout.
-  if (hostedReading && column === SOURCE_COLUMN) {
-    const groups = vscode.window.tabGroups;
-    const subscriptions: vscode.Disposable[] = [];
-    const stop = () => {
-      subscriptions.splice(0).forEach(subscription => subscription.dispose());
-      if (cancelEmptyAuxCleanup === stop) cancelEmptyAuxCleanup = undefined;
-    };
-    const closeEmptyAux = () => {
-      if (!isCurrent() || previewPanel !== panel || groups?.all.length !== 2) return true;
-      const auxiliary = groups.all.find(group => group.viewColumn === AUX_COLUMN);
-      const source = groups.all.find(group => group.viewColumn === SOURCE_COLUMN);
-      if (!source || !auxiliary) return true;
-      if (panel.viewColumn !== SOURCE_COLUMN || auxiliary.tabs.length !== 0) return false;
-      void Promise.resolve().then(() => {
-        if (isCurrent() && auxiliary.tabs.length === 0) return groups.close(auxiliary, true);
-        return false;
-      }).catch(error => console.warn('[MarkdownPreview] Could not close the empty auxiliary group:', error));
-      return true;
-    };
-    if (!closeEmptyAux()) {
-      cancelEmptyAuxCleanup = stop;
-      const changed = () => { if (closeEmptyAux()) stop(); };
-      subscriptions.push(panel.onDidChangeViewState(changed), panel.onDidDispose(stop));
-      if (groups?.onDidChangeTabs) subscriptions.push(groups.onDidChangeTabs(changed));
-      if (groups?.onDidChangeTabGroups) subscriptions.push(groups.onDidChangeTabGroups(changed));
-    }
-  }
+  const panel = preview.panel;
+  if (preview.studentReading) trackLearnerReadingPanel(panel);
   panel.title = title;
-  const guide = options.courseGuideLanguage ? renderCourseWelcomeGuide({
-    language: welcomeLanguage(options.courseGuideLanguage),
-    workbenchLanguage: welcomeLanguage(vscode.env.language),
-    rowPictureSvg: fs.readFileSync(path.join(context.extensionUri.fsPath, 'media/welcome/assignment-row.svg'), 'utf8').trim()
-  }, title) : undefined;
   const baseUri = panel.webview.asWebviewUri(vscode.Uri.file(dir)).toString();
   panel.webview.html = renderWebviewPage(panel.webview, context.extensionUri, {
     title,
-    bodyHtml: `${guide?.intro ?? ''}<div class="markdown-body" id="content"${guide ? ` lang="${welcomeLanguage(options.courseGuideLanguage)}"` : ''}></div>${guide?.details ?? ''}`,
-    cssFiles: ['vendor/katex-inline.css', 'shared/markdown-preview.css', ...(guide ? ['welcome/welcome.css'] : [])],
+    bodyHtml: '<div class="markdown-body" id="content"></div>',
+    cssFiles: ['vendor/katex-inline.css', 'shared/markdown-preview.css'],
     scriptFiles: [
       'vendor/marked.min.js',
       'vendor/katex.min.js',
@@ -284,7 +275,10 @@ async function renderMarkdownPreview(
       document.body.classList.add('student-reading');
       const fitReading = new IntersectionObserver(entries => {
         const width = entries[0]?.intersectionRect.width;
-        if (width > 0) document.body.style.maxWidth = Math.floor(width) + 'px';
+        if (width > 0) {
+          document.body.style.maxWidth = Math.floor(width) + 'px';
+          vscode.postMessage({ command: 'readingWidth', width: Math.floor(width), generation: ${preview.generation} });
+        }
       }, { threshold: Array.from({ length: 1001 }, (_, index) => index / 1000) });
       fitReading.observe(visibleWidth);
       // A fully visible resize keeps intersectionRatio at one, so request a
@@ -344,3 +338,6 @@ async function renderMarkdownPreview(
     `
   });
 }
+
+// File-row navigation supersedes pending asynchronous assignment launches.
+setStudentNavigationInvalidator(beginMarkdownPreviewRequest);

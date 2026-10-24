@@ -58,6 +58,25 @@ describe('student repository setup feedback', () => {
     expect(warnings).to.deep.equal([]);
   });
 
+  it('waits for the same in-flight repository setup when another launch arrives', async () => {
+    const { tree } = fixture(undefined);
+    let finish!: (outcome: any) => void;
+    const outcome = new Promise(resolve => { finish = resolve; });
+    let setups = 0;
+    (tree as any).provisioning = { setUpRepository: async () => { setups++; return outcome; } };
+    const first = tree.prepareCourseRepository('launch');
+    await new Promise<void>(resolve => setImmediate(resolve));
+    let secondFinished = false;
+    const second = tree.prepareCourseRepository('launch').then(() => { secondFinished = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(setups).to.equal(1);
+    expect(secondFinished).to.equal(false);
+    finish({ status: 'cloned', path: '/tmp/repo' });
+    await Promise.all([first, second]);
+    expect(secondFinished).to.equal(true);
+    expect(setups).to.equal(1);
+  });
+
   it('leaves external and download courses to the expansion, which may ask the learner', async () => {
     const { tree, setups } = fixture({ status: 'cloned', path: '/tmp/repo' }, 'external');
 

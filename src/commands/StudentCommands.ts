@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { AUX_COLUMN } from '../ui/editorLayout';
+import { LEARNER_READING_COLUMN, learnerCodeColumn, openStudentFile } from '../ui/editorLayout';
 import * as path from 'path';
 import * as fs from 'fs';
 // import * as os from 'os';
@@ -14,7 +14,7 @@ import { StudentRepositoryProvisioningService, SetUpOutcome } from '../services/
 import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/MessagesWebviewProvider';
 import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
-import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
+import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, revealMarkdownPreview, showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 import { readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
 import { resolveContentLanguage } from '../utils/contentLanguage';
 import { downloadFileInBrowser } from '../ui/webviews/browserDownload';
@@ -63,6 +63,7 @@ export class StudentCommands {
   private context: vscode.ExtensionContext;
   private treeDataProvider: StudentCourseContentTreeProvider;
   private courseContentTreeProvider?: any; // Will be set after registration
+  private courseHelpCourseId?: string;
   private apiService: ComputorApiService; // Used for future API calls
   private repositoryManager?: StudentRepositoryManager;
   private provisioningService: StudentRepositoryProvisioningService;
@@ -472,7 +473,7 @@ export class StudentCommands {
           // top of the assignment the student is editing.
           await vscode.window.showTextDocument(vscode.Uri.file(readmePath), {
             preview: true,
-            viewColumn: AUX_COLUMN,
+            viewColumn: options.viewColumn ?? LEARNER_READING_COLUMN,
             preserveFocus: options.preserveFocus
           });
         }
@@ -555,6 +556,27 @@ export class StudentCommands {
     if (directory && fs.existsSync(directory) && await this.openReadmeIfExists(directory, true, options, item.courseContent.course_id)) return;
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
     await this.openRemoteDescription(item.courseContent, false, options);
+  }
+
+  /** Open the exact prepared assignment without saving or rewriting learner work. */
+  async openWorkspaceAssignment(item: any, options: MarkdownPreviewOptions & {
+    sourceFiles?: readonly { resourceUri?: vscode.Uri; uri?: vscode.Uri; type?: vscode.FileType }[];
+  } = {}): Promise<void> {
+    const request = options.request ?? beginMarkdownPreviewRequest();
+    const isCurrent = () => request.isCurrent() && (options.isCurrent?.() ?? true);
+    if (!isCurrent()) return;
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    await this.previewDescription(item, { ...options, request, studentReading: true, viewColumn: LEARNER_READING_COLUMN });
+    if (!isCurrent()) return;
+    const sources = (options.sourceFiles ?? [])
+      .filter(file => file.type !== vscode.FileType.Directory)
+      .map(file => file.resourceUri ?? file.uri)
+      .filter((uri): uri is vscode.Uri => Boolean(uri && path.extname(uri.fsPath).toLowerCase() === '.py'));
+    const dirty = vscode.workspace.textDocuments?.find(document => document.isDirty && sources.some(uri => uri.toString() === document.uri.toString()));
+    const current = activeUri && sources.find(uri => uri.toString() === activeUri.toString());
+    const source = dirty?.uri ?? current ?? sources[0];
+    if (source && isCurrent()) await openStudentFile(source, { preview: false }, isCurrent);
+    if (isCurrent() && learnerCodeColumn() === LEARNER_READING_COLUMN) revealMarkdownPreview(false);
   }
 
   private async findRepoRoot(startPath: string): Promise<string | undefined> {
@@ -2043,10 +2065,44 @@ export class StudentCommands {
       }
     });
 
+    register('computor.student.askCourseQuestion', async () => {
+      await this.askCourseQuestion();
+    });
+
     // Help command
     register('computor.student.help', async (item?: any) => {
       await this.showHelp(item);
     });
+  }
+
+  private async askCourseQuestion(): Promise<void> {
+    try {
+      const selection = CourseSelectionService.getInstance();
+      const courseId = this.courseHelpCourseId ?? selection.getCurrentCourseId();
+      if (!courseId) {
+        notify.warning(say('Open a course before asking a course question.',
+          'Öffne einen Kurs, bevor du eine Frage zum Kurs stellst.'));
+        return;
+      }
+      const member = await this.apiService.getOwnCourseMember(courseId);
+      if (!member) {
+        notify.warning(say('Your course membership could not be found. Refresh the course view and try again.',
+          'Deine Kursteilnahme wurde nicht gefunden. Aktualisiere die Kursansicht und versuche es noch einmal.'));
+        return;
+      }
+      const course = selection.getCurrentCourseInfo();
+      await this.messagesWebviewProvider.showMessages({
+        title: say('Course question', 'Frage zum Kurs'),
+        subtitle: course?.id === courseId ? course.title || course.path : undefined,
+        query: { scope: 'course_member', course_member_id: member.id },
+        createPayload: { course_member_id: member.id },
+        wsChannel: `course_member:${member.id}`,
+        sourceRole: 'student'
+      });
+    } catch {
+      notify.error(say('Could not open course questions. Try again after refreshing the course view.',
+        'Die Kursfragen konnten nicht geöffnet werden. Aktualisiere die Kursansicht und versuche es noch einmal.'));
+    }
   }
 
   private async showHelp(item?: any): Promise<void> {
@@ -2059,6 +2115,21 @@ export class StudentCommands {
         return;
       }
 
+      // Relative links between bundled Help pages keep the native entry's course.
+      let helpItem = item;
+      let helpCourseId: string | undefined;
+      const visited = new Set<any>();
+      while (helpItem && !visited.has(helpItem)) {
+        visited.add(helpItem);
+        const candidate = helpItem.courseId || helpItem.course?.id
+          || helpItem.courseContent?.course_id || helpItem.node?.courseContent?.course_id;
+        if (typeof candidate === 'string' && candidate) {
+          helpCourseId = candidate;
+          break;
+        }
+        helpItem = helpItem.parent;
+      }
+      this.courseHelpCourseId = helpCourseId ?? CourseSelectionService.getInstance().getCurrentCourseId();
       await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
 
     } catch (error) {

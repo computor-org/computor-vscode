@@ -1464,6 +1464,21 @@ export class ComputorApiService {
   }
 
   // Course Members API methods
+  /** Resolve only the authenticated learner's membership, independently of repository setup. */
+  async getOwnCourseMember(courseId: string): Promise<CourseMemberList | undefined> {
+    const user = await this.getCurrentUser();
+    if (!user?.id) return undefined;
+    const client = await this.getHttpClient();
+    const response = await client.get<CourseMemberList[]>('/course-members', {
+      course_id: courseId,
+      user_id: user.id,
+      limit: 1
+    });
+    const member = response.data[0];
+    return member && typeof member.id === 'string' && member.id.trim()
+      && member.course_id === courseId && member.user_id === user.id ? member : undefined;
+  }
+
   async getCourseMembers(courseId: string, groupId?: string): Promise<CourseMemberList[]> {
     return this.cachedRequest({
       cacheKey: groupId ? `courseMembers-${groupId}` : `courseMembers-${courseId}`,

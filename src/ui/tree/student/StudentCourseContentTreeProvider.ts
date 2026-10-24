@@ -16,7 +16,8 @@ import { hiddenBadge, isHidden } from '../visibility';
 import { SubmissionGroupStudentList, CourseContentStudentList, CourseContentTypeList, CourseContentKindList } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { UiStateService } from '../../../services/UiStateService';
-import { openFileCommand } from '../../editorLayout';
+import { studentOpenFileCommand } from '../../editorLayout';
+import { isCourseWelcomeContent, registerCourseWelcome } from '../../../services/WorkspaceCourseLanding';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { extractGraderName } from '../../../utils/gradingHelpers';
 import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/repositoryNaming';
@@ -115,6 +116,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     private courseInfoCache: Map<string, { orgId: string | null; familyId: string | null }> = new Map();
     // Track courses that have been set up in this session (to avoid redundant bulk setup on course expand)
     private coursesSetupThisSession: Set<string> = new Set();
+    private readonly courseRepositoryPreparations = new Map<string, Promise<void>>();
     // Track individual assignments where setup has already been attempted (to avoid repeated popups)
     private assignmentsSetupAttempted: Set<string> = new Set();
     // Courses whose repository setup failed this session. The course shows a
@@ -501,7 +503,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                         const parentItem = this.itemIndex.get(parent.id);
                         if (parentItem && parentItem instanceof CourseContentPathItem) {
                             // Rebuild fresh node and update parent item
-                            const tree = this.buildContentTree(list, [], [], this.contentKinds);
+                            const tree = this.buildContentTree(list, [], [], this.contentKinds, selectedCourseId);
                             const freshNode = this.findNodeByPath(tree, parentPath);
                             if (freshNode) {
                                 parentItem.updateFromNode(freshNode);
@@ -772,7 +774,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 await this.annotateCourseGit(selectedCourseId, courseContents);
 
                 // Build and present under course root
-                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
+                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds, selectedCourseId);
                 // Optionally update root item description
                 const prevDescription = element.description;
                 element.updateCounts(courseContents.length);
@@ -819,7 +821,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 }
                 await this.annotateCourseGit(selectedCourseId, courseContents);
                 const gitContext = await this.resolveGitContext(selectedCourseId);
-                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds);
+                const tree = this.buildContentTree(courseContents, [], [], this.contentKinds, selectedCourseId);
                 const targetPath = element.node.courseContent?.path;
                 if (!targetPath) return this.createTreeItems(element.node, gitContext);
                 const refreshedNode = this.findNodeByPath(tree, targetPath);
@@ -875,8 +877,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         courseContents: CourseContentStudentList[], // Student endpoint returns enriched content
         submissionGroups: SubmissionGroupStudentList[], // Unused but kept for API compatibility
         contentTypes: CourseContentTypeList[], // Unused but kept for API compatibility  
-        contentKinds: CourseContentKindList[]
+        contentKinds: CourseContentKindList[],
+        courseId?: string
     ): ContentNode {
+        registerCourseWelcome(courseContents, courseId);
         void submissionGroups; // Suppress unused parameter warning
         void contentTypes; // Suppress unused parameter warning
         const root: ContentNode = { children: new Map(), isUnit: false };
@@ -1157,13 +1161,25 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
      * may ask the learner something and stay with the expansion.
      */
     async prepareCourseRepository(courseId: string): Promise<void> {
-        if (!this.provisioning || this.coursesSetupThisSession.has(courseId)) return;
-        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const model = await this.resolveCourseGit(wsRoot, courseId);
-        if (!model.configured || model.mode !== 'managed') return;
-        this.coursesSetupThisSession.add(courseId);
-        await this.setupCourseGitWithProgress(courseId, model, undefined, vscode.ProgressLocation.Window);
-        this.refresh();
+        const pending = this.courseRepositoryPreparations.get(courseId);
+        if (pending) return pending;
+        const preparation = (async () => {
+            if (!this.provisioning || this.coursesSetupThisSession.has(courseId)) return;
+            const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const model = await this.resolveCourseGit(wsRoot, courseId);
+            if (!model.configured || model.mode !== 'managed') return;
+            this.coursesSetupThisSession.add(courseId);
+            await this.setupCourseGitWithProgress(courseId, model, undefined, vscode.ProgressLocation.Window);
+            this.refresh();
+        })();
+        this.courseRepositoryPreparations.set(courseId, preparation);
+        try {
+            await preparation;
+        } finally {
+            if (this.courseRepositoryPreparations.get(courseId) === preparation) {
+                this.courseRepositoryPreparations.delete(courseId);
+            }
+        }
     }
 
     /** Try the course's repository setup again, from its problem row. */
@@ -1636,9 +1652,9 @@ class CourseContentPathItem extends TreeItem {
 
         this.applyCounts(node);
         withDescription(this, name, node.courseContent?.description);
-        if (hasDescription(node.courseContent?.description)) {
-            // The item command also runs when an already-selected title is
-            // clicked again; the selection listener covers keyboard navigation.
+        if (node.courseContent && hasDescription(node.courseContent.description) && isCourseWelcomeContent(node.courseContent)) {
+            // The authored Welcome remains a reading destination when clicked.
+            // Other units only expand, leaving the current instructions open.
             this.command = { command: PREVIEW_STUDENT_DESCRIPTION_COMMAND, title: 'Show Description', arguments: [this] };
         }
         // 'hidden' marks the row for staff; it comes LAST so the prefix- and
@@ -2131,7 +2147,7 @@ export class FileSystemItem extends TreeItem {
         this.resourceUri = uri;
         
         if (type === vscode.FileType.File) {
-            this.command = openFileCommand(uri);
+            this.command = studentOpenFileCommand(uri);
             this.contextValue = 'studentFile';
             
             // Set appropriate icon based on file extension
