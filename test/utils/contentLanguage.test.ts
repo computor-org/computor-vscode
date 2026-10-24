@@ -56,12 +56,17 @@ describe('contentLanguage', () => {
   describe('landingSection', () => {
     it('shows the description heading once, in place of the stored title', () => {
       const section = landingSection('Math Constants', '# Mathematische Konstanten\n\nDies ist die erste Aufgabe.', 'de', 'fallback');
-      expect(section).to.equal('## Mathematische Konstanten\n\nDies ist die erste Aufgabe.');
+      expect(section).to.equal('---\n\n*Erste Aufgabe*\n\n## Mathematische Konstanten\n\nDies ist die erste Aufgabe.');
       expect(section).not.to.contain('Math Constants');
     });
 
     it('keeps the stored title when the description has no heading', () => {
-      expect(landingSection('Week 1', undefined, 'de', 'Wähle diese Aufgabe.')).to.equal('## Woche 1\n\nWähle diese Aufgabe.');
+      expect(landingSection('Week 1', undefined, 'de', 'Wähle diese Aufgabe.')).to.equal('---\n\n*Erste Aufgabe*\n\n## Woche 1\n\nWähle diese Aufgabe.');
+    });
+
+    it('separates the exercise from the course description and labels it in English', () => {
+      const markdown = `# Course\n\nCourse description\n\n${landingSection('Week 1', '# Types\n\nBody', 'en', 'x')}`;
+      expect(markdown).to.equal('# Course\n\nCourse description\n\n---\n\n*First exercise*\n\n## Types\n\nBody');
     });
   });
 });
