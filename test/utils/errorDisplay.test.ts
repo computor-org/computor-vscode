@@ -1,8 +1,9 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 
+import { setUiProfileLanguage, setUiCourseLanguage } from '../../src/utils/uiLanguage';
 import { errorCatalog } from '../../src/exceptions/ErrorCatalog';
-import { HttpError } from '../../src/exceptions/errors/HttpError';
+import { AuthenticationError, HttpError } from '../../src/exceptions/errors/HttpError';
 import { showErrorWithSeverity } from '../../src/utils/errorDisplay';
 
 /**
@@ -50,6 +51,8 @@ describe('showErrorWithSeverity', () => {
 
   beforeEach(() => {
     shown = [];
+    setUiProfileLanguage('en');
+    setUiCourseLanguage('de');
     originalCatalog = (errorCatalog as any).catalog;
     originalInitialized = (errorCatalog as any).initialized;
     originalInfo = (vscode.window as any).showInformationMessage;
@@ -70,11 +73,41 @@ describe('showErrorWithSeverity', () => {
   });
 
   afterEach(() => {
+    setUiProfileLanguage(undefined);
+    setUiCourseLanguage(undefined);
     (errorCatalog as any).catalog = originalCatalog;
     (errorCatalog as any).initialized = originalInitialized;
     (vscode.window as any).showInformationMessage = originalInfo;
     (vscode.window as any).showWarningMessage = originalWarning;
     (vscode.window as any).showErrorMessage = originalError;
+  });
+
+  it('shows the German sign-in hint for a rejected HTTP session and the subsequent auth breaker', () => {
+    setUiProfileLanguage('de');
+    for (const error of [new HttpError('HTTP 401', 401, 'Unauthorized'), new AuthenticationError('Session invalid')]) {
+      showErrorWithSeverity(error, 'Run tests again');
+    }
+    expect(shown.map(entry => entry.message)).to.deep.equal([
+      'Deine Sitzung ist abgelaufen. Melde dich bitte erneut an.',
+      'Deine Sitzung ist abgelaufen. Melde dich bitte erneut an.'
+    ]);
+  });
+
+  it('keeps the explicit English profile language for a German course', () => {
+    showErrorWithSeverity(new HttpError('HTTP 401', 401, 'Unauthorized'));
+    expect(shown[0]!.message).to.equal('Your session has expired. Please sign in again.');
+  });
+
+  it('localizes a known learner rejection and preserves its severity', () => {
+    setUiProfileLanguage('de');
+    seedCatalog('warning');
+    const catalog = (errorCatalog as any).catalog;
+    catalog.errors.SUBMIT_014 = { ...catalog.errors[CODE], code: 'SUBMIT_014' };
+    showErrorWithSeverity(new HttpError('Bad Request', 400, 'Bad Request', {
+      error_code: 'SUBMIT_014', detail: 'Nothing to submit: /tmp/private-upload'
+    }));
+    expect(shown).to.deep.equal([{ level: 'warning', message:
+      'Es gibt noch nichts abzugeben. Schreibe zuerst deine Lösung und gib sie dann ab.' }]);
   });
 
   it("shows the server's own reason, not the catalog's per-code text", () => {
