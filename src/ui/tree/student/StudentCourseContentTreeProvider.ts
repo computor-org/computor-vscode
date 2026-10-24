@@ -9,7 +9,6 @@ import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import {
     formatBudgetCompact,
-    formatBudgetLong,
     submissionBudget,
     testBudget,
 } from '../limitFormatting';
@@ -27,6 +26,7 @@ import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { hasDescription, PREVIEW_STUDENT_DESCRIPTION_COMMAND, withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
+import { say } from '../../../utils/uiLanguage';
 import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
 import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
 import { AssignmentGitBadges, assignmentGitIndicator, assignmentGitTooltipLines, courseGitIndicator, courseGitTooltipLines } from '../gitIndicators';
@@ -57,6 +57,31 @@ interface ContentNode {
 // Interface for repository cloning items
 interface CloneRepositoryItem {
     submissionGroup: SubmissionGroupStudentList;
+}
+
+/** Run from a course's "repository not ready" row; registered by StudentCommands. */
+export const RETRY_COURSE_SETUP_COMMAND = 'computor.student.retryCourseRepository';
+
+/** Why Test and Submit are missing, and what the learner can do. */
+function setupProblemText(): string {
+    return say(
+        'Computor could not set up your git repository for this course yet, so Test and Submit are not available. '
+            + 'Try again in a few minutes. If it still fails, use "Report problem".',
+        'Computor konnte dein Git-Repository für diesen Kurs noch nicht einrichten, deshalb fehlen Testen und Abgeben. '
+            + 'Versuche es in ein paar Minuten noch einmal. Klappt es dann immer noch nicht, wähle „Problem melden“.',
+    );
+}
+
+/** A grading status in the learner's language ("correction_necessary" -> "Correction Necessary"). */
+function statusLabel(status: string): string {
+    const german: Record<string, string> = {
+        not_reviewed: 'Nicht bewertet',
+        corrected: 'Bewertet',
+        correction_necessary: 'Korrektur nötig',
+        improvement_possible: 'Verbesserung möglich'
+    };
+    const english = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return say(english, german[status.toLowerCase()] ?? english);
 }
 
 /** Git state of one course repo, threaded into item construction (issue #332). */
@@ -92,6 +117,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     private coursesSetupThisSession: Set<string> = new Set();
     // Track individual assignments where setup has already been attempted (to avoid repeated popups)
     private assignmentsSetupAttempted: Set<string> = new Set();
+    // Courses whose repository setup failed this session. The course shows a
+    // row saying so, because a notification alone is easily missed and Test
+    // and Submit stay hidden until the repository exists.
+    private readonly setupProblems = new Set<string>();
     private wsSubscription = new CourseChannelSubscription('student-tree');
     // Git work state per course repo root (● / ↑ badges); promise-cached so
     // concurrent renders share one git invocation, cleared by the watcher.
@@ -759,7 +788,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 if (element.description !== prevDescription) {
                     this.onDidChangeTreeDataEmitter.fire(element);
                 }
-                return this.createTreeItems(tree, gitContext);
+                const items = this.createTreeItems(tree, gitContext);
+                return this.setupProblems.has(selectedCourseId)
+                    ? [this.setupProblemItem(selectedCourseId), ...items]
+                    : items;
             } catch (e) {
                 console.error('Failed to load children for course root:', e);
                 return [];
@@ -1108,27 +1140,60 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             return [this.gitModeGuidance(model, courseId)];
         }
         if (!directory) {
-            return [new MessageItem('Assignment not available yet', 'info')];
+            return [new MessageItem(say('Assignment not available yet', 'Aufgabe noch nicht verfügbar'), 'info')];
         }
         const absDir = path.isAbsolute(directory) ? directory : path.join(repoRoot, directory);
         if (!fs.existsSync(absDir)) {
-            return [new MessageItem('Assignment not available yet', 'info')];
+            return [new MessageItem(say('Assignment not available yet', 'Aufgabe noch nicht verfügbar'), 'info')];
         }
         return this.listAssignmentFiles(absDir, repoRoot, element);
     }
 
+    /**
+     * Set up the repository of the course a workspace was launched for, in the
+     * background once its instructions are open, so that Test and Submit are on
+     * its assignment rows from the start instead of after the first expansion
+     * (integration round 1, N17). Only managed courses: external and download
+     * may ask the learner something and stay with the expansion.
+     */
+    async prepareCourseRepository(courseId: string): Promise<void> {
+        if (!this.provisioning || this.coursesSetupThisSession.has(courseId)) return;
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const model = await this.resolveCourseGit(wsRoot, courseId);
+        if (!model.configured || model.mode !== 'managed') return;
+        this.coursesSetupThisSession.add(courseId);
+        await this.setupCourseGitWithProgress(courseId, model, undefined, vscode.ProgressLocation.Window);
+        this.refresh();
+    }
+
+    /** Try the course's repository setup again, from its problem row. */
+    async retryCourseRepository(courseId: string): Promise<void> {
+        this.coursesSetupThisSession.delete(courseId);
+        this.gitModelCache.delete(courseId);
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const model = await this.resolveCourseGit(wsRoot, courseId);
+        if (!model.configured) return;
+        this.coursesSetupThisSession.add(courseId);
+        await this.setupCourseGitWithProgress(courseId, model);
+        this.refresh();
+    }
+
     /** Provision/clone (managed, external) or download+extract (download) for a
-     * course on the new model, with a cancellable progress notification. Returns
-     * the local repo root on success, else undefined. */
+     * course on the new model, with a cancellable progress notification (or, for
+     * the background setup of a launch, a status bar progress). Returns the local
+     * repo root on success, else undefined; a failure leaves a row in the tree. */
     private async setupCourseGitWithProgress(
         courseId: string,
         model: CourseGitModel,
-        title: string,
+        title?: string,
+        location: vscode.ProgressLocation = vscode.ProgressLocation.Notification,
     ): Promise<string | undefined> {
         return vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Setting up repository for ${title}…`,
-            cancellable: true,
+            location,
+            title: title
+                ? say(`Setting up repository for ${title}…`, `Repository für ${title} wird eingerichtet …`)
+                : say('Setting up your repository…', 'Dein Repository wird eingerichtet …'),
+            cancellable: location === vscode.ProgressLocation.Notification,
         }, async (progress, token) => {
             try {
                 if (model.mode === 'managed' || model.mode === 'external') {
@@ -1141,38 +1206,81 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     // so the next resolveCourseGit recomputes repoRoot.
                     this.gitModelCache.delete(courseId);
                     if (outcome.status === 'cloned' || outcome.status === 'already-cloned') {
+                        this.clearSetupProblem(courseId);
                         return outcome.path;
                     }
                     if (outcome.status === 'forgejo-login-required') {
-                        const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
-                        void notify.info(
-                            `Sign in to the git server once${target ? ` (${target})` : ''}, then expand the assignment again.`,
-                        );
+                        // The git server has no account or token for the learner yet.
+                        // Its address is often internal to the deployment, so it is
+                        // only offered when it is a public https address.
+                        const web = outcome.repo.web_url || outcome.repo.server_url || '';
+                        this.reportSetupProblem(courseId, undefined, web.startsWith('https://') ? web : undefined);
                     } else if (outcome.status === 'unsupported-mode') {
-                        void notify.info(
+                        void notify.info(say(
                             `This course offers: ${outcome.modes.join(', ') || 'no git modes'}.`,
-                        );
+                            `Dieser Kurs bietet: ${outcome.modes.join(', ') || 'keine Git-Variante'}.`,
+                        ));
                     }
                     return undefined;
                 }
                 if (model.mode === 'download' && model.repoRoot) {
-                    progress.report({ message: 'Downloading course template…' });
+                    progress.report({ message: say('Downloading course template…', 'Kursvorlage wird heruntergeladen …') });
                     const buffer = await this.apiService.downloadTemplateArchive(courseId);
                     await fs.promises.mkdir(model.repoRoot, { recursive: true });
-                    progress.report({ message: 'Extracting…' });
+                    progress.report({ message: say('Extracting…', 'Wird entpackt …') });
                     await extractZipBuffer(buffer, model.repoRoot);
+                    this.clearSetupProblem(courseId);
                     return model.repoRoot;
                 }
             } catch (e) {
                 if (e instanceof GitCancelledError) {
-                    void notify.info('Setup cancelled. Expand the assignment again to retry.');
+                    void notify.info(say('Setup cancelled. Expand the assignment again to retry.',
+                        'Einrichtung abgebrochen. Klappe die Aufgabe noch einmal auf, um es erneut zu versuchen.'));
                     return undefined;
                 }
                 console.error('[StudentTree] new-model setup failed:', e);
-                void notify.error(`Repository setup failed: ${e instanceof Error ? e.message : String(e)}`);
+                this.reportSetupProblem(courseId, e instanceof Error ? e.message : String(e));
             }
             return undefined;
         });
+    }
+
+    private clearSetupProblem(courseId: string): void {
+        if (this.setupProblems.delete(courseId)) this.refresh();
+    }
+
+    /**
+     * Say in the learner's language that the repository is missing and what to
+     * do about it: a row at the top of the course, and one notification with
+     * the same actions.
+     */
+    private reportSetupProblem(courseId: string, detail?: string, gitServerUrl?: string): void {
+        this.setupProblems.add(courseId);
+        this.refresh();
+        const retry = say('Try again', 'Erneut versuchen');
+        const report = say('Report problem', 'Problem melden');
+        const open = say('Open git server', 'Git-Server öffnen');
+        const message = `${setupProblemText()}${detail ? ` (${detail})` : ''}`;
+        void notify.warning(message, retry, report, ...(gitServerUrl ? [open] : [])).then(choice => {
+            if (choice === retry) void this.retryCourseRepository(courseId);
+            else if (choice === report) void vscode.commands.executeCommand('computor.reportProblem');
+            else if (choice === open && gitServerUrl) void vscode.env.openExternal(vscode.Uri.parse(gitServerUrl));
+        });
+    }
+
+    private setupProblemItem(courseId: string): MessageItem {
+        const item = new MessageItem(
+            say('Repository missing', 'Repository fehlt'),
+            'warning',
+            { command: RETRY_COURSE_SETUP_COMMAND, title: say('Try again', 'Erneut versuchen'), arguments: [courseId] },
+        );
+        // Short label for a narrow sidebar; the action follows dimmed, the
+        // reason is in the tooltip and in what a screen reader announces.
+        item.description = say('click to try again', 'zum erneuten Versuch klicken');
+        item.id = `setup-problem-${courseId}`;
+        item.tooltip = setupProblemText();
+        item.accessibilityInformation = { label: `${item.label}, ${item.description}. ${item.tooltip}` };
+        return item;
     }
 
     /** A clickable hint when we can't auto-resolve the repo for a mode. */
@@ -1191,7 +1299,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 { command: 'computor.student.downloadTemplate', title: 'Download template', arguments: [courseId] },
             );
         }
-        return new MessageItem('Repository not ready yet. Expand the assignment again to retry.', 'info');
+        return new MessageItem(say('Repository not ready yet. Expand the assignment again to retry.',
+            'Repository noch nicht bereit. Klappe die Aufgabe noch einmal auf, um es erneut zu versuchen.'), 'info');
     }
 
     /** List the files of a cloned/extracted assignment directory (shared by the
@@ -1413,13 +1522,15 @@ class CourseRootItem extends TreeItem {
             gitBinding?.cloned ? 'cloned' : 'notCloned'
         ].join('.');
         this.updateCounts(itemCount);
-        this.tooltipParts = [`Course: ${this.title}`];
+        this.tooltipParts = [`${say('Course', 'Kurs')}: ${this.title}`];
         if (this.courseFamilyInfo) {
-            this.tooltipParts.push(`Course Family: ${this.courseFamilyInfo.title}`);
+            this.tooltipParts.push(`${say('Course Family', 'Kursfamilie')}: ${this.courseFamilyInfo.title}`);
         }
         if (this.organizationInfo) {
-            this.tooltipParts.push(`Organization: ${this.organizationInfo.title}`);
+            this.tooltipParts.push(`${say('Organization', 'Organisation')}: ${this.organizationInfo.title}`);
         }
+        // Read by a screen reader instead of the tooltip.
+        this.accessibilityInformation = { label: `${this.title}, ${say('course', 'Kurs')}` };
         // Facts only — the description stays behind the book icon; hovering a
         // course must not unroll paragraphs of markdown (#353).
         this.tooltip = this.tooltipParts.join('\n');
@@ -1575,20 +1686,26 @@ class CourseContentPathItem extends TreeItem {
         const description = [gitIndicator, parts.join(' • ')].filter(Boolean).join(' ');
         this.description = description || undefined;
 
+        const unreadText = say(`${unread} unread message${unread === 1 ? '' : 's'}`,
+            `${unread} ungelesene Nachricht${unread === 1 ? '' : 'en'}`);
         const tooltipLines = [
-            `Unit: ${this.name}`,
-            `${count} item${count !== 1 ? 's' : ''}`
+            `${say('Unit', 'Einheit')}: ${this.name}`,
+            say(`${count} item${count !== 1 ? 's' : ''}`, `${count} ${count !== 1 ? 'Einträge' : 'Eintrag'}`)
         ];
         if (node.contentType?.title) {
-            tooltipLines.push(`Type: ${node.contentType.title}`);
+            tooltipLines.push(`${say('Type', 'Typ')}: ${node.contentType.title}`);
         }
         const status = (node.courseContent as any)?.status || node.submissionGroup?.status;
         if (status) {
-            tooltipLines.push(`Status: ${this.formatStatus(status)}`);
+            tooltipLines.push(`Status: ${statusLabel(status)}`);
         }
         if (unread > 0) {
-            tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+            tooltipLines.push(unreadText);
         }
+        // Read by a screen reader instead of the tooltip: name first.
+        this.accessibilityInformation = {
+            label: [node.courseContent?.title || this.name, node.contentType?.title || say('unit', 'Einheit'), ...(unread > 0 ? [unreadText] : [])].join(', ')
+        };
         if (this.gitBadges) {
             tooltipLines.push(...assignmentGitTooltipLines(this.gitBadges));
         }
@@ -1596,11 +1713,6 @@ class CourseContentPathItem extends TreeItem {
         this.tooltip = tooltipLines.join('\n');
     }
 
-    private formatStatus(status: string): string {
-        return status
-            .replace(/_/g, ' ')
-            .replace(/\b\w/g, c => c.toUpperCase());
-    }
 }
 
 class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem> {
@@ -1848,8 +1960,10 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         const lines: string[] = [];
         const unreadCount = this.submissionGroup?.unread_message_count
             ?? this.courseContent?.unread_message_count ?? 0;
+        const budget = (b: ReturnType<typeof testBudget>) => b.max === null ? `${b.used}` : `${b.used} ${say('of', 'von')} ${b.max}`;
 
-        if (this.submissionGroup?.repository) {
+        // An empty path would read as a blank "Repository:" line.
+        if (this.submissionGroup?.repository?.full_path) {
             lines.push(`Repository: ${this.submissionGroup.repository.full_path}`);
         }
 
@@ -1858,51 +1972,51 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             || (this.courseContent as any)?.course_content_type
             || (this.courseContent as any)?.course_content_types;
         if (tooltipContentType) {
-            lines.push(`Type: ${tooltipContentType.title || tooltipContentType.slug}`);
+            lines.push(`${say('Type', 'Typ')}: ${tooltipContentType.title || tooltipContentType.slug}`);
         }
 
         if (unreadCount > 0) {
-            lines.push(`Unread messages: ${unreadCount}`);
+            lines.push(`${say('Unread messages', 'Ungelesene Nachrichten')}: ${unreadCount}`);
         }
 
         // Attempts and points
         const tests = testBudget(this.courseContent as any, this.submissionGroup as any);
         if (tests.max !== null || typeof (this.courseContent as any)?.result_count === 'number') {
-            lines.push(`Tests: ${formatBudgetLong(tests)}`);
+            lines.push(`${say('Tests', 'Testläufe')}: ${budget(tests)}`);
         }
 
         const submissions = submissionBudget(this.courseContent as any, this.submissionGroup as any);
         if (submissions.max !== null || typeof this.submissionGroup?.count === 'number') {
-            lines.push(`Submissions: ${formatBudgetLong(submissions)}`);
+            lines.push(`${say('Submissions', 'Abgaben')}: ${budget(submissions)}`);
         }
 
         // Show result percentage (0..1 -> percent) above grading
         const resultVal = this.courseContent?.result?.result as number | undefined;
         const rawGrade = this.submissionGroup?.grading as number | undefined;
         if (typeof resultVal === 'number') {
-            lines.push(`Result: ${(resultVal * 100).toFixed(2)}%`);
+            lines.push(`${say('Result', 'Ergebnis')}: ${(resultVal * 100).toFixed(2)}%`);
         } else if (typeof rawGrade === 'number') {
             // Names what the row's "-%" stands for.
-            lines.push('Result: not tested yet');
+            lines.push(say('Result: not tested yet', 'Ergebnis: noch nicht getestet'));
         }
 
         // Show grading percentage (0..1 -> percent)
         if (typeof rawGrade === 'number') {
-            lines.push(`Grading: ${(rawGrade * 100).toFixed(2)}%`);
+            lines.push(`${say('Grading', 'Bewertung')}: ${(rawGrade * 100).toFixed(2)}%`);
         }
         const graderName = extractGraderName(this.submissionGroup);
         if (graderName) {
-            lines.push(`Graded by: ${graderName}`);
+            lines.push(`${say('Graded by', 'Bewertet von')}: ${graderName}`);
         }
 
         // Additional grading details and team members
         // Use courseContent.status (works for both assignments and units) with fallback to submissionGroup.status
         const status = (this.courseContent as any)?.status || this.submissionGroup?.status;
         if (status) {
-            lines.push(`Status: ${this.formatStatus(status)}`);
+            lines.push(`Status: ${statusLabel(status)}`);
         }
         if (this.submissionGroup?.members && this.submissionGroup.members.length > 1) {
-            lines.push('Team members:');
+            lines.push(say('Team members:', 'Teammitglieder:'));
             for (const member of this.submissionGroup.members) {
                 lines.push(`  - ${member.full_name || member.username}`);
             }
@@ -1913,17 +2027,28 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
 
         this.tooltip = lines.join('\n');
+        this.setupAccessibility(tooltipContentType?.title || tooltipContentType?.slug, unreadCount);
     }
 
-    private formatStatus(status: string): string {
-        // Convert snake_case to Title Case
-        // "correction_necessary" -> "Correction Necessary"
-        // "not_reviewed" -> "Not Reviewed"
-        return status
-            .split('_')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
+    /**
+     * What a screen reader announces for the row. Without it VS Code reads the
+     * tooltip, which does not contain the title (integration round 1, N17).
+     */
+    private setupAccessibility(typeTitle: string | undefined, unreadCount: number): void {
+        const parts = [this.courseContent.title || this.courseContent.path];
+        if (typeTitle) parts.push(typeTitle);
+        const result = this.courseContent?.result?.result;
+        if (typeof result === 'number') {
+            parts.push(say(`last tested ${Math.round(result * 100)}%`, `zuletzt getestet: ${Math.round(result * 100)} %`));
+        }
+        if (this.courseContent?.submitted) parts.push(say('submitted', 'abgegeben'));
+        if (unreadCount > 0) {
+            parts.push(say(`${unreadCount} unread messages`, `${unreadCount} ungelesene Nachrichten`));
+        }
+        if (isHidden(this.courseContent)) parts.push(say('hidden', 'ausgeblendet'));
+        this.accessibilityInformation = { label: parts.join(', ') };
     }
+
 
     private setupContextValue(): void {
         const contexts: string[] = ['studentCourseContent'];

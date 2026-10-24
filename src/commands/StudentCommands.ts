@@ -3,7 +3,7 @@ import { AUX_COLUMN } from '../ui/editorLayout';
 import * as path from 'path';
 import * as fs from 'fs';
 // import * as os from 'os';
-import { StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
+import { RETRY_COURSE_SETUP_COMMAND, StudentCourseContentTreeProvider } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { GitService } from '../services/GitService';
 import { CourseSelectionService } from '../services/CourseSelectionService';
@@ -387,7 +387,7 @@ export class StudentCommands {
 
   private async openReadmeIfExists(dir: string, silent: boolean = false, options: MarkdownPreviewOptions = {}, courseId?: string): Promise<boolean> {
     const request = options.request ?? beginMarkdownPreviewRequest();
-    options = { ...options, request };
+    options = { studentReading: true, ...options, request };
     try {
       let readmePath: string | undefined;
       const preferredLanguage = await this.contentLanguage(
@@ -438,7 +438,7 @@ export class StudentCommands {
   /** Reading published instructions must not require cloning the assignment. */
   private async openRemoteDescription(content: CourseContentStudentList, chooseLanguage = false, options: StudentDescriptionPreviewOptions = {}): Promise<void> {
     const request = options.request ?? beginMarkdownPreviewRequest();
-    options = { ...options, request };
+    options = { studentReading: true, ...options, request };
     const archive = await this.apiService.downloadStudentCourseContentDescription(content.id);
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
     if (!archive) {
@@ -494,7 +494,7 @@ export class StudentCommands {
   /** Read this exercise only; selection must never provision or clone its repository. */
   async previewDescription(item: any, options: StudentDescriptionPreviewOptions = {}): Promise<void> {
     const request = options.request ?? beginMarkdownPreviewRequest();
-    options = { ...options, request };
+    options = { studentReading: true, ...options, request };
     if (!item?.courseContent || !request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
     const directory: string | undefined = item.courseContent.directory;
     if (directory && fs.existsSync(directory) && await this.openReadmeIfExists(directory, true, options, item.courseContent.course_id)) return;
@@ -891,6 +891,11 @@ export class StudentCommands {
     // Optional arg: a course id string, or a tree item carrying `courseId`.
     register('computor.student.setupCourseRepository', async (arg?: any) => {
       await this.setupCourseRepository(arg);
+    });
+
+    // The "repository not ready" row of a course whose setup failed.
+    register(RETRY_COURSE_SETUP_COMMAND, async (courseId?: string) => {
+      if (typeof courseId === 'string') await this.treeDataProvider.retryCourseRepository(courseId);
     });
 
     // Download the course template as a ZIP (download mode / offline work).

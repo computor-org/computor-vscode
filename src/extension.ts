@@ -19,6 +19,7 @@ import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
 import { findInTree } from './ui/tree/chat/chatJump';
 import { WorkspaceLaunchContextService, validWorkspaceLaunchContext, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
 import { showWorkspaceCourseLanding } from './services/WorkspaceCourseLanding';
+import { WorkspaceDisplayLocale, workspaceLocaleFile } from './services/WorkspaceDisplayLocale';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
 import { ComputorApiService } from './services/ComputorApiService';
@@ -37,6 +38,7 @@ import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
+import { setUiCourseLanguage, setUiProfileLanguage } from './utils/uiLanguage';
 import { revealUri } from './utils/reveal';
 import {
   OrganizationTreeItem as LecturerOrganizationTreeItem,
@@ -670,6 +672,7 @@ class UnifiedController {
   private context: vscode.ExtensionContext;
   private api?: ComputorApiService;
   private workspaceLaunchFocused = false;
+  private workspaceDisplayLocale?: WorkspaceDisplayLocale;
   private httpClient?: BearerTokenHttpClient;
   private disposables: vscode.Disposable[] = [];
   private artifactsPanel?: ArtifactsPanel;
@@ -696,6 +699,33 @@ class UnifiedController {
 
     this.httpClient = client;
     const api = await this.setupApi(client);
+
+    const argvFile = workspaceLocaleFile(process.env.COMPUTOR_MANAGED_CODE_SERVER,
+      vscode.env.uiKind === vscode.UIKind.Web, this.context.globalStorageUri);
+    if (argvFile) {
+      const identity = workspaceLaunchIdentity();
+      const locale = new WorkspaceDisplayLocale({
+        argvFile,
+        fetchLanguage: async () => {
+          const account = await api.getUserAccount({ force: true });
+          if (!account) throw new Error('Could not load the account language.');
+          return account.profile?.language_code;
+        },
+        fetchLaunchContext: identity
+          ? () => api.getWorkspaceLaunchContext(identity.owner, identity.name).catch(() => null)
+          : undefined,
+        displayLanguage: vscode.env.language,
+        state: this.context.globalState,
+        reload: () => vscode.commands.executeCommand('workbench.action.reloadWindow'),
+        onLanguage: setUiProfileLanguage
+      });
+      this.workspaceDisplayLocale = locale;
+      this.disposables.push(locale, vscode.window.onDidChangeWindowState(state => {
+        if (state.focused) void locale.poll();
+      }));
+      locale.start();
+      await locale.poll();
+    }
 
     this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
     const profileCommand = vscode.commands.registerCommand('computor.user.profile', async () => {
@@ -890,6 +920,11 @@ class UnifiedController {
   ): Promise<void> {
     const report = onProgress || (() => {});
 
+    // The language of the extension's own rows and messages (uiLanguage).
+    if (!this.workspaceDisplayLocale) {
+      setUiProfileLanguage((await api.getUserAccount().catch(() => undefined))?.profile?.language_code);
+    }
+
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
 
@@ -984,8 +1019,9 @@ class UnifiedController {
       }
     }, this.disposables);
 
-    // A hosted course launch reads instructions first. Code setup remains lazy
-    // until the learner expands an assignment; unrelated courses are untouched.
+    // A hosted course launch reads instructions first; openCourse sets up the
+    // launched course's repository in the background after that. Unrelated
+    // courses are untouched.
 
     // Load expanded states to determine which courses need immediate update.
     // Only previously expanded courses will have their repositories updated on
@@ -1054,6 +1090,7 @@ class UnifiedController {
     const openCourse = async (courseId: string): Promise<boolean> => {
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
+      setUiCourseLanguage((await api.getCourse(courseId).catch(() => undefined))?.language_code);
       tree.setWorkspaceCourse(courseId);
       workspaceLaunchCourseId = courseId;
       // Initial launch runs before initializeViews enables its role contexts.
@@ -1075,6 +1112,10 @@ class UnifiedController {
       const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
       if (course) await showWorkspaceCourseLanding(this.context, api, course);
       void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
+      // With the instructions open, the code follows in the background, so Test
+      // and Submit are on the rows before the learner expands one.
+      void tree.prepareCourseRepository(courseId)
+        .catch(err => console.warn('[openCourse] Repository setup failed:', err));
       return true;
     };
     this.disposables.push(vscode.commands.registerCommand('computor.student.selectCourse', async () => {
@@ -1091,7 +1132,8 @@ class UnifiedController {
           }
           return api.getWorkspaceLaunchContext(launchIdentity.owner, launchIdentity.name);
         },
-        openCourse
+        openCourse,
+        onLaunch: () => this.workspaceDisplayLocale?.poll() ?? Promise.resolve()
       });
       this.disposables.push(receiver);
       await receiver.poll();
@@ -1678,6 +1720,7 @@ class UnifiedController {
     if (this.api) this.api.clearHttpClient();
     this.api = undefined;
     this.profileWebviewProvider = undefined;
+    this.workspaceDisplayLocale = undefined;
   }
 
   getActiveViews(): string[] {

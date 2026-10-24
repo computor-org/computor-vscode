@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { say } from '../utils/uiLanguage';
 import { ComputorApiService } from './ComputorApiService';
 import { showErrorWithSeverity } from '../utils/errorDisplay';
 //import { TestResultsPanelProvider, TestResultsTreeDataProvider } from '../ui/panels/TestResultsPanel';
@@ -77,12 +78,12 @@ export class TestResultService {
         progress: vscode.Progress<{ message?: string; increment?: number }>,
         token?: vscode.CancellationToken
       ): Promise<TestResultStatus> => {
-        progress.report({ message: 'Submitting test request...' });
+        progress.report({ message: say('Submitting test request...', 'Testanfrage wird gesendet …') });
 
         const resultId = testResult.id;
         console.log(`[TestResultService] Test submitted with result ID: ${resultId}, starting polling...`);
 
-        progress.report({ message: 'Waiting for test results...' });
+        progress.report({ message: say('Waiting for test results...', 'Warte auf die Testergebnisse …') });
 
         return new Promise<TestResultStatus>((resolve) => {
           const startTime = Date.now();
@@ -116,13 +117,13 @@ export class TestResultService {
 
               if (Date.now() - startTime > this.MAX_POLL_DURATION) {
                 this.stopPolling(resultId);
-                notify.warning(`Test for ${assignmentTitle} timed out after 5 minutes`);
+                notify.warning(say(`Test for ${assignmentTitle} timed out after 5 minutes`, `Der Test für ${assignmentTitle} hat nach 5 Minuten keine Antwort geliefert.`));
                 resolve({ status: 'TIMEOUT' });
                 return;
               }
 
               const elapsed = Math.floor((Date.now() - startTime) / 1000);
-              progress.report({ message: `Running tests... (${elapsed}s)` });
+              progress.report({ message: say(`Running tests... (${elapsed}s)`, `Tests laufen … (${elapsed} s)`) });
 
               const status = await this.apiService!.getResultStatus(resultId) as unknown as number | string;
               console.log(`[TestResultService] Poll ${pollCount}: Status = ${status}`);
@@ -149,17 +150,17 @@ export class TestResultService {
 
                   if (isSuccess) {
                     notify.info(
-                      `✅ Tests completed for ${assignmentTitle}`
+                      say(`✅ Tests completed for ${assignmentTitle}`, `✅ Tests für ${assignmentTitle} abgeschlossen`)
                     );
                     resolve({ status: 'SUCCESS', result: fullResult.result });
                   } else if (isCancelled) {
                     notify.warning(
-                      `⚠️ Tests cancelled for ${assignmentTitle}`
+                      say(`⚠️ Tests cancelled for ${assignmentTitle}`, `⚠️ Tests für ${assignmentTitle} abgebrochen`)
                     );
                     resolve({ status: 'CANCELLED' });
                   } else {
                     notify.error(
-                      `❌ Tests failed for ${assignmentTitle}`
+                      say(`❌ Tests failed for ${assignmentTitle}`, `❌ Die Tests für ${assignmentTitle} konnten nicht ausgeführt werden`)
                     );
                     resolve({ status: 'FAILED', result: fullResult.result });
                   }
@@ -178,10 +179,12 @@ export class TestResultService {
 
               if (consecutiveFailures >= this.MAX_CONSECUTIVE_POLL_FAILURES) {
                 this.stopPolling(resultId);
-                notify.error(
+                notify.error(say(
                   `Lost contact with the server while waiting for ${assignmentTitle} test results. ` +
-                  'The test may still be running — check again in a moment.'
-                );
+                  'The test may still be running — check again in a moment.',
+                  `Die Verbindung zum Server ist abgerissen, während die Testergebnisse für ${assignmentTitle} ausstanden. ` +
+                  'Der Test läuft vielleicht noch – sieh gleich noch einmal nach.'
+                ));
                 resolve({ status: 'ERROR' });
               }
             } finally {
@@ -236,18 +239,19 @@ export class TestResultService {
           if (isSuccess) {
             const score = typeof testResult.result === 'number' ? testResult.result : 0;
             const percentage = (score * 100).toFixed(1);
-            notify.info(
-              `✅ Tests completed for ${assignmentTitle}: ${percentage}% passed`
-            );
+            notify.info(say(
+              `✅ Tests completed for ${assignmentTitle}: ${percentage}% passed`,
+              `✅ Tests für ${assignmentTitle} abgeschlossen: ${percentage} % bestanden`
+            ));
             return { status: 'SUCCESS', result: testResult.result };
           } else if (isFailure) {
-            notify.error(`❌ Test execution failed for ${assignmentTitle}`);
+            notify.error(say(`❌ Test execution failed for ${assignmentTitle}`, `❌ Die Tests für ${assignmentTitle} konnten nicht ausgeführt werden`));
             return { status: 'FAILED', result: testResult.result };
           } else if (isCancelled) {
-            notify.warning(`⚠️ Test execution cancelled for ${assignmentTitle}`);
+            notify.warning(say(`⚠️ Test execution cancelled for ${assignmentTitle}`, `⚠️ Tests für ${assignmentTitle} abgebrochen`));
             return { status: 'CANCELLED' };
           } else {
-            notify.info(`ℹ️ Test results available for ${assignmentTitle} (status: ${statusValue})`);
+            notify.info(say(`ℹ️ Test results available for ${assignmentTitle} (status: ${statusValue})`, `ℹ️ Testergebnisse für ${assignmentTitle} liegen vor (Status: ${statusValue})`));
             return { status: 'SUCCESS', result: testResult.result };
           }
         }
@@ -267,7 +271,7 @@ export class TestResultService {
         if (show) {
           finalResult = await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: `Testing ${assignmentTitle}...`,
+            title: say(`Testing ${assignmentTitle}...`, `${assignmentTitle} wird getestet …`),
             cancellable: true,
           }, async (progress, token) => {
             return runWithProgress(testResult, progress, token);

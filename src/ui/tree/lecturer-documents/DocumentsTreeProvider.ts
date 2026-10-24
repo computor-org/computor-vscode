@@ -213,11 +213,8 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
     if (cached) { return cached; }
     try {
       const courses = await this.api.getCourses(familyId) || [];
-      const sorted = [...courses].sort((a, b) =>
-        (a.title || a.path).localeCompare(b.title || b.path)
-      );
-      this.coursesCache.set(familyId, sorted);
-      return sorted;
+      this.coursesCache.set(familyId, courses);
+      return courses;
     } catch (err) {
       console.error('[documents] Failed to load courses', err);
       return [];

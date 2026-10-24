@@ -4,6 +4,7 @@ export interface WorkspaceLaunchContext {
   course_id: string;
   request_id: string;
   expires_at: string;
+  ui_language?: 'de' | 'en' | null;
 }
 
 export function workspaceLaunchIdentity(env: NodeJS.ProcessEnv = process.env): { owner: string; name: string } | undefined {
@@ -15,12 +16,14 @@ export function workspaceLaunchIdentity(env: NodeJS.ProcessEnv = process.env): {
 export function validWorkspaceLaunchContext(value: WorkspaceLaunchContext | null, now = Date.now()): value is WorkspaceLaunchContext {
   return Boolean(value && typeof value.course_id === 'string' && value.course_id.trim()
     && typeof value.request_id === 'string' && value.request_id.trim()
-    && typeof value.expires_at === 'string' && Date.parse(value.expires_at) > now);
+    && typeof value.expires_at === 'string' && Date.parse(value.expires_at) > now
+    && (value.ui_language === undefined || value.ui_language === null || value.ui_language === 'de' || value.ui_language === 'en'));
 }
 
 interface LaunchContextOptions {
   fetchContext(): Promise<WorkspaceLaunchContext | null>;
   openCourse(courseId: string): Promise<boolean>;
+  onLaunch?(): Promise<void>;
   now?: () => number;
   intervalMs?: number;
 }
@@ -50,6 +53,8 @@ export class WorkspaceLaunchContextService implements vscode.Disposable {
       if (this.disposed || !validWorkspaceLaunchContext(launch, this.options.now?.() ?? Date.now())
         || this.handled.has(launch.request_id)) return;
       requestId = launch.request_id;
+      await this.options.onLaunch?.();
+      if (this.disposed) return;
       await this.options.openCourse(launch.course_id);
       // false means permanently unavailable. A thrown transient error retries.
       this.handled.add(requestId);

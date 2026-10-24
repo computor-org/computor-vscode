@@ -250,11 +250,7 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
 
   private async getCourseFamilyChildren(familyItem: TutorCourseFamilyFilterItem): Promise<FilterTreeItem[]> {
     await this.ensureHierarchyLoaded();
-    const courses = (this.coursesByFamily.get(familyItem.courseFamilyId) ?? []).slice().sort((a, b) => {
-      const aLabel = a.title || a.path || a.id;
-      const bLabel = b.title || b.path || b.id;
-      return aLabel.localeCompare(bLabel);
-    });
+    const courses = this.coursesByFamily.get(familyItem.courseFamilyId) ?? [];
     const selectedCourseId = this.selection.getCurrentCourseId();
     const courseFamilyLabel = this.resolveFamilyLabel(familyItem.courseFamilyId);
     const organizationLabel = this.resolveOrgLabel(familyItem.organizationId);

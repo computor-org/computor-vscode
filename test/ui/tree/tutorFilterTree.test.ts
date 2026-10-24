@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { TutorFilterTreeProvider } from '../../../src/ui/tree/tutor/tutor-filter-tree-provider';
 import {
   TutorCourseFilterItem,
+  TutorCourseFamilyFilterItem,
   TutorMemberFilterItem
 } from '../../../src/ui/tree/tutor/tutor-filter-tree-items';
 
@@ -68,6 +69,13 @@ describe('TutorFilterTreeProvider course scoping', () => {
     const item = new TutorCourseFilterItem({ id: courseId, title: courseId }, false, true);
     return provider.getChildren(item) as Promise<any[]>;
   }
+
+  it('keeps canonical API course order within a family', async () => {
+    const provider = new TutorFilterTreeProvider(makeApi(), makeSelection(PYTHON, null));
+    const family = new TutorCourseFamilyFilterItem('fam', 'org', 'Fam', false);
+    const children = await provider.getChildren(family);
+    expect(children.map(item => (item as TutorCourseFilterItem).course.id)).to.deep.equal([PYTHON, MATLAB]);
+  });
 
   it('does not let a non-selected course re-elect the selected member', async () => {
     // MATLAB is selected; the Python node is still expanded from before.
