@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { say } from '../../utils/uiLanguage';
 import { ResultArtifactInfo } from '../../types/generated/common';
 import { escapeHtml } from '../webviews/shared/webviewHelpers';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
@@ -343,7 +344,8 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 const total = data.total ?? (passed + failed);
                 errorChildren.push({
                     id: `${errorId}/stats`,
-                    label: `Tests: ${passed} passed, ${failed} failed, ${total} total`,
+                    label: say(`Tests: ${passed} passed, ${failed} failed, ${total} total`,
+                        `Tests: ${passed} bestanden, ${failed} nicht bestanden, ${total} insgesamt`),
                     themeIcon: new vscode.ThemeIcon('graph-line')
                 });
             }
@@ -353,14 +355,14 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 const percentage = Math.round((data.result_value ?? 0) * 100);
                 errorChildren.push({
                     id: `${errorId}/result`,
-                    label: `Result: ${percentage}%`,
+                    label: say(`Result: ${percentage}%`, `Ergebnis: ${percentage} %`),
                     themeIcon: new vscode.ThemeIcon('symbol-numeric')
                 });
             }
 
             return [{
                 id: errorId,
-                label: 'Test Execution Error',
+                label: say('Test Execution Error', 'Fehler beim Ausführen der Tests'),
                 description: undefined,
                 passed: false,
                 isTest: false,
@@ -443,7 +445,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
 
                     childrenHead.push({
                         id: envId,
-                        label: 'Environment',
+                        label: say('Environment', 'Umgebung'),
                         description: undefined,
                         toolTip: 'Environment',
                         collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
@@ -463,7 +465,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
 
                     childrenHead.push({
                         id: summaryId,
-                        label: 'Summary',
+                        label: say('Summary', 'Zusammenfassung'),
                         description: undefined,
                         toolTip: 'Summary',
                         collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
@@ -578,10 +580,10 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
 
     private emptyDetails(hasResults: boolean): ResultDetails {
         return {
-            label: 'Result Details',
-            body: hasResults
-                ? '<span class="no-results">Select an entry in the Result Tree to see its details.</span>'
-                : '<span class="no-results">No test results available</span>'
+            label: say('Result Details', 'Ergebnisdetails'),
+            body: `<span class="no-results">${hasResults
+                ? say('Select an entry in the Result Tree to see its details.', 'Wähle in der Ergebnisliste einen Eintrag aus, um seine Details zu sehen.')
+                : say('No test results available', 'Noch keine Testergebnisse')}</span>`
         };
     }
 
@@ -590,13 +592,13 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
             return this.emptyDetails(true);
         }
 
-        const label = typeof node.label === 'string' && node.label ? node.label : 'Result Details';
+        const label = typeof node.label === 'string' && node.label ? node.label : say('Result Details', 'Ergebnisdetails');
         const parts: string[] = [];
 
         if (typeof node.passed === 'boolean') {
             parts.push(node.passed
-                ? '<div class="detail-status passed">✅ Passed</div>'
-                : '<div class="detail-status failed">❌ Failed</div>');
+                ? `<div class="detail-status passed">✅ ${say('Passed', 'Bestanden')}</div>`
+                : `<div class="detail-status failed">❌ ${say('Failed', 'Nicht bestanden')}</div>`);
         }
 
         if (typeof node.description === 'string' && node.description.trim()) {

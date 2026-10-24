@@ -57,15 +57,15 @@ export async function showWorkspaceCourseLanding(
   const welcome = courseWelcomeItem(contents);
   const title = course.title || course.path;
   // A launch opens one document, full width in the first group. A README
-  // shown later moves the panel to the auxiliary group as usual.
+  // shown later retains its host-specific reading placement.
+  const language = await landingLanguage(api, course.id);
   if (welcome) {
-    await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`, { viewColumn: SOURCE_COLUMN });
+    await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`, { studentReading: true, viewColumn: SOURCE_COLUMN, courseGuideLanguage: language });
     return;
   }
   const first = firstReleasedCourseItem(contents);
   let markdown = `# ${escapeHeading(title)}\n\n${course.description?.trim() ?? ''}`;
   let inlineImages: Record<string, string> | undefined;
-  const language = await landingLanguage(api, course.id);
   const copy = LANDING_COPY[language === 'de' ? 'de' : 'en'];
   if (first) {
     let description = first.description?.trim();
@@ -82,7 +82,7 @@ export async function showWorkspaceCourseLanding(
   } else {
     markdown += `\n\n${copy.noExercises}`;
   }
-  await showMarkdownTextPreview(context, markdown, title, { inlineImages, viewColumn: SOURCE_COLUMN });
+  await showMarkdownTextPreview(context, markdown, title, { studentReading: true, inlineImages, viewColumn: SOURCE_COLUMN, courseGuideLanguage: language });
 }
 
 const LANDING_COPY = {

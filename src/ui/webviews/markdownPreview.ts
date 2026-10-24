@@ -1,13 +1,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AUX_COLUMN, ensureAuxColumn } from '../editorLayout';
+import { AUX_COLUMN, SOURCE_COLUMN, ensureAuxColumn } from '../editorLayout';
+import { renderCourseWelcomeGuide, welcomeLanguage } from './welcome/welcomeContent';
 import { renderWebviewPage } from './shared/webviewPage';
 
 export interface MarkdownPreviewOptions {
+  /** Student reading stays in the main group in a hosted browser. */
+  studentReading?: boolean;
+  /** Include the shared assignment icon guide in the course launch document. */
+  courseGuideLanguage?: string;
   /** Panel/tab title; defaults to the file's basename. */
   title?: string;
-  /** Defaults to the auxiliary group, alongside the figures. */
+  /** Explicit placement wins; hosted student reading otherwise uses the main group. */
   viewColumn?: vscode.ViewColumn;
   /** Static images delivered with a server-backed description archive. */
   inlineImages?: Record<string, string>;
@@ -27,6 +32,8 @@ export interface MarkdownPreviewRequest {
 
 let previewPanel: vscode.WebviewPanel | undefined;
 let renderRequest = 0;
+let previewDocumentIdentity: string | undefined;
+let cancelEmptyAuxCleanup: (() => void) | undefined;
 
 /** Bring an open preview back to the front of its group, without taking focus. */
 export function revealMarkdownPreview(): void {
@@ -35,6 +42,7 @@ export function revealMarkdownPreview(): void {
 
 /** A later preview supersedes this request, including while its ZIP is loading. */
 export function beginMarkdownPreviewRequest(): MarkdownPreviewRequest {
+  cancelEmptyAuxCleanup?.();
   const request = ++renderRequest;
   return { isCurrent: () => request === renderRequest };
 }
@@ -139,12 +147,13 @@ async function renderMarkdownPreview(
   const request = options.request ?? beginMarkdownPreviewRequest();
   const isCurrent = () => request.isCurrent() && (options.isCurrent?.() ?? true);
   if (!isCurrent()) return;
-  // A README belongs beside the code, never on top of it. The old
+  // Native desktop instructions belong beside the code. The old
   // "Beside when an editor is active, One otherwise" put the preview in the
   // *source* group whenever focus happened to be on a webview — which is
   // always true when the student is looking at a figure
   // (computor-org/issues#286).
-  const column = options.viewColumn ?? AUX_COLUMN;
+  const hostedReading = options.studentReading && vscode.env.uiKind === vscode.UIKind.Web;
+  const column = options.viewColumn ?? (hostedReading ? SOURCE_COLUMN : AUX_COLUMN);
 
   // Opened before any source file, a webview panel's column request is
   // silently dropped when the only group is empty — force the second group
@@ -163,6 +172,9 @@ async function renderMarkdownPreview(
     localResourceRoots: [vscode.Uri.file(dir), context.extensionUri]
   };
 
+  const documentIdentity = JSON.stringify([dir, title, markdown, options.courseGuideLanguage]);
+  const changedDocument = previewDocumentIdentity !== undefined && previewDocumentIdentity !== documentIdentity;
+  previewDocumentIdentity = documentIdentity;
   previewDir = dir;
   previewContext = context;
 
@@ -177,6 +189,7 @@ async function renderMarkdownPreview(
       previewPanel = undefined;
       previewDir = undefined;
       previewContext = undefined;
+      previewDocumentIdentity = undefined;
     });
     // Registered once for the panel's lifetime; every render retargets it via
     // previewDir. A link between two documents (the help pages point at each
@@ -212,12 +225,46 @@ async function renderMarkdownPreview(
   }
 
   const panel = previewPanel;
+  // A hosted reading view can leave its old auxiliary group empty after reveal.
+  // Wait for the native move, and only close that empty group in our two-column layout.
+  if (hostedReading && column === SOURCE_COLUMN) {
+    const groups = vscode.window.tabGroups;
+    const subscriptions: vscode.Disposable[] = [];
+    const stop = () => {
+      subscriptions.splice(0).forEach(subscription => subscription.dispose());
+      if (cancelEmptyAuxCleanup === stop) cancelEmptyAuxCleanup = undefined;
+    };
+    const closeEmptyAux = () => {
+      if (!isCurrent() || previewPanel !== panel || groups?.all.length !== 2) return true;
+      const auxiliary = groups.all.find(group => group.viewColumn === AUX_COLUMN);
+      const source = groups.all.find(group => group.viewColumn === SOURCE_COLUMN);
+      if (!source || !auxiliary) return true;
+      if (panel.viewColumn !== SOURCE_COLUMN || auxiliary.tabs.length !== 0) return false;
+      void Promise.resolve().then(() => {
+        if (isCurrent() && auxiliary.tabs.length === 0) return groups.close(auxiliary, true);
+        return false;
+      }).catch(error => console.warn('[MarkdownPreview] Could not close the empty auxiliary group:', error));
+      return true;
+    };
+    if (!closeEmptyAux()) {
+      cancelEmptyAuxCleanup = stop;
+      const changed = () => { if (closeEmptyAux()) stop(); };
+      subscriptions.push(panel.onDidChangeViewState(changed), panel.onDidDispose(stop));
+      if (groups?.onDidChangeTabs) subscriptions.push(groups.onDidChangeTabs(changed));
+      if (groups?.onDidChangeTabGroups) subscriptions.push(groups.onDidChangeTabGroups(changed));
+    }
+  }
   panel.title = title;
+  const guide = options.courseGuideLanguage ? renderCourseWelcomeGuide({
+    language: welcomeLanguage(options.courseGuideLanguage),
+    workbenchLanguage: welcomeLanguage(vscode.env.language),
+    rowPictureSvg: fs.readFileSync(path.join(context.extensionUri.fsPath, 'media/welcome/assignment-row.svg'), 'utf8').trim()
+  }, title) : undefined;
   const baseUri = panel.webview.asWebviewUri(vscode.Uri.file(dir)).toString();
   panel.webview.html = renderWebviewPage(panel.webview, context.extensionUri, {
     title,
-    bodyHtml: '<div class="markdown-body" id="content"></div>',
-    cssFiles: ['vendor/katex-inline.css', 'shared/markdown-preview.css'],
+    bodyHtml: `${guide?.intro ?? ''}<div class="markdown-body" id="content"${guide ? ` lang="${welcomeLanguage(options.courseGuideLanguage)}"` : ''}></div>${guide?.details ?? ''}`,
+    cssFiles: ['vendor/katex-inline.css', 'shared/markdown-preview.css', ...(guide ? ['welcome/welcome.css'] : [])],
     scriptFiles: [
       'vendor/marked.min.js',
       'vendor/katex.min.js',
@@ -226,6 +273,32 @@ async function renderMarkdownPreview(
     ],
     initialState: { markdown, baseUri, inlineImages: options.inlineImages, fragment: options.fragment },
     inlineScript: `
+      ${hostedReading ? `
+      // Native editor groups can be wider than their visible portion on mobile.
+      // This sentinel belongs to this webview and keeps its intrinsic viewport width.
+      const visibleWidth = document.createElement('div');
+      visibleWidth.setAttribute('aria-hidden', 'true');
+      visibleWidth.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:1px;pointer-events:none';
+      document.body.appendChild(visibleWidth);
+      document.body.style.boxSizing = 'border-box';
+      document.body.classList.add('student-reading');
+      const fitReading = new IntersectionObserver(entries => {
+        const width = entries[0]?.intersectionRect.width;
+        if (width > 0) document.body.style.maxWidth = Math.floor(width) + 'px';
+      }, { threshold: Array.from({ length: 1001 }, (_, index) => index / 1000) });
+      fitReading.observe(visibleWidth);
+      // A fully visible resize keeps intersectionRatio at one, so request a
+      // fresh intersection when the sentinel's intrinsic viewport width changes.
+      const readingResize = new ResizeObserver(() => {
+        fitReading.unobserve(visibleWidth);
+        fitReading.observe(visibleWidth);
+      });
+      readingResize.observe(visibleWidth);
+      window.addEventListener('pagehide', () => {
+        readingResize.disconnect();
+        fitReading.disconnect();
+      }, { once: true });
+      ` : ''}
       const state = window.__INITIAL_STATE__ || {};
       const el = document.getElementById('content');
       try {
@@ -248,6 +321,14 @@ async function renderMarkdownPreview(
         el.textContent = state.markdown || '';
       }
 
+      ${changedDocument && !options.fragment ? `
+      // VS Code restores the preceding frame's scroll on HTML replacement.
+      // A different reading document starts at its heading after that restoration;
+      // revealing or restyling the same document keeps its reading position.
+      window.addEventListener('load', function () {
+        requestAnimationFrame(function () { window.scrollTo(0, 0); });
+      }, { once: true });
+      ` : ''}
       if (state.fragment) {
         window.ComputorWebview.scrollToFragment(document, state.fragment);
       }

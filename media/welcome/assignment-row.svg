@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 32" width="128" height="32" class="arow">
+<style>
+.arow .row{fill:var(--vscode-list-hoverBackground,#2a2d2e)}
+.arow .fg{fill:var(--vscode-foreground,#cccccc)}
+.arow .icon{fill:var(--vscode-icon-foreground,var(--vscode-foreground,#cccccc))}
+.arow text{font-family:var(--vscode-font-family,-apple-system,"Segoe UI",system-ui,sans-serif);font-size:13px}
+</style>
+<rect class="row" x="0" y="4" width="128" height="24" rx="3"/>
+<path class="icon" d="M5 12l4 4-4 4 1 1 5-5-5-5z"/>
+<g transform="translate(16 8)"><svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="12" height="12" fill="#FFFF00" rx="2" />
+  
+      <path d="M2 6.5 L4.5 9 L8 5.5" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M2 6.5 L4.5 9 L8 5.5" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M6.5 9.5 L9 12 L14 7" stroke="#000000" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M6.5 9.5 L9 12 L14 7" stroke="#7af595ff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    
+  
+  
+</svg></g>
+<text class="fg" x="36" y="21">Python</text>
+<g transform="translate(104 8)"><path class="icon" d="M5 8C5 8.55229 4.55228 9 4 9C3.44772 9 3 8.55229 3 8C3 7.44772 3.44772 7 4 7C4.55228 7 5 7.44772 5 8ZM9 8C9 8.55229 8.55229 9 8 9C7.44772 9 7 8.55229 7 8C7 7.44772 7.44772 7 8 7C8.55229 7 9 7.44772 9 8ZM12 9C12.5523 9 13 8.55229 13 8C13 7.44772 12.5523 7 12 7C11.4477 7 11 7.44772 11 8C11 8.55229 11.4477 9 12 9Z"/></g>
+</svg>
