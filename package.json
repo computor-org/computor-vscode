@@ -3047,6 +3047,19 @@
         "description": "%walkthrough.student.description%",
         "steps": [
           {
+            "id": "connect",
+            "title": "%walkthrough.student.connect.title%",
+            "description": "%walkthrough.student.connect.description%",
+            "when": "!isWeb",
+            "media": {
+              "image": "media/icon.png",
+              "altText": "%walkthrough.student.connect.altText%"
+            },
+            "completionEvents": [
+              "onCommand:computor.login"
+            ]
+          },
+          {
             "id": "openCourse",
             "title": "%walkthrough.student.openCourse.title%",
             "description": "%walkthrough.student.openCourse.description%",

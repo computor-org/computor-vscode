@@ -5,6 +5,7 @@ import { resolveContentLanguage } from '../../../utils/contentLanguage';
 import { courseStartPointer, hasStartedCourse } from '../../../utils/courseStart';
 import { contentIconSvg, ContentIconBadge, ContentIconCorner, ContentIconShape } from '../../../utils/contentIconSvg';
 import { codicon, CodiconName } from './codicons';
+import { defaultSettings } from '../../../types/SettingsTypes';
 import type { CourseContentStudentList } from '../../../types/generated';
 
 /**
@@ -13,7 +14,9 @@ import type { CourseContentStudentList } from '../../../types/generated';
  * What a student meets when the workspace opens: who they are, which courses
  * they are in, how to get from the course tree to a submitted assignment, where
  * the help pages are, what the Git colours mean, that the other edition
- * (browser or desktop) exists, and who builds and funds Computor.
+ * (browser or desktop) exists, and who builds and funds Computor. Connecting
+ * a desktop VS Code is one set of steps, shown both in the browser edition
+ * and on a desktop that is not signed in yet (computor-org/issues#366).
  *
  * Free of `vscode` on purpose, like the help-page mappings it links to: the
  * provider gathers the facts, this turns them into markup, and a plain Node
@@ -138,8 +141,16 @@ export const welcomeLinks = {
   contributors: 'https://github.com/computor-org/computor-vscode/graphs/contributors',
   netidee: 'https://www.netidee.at/computor',
   source: 'https://github.com/computor-org',
-  feedback: 'https://computor.at/problem'
+  feedback: 'https://computor.at/problem',
+  website: 'https://computor.at'
 } as const;
+
+/**
+ * The API of computor.at, where its website sends desktop VS Code
+ * (computor-org/issues#366). Suggested when this window is still on the
+ * built-in development default, which no learner can sign in to.
+ */
+export const publicBackendUrl = 'https://computor.at/api';
 
 export type WelcomeLinkKey = keyof typeof welcomeLinks | 'workspaces';
 
@@ -281,6 +292,7 @@ export type WelcomeIntent =
   | { kind: 'link'; url: string }
   | { kind: 'view'; role: WelcomeRole }
   | { kind: 'login' }
+  | { kind: 'setBackend' }
   | { kind: 'reportProblem' }
   | { kind: 'showOnStartup'; value: boolean };
 
@@ -320,6 +332,8 @@ export function resolveWelcomeMessage(message: unknown, model: WelcomeModel): We
     }
     case 'login':
       return model.signedIn ? undefined : { kind: 'login' };
+    case 'setBackend':
+      return model.signedIn ? undefined : { kind: 'setBackend' };
     case 'reportProblem':
       return model.signedIn ? { kind: 'reportProblem' } : undefined;
     case 'showOnStartup':
@@ -403,10 +417,23 @@ function renderLaunch(launch: WelcomeLaunch, say: Say): string {
 function renderCourses(model: WelcomeModel, say: Say): string {
   const title = say('Your courses', 'Deine Kurse');
   if (!model.signedIn) {
+    const notice = `<div class="notice info">${say('You are not signed in. Sign in to see your courses.',
+      'Du bist nicht angemeldet. Melde dich an, um deine Kurse zu sehen.')}</div>`;
+    const signIn = `<button type="button" class="btn" data-action="login">${say('Sign in', 'Anmelden')}</button>`;
+    if (model.inBrowser) {
+      return section('welcome-sign-in', title, `${notice}<div class="actions">${signIn}</div>`);
+    }
+    // A desktop install starts on the development default and knows no
+    // account yet: the same steps as the browser edition's pointer, from the
+    // point the extension is installed (computor-org/issues#366).
     return section('welcome-sign-in', title, `
-      <div class="notice info">${say('You are not signed in. Sign in to see your courses.',
-        'Du bist nicht angemeldet. Melde dich an, um deine Kurse zu sehen.')}</div>
-      <div class="actions"><button type="button" class="btn" data-action="login">${say('Sign in', 'Anmelden')}</button></div>`);
+      ${notice}
+      ${desktopConnectSteps(model, say, { install: false })}
+      <div class="actions">
+        ${signIn}
+        <button type="button" class="btn secondary" data-action="setBackend">${say('Set the backend URL', 'Backend-URL festlegen')}</button>
+        <button type="button" class="btn secondary" data-action="link" data-link="website">${say('Computor website', 'Computor-Website')}</button>
+      </div>`);
   }
 
   const listed = model.courses.slice(0, maxListedCourses);
@@ -512,7 +539,7 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
   const steps: Array<[string, string]> = [
     [say('Open the Student view.', 'Öffne die Student-Ansicht.'),
       say(`Click the book ${codicon('book')} <strong>Computor Student</strong> in the Activity Bar on the far left. In a workspace started for a course, it is already open.`,
-        `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>Computor Student</strong>. In einem Arbeitsbereich, der für einen Kurs gestartet wurde, ist sie schon offen.`)],
+        `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>Computor Student</strong>. In einer Arbeitsumgebung, die für einen Kurs gestartet wurde, ist sie schon offen.`)],
     openCourse,
     [say('Read the task.', 'Lies die Aufgabe.'),
       say(`Click an assignment's title or choose ${action('open-preview', n('computor.student.showPreview'))}. Its instructions open in the editor; nothing is downloaded yet.`,
@@ -645,38 +672,64 @@ function renderGitColours(say: Say): string {
     'Sie stammen von Git und vergleichen deine Dateien mit deinem letzten Commit. Wenn du sie siehst, ist nichts falsch, und nach dem nächsten Commit verschwinden sie.'));
 }
 
+/** The address a desktop install should be pointed at, if this window knows a real one. */
+function knownBackendUrl(model: WelcomeModel): string | undefined {
+  const url = model.backendUrl?.trim().replace(/\/+$/, '');
+  return url && url !== defaultSettings.authentication.baseUrl ? url : undefined;
+}
+
+/**
+ * Connecting desktop VS Code to Computor, as one list of steps
+ * (computor-org/issues#366). The browser edition shows it whole, as the way to
+ * the desktop; a signed-out desktop shows it from the backend step on, as the
+ * way in. Either way it ends in the same account as on the website, and
+ * only someone not signed in yet is told how to get one.
+ */
+function desktopConnectSteps(model: WelcomeModel, say: Say, options: { install: boolean }): string {
+  const known = knownBackendUrl(model);
+  const backend = known
+    ? say(`run <strong>Computor: Change Backend URL</strong> and enter <code>${escapeHtml(known)}</code>`,
+      `führe <strong>Computor: Change Backend URL</strong> aus und gib <code>${escapeHtml(known)}</code> ein`)
+    : say(`run <strong>Computor: Change Backend URL</strong> and enter <code>${publicBackendUrl}</code> for computor.at, or the address your course gives you`,
+      `führe <strong>Computor: Change Backend URL</strong> aus und gib für computor.at <code>${publicBackendUrl}</code> ein oder die Adresse, die dein Kurs dir nennt`);
+  const steps = [
+    ...(options.install ? [
+      say('Install Visual Studio Code and Git, and whatever your course works with, such as Python.',
+        'Installiere Visual Studio Code und Git und dazu, womit dein Kurs arbeitet, etwa Python.'),
+      say('Install the <strong>Computor</strong> extension from the Visual Studio Marketplace.',
+        'Installiere die Erweiterung <strong>Computor</strong> aus dem Visual Studio Marketplace.')
+    ] : []),
+    say(`Open an empty folder, press <kbd>F1</kbd> and ${backend}.`, `Öffne einen leeren Ordner, drücke <kbd>F1</kbd>, ${backend}.`),
+    say('Run <strong>Computor: Login</strong> and sign in in your browser, with the same account as on the Computor website.',
+      'Führe <strong>Computor: Login</strong> aus und melde dich im Browser an, mit demselben Konto wie auf der Computor-Website.'),
+    ...(model.signedIn ? [] : [
+      say('No account yet? Create one on the Computor website and join your course there. It then appears in the Student view.',
+        'Noch kein Konto? Lege auf der Computor-Website eines an und tritt dort deinem Kurs bei. Danach erscheint er in der Student-Ansicht.')
+    ])
+  ];
+  return `<ol class="welcome-steps">${steps.map(step => `<li>${step}</li>`).join('')}</ol>`;
+}
+
 /** Point each edition at the other one (browser ↔ desktop). */
 function renderOtherEdition(model: WelcomeModel, say: Say): string {
   const switching = `<p>${say('Commit before you switch, so your latest work is on the server.',
     'Committe, bevor du wechselst, damit deine neueste Arbeit auf dem Server liegt.')}</p>`;
 
   if (model.inBrowser) {
-    const backend = model.backendUrl
-      ? say(`run <strong>Computor: Change Backend URL</strong> and enter <code>${escapeHtml(model.backendUrl)}</code>`,
-        `führe <strong>Computor: Change Backend URL</strong> aus und gib <code>${escapeHtml(model.backendUrl)}</code> ein`)
-      : say('run <strong>Computor: Change Backend URL</strong> and enter the address your course gives you',
-        'führe <strong>Computor: Change Backend URL</strong> aus und gib die Adresse ein, die dein Kurs dir nennt');
     return section('welcome-desktop', say('Computor on your own computer', 'Computor auf deinem eigenen Computer'), `
-      <ol class="welcome-steps">
-        <li>${say('Install Visual Studio Code and Git.', 'Installiere Visual Studio Code und Git.')}</li>
-        <li>${say('Install the <strong>Computor</strong> extension from the Visual Studio Marketplace.',
-          'Installiere die Erweiterung <strong>Computor</strong> aus dem Visual Studio Marketplace.')}</li>
-        <li>${say(`Open an empty folder, press <kbd>F1</kbd> and ${backend}.`, `Öffne einen leeren Ordner, drücke <kbd>F1</kbd>, ${backend}.`)}</li>
-        <li>${say('Run <strong>Computor: Login</strong> and sign in in your browser.',
-          'Führe <strong>Computor: Login</strong> aus und melde dich im Browser an.')}</li>
-      </ol>
+      ${desktopConnectSteps(model, say, { install: true })}
       ${switching}
       <div class="actions">${linkButton('marketplace', say('Open the Marketplace page', 'Marketplace-Seite öffnen'))}</div>`,
-    say('You are using Computor in the browser. It also runs in Visual Studio Code on your own computer, with the same account and the same courses.',
-      'Du verwendest Computor im Browser. Es läuft auch in Visual Studio Code auf deinem eigenen Computer, mit demselben Konto und denselben Kursen.'));
+    say('You are using Computor in the browser. It also runs in Visual Studio Code on your own computer, with the same account and the same courses. Tests and submissions run on the server there too, so you can keep working when no online workspace is free.',
+      'Du verwendest Computor im Browser. Es läuft auch in Visual Studio Code auf deinem eigenen Computer, mit demselben Konto und denselben Kursen. Auch dort laufen Tests und Abgaben auf dem Server, du kannst also weiterarbeiten, wenn gerade keine Online-Arbeitsumgebung frei ist.'));
   }
 
   const website = model.webUrl
-    ? `<div class="actions">${linkButton('workspaces', say('Open Workspaces on the website', 'Workspaces auf der Website öffnen'))}</div>`
+    ? `<div class="actions">${linkButton('workspaces', say('Open Workspaces on the website', 'Arbeitsumgebungen auf der Website öffnen'))}</div>`
     : '';
   return section('welcome-browser', say('Computor in the browser', 'Computor im Browser'), `
-    <p>${say('If your course offers online workspaces, start one on the Computor website under <strong>Workspaces</strong> and open your course there.',
-      'Wenn dein Kurs Online-Arbeitsbereiche anbietet, starte einen auf der Computor-Website unter <strong>Workspaces</strong> und öffne dort deinen Kurs.')}</p>
+    <p>${say('If your course offers online workspaces, open the course on the Computor website and start its workspace on the course page. VS Code then opens in a new browser tab, with your course already on the left.',
+      'Wenn dein Kurs Online-Arbeitsumgebungen anbietet, öffne ihn auf der Computor-Website und starte auf der Kursseite seine Arbeitsumgebung. VS Code öffnet sich dann in einem neuen Browser-Tab, und dein Kurs ist links schon offen.')}</p>
     ${switching}
     ${website}`,
   say('Computor also runs in the browser, with nothing to install and the same account and courses.',

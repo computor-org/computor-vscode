@@ -8,6 +8,7 @@ import {
   mergeCourses,
   renderWelcomeBody,
   resolveWelcomeMessage,
+  publicBackendUrl,
   WelcomeApi,
   WelcomeModel
 } from '../../src/ui/webviews/welcome/welcomeContent';
@@ -217,6 +218,71 @@ describe('welcome page content', () => {
 
       expect(has(html, 'welcome-browser')).to.equal(true);
       expect(html).to.not.contain('data-link="workspaces"');
+    });
+
+    it('in the browser, says desktop VS Code works on when no online workspace is free (computor-org/issues#366)', () => {
+      const html = renderWelcomeBody(model({ inBrowser: true, backendUrl: 'https://computor.example/api' }));
+
+      expect(html).to.contain('Tests and submissions run on the server there too');
+      expect(html).to.contain('Python');
+    });
+  });
+
+  // computor-org/issues#366: one way in for desktop VS Code, shown in both editions.
+  describe('connecting desktop VS Code', () => {
+    const signedOut: Partial<WelcomeModel> = { signedIn: false, givenName: undefined, roles: [], courses: [] };
+
+    function section(html: string, id: string): string {
+      const start = html.indexOf(`id="${id}"`);
+      return html.slice(start, html.indexOf('<div class="section"', start + 1) >>> 0);
+    }
+
+    it('signed out on the desktop, walks through backend, sign-in and account with buttons for each', () => {
+      const html = section(renderWelcomeBody(model({ ...signedOut, inBrowser: false, backendUrl: 'http://localhost:8000' })), 'welcome-sign-in');
+
+      expect(html).to.contain('Computor: Change Backend URL');
+      expect(html).to.contain(`<code>${publicBackendUrl}</code> for computor.at`);
+      expect(html).to.not.contain('localhost');
+      expect(html).to.contain('Computor: Login');
+      expect(html).to.contain('same account as on the Computor website');
+      expect(html).to.contain('No account yet?');
+      expect(html).to.contain('data-action="login"');
+      expect(html).to.contain('data-action="setBackend"');
+      expect(html).to.contain('data-link="website"');
+      expect(html).to.not.contain('Install Visual Studio Code');
+    });
+
+    it('names the backend this window is already set to', () => {
+      const html = renderWelcomeBody(model({ ...signedOut, inBrowser: false, backendUrl: 'https://code.example.org/api/' }));
+
+      expect(html).to.contain('<code>https://code.example.org/api</code>');
+      expect(html).to.not.contain('for computor.at');
+    });
+
+    it('shares its steps with the browser edition, which adds the installation', () => {
+      const desktop = section(renderWelcomeBody(model({ ...signedOut, inBrowser: false, backendUrl: 'https://computor.example/api' })), 'welcome-sign-in');
+      const browser = section(renderWelcomeBody(model({ inBrowser: true, backendUrl: 'https://computor.example/api' })), 'welcome-desktop');
+      const steps = (html: string) => [...html.matchAll(/<li>(.*?)<\/li>/g)].map(match => match[1]);
+
+      expect(steps(browser)).to.have.length(4);
+      expect(steps(browser).slice(2)).to.deep.equal(steps(desktop).slice(0, 2));
+      expect(steps(browser)[0]).to.contain('Install Visual Studio Code and Git');
+      expect(browser).to.not.contain('No account yet?');
+    });
+
+    it('keeps a signed-out browser window to the sign-in button', () => {
+      const html = section(renderWelcomeBody(model({ ...signedOut, inBrowser: true })), 'welcome-sign-in');
+
+      expect(html).to.contain('data-action="login"');
+      expect(html).to.not.contain('data-action="setBackend"');
+    });
+
+    it('speaks German before sign-in when asked to', () => {
+      const html = renderWelcomeBody(model({ ...signedOut, inBrowser: false, language: 'de' }));
+
+      expect(html).to.contain('Backend-URL festlegen');
+      expect(html).to.contain(`gib für computor.at <code>${publicBackendUrl}</code> ein`);
+      expect(html).to.contain('mit demselben Konto wie auf der Computor-Website');
     });
   });
 
@@ -508,6 +574,13 @@ describe('resolveWelcomeMessage', () => {
     expect(resolveWelcomeMessage({ command: 'login' }, model({ signedIn: false }))).to.deep.equal({ kind: 'login' });
   });
 
+  it('offers to set the backend URL only while signed out', () => {
+    expect(resolveWelcomeMessage({ command: 'setBackend' }, signedIn)).to.equal(undefined);
+    expect(resolveWelcomeMessage({ command: 'setBackend' }, model({ signedIn: false }))).to.deep.equal({ kind: 'setBackend' });
+    expect(resolveWelcomeMessage({ command: 'link', data: { key: 'website' } }, model({ signedIn: false })))
+      .to.deep.equal({ kind: 'link', url: 'https://computor.at' });
+  });
+
   it('stores a startup choice only when it is a boolean', () => {
     expect(resolveWelcomeMessage({ command: 'showOnStartup', data: { value: false } }, signedIn))
       .to.deep.equal({ kind: 'showOnStartup', value: false });
@@ -565,6 +638,7 @@ describe('WelcomeWebviewProvider', () => {
 
   afterEach(() => {
     env.uiKind = UIKind.Desktop;
+    env.language = 'en';
     context.subscriptions.forEach((d: any) => d?.dispose?.());
   });
 
@@ -600,6 +674,17 @@ describe('WelcomeWebviewProvider', () => {
     webviewPanels.length = 0;
     await provider().open();
     expect(latestHtml()).to.contain('id="welcome-browser"');
+  });
+
+  it('before sign-in, follows the display language of VS Code', async () => {
+    env.language = 'de-AT';
+    await new WelcomeWebviewProvider(context, { api: () => undefined, backendUrl: async () => undefined }).open();
+    expect(latestHtml()).to.contain('Backend-URL festlegen');
+    expect(webviewPanels[webviewPanels.length - 1]!.title).to.equal('Willkommen bei Computor');
+
+    webviewPanels.length = 0;
+    await provider().open();
+    expect(latestHtml()).to.contain('Welcome to Computor, Ada!');
   });
 
   it('opens itself once after sign-in by default', async () => {
@@ -708,6 +793,18 @@ describe('welcome page contributions', () => {
     expect(html).to.contain('The same actions are available in the context menu.');
   });
 
+  it('starts the walkthrough on the desktop with connecting and signing in (computor-org/issues#366)', () => {
+    const [walkthrough] = pkg.contributes.walkthroughs;
+    const [first] = walkthrough.steps;
+
+    expect(first.id).to.equal('connect');
+    expect(first.when).to.equal('!isWeb');
+    expect(first.completionEvents).to.deep.equal(['onCommand:computor.login']);
+    const en = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
+    expect(en['walkthrough.student.connect.description']).to.contain(publicBackendUrl);
+    expect(en['walkthrough.student.connect.description']).to.contain('(command:computor.changeRealmUrl)');
+  });
+
   it('offers a walkthrough that reuses the row picture, in English and German', () => {
     const [walkthrough] = pkg.contributes.walkthroughs;
     const en = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
@@ -721,7 +818,7 @@ describe('welcome page contributions', () => {
     }
     expect(Object.keys(de).sort()).to.deep.equal(Object.keys(en).sort());
     for (const step of walkthrough.steps) {
-      expect(fs.existsSync(path.join(process.cwd(), step.media.svg)), step.id).to.equal(true);
+      expect(fs.existsSync(path.join(process.cwd(), step.media.svg ?? step.media.image)), step.id).to.equal(true);
     }
     const commands = new Set(pkg.contributes.commands.map((c: { command: string }) => c.command));
     for (const text of Object.values(en) as string[]) {
