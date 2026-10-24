@@ -5,6 +5,7 @@ import { MessageTargetContext } from '../webviews/MessagesWebviewProvider';
 import { WebSocketService } from '../../services/WebSocketService';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 import { deriveScopeFromCreatePayload, scopeHasSubject } from '../../services/MessagePermissions';
 import { MESSAGE_TARGET_FIELDS } from '../../types/generated/constants';
 
@@ -335,6 +336,19 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     return scopeHasSubject(deriveScopeFromCreatePayload(payload));
   }
 
+  private editorPlaceholders(): { plain: string; tutor: string } {
+    return {
+      plain: say(
+        'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)',
+        'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden, Markdown, @ zum Erwähnen)'
+      ),
+      tutor: say(
+        'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)',
+        'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden; @lena, @luna oder @ai für Lena; @ für Personen)'
+      )
+    };
+  }
+
   private postState(): void {
     if (!this.view) {
       return;
@@ -347,7 +361,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
         editingMessage: this.state.editingMessage,
         loading: this.state.loading,
         typingUsers: this.state.typingUsers,
-        showSubject: this.shouldShowSubject()
+        showSubject: this.shouldShowSubject(),
+        editorPlaceholders: this.editorPlaceholders()
       }
     });
   }
@@ -452,6 +467,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
 
     this.view.webview.html = renderWebviewPage(this.view.webview, this.extensionUri, {
       title: 'New Message',
+      initialState: { editorPlaceholders: this.editorPlaceholders() },
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['shared/chat-shared.css', 'messaging/messages-input.css'],
       scriptFiles: ['vendor/marked.min.js', 'shared/mention.js', 'messaging/messages-input.js']

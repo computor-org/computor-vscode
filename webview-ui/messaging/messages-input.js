@@ -10,6 +10,7 @@
     editingMessage: undefined,
     loading: false,
     activeTab: 'write', // 'write' or 'preview'
+    editorPlaceholders: window.__INITIAL_STATE__?.editorPlaceholders,
     messageContent: '',
     typingUsers: [], // { userId, userName }
     showSubject: true // false for conversational scopes (chat) and replies
@@ -87,8 +88,8 @@
   // resolves them; older servers keep plain `@lena` as ordinary text.
   function editorPlaceholder() {
     return mention.tutorAliases
-      ? 'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
-      : 'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)';
+      ? state.editorPlaceholders?.tutor || 'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
+      : state.editorPlaceholders?.plain || 'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)';
   }
 
   function closeMentionDropdown() {
