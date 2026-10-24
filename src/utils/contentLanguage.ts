@@ -1,16 +1,23 @@
 /**
  * Which language a learner reads a course in, and the titles that follow it.
  *
- * The learner's explicit profile language wins; otherwise the course's own
- * language; otherwise English. A German course must not show an English
- * README just because the learner never picked a language.
+ * The learner's explicit profile language wins, followed by a managed web
+ * workspace's validated launch language, the course's language, then English.
+ * Outside a managed workspace, the course remains the Automatic fallback.
  */
+
+let workspaceLaunchLanguage: 'de' | 'en' | undefined;
+
+/** Set only by the managed workspace locale service after validating its launch. */
+export function setWorkspaceLaunchLanguage(language: 'de' | 'en' | undefined): void {
+  workspaceLaunchLanguage = language;
+}
 
 export function resolveContentLanguage(
   userLanguage?: string | null,
   courseLanguage?: string | null
 ): string {
-  return userLanguage?.trim().toLowerCase() || courseLanguage?.trim().toLowerCase() || 'en';
+  return userLanguage?.trim().toLowerCase() || workspaceLaunchLanguage || courseLanguage?.trim().toLowerCase() || 'en';
 }
 
 const HEADING = /^#\s+(.+?)\s*#*\s*$/m;

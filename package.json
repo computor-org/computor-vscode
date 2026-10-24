@@ -203,7 +203,7 @@
       },
       {
         "command": "computor.student.updateFromTemplate",
-        "title": "Update Repository from Template",
+        "title": "%command.student.updateFromTemplate%",
         "icon": "$(sync)",
         "category": "Computor Student"
       },
@@ -215,90 +215,97 @@
       },
       {
         "command": "computor.student.commitAssignment",
-        "title": "Commit Assignment",
+        "title": "%command.student.commitAssignment%",
         "icon": "$(git-commit)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.commitCourse",
-        "title": "Commit Course",
+        "title": "%command.student.commitCourse%",
         "icon": "$(git-commit)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.testAssignment",
-        "title": "Test Assignment",
+        "title": "%command.student.testAssignment%",
         "icon": "$(beaker)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.submitAssignment",
-        "title": "Submit",
+        "title": "%command.student.submit%",
         "icon": "$(cloud-upload)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.submitDownload",
-        "title": "Submit",
+        "title": "%command.student.submitDownload%",
         "icon": "$(cloud-upload)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.viewSubmissionGroup",
-        "title": "View Details",
+        "title": "%command.student.viewSubmissionGroup%",
         "icon": "$(info)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.help",
-        "title": "Help",
+        "title": "%command.student.help%",
         "icon": "$(question)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.exportCourseExamples",
-        "title": "Export Course Examples…",
+        "title": "%command.student.exportCourseExamples%",
         "icon": "$(file-zip)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.offline.addCourse",
+        "enablement": "computor.student.offline.show",
         "title": "Add Course",
         "icon": "$(add)",
         "category": "Computor Student (Offline Mode)"
       },
       {
         "command": "computor.student.offline.saveAssignment",
+        "enablement": "computor.student.offline.show",
         "title": "Save Assignment",
         "icon": "$(save)",
         "category": "Computor Student (Offline Mode)"
       },
       {
         "command": "computor.student.offline.refresh",
+        "enablement": "computor.student.offline.show",
         "title": "Refresh",
         "icon": "$(refresh)",
         "category": "Computor Student (Offline Mode)"
       },
       {
         "command": "computor.student.offline.openInTerminal",
+        "enablement": "computor.student.offline.show",
         "title": "Open in Terminal",
         "icon": "$(terminal)",
         "category": "Computor Student (Offline Mode)"
       },
       {
         "command": "computor.student.offline.openRepoInTerminal",
+        "enablement": "computor.student.offline.show",
         "title": "Open Repository in Terminal",
         "icon": "$(terminal)",
         "category": "Computor Student (Offline Mode)"
       },
       {
         "command": "computor.student.offline.pullChanges",
+        "enablement": "computor.student.offline.show",
         "title": "Pull Changes",
         "icon": "$(cloud-download)",
         "category": "Computor Student (Offline Mode)"
       },
       {
         "command": "computor.student.offline.showPreview",
+        "enablement": "computor.student.offline.show",
         "title": "Show Preview",
         "icon": "$(open-preview)",
         "category": "Computor Student (Offline Mode)"
@@ -888,30 +895,30 @@
       },
       {
         "command": "computor.student.refresh",
-        "title": "Refresh",
+        "title": "%command.student.refresh%",
         "icon": "$(refresh)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.showPreview",
-        "title": "Show README Preview",
+        "title": "%command.student.showPreview%",
         "icon": "$(open-preview)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.previewDescriptionLanguage",
-        "title": "Preview Description in Another Language",
+        "title": "%command.student.previewDescriptionLanguage%",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.newFile",
-        "title": "New File…",
+        "title": "%command.student.fs.newFile%",
         "icon": "$(new-file)",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.newFolder",
-        "title": "New Folder…",
+        "title": "%command.student.fs.newFolder%",
         "icon": "$(new-folder)",
         "category": "Computor Student"
       },
@@ -952,17 +959,17 @@
       },
       {
         "command": "computor.student.fs.revealInOS",
-        "title": "Reveal in File Explorer",
+        "title": "%command.student.fs.revealInOS%",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.copyPath",
-        "title": "Copy Path",
+        "title": "%command.student.fs.copyPath%",
         "category": "Computor Student"
       },
       {
         "command": "computor.student.fs.copyRelativePath",
-        "title": "Copy Relative Path",
+        "title": "%command.student.fs.copyRelativePath%",
         "category": "Computor Student"
       },
       {
@@ -979,13 +986,13 @@
       },
       {
         "command": "computor.student.showMessages",
-        "title": "Show Messages",
+        "title": "%command.student.showMessages%",
         "icon": "$(comment-discussion)",
         "category": "Computor Student"
       },
       {
         "command": "computor.showTestResults",
-        "title": "Show Test Results",
+        "title": "%command.showTestResults%",
         "icon": "$(beaker)",
         "category": "Computor Test Results"
       },
@@ -1326,7 +1333,7 @@
       },
       {
         "command": "computor.welcome",
-        "title": "Welcome and Help",
+        "title": "%command.welcome%",
         "icon": "$(question)",
         "category": "Computor"
       },
@@ -1343,7 +1350,7 @@
       },
       {
         "command": "computor.showContentDescription",
-        "title": "Show Description",
+        "title": "%command.showContentDescription%",
         "icon": "$(book)",
         "category": "Computor"
       },
@@ -1451,7 +1458,7 @@
       "panel": [
         {
           "id": "computor-test-results",
-          "title": "Results",
+          "title": "%view.results%",
           "icon": "$(beaker)"
         },
         {
@@ -1470,7 +1477,7 @@
       "computor-student": [
         {
           "id": "computor.student.courses",
-          "name": "Courses",
+          "name": "%view.student.courses%",
           "icon": "$(book)",
           "contextualTitle": "Student Course Content",
           "when": "computor.student.show"
@@ -1546,13 +1553,13 @@
         {
           "id": "computor.testResultsPanel",
           "type": "webview",
-          "name": "Result Details",
+          "name": "%view.resultDetails%",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results"
         },
         {
           "id": "computor.testResultsView",
-          "name": "Result Tree",
+          "name": "%view.resultTree%",
           "icon": "$(beaker)",
           "contextualTitle": "Test Results"
         }
@@ -1578,6 +1585,34 @@
     },
     "menus": {
       "commandPalette": [
+        {
+          "command": "computor.student.offline.addCourse",
+          "when": "computor.student.offline.show"
+        },
+        {
+          "command": "computor.student.offline.saveAssignment",
+          "when": "false"
+        },
+        {
+          "command": "computor.student.offline.refresh",
+          "when": "computor.student.offline.show"
+        },
+        {
+          "command": "computor.student.offline.openInTerminal",
+          "when": "false"
+        },
+        {
+          "command": "computor.student.offline.openRepoInTerminal",
+          "when": "false"
+        },
+        {
+          "command": "computor.student.offline.pullChanges",
+          "when": "false"
+        },
+        {
+          "command": "computor.student.offline.showPreview",
+          "when": "false"
+        },
         {
           "command": "computor.openFile",
           "when": "false"
@@ -2779,11 +2814,6 @@
           "group": "inline@1"
         },
         {
-          "command": "computor.showTestResults",
-          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
-          "group": "1_details@9"
-        },
-        {
           "command": "computor.student.commitAssignment",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment\\..*withRepository.*cloned/ && viewItem =~ /git(Managed|External)/",
           "group": "inline@3"
@@ -2807,6 +2837,11 @@
           "command": "computor.student.showMessages",
           "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
           "group": "inline@6"
+        },
+        {
+          "command": "computor.showTestResults",
+          "when": "view == computor.student.courses && viewItem =~ /^studentCourseContent\\.assignment/",
+          "group": "1_details@9"
         },
         {
           "command": "computor.student.viewSubmissionGroup",
@@ -3004,7 +3039,52 @@
           "group": "4_explorer@6"
         }
       ]
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "computor.student.getStarted",
+        "title": "%walkthrough.student.title%",
+        "description": "%walkthrough.student.description%",
+        "steps": [
+          {
+            "id": "openCourse",
+            "title": "%walkthrough.student.openCourse.title%",
+            "description": "%walkthrough.student.openCourse.description%",
+            "media": {
+              "svg": "media/welcome/assignment-row.svg",
+              "altText": "%walkthrough.student.row.altText%"
+            },
+            "completionEvents": [
+              "onView:computor.student.courses"
+            ]
+          },
+          {
+            "id": "testAndSubmit",
+            "title": "%walkthrough.student.testAndSubmit.title%",
+            "description": "%walkthrough.student.testAndSubmit.description%",
+            "media": {
+              "svg": "media/welcome/assignment-row.svg",
+              "altText": "%walkthrough.student.row.altText%"
+            },
+            "completionEvents": [
+              "onCommand:computor.student.submitAssignment"
+            ]
+          },
+          {
+            "id": "welcomePage",
+            "title": "%walkthrough.student.welcomePage.title%",
+            "description": "%walkthrough.student.welcomePage.description%",
+            "media": {
+              "svg": "media/welcome/assignment-row.svg",
+              "altText": "%walkthrough.student.row.altText%"
+            },
+            "completionEvents": [
+              "onCommand:computor.welcome"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -3063,6 +3143,7 @@
     "fast-xml-parser": "^5.3.2",
     "form-data": "^4.0.0",
     "js-yaml": "^4.1.0",
+    "jsonc-parser": "^3.2.0",
     "jszip": "^3.10.1",
     "node-fetch": "^2.6.0",
     "semver": "^7.7.2",
