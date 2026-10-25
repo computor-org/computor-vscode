@@ -393,6 +393,19 @@ describe('learner responsive editor layout', () => {
     expectPlacement(welcome, readme);
   });
 
+  it('leaves a fresh workspace showing only the course text in one group instead of splitting off an empty one', async () => {
+    groups[0].tabs.splice(0);
+    const welcome = await reading('Welcome', true);
+    welcome.active = true;
+    await report(welcome, 1100);
+    expect(layouts).to.deep.equal([]);
+    expect(groups).to.have.length(1);
+    expect(welcome.viewColumn).to.equal(1);
+    expect(nativeMoves).to.equal(0);
+    // The next reading still goes to the second column, where code can join it on the left.
+    expect(layout.learnerReadingColumn()).to.equal(2);
+  });
+
   it('moves an already-active sole Welcome without waiting for a redundant selection event', async () => {
     const welcome = await reading('Welcome', true);
     welcome.active = true;

@@ -84,7 +84,8 @@ describe('student unit description selection', () => {
   });
 
   it('ignores hidden or superseded frame geometry while a visible reading tab responds without code focus', async () => {
-    const group = { viewColumn: 1, tabs: [] };
+    // The task's Python file is open, so a wide layout has code for the left group.
+    const group = { viewColumn: 1, tabs: [{ input: { uri: vscode.Uri.file('/task/main.py') } }] };
     (window as any).tabGroups = { all: [group] };
     let splits = 0;
     (commands as any).executeCommand = async (command: string, layout?: any) => {

@@ -236,7 +236,13 @@ export function updateLearnerReadingWidth(
     // A readable/code group needs 320px; 64px above the combined minimum
     // prevents a split immediately merging again after its own resize.
     if (groups.length === 1 && width >= 704) {
-      await vscode.commands.executeCommand('vscode.setEditorLayout', { orientation: 0, groups: [{}, {}] });
+      // Split only once there is code for the left group. A fresh workspace
+      // shows nothing but the course text, and splitting then moved it right
+      // and left an empty group with the watermark beside it. Reading still
+      // goes to the second column, so the next file open splits natively.
+      if (groups[0]?.tabs?.some(hasFileInput)) {
+        await vscode.commands.executeCommand('vscode.setEditorLayout', { orientation: 0, groups: [{}, {}] });
+      }
       learnerNarrow = false;
     } else if (groups.length === 2) {
       // Adopt the existing simple learner layout, including saved user tabs.
@@ -259,7 +265,10 @@ export function updateLearnerReadingWidth(
       readingPlacementChanged = true;
       await placeStudentFile(lastStudentSource, { preview: false }, vscode.ViewColumn.One, () => isCurrent() && revision === learnerGeometryRevision);
     }
-    if (!learnerNarrow && vscode.window.tabGroups.all.length === 2) {
+    // Moving every reading input right would empty a left group that holds
+    // no code, which is the same empty group again.
+    if (!learnerNarrow && vscode.window.tabGroups.all.length === 2
+      && vscode.window.tabGroups.all[0]?.tabs?.some(hasFileInput)) {
       if (!isCurrent() || revision !== learnerGeometryRevision) return;
       // Move the existing reading inputs, including an inactive pinned Welcome.
       const panels = [...learnerReadingPanels].sort((a, b) => Number(a === activeReading) - Number(b === activeReading));
@@ -277,6 +286,11 @@ export function updateLearnerReadingWidth(
     }
   });
   return learnerLayoutUpdate;
+}
+
+/** A file editor (code, image), as opposed to a webview such as the course text. */
+function hasFileInput(tab: vscode.Tab): boolean {
+  return Boolean((tab.input as { uri?: vscode.Uri } | undefined)?.uri);
 }
 
 export function learnerCodeColumn(): vscode.ViewColumn {
