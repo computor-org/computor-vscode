@@ -15,18 +15,65 @@
   gap: var(--sp-4);
 }
 
-/* A narrow editor group (a phone, or the tree taking most of the width):
-   the logo goes above the title, and long German words break with hyphens
-   instead of running out of the panel. */
-.welcome-hero h1 {
+/* Long words, course titles and addresses wrap inside a narrow editor group
+   (a phone, or the tree taking most of the width) instead of running out of
+   the panel. break-word splits a word only when it cannot fit a line alone. */
+.welcome-page {
   overflow-wrap: break-word;
-  hyphens: auto;
+}
+
+/* The title scales with the group rather than being hyphenated: "Willkom-men
+   bei Compu-tor" is harder to read than a smaller title. */
+.welcome-hero h1 {
+  font-size: clamp(16px, 9vw, 22px);
+  hyphens: manual;
 }
 @media (max-width: 360px) {
   .welcome-hero {
     flex-direction: column;
     align-items: flex-start;
+    gap: var(--sp-2);
   }
+  .welcome-logo {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* The page owns its gutters; the shared body padding would take another 40px
+   from a group that is only 150px wide. */
+@media (max-width: 480px) {
+  body:has(.welcome-page) {
+    padding: 0;
+  }
+  .page-root.welcome-page {
+    padding: var(--sp-3);
+  }
+  .welcome-page .section {
+    padding: var(--sp-3);
+  }
+  .welcome-steps {
+    padding-left: var(--sp-4);
+  }
+}
+
+/* Link and help buttons. A theme's secondary button background can equal
+   the editor background (Dark Modern under code-server), which left them as
+   plain text; the outline and link colour keep them recognisable in any
+   theme. */
+.welcome-page .btn.secondary {
+  color: var(--vscode-textLink-foreground, var(--vscode-button-secondaryForeground));
+  border: 1px solid var(--vscode-button-border, var(--c-input-border));
+  border-color: color-mix(in srgb, var(--vscode-textLink-foreground, #3794ff) 55%, transparent);
+}
+.welcome-page .btn.secondary:hover:not(:disabled) {
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+/* The step-by-step list follows the numbered legend of the row picture; its
+   own lead-in keeps the two numberings apart. */
+.welcome-page .welcome-steps-lead {
+  margin-top: var(--sp-3);
 }
 
 .welcome-logo {
