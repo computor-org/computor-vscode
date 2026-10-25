@@ -72,7 +72,8 @@ export const workbenchNames = {
   'computor.student.showMessages': ['Show Messages', 'Nachrichten anzeigen'],
   'computor.showContentDescription': ['Show Description', 'Beschreibung anzeigen'],
   'computor-test-results': ['Results', 'Ergebnisse'],
-  'computor.student.courses': ['Courses', 'Kurse']
+  'computor.student.courses': ['Courses', 'Kurse'],
+  'computor.welcome': ['Welcome and Help', 'Willkommen und Hilfe']
 } as const;
 
 export type WorkbenchName = keyof typeof workbenchNames;
@@ -558,6 +559,7 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
 
   return section('welcome-tutorial', say('Start working on an assignment', 'Mit einer Aufgabe beginnen'), `
     ${renderRowOnly(model, say)}
+    <p class="welcome-steps-lead"><strong>${say('Step by step', 'Schritt für Schritt')}</strong></p>
     <ol class="welcome-steps">
       ${steps.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
     </ol>
@@ -673,7 +675,23 @@ function renderGitColours(say: Say): string {
 /** The address a desktop install should be pointed at, if this window knows a real one. */
 function knownBackendUrl(model: WelcomeModel): string | undefined {
   const url = model.backendUrl?.trim().replace(/\/+$/, '');
-  return url && url !== defaultSettings.authentication.baseUrl ? url : undefined;
+  const configured = url && url !== defaultSettings.authentication.baseUrl ? url : undefined;
+  if (!model.inBrowser) return configured;
+  // A browser workspace reaches the backend over the deployment's internal
+  // network (http://computor-api), which no desktop can resolve. The public
+  // API sits under /api on the web app's own address, as on computor.at.
+  if (model.webUrl) return `${model.webUrl}/api`;
+  return configured && isPublicAddress(configured) ? configured : undefined;
+}
+
+/** A host another computer can reach: a dotted name, not a container or localhost. */
+function isPublicAddress(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host.includes('.') && host !== '127.0.0.1' && !host.endsWith('.local') && !host.endsWith('.internal');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -687,9 +705,9 @@ function desktopConnectSteps(model: WelcomeModel, say: Say, options: { install: 
   const known = knownBackendUrl(model);
   const backend = known
     ? say(`run <strong>Computor: Change Backend URL</strong> and enter <code>${escapeHtml(known)}</code>`,
-      `führe <strong>Computor: Change Backend URL</strong> aus und gib <code>${escapeHtml(known)}</code> ein`)
+      `führe den Befehl <strong>Computor: Change Backend URL</strong> aus und gib <code>${escapeHtml(known)}</code> ein`)
     : say(`run <strong>Computor: Change Backend URL</strong> and enter <code>${publicBackendUrl}</code> for computor.at, or the address your course gives you`,
-      `führe <strong>Computor: Change Backend URL</strong> aus und gib für computor.at <code>${publicBackendUrl}</code> ein oder die Adresse, die dein Kurs dir nennt`);
+      `führe den Befehl <strong>Computor: Change Backend URL</strong> aus und gib für computor.at <code>${publicBackendUrl}</code> ein oder die Adresse, die dein Kurs dir nennt`);
   const steps = [
     ...(options.install ? [
       say('Install Visual Studio Code and Git, and whatever your course works with, such as Python.',
@@ -699,7 +717,7 @@ function desktopConnectSteps(model: WelcomeModel, say: Say, options: { install: 
     ] : []),
     say(`Open an empty folder, press <kbd>F1</kbd> and ${backend}.`, `Öffne einen leeren Ordner, drücke <kbd>F1</kbd>, ${backend}.`),
     say('Run <strong>Computor: Login</strong> and sign in in your browser, with the same account as on the Computor website.',
-      'Führe <strong>Computor: Login</strong> aus und melde dich im Browser an, mit demselben Konto wie auf der Computor-Website.'),
+      'Führe den Befehl <strong>Computor: Login</strong> aus und melde dich im Browser an, mit demselben Konto wie auf der Computor-Website.'),
     ...(model.signedIn ? [] : [
       say('No account yet? Create one on the Computor website and join your course there. It then appears in the Student view.',
         'Noch kein Konto? Lege auf der Computor-Website eines an und tritt dort deinem Kurs bei. Danach erscheint er in der Student-Ansicht.')
@@ -786,13 +804,15 @@ function renderCredits(model: WelcomeModel, say: Say): string {
 }
 
 function renderStartupToggle(model: WelcomeModel, say: Say): string {
+  // The command as the Command Palette lists it, in the VS Code display language.
+  const command = `<strong>Computor: ${namer(model)('computor.welcome')}</strong>`;
   return `<div class="welcome-footer">
     <label class="welcome-startup">
       <input type="checkbox" id="show-on-startup"${model.showOnStartup ? ' checked' : ''}>
       ${say('Show this page when Computor starts', 'Diese Seite beim Start von Computor anzeigen')}
     </label>
-    <p class="text-muted">${say('Open it again any time with <strong>Computor: Welcome and Help</strong>, or the question-mark icon at the top of the Computor views.',
-      'Du öffnest sie jederzeit wieder mit <strong>Computor: Welcome and Help</strong> oder dem Fragezeichen-Symbol oben in den Computor-Ansichten.')}</p>
+    <p class="text-muted">${say(`Open it again any time with ${command}, or the question-mark icon at the top of the Computor views.`,
+      `Du öffnest sie jederzeit wieder mit dem Befehl ${command} oder dem Fragezeichen-Symbol oben in den Computor-Ansichten.`)}</p>
   </div>`;
 }
 
