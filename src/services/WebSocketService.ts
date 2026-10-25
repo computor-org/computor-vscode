@@ -4,6 +4,7 @@ import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
 import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated } from '../types/generated/websocket';
 import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 
 // WebSocket message types from server
 export interface WsMessageNew {
@@ -707,8 +708,8 @@ export class WebSocketService {
           console.log(`[WebSocket] Maintenance reminder: ${minutesRemaining}min remaining`);
 
           // Update status bar with countdown
-          this.maintenanceStatusBarItem.text = `$(clock) Maint. ${minutesRemaining}m`;
-          this.maintenanceStatusBarItem.tooltip = `Maintenance in ${minutesRemaining} minute(s): ${reminderMessage}`;
+          this.maintenanceStatusBarItem.text = `$(clock) ${say('Maintenance', 'Wartung')} ${minutesRemaining} min`;
+          this.maintenanceStatusBarItem.tooltip = `${say(`Maintenance in ${minutesRemaining} minute(s)`, `Wartung in ${minutesRemaining} Minute(n)`)}: ${reminderMessage}`;
 
           // Escalate notification urgency based on time remaining
           if (minutesRemaining <= 5) {
@@ -959,30 +960,34 @@ export class WebSocketService {
     }, delay);
   }
 
+  // "Live" reads the same in English and German; "WS" said nothing to a learner.
   private updateStatusBar(): void {
     switch (this.connectionState) {
       case 'connected':
-        this.statusBarItem.text = '$(check) WS';
+        this.statusBarItem.text = '$(check) Live';
         this.statusBarItem.backgroundColor = undefined;
-        this.statusBarItem.tooltip = 'WebSocket connected';
+        this.statusBarItem.tooltip = say('Live updates connected', 'Live-Aktualisierung verbunden');
         this.statusBarItem.command = undefined;
         break;
       case 'connecting':
-        this.statusBarItem.text = '$(sync~spin) WS';
+        this.statusBarItem.text = '$(sync~spin) Live';
         this.statusBarItem.backgroundColor = undefined;
-        this.statusBarItem.tooltip = 'WebSocket connecting...';
+        this.statusBarItem.tooltip = say('Live updates connecting…', 'Live-Aktualisierung wird verbunden …');
         this.statusBarItem.command = undefined;
         break;
       case 'reconnecting':
-        this.statusBarItem.text = '$(sync~spin) WS';
+        this.statusBarItem.text = '$(sync~spin) Live';
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        this.statusBarItem.tooltip = `WebSocket reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`;
+        this.statusBarItem.tooltip = say(
+          `Live updates reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+          `Live-Aktualisierung wird neu verbunden (Versuch ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         this.statusBarItem.command = undefined;
         break;
       case 'disconnected':
-        this.statusBarItem.text = '$(x) WS';
+        this.statusBarItem.text = '$(x) Live';
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-        this.statusBarItem.tooltip = 'WebSocket disconnected - Click to reconnect';
+        this.statusBarItem.tooltip = say('Live updates disconnected. Click to reconnect.',
+          'Live-Aktualisierung getrennt. Zum erneuten Verbinden klicken.');
         this.statusBarItem.command = 'computor.websocket.reconnect';
         break;
     }
@@ -992,17 +997,17 @@ export class WebSocketService {
   public updateMaintenanceStatusBar(state: 'active' | 'scheduled' | 'inactive', message?: string, scheduledAt?: string): void {
     switch (state) {
       case 'active':
-        this.maintenanceStatusBarItem.text = '$(warning) Maintenance';
+        this.maintenanceStatusBarItem.text = `$(warning) ${say('Maintenance', 'Wartung')}`;
         this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        this.maintenanceStatusBarItem.tooltip = message || 'System is under maintenance';
+        this.maintenanceStatusBarItem.tooltip = message || say('System is under maintenance', 'Das System wird gewartet');
         this.maintenanceStatusBarItem.show();
         break;
       case 'scheduled':
-        this.maintenanceStatusBarItem.text = '$(clock) Maint. scheduled';
+        this.maintenanceStatusBarItem.text = `$(clock) ${say('Maintenance scheduled', 'Wartung geplant')}`;
         this.maintenanceStatusBarItem.backgroundColor = undefined;
         this.maintenanceStatusBarItem.tooltip = scheduledAt
-          ? `Maintenance scheduled: ${new Date(scheduledAt).toLocaleString()}${message ? ' — ' + message : ''}`
-          : message || 'Maintenance scheduled';
+          ? `${say('Maintenance scheduled', 'Wartung geplant')}: ${new Date(scheduledAt).toLocaleString()}${message ? ' — ' + message : ''}`
+          : message || say('Maintenance scheduled', 'Wartung geplant');
         this.maintenanceStatusBarItem.show();
         break;
       case 'inactive':
