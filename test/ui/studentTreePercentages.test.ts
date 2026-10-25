@@ -70,6 +70,24 @@ describe('student tree assignment percentages', () => {
     expect(String(rows.get('untouched').description ?? '')).to.not.contain('%');
   });
 
+  it('leaves an untouched, unlimited assignment without a bare (0)(0)', () => {
+    const rows = render({ fresh: { result_count: 0, submission_group: { id: 'sg', count: 0 } } });
+    expect(String(rows.get('fresh').description ?? '')).to.not.contain('(0)');
+    const tooltip = String((rows.get('fresh').tooltip as any)?.value ?? rows.get('fresh').tooltip ?? '');
+    expect(tooltip).to.contain('Tests: 0');
+    expect(tooltip).to.contain('Submissions: 0');
+  });
+
+  it('keeps both counters in place once one of them has moved', () => {
+    const rows = render({ submitted: { result_count: 0, submission_group: { id: 'sg', count: 1 } } });
+    expect(String(rows.get('submitted').description)).to.contain('(0)(1)');
+  });
+
+  it('shows a limit from zero usage onward', () => {
+    const rows = render({ capped: { result_count: 0, max_test_runs: 5, submission_group: { id: 'sg', count: 0 } } });
+    expect(String(rows.get('capped').description)).to.contain('(0/5)(0)');
+  });
+
   it('names the missing test run in the tooltip so -% reads', () => {
     const rows = render({ onlyGrade: graded(0.8) });
     const tooltip = String((rows.get('onlyGrade').tooltip as any)?.value ?? rows.get('onlyGrade').tooltip ?? '');

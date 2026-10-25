@@ -1933,16 +1933,21 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             entries.push(`🔔 ${unreadCount}`);
         }
 
-        // Render each counter whenever the content has a count *or* a limit, so
-        // a capped assignment reads "(0/2)" before the first run instead of
-        // appearing unlimited until it refuses one.
+        // Test runs, then submissions, as a positional pair: "(1)(0)", or
+        // "(0/2)" with a limit, so a capped assignment shows its budget before
+        // the first run instead of appearing unlimited until it refuses one.
+        // An untouched, unlimited assignment showed a bare "(0)(0)" that told
+        // a learner nothing; it stays empty until something has happened.
+        // The tooltip names both counters.
         const tests = testBudget(this.courseContent as any, this.submissionGroup as any);
-        if (tests.max !== null || typeof (this.courseContent as any)?.result_count === 'number') {
+        const submissions = submissionBudget(this.courseContent as any, this.submissionGroup as any);
+        const testsKnown = tests.max !== null || typeof (this.courseContent as any)?.result_count === 'number';
+        const submissionsKnown = submissions.max !== null || typeof this.submissionGroup?.count === 'number';
+        const anything = [tests, submissions].some(budget => budget.max !== null || budget.used > 0);
+        if (anything && testsKnown) {
             entries.push(formatBudgetCompact(tests));
         }
-
-        const submissions = submissionBudget(this.courseContent as any, this.submissionGroup as any);
-        if (submissions.max !== null || typeof this.submissionGroup?.count === 'number') {
+        if (anything && submissionsKnown) {
             entries.push(formatBudgetCompact(submissions));
         }
 
