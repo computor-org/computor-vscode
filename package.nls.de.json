@@ -36,5 +36,10 @@
   "view.resultDetails": "Ergebnisdetails",
   "view.resultTree": "Ergebnisliste",
   "view.student.courses": "Kurse",
-  "command.welcome": "Willkommen und Hilfe"
+  "command.welcome": "Willkommen und Hilfe",
+  "view.messagesInput": "Nachricht schreiben",
+  "view.commentsInput": "Kommentar schreiben",
+  "view.compose": "Verfassen",
+  "view.testResults": "Testergebnisse",
+  "category.testResults": "Computor-Testergebnisse"
 }
