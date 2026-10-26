@@ -334,7 +334,7 @@ export class StudentRepositoryProvisioningService {
     report('Downloading the course template…');
     const buffer = await this.api.downloadTemplateArchive(courseId);
     await fs.promises.mkdir(targetPath, { recursive: true });
-    await extractZipBuffer(buffer, targetPath);
+    await extractZipBuffer(buffer, targetPath, { overwrite: false });
 
     report('Linking your repository to the course template…');
     await this.seedAndPush(targetPath, authUrl, descriptor.template?.clone_url ?? undefined);
