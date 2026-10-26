@@ -302,13 +302,13 @@ describe('welcome page content', () => {
       expect(html).to.not.contain('data-action="view" data-role="student"');
     });
 
-    it('tells a returning learner where to go on instead of where to begin (computor-org/issues#525)', () => {
+    it('names no start pointer for a returning learner either; the course text carries it (computor-org/issues#525)', () => {
       const html = renderWelcomeBody(model({
         language: 'de',
         launch: { title: 'Grundlagen', startHere: 'Woche 3 → Beta-Absorption', resume: true }
       }));
-      expect(html).to.contain('Weiter mit <strong>Woche 3 → Beta-Absorption</strong>.');
-      expect(html).to.not.contain('Beginne mit');
+      expect(html).to.not.contain('Weiter mit');
+      expect(html).to.not.contain('Beta-Absorption');
     });
 
     it('offers course Messages and technical support without assuming who answers', () => {
