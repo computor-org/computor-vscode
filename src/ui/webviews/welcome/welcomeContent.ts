@@ -2,7 +2,7 @@ import { escapeHtml } from '../shared/webviewHelpers';
 import { HELP_PAGES } from '../../../utils/studentHelpPages';
 import { TUTOR_HELP_PAGES } from '../../../utils/tutorHelpPages';
 import { resolveContentLanguage } from '../../../utils/contentLanguage';
-import { courseStartPointer } from '../../../utils/courseStart';
+import { courseStartPointer, hasStartedCourse } from '../../../utils/courseStart';
 import { contentIconSvg, ContentIconBadge, ContentIconCorner, ContentIconShape } from '../../../utils/contentIconSvg';
 import { codicon, CodiconName } from './codicons';
 import type { CourseContentStudentList } from '../../../types/generated';
@@ -32,6 +32,8 @@ export interface WelcomeLaunch {
   title: string;
   /** Where to begin, as the course tree shows it: "Woche 1 → Mathematische Konstanten". */
   startHere?: string;
+  /** The learner has started, so `startHere` is the next open assignment (computor-org/issues#525). */
+  resume?: boolean;
 }
 
 export type WelcomeRole = 'student' | 'tutor' | 'lecturer';
@@ -222,6 +224,7 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedC
     launch: launchedCourseId && launchedTitle ? {
       title: launchedTitle,
       startHere: courseStartPointer(contents, language),
+      resume: hasStartedCourse(contents)
     } : undefined
   };
 }

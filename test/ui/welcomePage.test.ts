@@ -302,6 +302,15 @@ describe('welcome page content', () => {
       expect(html).to.not.contain('data-action="view" data-role="student"');
     });
 
+    it('names no start pointer for a returning learner either; the course text carries it (computor-org/issues#525)', () => {
+      const html = renderWelcomeBody(model({
+        language: 'de',
+        launch: { title: 'Grundlagen', startHere: 'Woche 3 → Beta-Absorption', resume: true }
+      }));
+      expect(html).to.not.contain('Weiter mit');
+      expect(html).to.not.contain('Beta-Absorption');
+    });
+
     it('offers course Messages and technical support without assuming who answers', () => {
       const html = renderWelcomeBody(launched());
       expect(html).to.contain('um in diesem Kurs um Hilfe zu bitten.');
@@ -429,6 +438,7 @@ describe('collectWelcomeFacts', () => {
     expect(facts.launch).to.deep.equal({
       title: 'Grundlagen',
       startHere: 'Woche 1 → Mathematische Konstanten',
+      resume: false
     });
   });
 
