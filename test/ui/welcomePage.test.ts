@@ -530,7 +530,7 @@ describe('WelcomeWebviewProvider', () => {
     expect(latestHtml()).to.contain('<strong>Dein Kurs ist schon geöffnet.</strong>');
   });
 
-  it('keeps the course landing as the only automatic document after a course launch', async () => {
+  it('opens the Welcome page next to the course landing after a course launch', async () => {
     await showMarkdownTextPreview(context, '# Willkommen', 'Grundlagen: Willkommen', { viewColumn: ViewColumn.One });
     const landing = webviewPanels[0]!;
     const page = new WelcomeWebviewProvider(context, {
@@ -539,10 +539,10 @@ describe('WelcomeWebviewProvider', () => {
 
     await page.afterSignIn();
 
-    expect(webviewPanels).to.deep.equal([landing]);
-
-    // General help is still available when explicitly requested.
-    await page.open();
+    expect(webviewPanels).to.have.length(2);
+    expect(webviewPanels[0]).to.equal(landing);
+    // Opened once per session, not again on a later sign-in.
+    await page.afterSignIn();
     expect(webviewPanels).to.have.length(2);
     landing.dispose();
   });

@@ -71,9 +71,9 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
       await this.open({ preserveFocus: true });
       return;
     }
-    // A course launch already opens its welcome or resumed assignment. Keep
-    // general help available through the command without adding a second document.
-    if (this.sources.launchedCourseId?.() || this.shownAutomatically || !isWelcomeShownOnStartup(this.context)) {
+    // As on computor.at before: the Welcome page (#133) opens at every start,
+    // a course launch included, until the learner switches it off.
+    if (this.shownAutomatically || !isWelcomeShownOnStartup(this.context)) {
       return;
     }
     this.shownAutomatically = true;
