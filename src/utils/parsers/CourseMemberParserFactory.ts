@@ -9,12 +9,27 @@ import { CourseMemberXlsxParser } from './CourseMemberXlsxParser';
  * Automatically detects file format and returns the correct parser.
  */
 export class CourseMemberParserFactory {
+  // Excel first: it recognises its files by their ZIP/OLE magic bytes, while the
+  // text parsers would otherwise claim the XML inside an .xlsx container.
   private static parsers: ICourseMemberParser[] = [
+    new CourseMemberXlsxParser(),
     new CourseMemberXmlParser(),
     new CourseMemberCsvParser(),
-    new CourseMemberJsonParser(),
-    new CourseMemberXlsxParser()
+    new CourseMemberJsonParser()
   ];
+
+  /**
+   * Turn a member file read from disk into the string `parse` expects. Excel
+   * files are binary, and XLSX.read with `type: 'binary'` wants one character
+   * per byte; decoding them as UTF-8 replaces invalid bytes and breaks the ZIP
+   * container ("Unsupported ZIP Compression method NaN"). Text formats stay UTF-8.
+   */
+  static decode(fileBuffer: Buffer, fileExtension?: string): string {
+    const ext = fileExtension?.toLowerCase().replace(/^\./, '');
+    const zip = fileBuffer[0] === 0x50 && fileBuffer[1] === 0x4B;
+    const ole = fileBuffer[0] === 0xD0 && fileBuffer[1] === 0xCF && fileBuffer[2] === 0x11 && fileBuffer[3] === 0xE0;
+    return ext === 'xlsx' || ext === 'xls' || zip || ole ? fileBuffer.toString('binary') : fileBuffer.toString('utf-8');
+  }
 
   /**
    * Parse course member data from file content.

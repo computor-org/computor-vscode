@@ -361,7 +361,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     try {
       const fs = await import('fs');
       const fileBuffer = await fs.promises.readFile(filePath);
-      const fileContent = fileBuffer.toString('utf-8');
+      const fileContent = CourseMemberParserFactory.decode(fileBuffer, fileExtension);
 
       // Parse file using factory
       const members = CourseMemberParserFactory.parse(fileContent, fileExtension);
