@@ -61,6 +61,15 @@ export function formatBudgetCompact(budget: Budget): string {
     return budget.max === null ? `(${budget.used})` : `(${budget.used}/${budget.max})`;
 }
 
+/**
+ * Tagged tree-row form, as the web app's assignment list writes it: `1T`, or
+ * `1/3T` when capped. The letter names the counter (T for test runs, S or A
+ * for submissions); the row's tooltip spells the letters out.
+ */
+export function formatBudgetTagged(budget: Budget, letter: string): string {
+    return budget.max === null ? `${budget.used}${letter}` : `${budget.used}/${budget.max}${letter}`;
+}
+
 /** Tooltip form: `0 of 2`, or a bare `0` when uncapped. */
 export function formatBudgetLong(budget: Budget): string {
     return budget.max === null ? `${budget.used}` : `${budget.used} of ${budget.max}`;
