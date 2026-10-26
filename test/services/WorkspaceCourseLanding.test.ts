@@ -191,7 +191,19 @@ describe('showWorkspaceCourseLanding', () => {
   const shown = () => JSON.parse(/window\.__INITIAL_STATE__ = (.*?);<\/script>/s.exec(webviewPanels.at(-1)!.webview.html)![1]!).markdown;
   beforeEach(closePanels); afterEach(closePanels);
 
-  it('opens only the authored Welcome for both fresh and returning learners', async () => {
+  it('lets a returning learner go on with the first assignment not handed in instead of the Welcome', async () => {
+    const released = { deployment: { deployment_status: 'deployed' } };
+    const done = { id: 'done', course_id: 'course', path: 'week.done', position: 1, course_content_kind_id: 'assignment', submitted: true, ...released } as CourseContentStudentList;
+    const next = { id: 'next', course_id: 'course', path: 'week.next', position: 2, course_content_kind_id: 'assignment', ...released } as CourseContentStudentList;
+    const resumeAt = await showWorkspaceCourseLanding(context, api([welcome, done, next], 'de'), course);
+    expect(resumeAt?.id).to.equal('next');
+    expect(webviewPanels).to.have.length(0);
+    // Everything handed in: nothing opens, the course tree is the way on.
+    expect(await showWorkspaceCourseLanding(context, api([welcome, done], 'de'), course)).to.equal(undefined);
+    expect(webviewPanels).to.have.length(0);
+  });
+
+  it('opens only the authored Welcome for a learner who has not started', async () => {
     const execute = vscode.commands.executeCommand;
     const groups = vscode.window.tabGroups;
     (vscode.window as any).tabGroups = { all: [{ viewColumn: 1, tabs: [] }] };
@@ -200,8 +212,8 @@ describe('showWorkspaceCourseLanding', () => {
     finally { (vscode.commands as any).executeCommand = execute; (vscode.window as any).tabGroups = groups; }
     for (const language of ['de', 'en']) {
       closePanels();
-      const done = { id: 'done', course_id: 'course', path: 'week.done', course_content_kind_id: 'assignment', submitted: true } as CourseContentStudentList;
-      await showWorkspaceCourseLanding(context, api([welcome, done], language), course);
+      const open = { id: 'open', course_id: 'course', path: 'week.open', course_content_kind_id: 'assignment' } as CourseContentStudentList;
+      expect(await showWorkspaceCourseLanding(context, api([welcome, open], language), course)).to.equal(undefined);
       expect(webviewPanels).to.have.length(1);
       expect(webviewPanels[0]!.viewColumn).to.equal(vscode.ViewColumn.One);
       expect(shown()).to.equal(language === 'de' ? 'Hallo du' : 'Hello you');

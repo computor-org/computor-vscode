@@ -1173,7 +1173,18 @@ class UnifiedController {
       } else {
         const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
         if (!readingRequest.isCurrent()) return true;
-        if (course && !hasIntroduction) await showWorkspaceCourseLanding(this.context, api, course, readingRequest);
+        const resumeAt = course && !hasIntroduction
+          ? await showWorkspaceCourseLanding(this.context, api, course, readingRequest) : undefined;
+        if (resumeAt && readingRequest.isCurrent()) {
+          // A returning learner goes on where the web page's "Weiter mit" points (computor-org/issues#525).
+          const row = await findWorkspaceLaunchTarget(handle.tracked, courseId, resumeAt.id);
+          if (row && readingRequest.isCurrent()) {
+            await suppressSelectionSideEffects(async () => {
+              await handle.view.reveal(row, { select: true, focus: false, expand: false });
+            });
+            if (readingRequest.isCurrent()) await openAssignment(row, { request: readingRequest, studentReading: true });
+          }
+        }
       }
       if (!readingRequest.isCurrent()) return true;
       // Without an authored course Welcome, the general one is the first-time guide.

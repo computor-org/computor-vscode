@@ -5,7 +5,7 @@ import type { CourseContentStudentList, CourseStudentList } from '../types/gener
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { descriptionInLanguage, localizedUnitTitle, resolveContentLanguage } from '../utils/contentLanguage';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, MarkdownPreviewRequest, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
-import { courseWelcomeItem, hasStartedCourse } from '../utils/courseStart';
+import { courseWelcomeItem, hasStartedCourse, nextOpenCourseItem } from '../utils/courseStart';
 
 
 /** Read only the canonical description, in memory; never extract arbitrary ZIP paths. */
@@ -46,8 +46,12 @@ export async function studentDescriptionImages(archive: Buffer): Promise<Record<
 }
 
 /**
- * Open the same authored course Welcome for fresh and returning learners.
- * Courses without a Welcome show their authored description, without a startup wrapper.
+ * A learner who has not started the course reads its authored Welcome, or its
+ * authored description when there is none. A returning learner goes on with the
+ * first assignment not handed in, the one the web course page names after
+ * "Weiter mit" (computor-org/issues#525). It is returned for the caller to open,
+ * and nothing opens once every assignment is handed in. The Welcome stays one
+ * click away as the first row of the course tree.
  */
 export async function showWorkspaceCourseLanding(
   context: vscode.ExtensionContext,
@@ -59,6 +63,7 @@ export async function showWorkspaceCourseLanding(
   const contents = await api.getStudentCourseContents(course.id, { throwOnError: true });
   if (!request.isCurrent()) return undefined;
   const welcome = registerCourseWelcome(contents, course.id);
+  if (hasStartedCourse(contents)) return nextOpenCourseItem(contents);
   if (welcome) {
     await showWorkspaceCourseUnit(context, api, welcome, { request });
   } else {
