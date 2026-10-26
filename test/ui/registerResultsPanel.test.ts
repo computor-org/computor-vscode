@@ -1,5 +1,7 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
+import { HttpError } from '../../src/exceptions/errors';
+import { setUiProfileLanguage } from '../../src/utils/uiLanguage';
 import { registerResultsPanel } from '../../src/ui/results/registerResultsPanel';
 
 // The Results panel used to be set up inside the student-view initialisation, so
@@ -128,6 +130,24 @@ describe('showTestResults result scoping', () => {
   afterEach(() => {
     (vscode.commands as any).registerCommand = originalRegister;
     (vscode.commands as any).executeCommand = originalExecute;
+  });
+
+  it('keeps the localized sign-in hint when fetching results fails after sign-out', async () => {
+    const originalError = vscode.window.showErrorMessage;
+    const messages: string[] = [];
+    (vscode.window as any).showErrorMessage = async (message: string) => { messages.push(message); };
+    setUiProfileLanguage('de');
+    registerResultsPanel(context, {
+      getStudentCourseContent: async () => { throw new HttpError('Login HTML', 401, 'Unauthorized'); }
+    } as any, async () => {});
+    try {
+      await handlers.get('computor.showTestResults')!(STUDENT_ITEM);
+      expect(openedPayload()).to.equal(undefined);
+      expect(messages).to.deep.equal(['Deine Sitzung ist abgelaufen. Melde dich bitte erneut an.']);
+    } finally {
+      (vscode.window as any).showErrorMessage = originalError;
+      setUiProfileLanguage(undefined);
+    }
   });
 
   function stubApi(overrides: Record<string, any> = {}) {
