@@ -303,7 +303,9 @@ describe('welcome page content', () => {
 
       expect(html).to.contain('<strong>Computor: Willkommen und Hilfe</strong>');
       expect(html).to.not.contain('Welcome and Help');
-      expect(html).to.contain('den Befehl <strong>Computor: Login</strong>');
+      expect(html).to.contain('den Befehl <strong>Computor: Anmelden</strong>');
+      expect(html).to.contain('den Befehl <strong>Computor: Backend-URL ändern</strong>');
+      expect(html).to.not.contain('Change Backend URL');
     });
   });
 
