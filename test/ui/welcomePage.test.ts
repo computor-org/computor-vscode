@@ -144,21 +144,20 @@ describe('welcome page content', () => {
       expect(html).to.contain(`${codicon('book')} <strong>Computor Student</strong>`);
     });
 
-    it('explains the row actions and lists them in order', () => {
+    it('shows the row picture without a numbered action list, and names each icon in its step', () => {
       const html = renderWelcomeBody(model({ rowPictureSvg: rowPicture }));
 
       expect(html).to.contain('Point to an assignment or focus its row to show its action icons.');
       expect(html).to.contain(rowPicture);
-      const legend = html.slice(html.indexOf('class="welcome-row-legend"'));
-      const order = ['Show README Preview', 'Commit Assignment', 'Test Assignment', 'Submit', 'Show Messages']
-        .map(label => legend.indexOf(`<em>${label}</em>`));
+      expect(html).to.not.contain('welcome-row-legend');
+      expect(html).to.not.contain('welcome-callout');
+      const order = ['Show README Preview', 'Test Assignment', 'Submit']
+        .map(label => html.indexOf(`<em>${label}</em>`));
       expect(order.every(position => position >= 0)).to.equal(true);
       expect([...order].sort((a, b) => a - b)).to.deep.equal(order);
-      // Test and Submit are explained before the long step list, so they sit above the fold.
-      expect(html.indexOf('<em>Submit</em>')).to.be.lessThan(html.indexOf('<strong>Open the Student view.</strong>'));
     });
 
-    it('leaves the picture and its letters out when the picture cannot be read', () => {
+    it('leaves the picture out when the picture cannot be read', () => {
       const html = renderWelcomeBody(model());
 
       expect(html).to.not.contain('welcome-row-picture');
