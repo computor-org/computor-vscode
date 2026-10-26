@@ -1,6 +1,9 @@
 import { escapeHtml } from '../shared/webviewHelpers';
 import { HELP_PAGES } from '../../../utils/studentHelpPages';
 import { TUTOR_HELP_PAGES } from '../../../utils/tutorHelpPages';
+import { resolveContentLanguage } from '../../../utils/contentLanguage';
+import { courseStartPointer } from '../../../utils/courseStart';
+import type { CourseContentStudentList } from '../../../types/generated';
 
 /**
  * The Computor welcome page (computor-org/issues#374).
@@ -14,7 +17,26 @@ import { TUTOR_HELP_PAGES } from '../../../utils/tutorHelpPages';
  * provider gathers the facts, this turns them into markup, and a plain Node
  * test can check every variant (student, tutor, lecturer, browser, desktop,
  * signed out) without an extension host.
+ *
+ * The page speaks German when the learner's profile language, or else the
+ * launched course's language, is German (computor-org/issues#527), and
+ * English otherwise.
  */
+
+export type WelcomeLanguage = 'en' | 'de';
+
+/** The course a hosted workspace was launched for (computor-org/issues#432). */
+export interface WelcomeLaunch {
+  title: string;
+  /** Where to begin, as the course tree shows it: "Woche 1 → Mathematische Konstanten". */
+  startHere?: string;
+  /**
+   * Listed in the self-enrolment catalog. Such a course has no human tutors;
+   * questions go to the AI tutor Lena (computor-org/issues#458). Undefined
+   * when the course could not be read, and the page then names both.
+   */
+  selfEnrolment?: boolean;
+}
 
 export type WelcomeRole = 'student' | 'tutor' | 'lecturer';
 
@@ -46,6 +68,10 @@ export interface WelcomeModel {
   /** The role views this account has (`/user/views`), in display order. */
   roles: WelcomeRole[];
   courses: WelcomeCourse[];
+  /** Absent means English. */
+  language?: WelcomeLanguage;
+  /** Only in a workspace launched for one course. */
+  launch?: WelcomeLaunch;
   /** VS Code running in the browser (code-server) rather than on the desktop. */
   inBrowser: boolean;
   /** Public address of the Computor web app, where browser workspaces start. */
@@ -94,15 +120,17 @@ interface CourseLike {
 
 /** The slice of ComputorApiService the page reads. Every call may fail on its own. */
 export interface WelcomeApi {
-  getUserAccount(): Promise<{ given_name?: string | null } | undefined>;
+  getUserAccount(): Promise<{ given_name?: string | null; profile?: { language_code?: string | null } | null } | undefined>;
   getUserViews(): Promise<string[]>;
   getStudentCourses(): Promise<CourseLike[]>;
   getTutorCourses(): Promise<CourseLike[]>;
   getLecturerCourses(): Promise<CourseLike[] | undefined>;
   getInstanceInfo(): Promise<{ web_url?: string | null } | undefined>;
+  getCourse(courseId: string): Promise<{ title?: string | null; path?: string; language_code?: string | null; public?: boolean | null } | undefined>;
+  getStudentCourseContents(courseId: string): Promise<CourseContentStudentList[]>;
 }
 
-export type WelcomeFacts = Pick<WelcomeModel, 'signedIn' | 'givenName' | 'roles' | 'courses' | 'webUrl'>;
+export type WelcomeFacts = Pick<WelcomeModel, 'signedIn' | 'givenName' | 'roles' | 'courses' | 'webUrl' | 'language' | 'launch'>;
 
 async function settle<T>(promise: Promise<T | undefined | null>, fallback: T): Promise<T> {
   try {
@@ -118,8 +146,9 @@ async function settle<T>(promise: Promise<T | undefined | null>, fallback: T): P
  * `api` is passed only while a session is active. A failing call leaves its
  * part out rather than failing the page: a welcome page that cannot open
  * because the course list timed out would be worse than one without the list.
+ * `launchedCourseId` names the course a hosted workspace was started for.
  */
-export async function collectWelcomeFacts(api: WelcomeApi | undefined): Promise<WelcomeFacts> {
+export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedCourseId?: string): Promise<WelcomeFacts> {
   if (!api) {
     return { signedIn: false, roles: [], courses: [] };
   }
@@ -128,21 +157,38 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined): Promise<
   const roles = roleOrder.filter(role => views.includes(role));
   const none = Promise.resolve([] as CourseLike[]);
 
-  const [account, student, tutor, lecturer, info] = await Promise.all([
+  const [account, student, tutor, lecturer, info, launchedCourse, contents] = await Promise.all([
     settle(api.getUserAccount(), undefined),
     roles.includes('student') ? settle(api.getStudentCourses(), [] as CourseLike[]) : none,
     roles.includes('tutor') ? settle(api.getTutorCourses(), [] as CourseLike[]) : none,
     roles.includes('lecturer') ? settle(api.getLecturerCourses(), [] as CourseLike[]) : none,
-    settle(api.getInstanceInfo(), undefined)
+    settle(api.getInstanceInfo(), undefined),
+    launchedCourseId ? settle(api.getCourse(launchedCourseId), undefined) : undefined,
+    launchedCourseId ? settle(api.getStudentCourseContents(launchedCourseId), [] as CourseContentStudentList[]) : []
   ]);
 
+  const language = welcomeLanguage(account?.profile?.language_code, launchedCourse?.language_code);
+  const courses = mergeCourses({ student, tutor, lecturer });
+  const launchedTitle = launchedCourse?.title?.trim() || launchedCourse?.path?.trim()
+    || courses.find(course => course.id === launchedCourseId)?.title;
   return {
     signedIn: true,
     givenName: account?.given_name?.trim() || undefined,
     roles,
-    courses: mergeCourses({ student, tutor, lecturer }),
-    webUrl: httpUrl(info?.web_url)
+    courses,
+    webUrl: httpUrl(info?.web_url),
+    language,
+    launch: launchedCourseId && launchedTitle ? {
+      title: launchedTitle,
+      startHere: courseStartPointer(contents, language),
+      selfEnrolment: typeof launchedCourse?.public === 'boolean' ? launchedCourse.public : undefined
+    } : undefined
   };
+}
+
+/** The learner's own choice wins, then the launched course's language (as for the course landing). */
+export function welcomeLanguage(userLanguage?: string | null, courseLanguage?: string | null): WelcomeLanguage {
+  return resolveContentLanguage(userLanguage, courseLanguage).startsWith('de') ? 'de' : 'en';
 }
 
 /** One row per course, carrying every role the user has in it. */
@@ -179,6 +225,7 @@ export type WelcomeIntent =
   | { kind: 'link'; url: string }
   | { kind: 'view'; role: WelcomeRole }
   | { kind: 'login' }
+  | { kind: 'reportProblem' }
   | { kind: 'showOnStartup'; value: boolean };
 
 export function welcomeLinkUrl(key: unknown, model: WelcomeModel): string | undefined {
@@ -217,6 +264,8 @@ export function resolveWelcomeMessage(message: unknown, model: WelcomeModel): We
     }
     case 'login':
       return model.signedIn ? undefined : { kind: 'login' };
+    case 'reportProblem':
+      return model.signedIn ? { kind: 'reportProblem' } : undefined;
     case 'showOnStartup':
       return typeof data?.value === 'boolean' ? { kind: 'showOnStartup', value: data.value } : undefined;
     default:
@@ -226,6 +275,13 @@ export function resolveWelcomeMessage(message: unknown, model: WelcomeModel): We
 
 // ----------------------------------------------------------------- markup
 
+/** English first, German second: the page picks one by the model's language. */
+type Say = (en: string, de: string) => string;
+
+function sayer(model: WelcomeModel): Say {
+  return (en, de) => (model.language === 'de' ? de : en);
+}
+
 function helpButton(page: string, label: string): string {
   return `<button type="button" class="btn secondary sm" data-action="help" data-page="${escapeHtml(page)}">${escapeHtml(label)}</button>`;
 }
@@ -234,9 +290,10 @@ function linkButton(key: WelcomeLinkKey, label: string): string {
   return `<button type="button" class="btn secondary sm" data-action="link" data-link="${key}">${escapeHtml(label)}</button>`;
 }
 
-function viewButton(role: WelcomeRole, primary: boolean): string {
+function viewButton(role: WelcomeRole, primary: boolean, say: Say): string {
   const variant = primary ? 'btn' : 'btn secondary';
-  return `<button type="button" class="${variant}" data-action="view" data-role="${role}">Open the ${roleLabels[role]} view</button>`;
+  const label = say(`Open the ${roleLabels[role]} view`, `${roleLabels[role]}-Ansicht öffnen`);
+  return `<button type="button" class="${variant}" data-action="view" data-role="${role}">${label}</button>`;
 }
 
 /** A button beside the sentence that says what is behind it. */
@@ -256,7 +313,12 @@ function section(id: string, title: string, body: string, description?: string):
   </div>`;
 }
 
-function renderHero(model: WelcomeModel): string {
+/** The window title, in the page's language. */
+export function welcomeTitle(model?: Pick<WelcomeModel, 'language'>): string {
+  return model?.language === 'de' ? 'Willkommen bei Computor' : 'Welcome to Computor';
+}
+
+function renderHero(model: WelcomeModel, say: Say): string {
   const name = model.givenName ? `, ${escapeHtml(model.givenName)}` : '';
   const logo = model.logoDataUri
     ? `<img class="welcome-logo" src="${escapeHtml(model.logoDataUri)}" alt="Computor logo">`
@@ -264,17 +326,20 @@ function renderHero(model: WelcomeModel): string {
   return `<div class="header welcome-hero">
     ${logo}
     <div>
-      <h1>Welcome to Computor${name}!</h1>
-      <p>Your courses inside VS Code: read the task, write and test your code, and hand it in.</p>
+      <h1>${welcomeTitle(model)}${name}!</h1>
+      <p>${say('Your courses inside VS Code: read the task, write and test your code, and hand it in.',
+        'Deine Kurse in VS Code: Aufgabe lesen, Code schreiben und testen, Lösung abgeben.')}</p>
     </div>
   </div>`;
 }
 
-function renderCourses(model: WelcomeModel): string {
+function renderCourses(model: WelcomeModel, say: Say): string {
+  const title = say('Your courses', 'Deine Kurse');
   if (!model.signedIn) {
-    return section('welcome-sign-in', 'Your courses', `
-      <div class="notice info">You are not signed in. Sign in to see your courses.</div>
-      <div class="actions"><button type="button" class="btn" data-action="login">Sign in</button></div>`);
+    return section('welcome-sign-in', title, `
+      <div class="notice info">${say('You are not signed in. Sign in to see your courses.',
+        'Du bist nicht angemeldet. Melde dich an, um deine Kurse zu sehen.')}</div>
+      <div class="actions"><button type="button" class="btn" data-action="login">${say('Sign in', 'Anmelden')}</button></div>`);
   }
 
   const listed = model.courses.slice(0, maxListedCourses);
@@ -285,17 +350,49 @@ function renderCourses(model: WelcomeModel): string {
           <span>${escapeHtml(course.title)}</span>
           ${course.roles.map(role => `<span class="badge badge-info xs">${roleLabels[role]}</span>`).join(' ')}
         </li>`).join('')}
-      </ul>${hidden > 0 ? `<p class="text-muted">…and ${hidden} more.</p>` : ''}`
-    : '<p class="text-muted">You are not in any course yet. Courses appear here and in the Computor views as soon as you are added to one.</p>';
+      </ul>${hidden > 0 ? `<p class="text-muted">${say(`…and ${hidden} more.`, `…und ${hidden} weitere.`)}</p>` : ''}`
+    : `<p class="text-muted">${say(
+      'You are not in any course yet. Courses appear here and in the Computor views as soon as you are added to one.',
+      'Du bist noch in keinem Kurs. Kurse erscheinen hier und in den Computor-Ansichten, sobald du in einen aufgenommen wirst.')}</p>`;
 
-  const buttons = model.roles.map((role, index) => viewButton(role, index === 0)).join('');
+  // A launched workspace already shows the Student view; offering to open it
+  // again leads nowhere (computor-org/issues#527).
+  const roles = model.launch ? model.roles.filter(role => role !== 'student') : model.roles;
+  const buttons = roles.map((role, index) => viewButton(role, index === 0, say)).join('');
   const intro = model.courses.length === 1
-    ? 'Welcome to your course!'
-    : model.courses.length > 1 ? 'Welcome to your courses!' : '';
-  return section('welcome-courses', 'Your courses', `
+    ? say('Welcome to your course!', 'Willkommen in deinem Kurs!')
+    : model.courses.length > 1 ? say('Welcome to your courses!', 'Willkommen in deinen Kursen!') : '';
+  return section('welcome-courses', title, `
     ${intro ? `<p>${intro}</p>` : ''}
     ${list}
     ${buttons ? `<div class="actions">${buttons}</div>` : ''}`);
+}
+
+/**
+ * Where a question goes. A self-enrolment course has no human tutors, only
+ * the AI tutor Lena (computor-org/issues#458); an unknown course gets both.
+ */
+function renderAskForHelp(model: WelcomeModel, say: Say): string {
+  const stuck = `<strong>${say('Stuck?', 'Kommst du nicht weiter?')}</strong>`;
+  const lena = '<code>@lena</code>';
+  const selfEnrolment = model.launch?.selfEnrolment;
+  const ask = selfEnrolment === true
+    ? say(`${stuck} This course has no human tutors. Lena, the AI tutor, gives hints instead of complete solutions: click the speech-bubble icon on an assignment (<em>Show Messages</em>) and mention ${lena} in your message.`,
+      `${stuck} In diesem Kurs gibt es keine menschlichen Tutorinnen und Tutoren. Die KI-Tutorin Lena gibt Hinweise statt fertiger Lösungen: Klicke an einer Aufgabe auf das Sprechblasen-Symbol (<em>Show Messages</em>) und erwähne ${lena} in deiner Nachricht.`)
+    : selfEnrolment === false
+      ? say(`${stuck} The speech-bubble icon on an assignment (<em>Show Messages</em>) lets you ask your lecturer and tutors.`,
+        `${stuck} Über das Sprechblasen-Symbol an einer Aufgabe (<em>Show Messages</em>) kannst du den Lehrenden und den Tutorinnen und Tutoren deines Kurses Fragen stellen.`)
+      : say(`${stuck} The speech-bubble icon on an assignment (<em>Show Messages</em>) lets you ask for help: your lecturer and tutors, or in courses with the AI tutor Lena, ${lena}.`,
+        `${stuck} Über das Sprechblasen-Symbol an einer Aufgabe (<em>Show Messages</em>) bittest du um Hilfe: je nach Kurs die Lehrenden und die Tutorinnen und Tutoren oder die KI-Tutorin Lena mit ${lena}.`);
+  if (!model.signedIn) return `<p>${ask}</p>`;
+
+  const ticket = selfEnrolment === true
+    ? say('For anything Lena cannot help with, such as a technical problem or leaving the course, open a support ticket.',
+      'Für alles, wobei Lena nicht helfen kann, etwa ein technisches Problem oder die Abmeldung vom Kurs, eröffne ein Support-Ticket.')
+    : say('For a technical problem with Computor itself, open a support ticket.',
+      'Bei einem technischen Problem mit Computor selbst eröffne ein Support-Ticket.');
+  return `<p>${ask}</p>
+    <div class="welcome-links"><div><button type="button" class="btn secondary sm" data-action="reportProblem">${say('Report a problem', 'Problem melden')}</button></div><p class="text-muted">${ticket}</p></div>`;
 }
 
 /**
@@ -303,45 +400,64 @@ function renderCourses(model: WelcomeModel): string {
  *
  * Every step names what is on screen in the Student view — the container
  * title, the row actions and their icons (package.json), the Results panel —
- * so a student can follow it without knowing VS Code.
+ * so a student can follow it without knowing VS Code. The labels VS Code
+ * shows stay in English in the German text, because the workbench shows them so.
  */
-function renderTutorial(): string {
-  const steps = [
-    ['Open the Student view.',
-      'Click the <strong>Computor Student</strong> icon (a book) in the Activity Bar on the far left. In a workspace started for a course, it is already open.'],
-    ['Open your course.',
-      'Under <strong>Courses</strong>, click your course to expand it. If your university or department is listed first, expand it until you reach the course. Units group the material; assignments sit inside them.'],
-    ['Read the task.',
-      'Click an assignment\'s title. Its instructions open beside your code; nothing is downloaded yet.'],
-    ['Get the files.',
-      'Click the arrow in front of the assignment to expand it. The first time, Computor sets up your personal course repository, which takes a moment. Then the assignment\'s starting files appear underneath.'],
-    ['Write your solution.',
-      'Click a file to open and edit it. Keep the file names the task asks for: the tests look for them.'],
-    ['Test it.',
-      'Click the beaker icon on the assignment row, or right-click it and choose <em>Test Assignment</em>. Computor saves, commits and uploads your work and runs the tests on the server; the results appear in the <strong>Results</strong> panel. If test runs are limited, each one counts.'],
-    ['Submit.',
-      'When you are happy with the result, click the cloud icon with the arrow (<em>Submit</em>). This hands the assignment in for grading — the version you last tested. Submissions may be limited too.']
+function renderTutorial(model: WelcomeModel, say: Say): string {
+  const openCourse: [string, string] = model.launch
+    ? [say('Your course is already open.', 'Dein Kurs ist schon geöffnet.'),
+      say(`In the Student view on the left, <strong>${escapeHtml(model.launch.title)}</strong> is already expanded. Units group the material; assignments sit inside them.`,
+        `Links in der Student-Ansicht ist <strong>${escapeHtml(model.launch.title)}</strong> schon aufgeklappt. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.`)]
+    : [say('Open your course.', 'Öffne deinen Kurs.'),
+      say('Under <strong>Courses</strong>, click your course to expand it. If your university or department is listed first, expand it until you reach the course. Units group the material; assignments sit inside them.',
+        'Klicke unter <strong>Courses</strong> auf deinen Kurs, um ihn aufzuklappen. Steht davor deine Universität oder dein Institut, klappe weiter auf, bis du beim Kurs bist. Einheiten gliedern den Stoff, und in ihnen liegen die Aufgaben.')];
+  const steps: Array<[string, string]> = [
+    [say('Open the Student view.', 'Öffne die Student-Ansicht.'),
+      say('Click the <strong>Computor Student</strong> icon (a book) in the Activity Bar on the far left. In a workspace started for a course, it is already open.',
+        'Klicke in der Aktivitätsleiste ganz links auf das Symbol <strong>Computor Student</strong> (ein Buch). In einem Arbeitsbereich, der für einen Kurs gestartet wurde, ist sie schon offen.')],
+    openCourse,
+    [say('Read the task.', 'Lies die Aufgabe.'),
+      say('Click an assignment\'s title. Its instructions open beside your code; nothing is downloaded yet.',
+        'Klicke auf den Titel einer Aufgabe. Die Anleitung öffnet sich neben deinem Code, heruntergeladen wird dabei noch nichts.')],
+    [say('Get the files.', 'Hol dir die Dateien.'),
+      say('Click the arrow in front of the assignment to expand it. The first time, Computor sets up your personal course repository, which takes a moment. Then the assignment\'s starting files appear underneath.',
+        'Klicke auf den Pfeil vor der Aufgabe, um sie aufzuklappen. Beim ersten Mal richtet Computor dein persönliches Kurs-Repository ein, das dauert einen Moment. Danach erscheinen darunter die Ausgangsdateien der Aufgabe.')],
+    [say('Write your solution.', 'Schreib deine Lösung.'),
+      say('Click a file to open and edit it. Keep the file names the task asks for: the tests look for them.',
+        'Klicke auf eine Datei, um sie zu öffnen und zu bearbeiten. Behalte die Dateinamen bei, die die Aufgabe verlangt, denn die Tests suchen genau nach ihnen.')],
+    [say('Test it.', 'Teste sie.'),
+      say('Click the beaker icon on the assignment row, or right-click it and choose <em>Test Assignment</em>. Computor saves, commits and uploads your work and runs the tests on the server; the results appear in the <strong>Results</strong> panel. If test runs are limited, each one counts.',
+        'Klicke in der Zeile der Aufgabe auf das Becherglas-Symbol, oder klicke sie mit der rechten Maustaste an und wähle <em>Test Assignment</em>. Computor speichert und committet deine Arbeit, lädt sie hoch und führt die Tests auf dem Server aus. Die Ergebnisse erscheinen im Bereich <strong>Results</strong>. Wenn die Testläufe begrenzt sind, zählt jeder einzelne.')],
+    [say('Submit.', 'Gib ab.'),
+      say('When you are happy with the result, click the cloud icon with the arrow (<em>Submit</em>). This hands the assignment in for grading — the version you last tested. Submissions may be limited too.',
+        'Wenn du mit dem Ergebnis zufrieden bist, klicke auf das Wolken-Symbol mit dem Pfeil (<em>Submit</em>). Damit gibst du die Aufgabe zur Bewertung ab, und zwar in der Fassung, die du zuletzt getestet hast. Auch die Abgaben können begrenzt sein.')]
   ];
 
-  return section('welcome-tutorial', 'Start working on an assignment', `
+  return section('welcome-tutorial', say('Start working on an assignment', 'Mit einer Aufgabe beginnen'), `
     <ol class="welcome-steps">
       ${steps.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
     </ol>
-    <p><strong>Commit as you go.</strong> The commit icon on an assignment, or <em>Commit Course</em> on the course row, saves your work on the server. That is your backup; it is not a submission.</p>
-    <p><strong>Stuck?</strong> The speech-bubble icon on an assignment (<em>Show Messages</em>) lets you ask your lecturer and tutors.</p>
-    <p class="text-muted">Not every course uses every step. If an icon is missing, right-click the assignment to see what your course offers.</p>`,
-  'Seven steps from your course to a submitted solution.');
+    <p>${say('<strong>Commit as you go.</strong> The commit icon on an assignment, or <em>Commit Course</em> on the course row, saves your work on the server. That is your backup; it is not a submission.',
+      '<strong>Committe zwischendurch.</strong> Das Commit-Symbol an einer Aufgabe oder <em>Commit Course</em> in der Kurszeile speichert deine Arbeit auf dem Server. Das ist deine Sicherung, aber keine Abgabe.')}</p>
+    ${renderAskForHelp(model, say)}
+    <p class="text-muted">${say('Not every course uses every step. If an icon is missing, right-click the assignment to see what your course offers.',
+      'Nicht jeder Kurs nutzt jeden Schritt. Fehlt ein Symbol, klicke die Aufgabe mit der rechten Maustaste an, um zu sehen, was dein Kurs anbietet.')}</p>`,
+  say('Seven steps from your course to a submitted solution.', 'Sieben Schritte von deinem Kurs zur abgegebenen Lösung.'));
 }
 
-function renderHelp(): string {
-  return section('welcome-help', 'Help pages', linkRows([
-    [helpButton(HELP_PAGES.course, 'Courses'),
-      'Your course repository, committing versus submitting, and the marks on a row.'],
-    [helpButton(HELP_PAGES.unit, 'Units and readings'),
-      'How a course is organised, and material you read rather than hand in.'],
-    [helpButton(HELP_PAGES.assignment, 'Assignments'),
-      'Working, testing and submitting, managing files, and getting a file back.']
-  ]), 'Short guides that come with the extension. In the Student view, right-click any row and choose <em>Help</em> to open the page for it.');
+function renderHelp(say: Say): string {
+  return section('welcome-help', say('Help pages', 'Hilfeseiten'), linkRows([
+    [helpButton(HELP_PAGES.course, say('Courses', 'Kurse')),
+      say('Your course repository, committing versus submitting, and the marks on a row.',
+        'Dein Kurs-Repository, der Unterschied zwischen Commit und Abgabe und die Markierungen an einer Zeile.')],
+    [helpButton(HELP_PAGES.unit, say('Units and readings', 'Einheiten und Lesestoff')),
+      say('How a course is organised, and material you read rather than hand in.',
+        'Wie ein Kurs aufgebaut ist, und Material, das du liest, statt es abzugeben.')],
+    [helpButton(HELP_PAGES.assignment, say('Assignments', 'Aufgaben')),
+      say('Working, testing and submitting, managing files, and getting a file back.',
+        'Bearbeiten, Testen und Abgeben, Dateien verwalten und eine Datei zurückholen.')]
+  ]), say('Short guides that come with the extension. In the Student view, right-click any row and choose <em>Help</em> to open the page for it.',
+    'Kurze Anleitungen auf Englisch, die mit der Erweiterung kommen. In der Student-Ansicht öffnet ein Rechtsklick auf eine Zeile und <em>Help</em> die passende Seite.'));
 }
 
 /**
@@ -349,124 +465,149 @@ function renderHelp(): string {
  * Steffi276). The samples are drawn in the user's own theme colours, through
  * the --c-git-* tokens, so they match what is on screen.
  */
-function renderGitColours(): string {
+function renderGitColours(say: Say): string {
   const rows: Array<[string, string]> = [
-    ['<span class="git-line added" aria-hidden="true"></span>Green bar beside a line', 'You added this line.'],
-    ['<span class="git-line modified" aria-hidden="true"></span>Blue bar beside a line', 'You changed this line.'],
-    ['<span class="git-line deleted" aria-hidden="true"></span>Red marker between lines', 'Lines were deleted here.'],
-    ['<span class="git-file untracked">solution.py<span class="git-letter">U</span></span>', 'A new file that has not been committed yet.'],
-    ['<span class="git-file modified">solution.py<span class="git-letter">M</span></span>', 'A file you changed since your last commit.']
+    [`<span class="git-line added" aria-hidden="true"></span>${say('Green bar beside a line', 'Grüner Balken neben einer Zeile')}`,
+      say('You added this line.', 'Du hast diese Zeile hinzugefügt.')],
+    [`<span class="git-line modified" aria-hidden="true"></span>${say('Blue bar beside a line', 'Blauer Balken neben einer Zeile')}`,
+      say('You changed this line.', 'Du hast diese Zeile geändert.')],
+    [`<span class="git-line deleted" aria-hidden="true"></span>${say('Red marker between lines', 'Rote Markierung zwischen Zeilen')}`,
+      say('Lines were deleted here.', 'Hier wurden Zeilen gelöscht.')],
+    ['<span class="git-file untracked">solution.py<span class="git-letter">U</span></span>',
+      say('A new file that has not been committed yet.', 'Eine neue Datei, die noch nicht committet ist.')],
+    ['<span class="git-file modified">solution.py<span class="git-letter">M</span></span>',
+      say('A file you changed since your last commit.', 'Eine Datei, die du seit deinem letzten Commit geändert hast.')]
   ];
 
-  return section('welcome-git-colours', 'Colours in the editor and the file tree', `
+  return section('welcome-git-colours', say('Colours in the editor and the file tree', 'Farben im Editor und im Dateibaum'), `
     <table class="table">
-      <thead><tr><th>You see</th><th>It means</th></tr></thead>
+      <thead><tr><th>${say('You see', 'Du siehst')}</th><th>${say('It means', 'Das bedeutet')}</th></tr></thead>
       <tbody>${rows.map(([sample, meaning]) => `<tr><td>${sample}</td><td>${meaning}</td></tr>`).join('')}</tbody>
     </table>
-    <p>The bars appear in the editor next to the line numbers; the coloured names with a letter appear in the Explorer and in the Student view. The exact colours depend on your theme.</p>
-    <p>The Student view adds its own marks to a row: <code>●</code> changes not committed yet, <code>↑</code> committed but not uploaded yet, <code>⚠</code> uploading fails.</p>
-    <div class="actions">${helpButton(HELP_PAGES.course, 'More about the marks')}</div>`,
-  'They come from Git and compare your files with your last commit. Nothing is wrong when you see them; they go away when you commit.');
+    <p>${say('The bars appear in the editor next to the line numbers; the coloured names with a letter appear in the Explorer and in the Student view. The exact colours depend on your theme.',
+      'Die Balken erscheinen im Editor neben den Zeilennummern, die farbigen Namen mit einem Buchstaben im Explorer und in der Student-Ansicht. Die genauen Farben hängen von deinem Farbschema ab.')}</p>
+    <p>${say('The Student view adds its own marks to a row: <code>●</code> changes not committed yet, <code>↑</code> committed but not uploaded yet, <code>⚠</code> uploading fails.',
+      'Die Student-Ansicht setzt eigene Markierungen an eine Zeile: <code>●</code> Änderungen, die noch nicht committet sind, <code>↑</code> committet, aber noch nicht hochgeladen, <code>⚠</code> das Hochladen schlägt fehl.')}</p>
+    <div class="actions">${helpButton(HELP_PAGES.course, say('More about the marks', 'Mehr über die Markierungen'))}</div>`,
+  say('They come from Git and compare your files with your last commit. Nothing is wrong when you see them; they go away when you commit.',
+    'Sie stammen von Git und vergleichen deine Dateien mit deinem letzten Commit. Wenn du sie siehst, ist nichts falsch, und nach dem nächsten Commit verschwinden sie.'));
 }
 
 /** Point each edition at the other one (browser ↔ desktop). */
-function renderOtherEdition(model: WelcomeModel): string {
-  const switching = '<p>Commit before you switch, so your latest work is on the server.</p>';
+function renderOtherEdition(model: WelcomeModel, say: Say): string {
+  const switching = `<p>${say('Commit before you switch, so your latest work is on the server.',
+    'Committe, bevor du wechselst, damit deine neueste Arbeit auf dem Server liegt.')}</p>`;
 
   if (model.inBrowser) {
     const backend = model.backendUrl
-      ? `run <strong>Computor: Change Backend URL</strong> and enter <code>${escapeHtml(model.backendUrl)}</code>`
-      : 'run <strong>Computor: Change Backend URL</strong> and enter the address your course gives you';
-    return section('welcome-desktop', 'Computor on your own computer', `
+      ? say(`run <strong>Computor: Change Backend URL</strong> and enter <code>${escapeHtml(model.backendUrl)}</code>`,
+        `führe <strong>Computor: Change Backend URL</strong> aus und gib <code>${escapeHtml(model.backendUrl)}</code> ein`)
+      : say('run <strong>Computor: Change Backend URL</strong> and enter the address your course gives you',
+        'führe <strong>Computor: Change Backend URL</strong> aus und gib die Adresse ein, die dein Kurs dir nennt');
+    return section('welcome-desktop', say('Computor on your own computer', 'Computor auf deinem eigenen Computer'), `
       <ol class="welcome-steps">
-        <li>Install Visual Studio Code and Git.</li>
-        <li>Install the <strong>Computor</strong> extension from the Visual Studio Marketplace.</li>
-        <li>Open an empty folder, press <kbd>F1</kbd> and ${backend}.</li>
-        <li>Run <strong>Computor: Login</strong> and sign in in your browser.</li>
+        <li>${say('Install Visual Studio Code and Git.', 'Installiere Visual Studio Code und Git.')}</li>
+        <li>${say('Install the <strong>Computor</strong> extension from the Visual Studio Marketplace.',
+          'Installiere die Erweiterung <strong>Computor</strong> aus dem Visual Studio Marketplace.')}</li>
+        <li>${say(`Open an empty folder, press <kbd>F1</kbd> and ${backend}.`, `Öffne einen leeren Ordner, drücke <kbd>F1</kbd>, ${backend}.`)}</li>
+        <li>${say('Run <strong>Computor: Login</strong> and sign in in your browser.',
+          'Führe <strong>Computor: Login</strong> aus und melde dich im Browser an.')}</li>
       </ol>
       ${switching}
-      <div class="actions">${linkButton('marketplace', 'Open the Marketplace page')}</div>`,
-    'You are using Computor in the browser. It also runs in Visual Studio Code on your own computer, with the same account and the same courses.');
+      <div class="actions">${linkButton('marketplace', say('Open the Marketplace page', 'Marketplace-Seite öffnen'))}</div>`,
+    say('You are using Computor in the browser. It also runs in Visual Studio Code on your own computer, with the same account and the same courses.',
+      'Du verwendest Computor im Browser. Es läuft auch in Visual Studio Code auf deinem eigenen Computer, mit demselben Konto und denselben Kursen.'));
   }
 
   const website = model.webUrl
-    ? `<div class="actions">${linkButton('workspaces', 'Open Workspaces on the website')}</div>`
+    ? `<div class="actions">${linkButton('workspaces', say('Open Workspaces on the website', 'Workspaces auf der Website öffnen'))}</div>`
     : '';
-  return section('welcome-browser', 'Computor in the browser', `
-    <p>If your course offers online workspaces, start one on the Computor website under <strong>Workspaces</strong> and open your course there.</p>
+  return section('welcome-browser', say('Computor in the browser', 'Computor im Browser'), `
+    <p>${say('If your course offers online workspaces, start one on the Computor website under <strong>Workspaces</strong> and open your course there.',
+      'Wenn dein Kurs Online-Arbeitsbereiche anbietet, starte einen auf der Computor-Website unter <strong>Workspaces</strong> und öffne dort deinen Kurs.')}</p>
     ${switching}
     ${website}`,
-  'Computor also runs in the browser, with nothing to install and the same account and courses.');
+  say('Computor also runs in the browser, with nothing to install and the same account and courses.',
+    'Computor läuft auch im Browser, ohne Installation und mit demselben Konto und denselben Kursen.'));
 }
 
-function renderStaff(model: WelcomeModel): string {
+function renderStaff(model: WelcomeModel, say: Say): string {
   const isTutor = model.roles.includes('tutor');
   const isLecturer = model.roles.includes('lecturer');
   if (!isTutor && !isLecturer) return '';
 
   const icons = [
-    isTutor ? '<strong>Computor Tutor</strong> for reviewing and grading' : '',
-    isLecturer ? '<strong>Computor Lecturer</strong> for building and releasing course content' : ''
-  ].filter(Boolean).join(', and ');
+    isTutor ? say('<strong>Computor Tutor</strong> for reviewing and grading', '<strong>Computor Tutor</strong> zum Durchsehen und Bewerten') : '',
+    isLecturer ? say('<strong>Computor Lecturer</strong> for building and releasing course content',
+      '<strong>Computor Lecturer</strong> zum Erstellen und Freigeben von Kursinhalten') : ''
+  ].filter(Boolean).join(say(', and ', ' und '));
 
   const rows: Array<[string, string]> = [
-    [helpButton(TUTOR_HELP_PAGES.course, 'The Tutor view'),
-      'Picking a student and finding the work waiting for review.'],
-    [helpButton(TUTOR_HELP_PAGES.assignment, 'Grading an assignment'),
-      'Inspecting, testing and grading one submission, and the message that goes with it.']
+    [helpButton(TUTOR_HELP_PAGES.course, say('The Tutor view', 'Die Tutor-Ansicht')),
+      say('Picking a student and finding the work waiting for review.',
+        'Studierende auswählen und die Arbeit finden, die auf eine Durchsicht wartet.')],
+    [helpButton(TUTOR_HELP_PAGES.assignment, say('Grading an assignment', 'Eine Aufgabe bewerten')),
+      say('Inspecting, testing and grading one submission, and the message that goes with it.',
+        'Eine Abgabe ansehen, testen und bewerten, samt der Nachricht dazu.')]
   ];
   if (isLecturer) {
     rows.push(
-      [linkButton('lecturerGuide', 'Lecturer guide'),
-        'Courses, content, examples and releases in the Lecturer view (online).'],
-      [linkButton('teacherGuide', 'Course dashboard guide'),
-        'Course statistics, flags and grading pages in the Computor web app (online).']
+      [linkButton('lecturerGuide', say('Lecturer guide', 'Leitfaden für Lehrende')),
+        say('Courses, content, examples and releases in the Lecturer view (online).',
+          'Kurse, Inhalte, Beispiele und Freigaben in der Lecturer-Ansicht (online, auf Englisch).')],
+      [linkButton('teacherGuide', say('Course dashboard guide', 'Leitfaden zum Kurs-Dashboard')),
+        say('Course statistics, flags and grading pages in the Computor web app (online).',
+          'Kursstatistiken, Markierungen und Bewertungsseiten in der Computor-Web-App (online, auf Englisch).')]
     );
   }
 
-  return section('welcome-staff', 'For tutors and lecturers', linkRows(rows),
-    `Teaching has its own icons in the Activity Bar: ${icons}.`);
+  return section('welcome-staff', say('For tutors and lecturers', 'Für Tutorinnen, Tutoren und Lehrende'), linkRows(rows),
+    say(`Teaching has its own icons in the Activity Bar: ${icons}.`, `Für die Lehre gibt es eigene Symbole in der Aktivitätsleiste: ${icons}.`));
 }
 
 /** Who makes Computor and who pays for it — as stated in LICENSE and the computor.at imprint. */
-function renderCredits(model: WelcomeModel): string {
-  return section('welcome-credits', 'About Computor', `
-    <p>Computor is a project of the Institute of Theoretical Physics – Computational Physics (ITPcp) at Graz University of Technology, led by Christopher Albert, and is developed by Maximilian Mandlez and the Computor team.</p>
-    <p>Financially supported and made possible by the netidee funding programme of the Internet Privatstiftung Austria (project 8012).</p>
-    <p>Computor is open source under the MIT license.</p>
+function renderCredits(model: WelcomeModel, say: Say): string {
+  return section('welcome-credits', say('About Computor', 'Über Computor'), `
+    <p>${say('Computor is a project of the Institute of Theoretical Physics – Computational Physics (ITPcp) at Graz University of Technology, led by Christopher Albert, and is developed by Maximilian Mandlez and the Computor team.',
+      'Computor ist ein Projekt des Instituts für Theoretische Physik – Computational Physics (ITPcp) der Technischen Universität Graz unter der Leitung von Christopher Albert und wird von Maximilian Mandlez und dem Computor-Team entwickelt.')}</p>
+    <p>${say('Financially supported and made possible by the netidee funding programme of the Internet Privatstiftung Austria (project 8012).',
+      'Mit den Mitteln der Förderaktion netidee der Internet Privatstiftung Austria finanziell unterstützt und ermöglicht (Projekt 8012).')}</p>
+    <p>${say('Computor is open source under the MIT license.', 'Computor ist Open Source unter der MIT-Lizenz.')}</p>
     <div class="actions">
-      ${linkButton('contributors', 'Contributors')}
-      ${linkButton('netidee', 'netidee project page')}
-      ${linkButton('source', 'Source code')}
-      ${linkButton('feedback', 'Feedback and bug reports')}
+      ${linkButton('contributors', say('Contributors', 'Mitwirkende'))}
+      ${linkButton('netidee', say('netidee project page', 'netidee-Projektseite'))}
+      ${linkButton('source', say('Source code', 'Quellcode'))}
+      ${linkButton('feedback', say('Feedback and bug reports', 'Feedback und Fehlerberichte'))}
     </div>
-    ${model.version ? `<p class="text-muted">Computor extension ${escapeHtml(model.version)}</p>` : ''}`);
+    ${model.version ? `<p class="text-muted">${say('Computor extension', 'Computor-Erweiterung')} ${escapeHtml(model.version)}</p>` : ''}`);
 }
 
-function renderStartupToggle(model: WelcomeModel): string {
+function renderStartupToggle(model: WelcomeModel, say: Say): string {
   return `<div class="welcome-footer">
     <label class="welcome-startup">
       <input type="checkbox" id="show-on-startup"${model.showOnStartup ? ' checked' : ''}>
-      Show this page when Computor starts
+      ${say('Show this page when Computor starts', 'Diese Seite beim Start von Computor anzeigen')}
     </label>
-    <p class="text-muted">Open it again any time with <strong>Computor: Welcome and Help</strong>, or the question-mark icon at the top of the Computor views.</p>
+    <p class="text-muted">${say('Open it again any time with <strong>Computor: Welcome and Help</strong>, or the question-mark icon at the top of the Computor views.',
+      'Du öffnest sie jederzeit wieder mit <strong>Computor: Welcome and Help</strong> oder dem Fragezeichen-Symbol oben in den Computor-Ansichten.')}</p>
   </div>`;
 }
 
 /** The page body; the provider wraps it with base.css, the view stylesheet and script. */
 export function renderWelcomeBody(model: WelcomeModel): string {
+  const say = sayer(model);
   // Before sign-in the role is unknown, and most people opening Computor are
   // students — so the tutorial shows unless the account is known not to be one.
   const showTutorial = !model.signedIn || model.roles.includes('student');
-  return `<div class="page-root welcome-page">
-    ${renderHero(model)}
-    ${renderCourses(model)}
-    ${showTutorial ? renderTutorial() : ''}
-    ${renderHelp()}
-    ${renderStaff(model)}
-    ${renderGitColours()}
-    ${renderOtherEdition(model)}
-    ${renderCredits(model)}
-    ${renderStartupToggle(model)}
+  return `<div class="page-root welcome-page"${model.language === 'de' ? ' lang="de"' : ''}>
+    ${renderHero(model, say)}
+    ${renderCourses(model, say)}
+    ${showTutorial ? renderTutorial(model, say) : ''}
+    ${renderHelp(say)}
+    ${renderStaff(model, say)}
+    ${renderGitColours(say)}
+    ${renderOtherEdition(model, say)}
+    ${renderCredits(model, say)}
+    ${renderStartupToggle(model, say)}
   </div>`;
 }

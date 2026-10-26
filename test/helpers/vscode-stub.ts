@@ -60,14 +60,15 @@ export const window = {
     customEditorProviders.push({ viewType, provider, options });
     return { dispose() {} };
   },
-  createWebviewPanel: (viewType: string, title: string, _column?: any, _options?: any): WebviewPanelStub => {
+  createWebviewPanel: (viewType: string, title: string, column?: any, _options?: any): WebviewPanelStub => {
     const disposeEmitter = new EventEmitterStub<void>();
     const messageEmitter = new EventEmitterStub<any>();
     const viewStateEmitter = new EventEmitterStub<any>();
     const panel: WebviewPanelStub = {
       viewType,
       title,
-      viewColumn: 2,
+      // The requested group; a bare column or { viewColumn } as VS Code accepts both.
+      viewColumn: (typeof column === 'object' ? column?.viewColumn : column) ?? 2,
       disposed: false,
       posted: [],
       webview: {

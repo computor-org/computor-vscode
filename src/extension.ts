@@ -935,7 +935,10 @@ class UnifiedController {
 
     // Initialize tree view
     const tree = new StudentCourseContentTreeProvider(api, courseSelectionService, this.context);
-    if (initialCourse) tree.setWorkspaceCourse(initialCourse.id);
+    if (initialCourse) {
+      tree.setWorkspaceCourse(initialCourse.id);
+      workspaceLaunchCourseId = initialCourse.id;
+    }
     if (this.wsService) tree.setWebSocketService(this.wsService);
     // Last assignment selected in the tree, so the results view can be
     // rehydrated (rather than cleared) when it becomes visible again (#273).
@@ -1052,6 +1055,7 @@ class UnifiedController {
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
       tree.setWorkspaceCourse(courseId);
+      workspaceLaunchCourseId = courseId;
       // Initial launch runs before initializeViews enables its role contexts.
       // Wait for the registered Student container to become visibly available.
       await vscode.commands.executeCommand('setContext', 'computor.student.show', true);
@@ -1070,6 +1074,7 @@ class UnifiedController {
       this.workspaceLaunchFocused = true;
       const course = (await api.getStudentCourses()).find(candidate => candidate.id === courseId);
       if (course) await showWorkspaceCourseLanding(this.context, api, course);
+      void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
       return true;
     };
     this.disposables.push(vscode.commands.registerCommand('computor.student.selectCourse', async () => {
@@ -1812,6 +1817,8 @@ let offlineSession: OfflineSession | null = null;
 let isAuthenticating = false;
 let extensionUpdateService: ExtensionUpdateService | undefined;
 let welcomePage: WelcomeWebviewProvider | undefined;
+/** The course this hosted workspace was launched for; the welcome page speaks to it (computor-org/issues#527). */
+let workspaceLaunchCourseId: string | undefined;
 
 const backendConnectionService = BackendConnectionService.getInstance();
 
@@ -2094,7 +2101,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // session; it reads the API only while that session is active.
   welcomePage = registerWelcomePage(context, {
     api: () => (activeSession ? ComputorApiService.getInstance() : undefined),
-    backendUrl: async () => (await new ComputorSettingsManager(context).getBaseUrl()) || undefined
+    backendUrl: async () => (await new ComputorSettingsManager(context).getBaseUrl()) || undefined,
+    launchedCourseId: () => workspaceLaunchCourseId
   });
 
   context.subscriptions.push(vscode.commands.registerCommand('computor.reportProblem', async () => {
