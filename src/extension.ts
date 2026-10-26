@@ -571,8 +571,10 @@ async function handleComputorWorkspaceDetected(
 
     // Priority 1: injected API token (Coder workspace injection / CI)
     if (envToken) {
+      // Status bar, not a toast: a managed workspace signs in by itself and
+      // the learner has nothing to do with this step (computor-org/issues#528).
       const ok = await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
+        location: vscode.ProgressLocation.Window,
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
@@ -596,10 +598,12 @@ async function handleComputorWorkspaceDetected(
       });
 
       if (ok) {
-        notify.info(`Logged in (workspace token): ${baseUrl}`);
+        // Managed workspaces sign in automatically; the status bar shows the connection.
+        console.log(`Logged in with workspace token: ${baseUrl}`);
         return;
       }
       console.warn('Workspace API token login failed, falling back to stored session');
+      void notify.warning('Automatic sign-in to this Computor workspace failed. Trying your stored session instead.');
     }
 
     // Priority 2: silently restore a stored session (if auto-login is enabled)
