@@ -333,17 +333,6 @@ function renderHero(model: WelcomeModel, say: Say): string {
   </div>`;
 }
 
-/** What the launched course is and where to begin in it. */
-function renderLaunch(launch: WelcomeLaunch, say: Say): string {
-  const title = escapeHtml(launch.title);
-  const start = launch.startHere
-    ? ` ${say('Start with', 'Beginne mit')} <strong>${escapeHtml(launch.startHere)}</strong>.`
-    : '';
-  return `<div class="notice info welcome-launch">${say(
-    `<strong>${title}</strong> is already open on the left.`,
-    `<strong>${title}</strong> ist links schon geöffnet.`)}${start}</div>`;
-}
-
 function renderCourses(model: WelcomeModel, say: Say): string {
   const title = say('Your courses', 'Deine Kurse');
   if (!model.signedIn) {
@@ -374,7 +363,6 @@ function renderCourses(model: WelcomeModel, say: Say): string {
     ? say('Welcome to your course!', 'Willkommen in deinem Kurs!')
     : model.courses.length > 1 ? say('Welcome to your courses!', 'Willkommen in deinen Kursen!') : '';
   return section('welcome-courses', title, `
-    ${model.launch ? renderLaunch(model.launch, say) : ''}
     ${intro ? `<p>${intro}</p>` : ''}
     ${list}
     ${buttons ? `<div class="actions">${buttons}</div>` : ''}`);

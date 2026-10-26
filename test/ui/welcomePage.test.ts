@@ -215,11 +215,12 @@ describe('welcome page content', () => {
       expect(html).to.contain('<em>Submit</em>');
     });
 
-    it('says the course is open, where to start, and does not offer the open Student view again', () => {
+    it('says the course is open in step 2, adds no callout, and does not offer the open Student view again', () => {
       const html = renderWelcomeBody(launched(true));
 
-      expect(html).to.contain('<strong>Data Science mit Python – Grundlagen</strong> ist links schon geöffnet.');
-      expect(html).to.contain('Beginne mit <strong>Woche 1 → Mathematische Konstanten</strong>.');
+      expect(html).to.contain('<strong>Dein Kurs ist schon geöffnet.</strong>');
+      expect(html).to.not.contain('ist links schon geöffnet');
+      expect(html).to.not.contain('Beginne mit');
       expect(html).to.not.contain('Öffne deinen Kurs.');
       expect(html).to.not.contain('data-action="view" data-role="student"');
     });
@@ -246,7 +247,7 @@ describe('welcome page content', () => {
 
     expect(html).to.contain('<strong>Your course is already open.</strong>');
     expect(html).to.not.contain('<strong>Open your course.</strong>');
-    expect(html).to.contain('Start with <strong>Week 1 → Constants</strong>.');
+    expect(html).to.not.contain('Start with <strong>');
     expect(html).to.contain('This course has no human tutors.');
     expect(html).to.not.contain('lecturer and tutors');
   });
@@ -526,7 +527,7 @@ describe('WelcomeWebviewProvider', () => {
     await page.refresh();
     expect(webviewPanels).to.have.length(1);
     expect(webviewPanels[0]!.title).to.equal('Willkommen bei Computor');
-    expect(latestHtml()).to.contain('<strong>Grundlagen</strong> ist links schon geöffnet.');
+    expect(latestHtml()).to.contain('<strong>Dein Kurs ist schon geöffnet.</strong>');
   });
 
   it('keeps the course landing as the only automatic document after a course launch', async () => {
