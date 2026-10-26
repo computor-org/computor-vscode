@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { say } from '../utils/uiLanguage';
 
 import type { IssueReportingInfo } from '../types/generated/common';
 
@@ -43,8 +44,6 @@ export class IssueReportStatusBarService implements vscode.Disposable {
 
   private constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
-    this.item.text = '$(bug) Report problem';
-    this.item.tooltip = 'Report a problem to the Computor team';
     this.item.command = 'computor.reportProblem';
     // Deliberately not shown yet: nothing is known about the deployment until
     // the first authenticated /instance-info call.
@@ -66,6 +65,9 @@ export class IssueReportStatusBarService implements vscode.Disposable {
   static async apply(info: IssueReportingInfo | undefined): Promise<void> {
     const service = IssueReportStatusBarService.initialize();
     service.info = info;
+    // Set here, after sign-in, when the learner's language is known.
+    service.item.text = `$(bug) ${say('Report problem', 'Problem melden')}`;
+    service.item.tooltip = say('Report a problem to the Computor team', 'Ein Problem an das Computor-Team melden');
     const mode = issueReportingMode(info);
     if (mode !== 'off') {
       service.item.show();

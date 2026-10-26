@@ -97,6 +97,23 @@ describe('WorkspaceLaunchContextService', () => {
     expect(opened).to.deep.equal(['course-1', 'course-2']);
   });
 
+  it('refreshes the launch language before opening each new course intent', async () => {
+    let context: WorkspaceLaunchContext = { ...request(), ui_language: 'de' };
+    const actions: string[] = [];
+    const value = new WorkspaceLaunchContextService({
+      fetchContext: async () => context,
+      now: () => NOW,
+      onLaunch: async () => { actions.push(`language:${context.ui_language}`); },
+      openCourse: async id => { actions.push(`open:${id}`); return true; }
+    });
+    services.push(value);
+    await value.poll();
+    await value.poll();
+    context = { ...request('launch-2'), ui_language: 'en' };
+    await value.poll();
+    expect(actions).to.deep.equal(['language:de', 'open:course-1', 'language:en', 'open:course-1']);
+  });
+
   it('does not overlap context fetches', async () => {
     const fetched = deferred<WorkspaceLaunchContext | null>();
     let fetches = 0;
@@ -141,12 +158,17 @@ describe('WorkspaceLaunchContextService', () => {
       { ...request(), expires_at: 'not a date' },
       { ...request(), expires_at: new Date(NOW - 1).toISOString() },
       { ...request(), expires_at: new Date(NOW).toISOString() },
+      { ...request(), ui_language: 'fr' },
+      { ...request(), ui_language: 'de-DE' },
+      { ...request(), ui_language: '' },
+      { ...request(), ui_language: 0 },
       request()
     ];
     const opened: string[] = [];
     const value = service(async () => contexts.shift() as WorkspaceLaunchContext | null, async id => { opened.push(id); return true; });
 
-    for (let i = 0; i < 10; i++) { await value.poll(); }
+    const count = contexts.length;
+    for (let i = 0; i < count; i++) { await value.poll(); }
 
     expect(opened).to.deep.equal(['course-1']);
   });

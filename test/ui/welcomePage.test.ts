@@ -5,6 +5,7 @@ import { env, UIKind, ViewColumn, webviewPanels } from '../helpers/vscode-stub';
 import { SimpleMockMemento } from '../helpers/SimpleMockContext';
 import {
   collectWelcomeFacts,
+  mergeCourses,
   renderWelcomeBody,
   resolveWelcomeMessage,
   WelcomeApi,
@@ -12,6 +13,8 @@ import {
 } from '../../src/ui/webviews/welcome/welcomeContent';
 import { isWelcomeShownOnStartup, WelcomeWebviewProvider } from '../../src/ui/webviews/WelcomeWebviewProvider';
 import { showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
+import { codicon, codiconPaths, CodiconName } from '../../src/ui/webviews/welcome/codicons';
+import { contentIconSvg } from '../../src/utils/contentIconSvg';
 
 /**
  * The welcome page (computor-org/issues#374).
@@ -91,6 +94,18 @@ describe('welcome page content', () => {
     expect(html).to.contain('Commit Course');
   });
 
+  it('names commands and views as VS Code shows them, and the role badge in the page language', () => {
+    const german = renderWelcomeBody(model({ language: 'de', workbenchLanguage: 'de' }));
+    expect(german).to.contain('<em>Aufgabe testen</em>');
+    expect(german).to.contain('<strong>Ergebnisse</strong>');
+    expect(german).to.not.contain('Test Assignment');
+    expect(german).to.contain('>Studierende</span>');
+
+    // An English VS Code shows English tooltips, so a German page names those.
+    const mixed = renderWelcomeBody(model({ language: 'de' }));
+    expect(mixed).to.contain('<em>Test Assignment</em>');
+  });
+
   it('leaves the tutorial out for an account without a student role', () => {
     const html = renderWelcomeBody(model({ roles: ['lecturer'], courses: [] }));
 
@@ -113,6 +128,68 @@ describe('welcome page content', () => {
       expect(html).to.contain(`class="${sample}"`);
     }
     expect(html).to.contain('<span class="git-letter">M</span>');
+  });
+
+  describe('anchored on the icons a row really shows (computor-org/issues#526)', () => {
+    const rowPicture = fs.readFileSync(path.join(process.cwd(), 'media/welcome/assignment-row.svg'), 'utf8').trim();
+
+    it('draws each icon a step names next to its tooltip text', () => {
+      const html = renderWelcomeBody(model());
+
+      const named: Array<[CodiconName, string]> = [['open-preview', 'Show README Preview'], ['git-commit', 'Commit Assignment'],
+        ['beaker', 'Test Assignment'], ['cloud-upload', 'Submit'], ['comment-discussion', 'Show Messages'], ['book', 'Show Description']];
+      for (const [icon, label] of named) {
+        expect(html, label).to.contain(`${codicon(icon)}<em>${label}</em>`);
+      }
+      expect(html).to.contain(`${codicon('book')} <strong>Computor Student</strong>`);
+    });
+
+    it('shows the row picture without a numbered action list, and names each icon in its step', () => {
+      const html = renderWelcomeBody(model({ rowPictureSvg: rowPicture }));
+
+      expect(html).to.contain('Point to an assignment or focus its row to show its action icons.');
+      expect(html).to.contain(rowPicture);
+      expect(html).to.not.contain('welcome-row-legend');
+      expect(html).to.not.contain('welcome-callout');
+      const order = ['Show README Preview', 'Test Assignment', 'Submit']
+        .map(label => html.indexOf(`<em>${label}</em>`));
+      expect(order.every(position => position >= 0)).to.equal(true);
+      expect([...order].sort((a, b) => a - b)).to.deep.equal(order);
+    });
+
+    it('leaves the picture out when the picture cannot be read', () => {
+      const html = renderWelcomeBody(model());
+
+      expect(html).to.not.contain('welcome-row-picture');
+      expect(html).to.not.contain('welcome-callout letter');
+      expect(html).to.contain('<em>Test Assignment</em>');
+    });
+
+    it('explains the row marks with the markers the tree draws, and what done looks like', () => {
+      const html = renderWelcomeBody(model({ language: 'de' }));
+
+      expect(has(html, 'welcome-marks')).to.equal(true);
+      const done = contentIconSvg('#FFFF00', 'square', 'success-submitted');
+      expect(html).to.contain(`${done}</span></div><p><strong>Erledigt:</strong> alle Tests bestanden und abgegeben.</p>`);
+      expect(html).to.contain('wenn ihr Quadrat das grüne Doppelhäkchen trägt');
+      for (const badge of ['success', 'failure', 'failure-submitted', 'submitted'] as const) {
+        expect(html, badge).to.contain(contentIconSvg('#FFFF00', 'square', badge));
+      }
+      expect(html).to.contain(contentIconSvg('#00FF00', 'circle'));
+      expect(html).to.contain('<code>(1)(1) 100%</code>');
+      expect(html).to.contain('<code>●</code> <code>↑</code> <code>⚠</code>');
+    });
+
+    it('keeps the Git colours, the other edition and the staff help below a More heading', () => {
+      const html = renderWelcomeBody(model({ roles: ['student', 'tutor'] }));
+
+      const more = html.indexOf('id="welcome-more"');
+      expect(more).to.be.greaterThan(html.indexOf('id="welcome-marks"'));
+      expect(more).to.be.greaterThan(html.indexOf('id="welcome-help"'));
+      for (const below of ['welcome-staff', 'welcome-git-colours', 'welcome-browser', 'welcome-credits']) {
+        expect(html.indexOf(`id="${below}"`), below).to.be.greaterThan(more);
+      }
+    });
   });
 
   describe('the other edition', () => {
@@ -194,13 +271,13 @@ describe('welcome page content', () => {
 
   // computor-org/issues#527 and #458.
   describe('in German, for a launched course', () => {
-    const launched = (selfEnrolment?: boolean) => model({
+    const launched = () => model({
       language: 'de',
-      launch: { title: 'Data Science mit Python – Grundlagen', startHere: 'Woche 1 → Mathematische Konstanten', selfEnrolment }
+      launch: { title: 'Data Science mit Python – Grundlagen', startHere: 'Woche 1 → Mathematische Konstanten' }
     });
 
     it('speaks German throughout and keeps the labels VS Code shows', () => {
-      const html = renderWelcomeBody(launched(true));
+      const html = renderWelcomeBody(launched());
 
       expect(html).to.contain('Willkommen bei Computor, Ada!');
       const steps = ['Öffne die Student-Ansicht.', 'Dein Kurs ist schon geöffnet.', 'Lies die Aufgabe.', 'Hol dir die Dateien.',
@@ -216,7 +293,7 @@ describe('welcome page content', () => {
     });
 
     it('says the course is open in step 2, adds no callout, and does not offer the open Student view again', () => {
-      const html = renderWelcomeBody(launched(true));
+      const html = renderWelcomeBody(launched());
 
       expect(html).to.contain('<strong>Dein Kurs ist schon geöffnet.</strong>');
       expect(html).to.not.contain('ist links schon geöffnet');
@@ -225,36 +302,29 @@ describe('welcome page content', () => {
       expect(html).to.not.contain('data-action="view" data-role="student"');
     });
 
-    it('sends a self-enrolled learner to Lena and to a support ticket, not to tutors', () => {
-      const html = renderWelcomeBody(launched(true));
-
-      expect(html).to.contain('keine menschlichen Tutorinnen und Tutoren');
-      expect(html).to.contain('<code>@lena</code>');
+    it('offers course Messages and technical support without assuming who answers', () => {
+      const html = renderWelcomeBody(launched());
+      expect(html).to.contain('um in diesem Kurs um Hilfe zu bitten.');
       expect(html).to.contain('data-action="reportProblem"');
-      expect(html).to.contain('Abmeldung vom Kurs');
-    });
-
-    it('sends a learner in a staffed course to the lecturer and tutors', () => {
-      const html = renderWelcomeBody(launched(false));
-
-      expect(html).to.contain('den Lehrenden und den Tutorinnen und Tutoren deines Kurses');
+      expect(html).to.contain('Bei einem technischen Problem mit Computor selbst');
       expect(html).to.not.contain('@lena');
+      expect(html).to.not.contain('keine menschlichen');
     });
   });
 
-  it('in English, replaces step 2 for a launched course and names Lena for a self-enrolment course', () => {
-    const html = renderWelcomeBody(model({ launch: { title: 'Grundlagen', startHere: 'Week 1 → Constants', selfEnrolment: true } }));
+  it('in English, replaces step 2 for a launched course and offers course help', () => {
+    const html = renderWelcomeBody(model({ launch: { title: 'Grundlagen', startHere: 'Week 1 → Constants' } }));
 
     expect(html).to.contain('<strong>Your course is already open.</strong>');
     expect(html).to.not.contain('<strong>Open your course.</strong>');
     expect(html).to.not.contain('Start with <strong>');
-    expect(html).to.contain('This course has no human tutors.');
+    expect(html).to.contain('to ask for help in this course.');
     expect(html).to.not.contain('lecturer and tutors');
   });
 
-  it('names both kinds of help when the course is not known, and offers a ticket only when signed in', () => {
+  it('offers course help when the course is unknown, and a ticket only when signed in', () => {
     const html = renderWelcomeBody(model());
-    expect(html).to.contain('your lecturer and tutors, or in courses with the AI tutor Lena, <code>@lena</code>');
+    expect(html).to.contain('to ask for help in this course.');
     expect(html).to.contain('data-action="reportProblem"');
 
     const signedOut = renderWelcomeBody(model({ signedIn: false, givenName: undefined, roles: [], courses: [] }));
@@ -292,10 +362,34 @@ describe('collectWelcomeFacts', () => {
     expect(facts.givenName).to.equal('Ada');
     expect(facts.roles).to.deep.equal(['student', 'tutor']);
     expect(facts.courses).to.deep.equal([
-      { id: 'c2', title: 'algebra', roles: ['tutor'] },
-      { id: 'c1', title: 'Physics', roles: ['student', 'tutor'] }
+      { id: 'c1', title: 'Physics', roles: ['student', 'tutor'] },
+      { id: 'c2', title: 'algebra', roles: ['tutor'] }
     ]);
     expect(facts.webUrl).to.equal('https://computor.example');
+  });
+
+  it('merges role lists by persisted course position, with stable legacy and tie fallbacks', () => {
+    const byRole = {
+      student: [
+        { id: 'legacy-null', title: null, path: 'Fallback title', position: null },
+        { id: 'last', title: 'A positioned course', position: 20 },
+        { id: 'tie-b', title: 'Same title', position: 10 },
+        { id: 'legacy-b', title: 'Beta' }
+      ],
+      tutor: [
+        { id: 'tie-a', title: 'Same title', position: 10 },
+        { id: 'first', title: 'Z positioned course', position: 0 },
+        { id: 'last', title: 'A positioned course', position: 20 },
+        { id: 'legacy-a', title: 'Alpha', position: null }
+      ],
+      lecturer: []
+    };
+    const courses = mergeCourses(byRole);
+    expect(courses.map(course => course.id)).to.deep.equal([
+      'first', 'tie-a', 'tie-b', 'last', 'legacy-a', 'legacy-b', 'legacy-null'
+    ]);
+    expect(courses.find(course => course.id === 'last')?.roles).to.deep.equal(['student', 'tutor']);
+    expect(courses.find(course => course.id === 'legacy-null')?.title).to.equal('Fallback title');
   });
 
   it('asks only for the course lists of roles the user has', async () => {
@@ -314,7 +408,7 @@ describe('collectWelcomeFacts', () => {
 
     expect(facts.signedIn).to.equal(true);
     expect(facts.givenName).to.equal(undefined);
-    expect(facts.courses.map(course => course.id)).to.deep.equal(['c2', 'c1']);
+    expect(facts.courses.map(course => course.id)).to.deep.equal(['c1', 'c2']);
     expect(facts.webUrl).to.equal(undefined);
   });
 
@@ -335,8 +429,19 @@ describe('collectWelcomeFacts', () => {
     expect(facts.launch).to.deep.equal({
       title: 'Grundlagen',
       startHere: 'Woche 1 → Mathematische Konstanten',
-      selfEnrolment: true
     });
+  });
+
+  it('keeps course help neutral for self-enrolment, staffed and unknown course metadata', async () => {
+    for (const publicCourse of [true, false, undefined]) {
+      const facts = await collectWelcomeFacts(api({
+        getCourse: async () => ({ title: 'Grundlagen', language_code: 'en', public: publicCourse })
+      }), 'c1');
+      const html = renderWelcomeBody(model(facts));
+      expect(html).to.contain('to ask for help in this course.');
+      expect(html).to.not.contain('@lena');
+      expect(html).to.not.contain('human tutors');
+    }
   });
 
   it('lets the learner\'s own language win over the course language', async () => {
@@ -348,11 +453,10 @@ describe('collectWelcomeFacts', () => {
     expect(facts.launch?.startHere).to.equal('Week 1 → Mathematische Konstanten');
   });
 
-  it('keeps the launched course but leaves its kind open when the course cannot be read', async () => {
+  it('keeps the launched course when the course cannot be read', async () => {
     const facts = await collectWelcomeFacts(api({ getCourse: async () => { throw new Error('down'); } }), 'c1');
 
     expect(facts.launch?.title).to.equal('Physics');
-    expect(facts.launch?.selfEnrolment).to.equal(undefined);
   });
 
   it('uses only an http(s) web app address', async () => {
@@ -469,6 +573,14 @@ describe('WelcomeWebviewProvider', () => {
     expect(html).to.contain('Computor extension 9.9.9');
   });
 
+  it('inlines the annotated assignment row from media/', async () => {
+    await provider().open();
+
+    const svg = fs.readFileSync(path.join(extensionRoot, 'media/welcome/assignment-row.svg'), 'utf8').trim();
+    expect(latestHtml()).to.contain(`class="welcome-row-picture" role="img"`);
+    expect(latestHtml()).to.contain(svg);
+  });
+
   it('shows the desktop pointer in the browser and the browser pointer on the desktop', async () => {
     env.uiKind = UIKind.Web;
     await provider().open();
@@ -559,7 +671,11 @@ describe('welcome page contributions', () => {
   it('contributes the command under the Computor category', () => {
     const command = pkg.contributes.commands.find((c: { command: string }) => c.command === 'computor.welcome');
     expect(command?.category).to.equal('Computor');
-    expect(command?.title).to.equal('Welcome and Help');
+    const key = command.title.replace(/^%|%$/g, '');
+    const en = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
+    const de = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.de.json'), 'utf8'));
+    expect(en[key]).to.equal('Welcome and Help');
+    expect(de[key]).to.equal('Willkommen und Hilfe');
   });
 
   it('puts it at the top of the student, tutor and lecturer views', () => {
@@ -568,5 +684,42 @@ describe('welcome page contributions', () => {
       expect(entry?.when).to.contain(`view == ${view}`);
     }
     expect(entry?.group).to.match(/^navigation@/);
+  });
+
+  it('draws the native inline action icons on the assignment row', () => {
+    const svg = fs.readFileSync(path.join(process.cwd(), 'media/welcome/assignment-row.svg'), 'utf8');
+    for (const icon of ['open-preview', 'git-commit', 'beaker', 'cloud-upload', 'comment-discussion'] as CodiconName[]) {
+      expect(svg).to.contain(codiconPaths[icon]);
+    }
+    expect(svg).to.contain(contentIconSvg('#FFFF00', 'square', 'success-submitted'));
+    const html = renderWelcomeBody(model({ rowPictureSvg: svg }));
+    expect(html).to.contain(codicon('beaker'));
+    expect(html).to.contain(codicon('cloud-upload'));
+    expect(html).to.contain('The same actions are available in the context menu.');
+  });
+
+  it('offers a walkthrough that reuses the row picture, in English and German', () => {
+    const [walkthrough] = pkg.contributes.walkthroughs;
+    const en = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
+    const de = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.de.json'), 'utf8'));
+    const keys = JSON.stringify(walkthrough).match(/%[^%"]+%/g)!.map(key => key.slice(1, -1));
+
+    expect(keys.length).to.be.greaterThan(0);
+    for (const key of keys) {
+      expect(en[key], key).to.be.a('string');
+      expect(de[key], key).to.be.a('string');
+    }
+    expect(Object.keys(de).sort()).to.deep.equal(Object.keys(en).sort());
+    for (const step of walkthrough.steps) {
+      expect(fs.existsSync(path.join(process.cwd(), step.media.svg)), step.id).to.equal(true);
+    }
+    const commands = new Set(pkg.contributes.commands.map((c: { command: string }) => c.command));
+    for (const text of Object.values(en) as string[]) {
+      for (const [, command] of text.matchAll(/\(command:([\w.]+)\)/g)) {
+        const view = command!.replace(/\.focus$/, '');
+        const known = commands.has(command!) || pkg.contributes.views['computor-student']?.some((v: { id: string }) => v.id === view);
+        expect(known, command).to.equal(true);
+      }
+    }
   });
 });
