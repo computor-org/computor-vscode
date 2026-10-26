@@ -35,8 +35,8 @@ export function vsceArgs(action, version, channel, useAzureCredential = false) {
     // Marketplace.
     args.push("--packagePath", vsixName(version));
   }
-  // The repository carries a yarn.lock alongside package-lock.json, which
-  // makes vsce switch to yarn and fail; CI installs with npm.
+  // npm is the package manager (package-lock.json); a yarn.lock appearing
+  // again must not make vsce switch to yarn.
   args.push("--no-dependencies", "--no-yarn");
   if (wanted === "pre-release") {
     args.push("--pre-release");
