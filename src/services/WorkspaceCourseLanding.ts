@@ -86,6 +86,29 @@ export function isCourseWelcomeContent(content: CourseContentStudentList): boole
   return welcomeIds.get(content.course_id) === content.id;
 }
 
+/**
+ * A course with no authored Welcome item has no guide of its own, so a learner
+ * who has not started it gets the general Welcome page once, as on a plain
+ * VS Code start. The key follows the course introduction: once per account and
+ * course. A course with an authored Welcome, or a learner who has started,
+ * never opens it. Returns whether the page was opened.
+ */
+export async function showCourseWelcomeGuideOnce(
+  context: vscode.ExtensionContext, api: ComputorApiService, courseId: string,
+  request: MarkdownPreviewRequest, open: () => Promise<void>
+): Promise<boolean> {
+  if (!request.isCurrent()) return false;
+  const user = await api.getUserAccount();
+  if (!user?.id || !request.isCurrent()) return false;
+  const stateKey = `workspaceCourseWelcomeGuide:${user.id}:${courseId}`;
+  if (context.globalState.get<boolean>(stateKey)) return false;
+  const contents = await api.getStudentCourseContents(courseId, { throwOnError: true });
+  if (!request.isCurrent() || courseWelcomeItem(contents) || hasStartedCourse(contents)) return false;
+  await open();
+  await context.globalState.update(stateKey, true);
+  return true;
+}
+
 /** Apply one native course intent, retaining the exact target beneath its first introduction. */
 export async function openWorkspaceCourseLaunch(
   context: vscode.ExtensionContext, api: ComputorApiService, courseId: string,

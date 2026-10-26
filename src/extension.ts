@@ -19,7 +19,7 @@ import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
 import { findInTree } from './ui/tree/chat/chatJump';
 import { WorkspaceLaunchContextService, findWorkspaceLaunchTarget, validWorkspaceLaunchContext, workspaceLaunchContent, workspaceLaunchContentKind, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions } from './ui/webviews/markdownPreview';
-import { readingLanguage, isCourseWelcomeContent, openWorkspaceCourseLaunch, showWorkspaceCourseLanding, showWorkspaceCourseUnit } from './services/WorkspaceCourseLanding';
+import { readingLanguage, isCourseWelcomeContent, openWorkspaceCourseLaunch, showCourseWelcomeGuideOnce, showWorkspaceCourseLanding, showWorkspaceCourseUnit } from './services/WorkspaceCourseLanding';
 import { WorkspaceDisplayLocale, workspaceLocaleFile } from './services/WorkspaceDisplayLocale';
 
 import { ComputorSettingsManager } from './settings/ComputorSettingsManager';
@@ -83,7 +83,7 @@ import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
 import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
 import { openMyProblemReports, reportProblem } from './commands/reportProblem';
-import { registerWelcomePage, WelcomeWebviewProvider } from './ui/webviews/WelcomeWebviewProvider';
+import { isWelcomeShownOnStartup, registerWelcomePage, WelcomeWebviewProvider } from './ui/webviews/WelcomeWebviewProvider';
 import { IssueReportStatusBarService } from './ui/IssueReportStatusBarService';
 import { COMPUTOR_MARKER, findComputorMarker } from './activation';
 
@@ -1176,6 +1176,12 @@ class UnifiedController {
         if (course && !hasIntroduction) await showWorkspaceCourseLanding(this.context, api, course, readingRequest);
       }
       if (!readingRequest.isCurrent()) return true;
+      // Without an authored course Welcome, the general one is the first-time guide.
+      if (welcomePage && isWelcomeShownOnStartup(this.context)) {
+        const guide = welcomePage;
+        await showCourseWelcomeGuideOnce(this.context, api, courseId, readingRequest, () => guide.open({ preserveFocus: true }))
+          .catch(err => console.warn('Welcome page could not be shown for the course:', err));
+      }
       void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
       // With the instructions open, the code follows in the background, so Test
       // and Submit are on the rows before the learner expands one.

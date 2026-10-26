@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { beginMarkdownPreviewRequest, showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
 import { webviewPanels } from '../helpers/vscode-stub';
 import {
-  openWorkspaceCourseLaunch, readStudentDescription, showWorkspaceCourseLanding, studentDescriptionImages
+  openWorkspaceCourseLaunch, readStudentDescription, showCourseWelcomeGuideOnce, showWorkspaceCourseLanding, studentDescriptionImages
 } from '../../src/services/WorkspaceCourseLanding';
 import { firstReleasedCourseItem } from '../../src/utils/courseStart';
 import type { ComputorApiService } from '../../src/services/ComputorApiService';
@@ -364,5 +364,54 @@ describe('native workspace course launch', () => {
     expect(webviewPanels.map(panel => panel.title)).to.deep.equal(['Task', 'Welcome']);
     expect(shown(1)).to.equal('# Updated authored introduction');
     expect(state.get('workspaceCourseIntroduction:learner-a:course')).to.equal(true);
+  });
+});
+
+describe('general Welcome as first-time guide for a course without a Welcome item', () => {
+  const welcomeItem = { id: 'welcome', course_id: 'course', path: 'welcome', title: 'Willkommen',
+    course_content_kind_id: 'unit', description: '# Authored introduction' } as CourseContentStudentList;
+  const assignment = { id: 'a1', course_id: 'course', path: 'week1.a1', title: 'A1', course_content_kind_id: 'assignment' } as CourseContentStudentList;
+  let state: Map<string, unknown>;
+  let context: vscode.ExtensionContext;
+  let userId: string | undefined;
+  let contents: CourseContentStudentList[];
+  let api: ComputorApiService;
+  let opened: number;
+  const open = async () => { opened += 1; };
+  const launch = (courseId = 'course') => showCourseWelcomeGuideOnce(context, api, courseId, beginMarkdownPreviewRequest(), open);
+  beforeEach(() => {
+    state = new Map(); userId = 'learner-a'; contents = [assignment]; opened = 0;
+    context = { globalState: { get: (key: string) => state.get(key), update: async (key: string, value: unknown) => { state.set(key, value); } } } as unknown as vscode.ExtensionContext;
+    api = { getUserAccount: async () => ({ id: userId }), getStudentCourseContents: async () => contents } as unknown as ComputorApiService;
+  });
+
+  it('opens once for a first launch and not again, for that account and course only', async () => {
+    expect(await launch()).to.equal(true);
+    expect(await launch()).to.equal(false);
+    expect(opened).to.equal(1);
+    userId = 'learner-b'; expect(await launch()).to.equal(true);
+    expect(await launch('other-course')).to.equal(true);
+    expect(opened).to.equal(3);
+  });
+
+  it('does not open for a course with a Welcome item', async () => {
+    contents = [welcomeItem, assignment];
+    expect(await launch()).to.equal(false);
+    expect(opened).to.equal(0); expect(state.size).to.equal(0);
+  });
+
+  it('does not open for a learner who has started, or when the account is unknown', async () => {
+    contents = [{ ...assignment, result_count: 1 } as CourseContentStudentList];
+    expect(await launch()).to.equal(false);
+    contents = [assignment]; userId = undefined;
+    expect(await launch()).to.equal(false);
+    expect(opened).to.equal(0); expect(state.size).to.equal(0);
+  });
+
+  it('does not mark the guide seen when opening fails, so the next launch retries', async () => {
+    try { await showCourseWelcomeGuideOnce(context, api, 'course', beginMarkdownPreviewRequest(), async () => { throw new Error('render failed'); }); }
+    catch { /* expected */ }
+    expect(state.size).to.equal(0);
+    expect(await launch()).to.equal(true);
   });
 });
