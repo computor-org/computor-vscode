@@ -123,7 +123,7 @@
       },
       {
         "command": "computor.changeRealmUrl",
-        "title": "Change Backend URL",
+        "title": "%command.changeRealmUrl%",
         "category": "Computor"
       },
       {
@@ -160,7 +160,7 @@
       },
       {
         "command": "computor.login",
-        "title": "Login",
+        "title": "%command.login%",
         "category": "Computor"
       },
       {

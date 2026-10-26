@@ -41,5 +41,7 @@
   "view.commentsInput": "Kommentar schreiben",
   "view.compose": "Verfassen",
   "view.testResults": "Testergebnisse",
-  "category.testResults": "Computor-Testergebnisse"
+  "category.testResults": "Computor-Testergebnisse",
+  "command.changeRealmUrl": "Backend-URL ändern",
+  "command.login": "Anmelden"
 }
