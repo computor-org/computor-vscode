@@ -9,8 +9,7 @@
 
 version: 2
 updates:
-  # CI installs with `npm ci` from package-lock.json. The root also carries a
-  # stray yarn.lock that no workflow uses (vsce runs with --no-yarn).
+  # CI installs with `npm ci` from package-lock.json, the only lockfile.
   - package-ecosystem: npm
     directories:
       - /
