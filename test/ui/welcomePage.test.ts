@@ -83,7 +83,7 @@ describe('welcome page content', () => {
     const html = renderWelcomeBody(model());
 
     expect(has(html, 'welcome-tutorial')).to.equal(true);
-    const steps = ['Open the Student view.', 'Open your course.', 'Read the task.', 'Get the files.',
+    const steps = ['Open the Student view.', 'Open your course.', 'Read the task.', 'Browse the files.',
       'Write your solution.', 'Test it.', 'Submit.'];
     const positions = steps.map(step => html.indexOf(`<strong>${step}</strong>`));
     expect(positions.every(position => position >= 0), 'every step is present').to.equal(true);
@@ -346,7 +346,7 @@ describe('welcome page content', () => {
       const html = renderWelcomeBody(launched());
 
       expect(html).to.contain('Willkommen bei Computor, Ada!');
-      const steps = ['Öffne die Student-Ansicht.', 'Dein Kurs ist schon geöffnet.', 'Lies die Aufgabe.', 'Hol dir die Dateien.',
+      const steps = ['Öffne die Student-Ansicht.', 'Dein Kurs ist schon geöffnet.', 'Lies die Aufgabe.', 'Sieh dir die Dateien an.',
         'Schreib deine Lösung.', 'Teste sie.', 'Gib ab.'];
       const positions = steps.map(step => html.indexOf(`<strong>${step}</strong>`));
       expect(positions.every(position => position >= 0), 'every step is present').to.equal(true);

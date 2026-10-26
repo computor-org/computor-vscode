@@ -37,6 +37,7 @@ export interface WelcomeLaunch {
   startHere?: string;
   /** The learner has started, so `startHere` is the next open assignment (computor-org/issues#525). */
   resume?: boolean;
+
 }
 
 export type WelcomeRole = 'student' | 'tutor' | 'lecturer';
@@ -539,11 +540,11 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
         `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>Computor Student</strong>. In einer Arbeitsumgebung, die für einen Kurs gestartet wurde, ist sie schon offen.`)],
     openCourse,
     [say('Read the task.', 'Lies die Aufgabe.'),
-      say(`Click an assignment's title or choose ${action('open-preview', n('computor.student.showPreview'))}. Its instructions open in the editor; nothing is downloaded yet.`,
-        `Klicke auf den Titel einer Aufgabe oder wähle ${action('open-preview', n('computor.student.showPreview'))}. Die Anleitung öffnet sich im Editor, heruntergeladen wird dabei noch nichts.`)],
-    [say('Get the files.', 'Hol dir die Dateien.'),
-      say('Click the arrow in front of the assignment to expand it. The first time, Computor sets up your personal course repository, which takes a moment. Then the assignment\'s starting files appear underneath.',
-        'Klicke auf den Pfeil vor der Aufgabe, um sie aufzuklappen. Beim ersten Mal richtet Computor dein persönliches Kurs-Repository ein, das dauert einen Moment. Danach erscheinen darunter die Ausgangsdateien der Aufgabe.')],
+      say(`Click an assignment's title to open its instructions and Python source: code on the left and instructions on the right on a desktop, or tabs on a narrow screen. On first use, Computor may prepare your personal course repository, which takes a moment. For the instructions alone, choose ${action('open-preview', n('computor.student.showPreview'))}.`,
+        `Klicke auf den Titel einer Aufgabe, um ihre Anleitung und den Python-Code zu öffnen: am Desktop den Code links und die Anleitung rechts, auf einem schmalen Bildschirm in Tabs. Beim ersten Mal richtet Computor gegebenenfalls dein persönliches Kurs-Repository ein, das dauert einen Moment. Nur die Anleitung öffnest du mit ${action('open-preview', n('computor.student.showPreview'))}.`)],
+    [say('Browse the files.', 'Sieh dir die Dateien an.'),
+      say('The Python source opens automatically with the task. Expand the arrow in front of the assignment to browse its other files.',
+        'Der Python-Code öffnet sich automatisch mit der Aufgabe. Klappe den Pfeil vor der Aufgabe auf, um ihre weiteren Dateien anzusehen.')],
     [say('Write your solution.', 'Schreib deine Lösung.'),
       say('Click a file to open and edit it. Keep the file names the task asks for: the tests look for them.',
         'Klicke auf eine Datei, um sie zu öffnen und zu bearbeiten. Behalte die Dateinamen bei, die die Aufgabe verlangt, denn die Tests suchen genau nach ihnen.')],

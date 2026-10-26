@@ -3,12 +3,10 @@ import type * as vscode from 'vscode';
 import type { ComputorApiService } from './ComputorApiService';
 import type { CourseContentStudentList, CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
-import { descriptionHeading, localizedUnitTitle, resolveContentLanguage, withoutLeadingHeading } from '../utils/contentLanguage';
-import { showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
-import { SOURCE_COLUMN } from '../ui/editorLayout';
-import { courseItemTrail, courseWelcomeItem, firstReleasedCourseItem, hasStartedCourse, nextOpenCourseItem } from '../utils/courseStart';
+import { descriptionInLanguage, localizedUnitTitle, resolveContentLanguage } from '../utils/contentLanguage';
+import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, MarkdownPreviewRequest, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
+import { courseWelcomeItem, hasStartedCourse } from '../utils/courseStart';
 
-export { firstReleasedCourseItem };
 
 /** Read only the canonical description, in memory; never extract arbitrary ZIP paths. */
 export async function readStudentDescription(archive: Buffer, preferred?: string | null): Promise<string | undefined> {
@@ -48,107 +46,150 @@ export async function studentDescriptionImages(archive: Buffer): Promise<Record<
 }
 
 /**
- * Open instructions without cloning, provisioning, or inspecting other courses. A new learner lands on the course welcome or the first
- * exercise; a returning learner on the next open exercise, which is returned so the caller can reveal its row (computor-org/issues#525).
+ * Open the same authored course Welcome for fresh and returning learners.
+ * Courses without a Welcome show their authored description, without a startup wrapper.
  */
 export async function showWorkspaceCourseLanding(
   context: vscode.ExtensionContext,
   api: ComputorApiService,
-  course: CourseStudentList
+  course: CourseStudentList,
+  request: MarkdownPreviewRequest = beginMarkdownPreviewRequest()
 ): Promise<CourseContentStudentList | undefined> {
+  if (!request.isCurrent()) return undefined;
   const contents = await api.getStudentCourseContents(course.id, { throwOnError: true });
-  const started = hasStartedCourse(contents);
-  const welcome = started ? undefined : courseWelcomeItem(contents);
-  const title = course.title || course.path;
-  // A launch opens one document, full width in the first group. A README
-  // shown later retains its host-specific reading placement.
-  const language = await landingLanguage(api, course.id);
+  if (!request.isCurrent()) return undefined;
+  const welcome = registerCourseWelcome(contents, course.id);
   if (welcome) {
-    await showMarkdownTextPreview(context, welcome.description!, `${title}: ${welcome.title}`, { studentReading: true, viewColumn: SOURCE_COLUMN, courseGuideLanguage: language });
-    return undefined;
-  }
-  const item = started ? nextOpenCourseItem(contents) : firstReleasedCourseItem(contents);
-  let markdown = `# ${escapeHeading(title)}`;
-  let inlineImages: Record<string, string> | undefined;
-  const copy = LANDING_COPY[language === 'de' ? 'de' : 'en'];
-  if (item) {
-    let description = item.description?.trim();
-    try {
-      const archive = await api.downloadStudentCourseContentDescription(item.id);
-      if (archive) {
-        description = await readStudentDescription(archive, language) || description;
-        inlineImages = await studentDescriptionImages(archive);
-      }
-    } catch (error) {
-      console.warn('[WorkspaceCourseLanding] Could not load assignment instructions:', error);
-    }
-    const name = item.title || item.path;
-    markdown += started
-      ? `\n\n${resumeLine(contents, item, language)}\n\n${landingSection(name, description, language, copy.selectExercise, null)}`
-      : `\n\n${course.description?.trim() ?? ''}\n\n${landingSection(name, description, language, copy.selectExercise)}`;
+    await showWorkspaceCourseUnit(context, api, welcome, { request });
   } else {
-    markdown += `\n\n${course.description?.trim() ?? ''}\n\n${started ? copy.allDone : copy.noExercises}`;
+    const language = await readingLanguage(api, course.id);
+    if (!request.isCurrent()) return undefined;
+    await showMarkdownTextPreview(context, descriptionInLanguage(course.description ?? '', language), course.title || course.path, {
+      request, studentReading: true
+    });
   }
-  await showMarkdownTextPreview(context, markdown, title, { studentReading: true, inlineImages, viewColumn: SOURCE_COLUMN, courseGuideLanguage: language });
-  return started ? item : undefined;
+  return undefined;
 }
 
-/** "**Weiter mit:** Woche 3 → Beta-Absorption (zuletzt getestet: 0 %)" */
-export function resumeLine(contents: CourseContentStudentList[], item: CourseContentStudentList, language: string): string {
-  const de = language === 'de';
-  const trail = courseItemTrail(contents, item, language) ?? (item.title || item.path);
-  const result = item.result?.result;
-  const percent = typeof result === 'number' ? Math.round(result * 100) : undefined;
-  const state = percent !== undefined
-    // A no-break space keeps "0 %" together when the line wraps.
-    ? (de ? `zuletzt getestet: ${percent}\u00a0%` : `last tested: ${percent}%`)
-    : (de ? 'noch nicht getestet' : 'not tested yet');
-  return `**${de ? 'Weiter mit' : 'Continue with'}:** ${escapeInline(trail)} (${state})`;
+const welcomeIds = new Map<string, string>();
+
+/** Resolve generic course start once, then dispatch units by their exact ID. */
+export function registerCourseWelcome(contents: CourseContentStudentList[], courseId?: string): CourseContentStudentList | undefined {
+  if (courseId) welcomeIds.delete(courseId);
+  for (const content of contents) welcomeIds.delete(content.course_id);
+  const welcome = courseWelcomeItem(contents);
+  if (welcome) welcomeIds.set(welcome.course_id, welcome.id);
+  return welcome;
 }
 
-const LANDING_COPY = {
-  de: {
-    selectExercise: 'Wähle diese Aufgabe in der Kursübersicht, um mit der Arbeit zu beginnen.',
-    noExercises: 'Noch sind keine Aufgaben freigegeben. Kursmaterialien erscheinen in der Kursübersicht, sobald sie freigegeben sind.',
-    allDone: 'Du hast alle freigegebenen Aufgaben abgegeben. Neue Aufgaben erscheinen in der Kursübersicht, sobald sie freigegeben sind.'
-  },
-  en: {
-    selectExercise: 'Select this exercise in the course tree to start working.',
-    noExercises: 'No exercises are available yet. Course materials will appear in the course tree when released.',
-    allDone: 'You have handed in every released exercise. New exercises will appear in the course tree when released.'
-  }
-};
+export function isCourseWelcomeContent(content: CourseContentStudentList): boolean {
+  return welcomeIds.get(content.course_id) === content.id;
+}
 
-async function landingLanguage(api: ComputorApiService, courseId: string): Promise<string> {
+/**
+ * A course with no authored Welcome item has no guide of its own, so a learner
+ * who has not started it gets the general Welcome page once, as on a plain
+ * VS Code start. The key follows the course introduction: once per account and
+ * course. A course with an authored Welcome, or a learner who has started,
+ * never opens it. Returns whether the page was opened.
+ */
+export async function showCourseWelcomeGuideOnce(
+  context: vscode.ExtensionContext, api: ComputorApiService, courseId: string,
+  request: MarkdownPreviewRequest, open: () => Promise<void>
+): Promise<boolean> {
+  if (!request.isCurrent()) return false;
+  const user = await api.getUserAccount();
+  if (!user?.id || !request.isCurrent()) return false;
+  const stateKey = `workspaceCourseWelcomeGuide:${user.id}:${courseId}`;
+  if (context.globalState.get<boolean>(stateKey)) return false;
+  const contents = await api.getStudentCourseContents(courseId, { throwOnError: true });
+  if (!request.isCurrent() || courseWelcomeItem(contents) || hasStartedCourse(contents)) return false;
+  await open();
+  await context.globalState.update(stateKey, true);
+  return true;
+}
+
+/** Apply one native course intent, retaining the exact target beneath its first introduction. */
+export async function openWorkspaceCourseLaunch(
+  context: vscode.ExtensionContext, api: ComputorApiService, courseId: string,
+  request: MarkdownPreviewRequest, openCourse: (hasIntroduction: boolean) => Promise<boolean>
+): Promise<boolean> {
+  const introduction = await prepareWorkspaceCourseIntroduction(context, api, courseId, request);
+  if (!request.isCurrent()) return true;
+  const opened = await openCourse(Boolean(introduction));
+  if (!opened || !request.isCurrent()) return opened;
+  if (introduction) await showWorkspaceCourseIntroduction(context, api, introduction, request);
+  return true;
+}
+
+const freshCourseIntroductions = new WeakMap<vscode.ExtensionContext, Set<string>>();
+
+interface WorkspaceCourseIntroduction {
+  welcome: CourseContentStudentList;
+  stateKey: string;
+}
+
+/** Snapshot before this launch expands a course or provisions its repository. */
+async function prepareWorkspaceCourseIntroduction(
+  context: vscode.ExtensionContext, api: ComputorApiService, courseId: string,
+  request: MarkdownPreviewRequest
+): Promise<WorkspaceCourseIntroduction | undefined> {
+  if (!request.isCurrent()) return undefined;
+  const user = await api.getUserAccount();
+  if (!request.isCurrent()) return undefined;
+  if (!user?.id) throw new Error('The learner account is not ready.');
+  const stateKey = `workspaceCourseIntroduction:${user.id}:${courseId}`;
+  if (context.globalState.get<boolean>(stateKey)) return undefined;
+  let fresh = freshCourseIntroductions.get(context);
+  if (!fresh?.has(stateKey)) {
+    const repository = await api.getCourseRepository(courseId);
+    if (!request.isCurrent() || repository) return undefined;
+  }
+  const contents = await api.getStudentCourseContents(courseId, { throwOnError: true });
+  if (!request.isCurrent() || hasStartedCourse(contents)) return undefined;
+  const welcome = registerCourseWelcome(contents, courseId);
+  if (!welcome) return undefined;
+  if (!fresh) { fresh = new Set(); freshCourseIntroductions.set(context, fresh); }
+  // Retain only the fresh decision across retries, never content or a target.
+  fresh.add(stateKey);
+  return { welcome, stateKey };
+}
+
+/** The exact task stays in native tabs while its first authored introduction is foregrounded. */
+async function showWorkspaceCourseIntroduction(
+  context: vscode.ExtensionContext, api: ComputorApiService,
+  introduction: WorkspaceCourseIntroduction, request: MarkdownPreviewRequest
+): Promise<void> {
+  if (await showWorkspaceCourseUnit(context, api, introduction.welcome, { request }) && request.isCurrent()) {
+    await context.globalState.update(introduction.stateKey, true);
+    freshCourseIntroductions.get(context)?.delete(introduction.stateKey);
+  }
+}
+
+/** Startup, the Welcome row and exact unit handoff render the same authored body. */
+export async function showWorkspaceCourseUnit(
+  context: vscode.ExtensionContext, api: ComputorApiService, content: CourseContentStudentList,
+  options: MarkdownPreviewOptions = {}
+): Promise<boolean> {
+  const request = options.request ?? beginMarkdownPreviewRequest();
+  const language = await readingLanguage(api, content.course_id);
+  if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return false;
+  await showMarkdownTextPreview(context, descriptionInLanguage(content.description ?? '', language), localizedUnitTitle(content.title || content.path, language), {
+    ...options, request, studentReading: true,
+    welcomeContentId: isCourseWelcomeContent(content) ? content.id : undefined
+  });
+  return request.isCurrent() && (options.isCurrent?.() ?? true);
+}
+
+/** The learner's profile language, else the course's, else English. */
+export async function readingLanguage(api: ComputorApiService, courseId: string): Promise<string> {
   let userLanguage: string | null | undefined;
   let courseLanguage: string | null | undefined;
   try {
     userLanguage = (await api.getUserAccount())?.profile?.language_code;
-    if (!userLanguage) courseLanguage = (await api.getCourse(courseId))?.language_code;
+    if (!userLanguage && courseId) courseLanguage = (await api.getCourse(courseId))?.language_code;
   } catch (error) {
     console.warn('[WorkspaceCourseLanding] Could not load the language preference:', error);
   }
   return resolveContentLanguage(userLanguage, courseLanguage);
-}
-
-/**
- * The exercise, set off from what precedes it by a rule and, for a new learner, the label "First exercise", under one heading: the
- * description's own heading (it is in the reading language) replaces the stored title instead of following it.
- */
-export function landingSection(
-  title: string, description: string | undefined, language: string, fallback: string,
-  label: string | null = language === 'de' ? 'Erste Aufgabe' : 'First exercise'
-): string {
-  const heading = descriptionHeading(description);
-  const body = heading && description ? withoutLeadingHeading(description).trim() : description;
-  const labelLine = label ? `*${label}*\n\n` : '';
-  return `---\n\n${labelLine}## ${heading ?? escapeHeading(localizedUnitTitle(title, language))}\n\n${body || fallback}`;
-}
-
-function escapeHeading(value: string): string {
-  return value.replace(/[\r\n]+/g, ' ').replace(/([\\`*_{}[\]()#+.!<>])/g, '\\$1');
-}
-
-function escapeInline(value: string): string {
-  return value.replace(/[\r\n]+/g, ' ').replace(/([\\`*_{}[\]<>])/g, '\\$1');
 }
