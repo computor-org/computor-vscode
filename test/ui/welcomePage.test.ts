@@ -283,6 +283,30 @@ describe('welcome page content', () => {
       expect(html).to.contain(`gib für computor.at <code>${publicBackendUrl}</code> ein`);
       expect(html).to.contain('mit demselben Konto wie auf der Computor-Website');
     });
+
+    it('in a hosted workspace, gives the public address instead of the internal backend', () => {
+      const html = section(renderWelcomeBody(model({ inBrowser: true, backendUrl: 'http://computor-api', webUrl: 'https://computor.example' })), 'welcome-desktop');
+
+      expect(html).to.contain('<code>https://computor.example/api</code>');
+      expect(html).to.not.contain('computor-api');
+    });
+
+    it('in a hosted workspace without a known web address, falls back to the general step', () => {
+      const html = section(renderWelcomeBody(model({ inBrowser: true, backendUrl: 'http://computor-api' })), 'welcome-desktop');
+
+      expect(html).to.not.contain('computor-api');
+      expect(html).to.contain(`<code>${publicBackendUrl}</code> for computor.at`);
+    });
+
+    it('names the Welcome command as the German Command Palette does', () => {
+      const html = renderWelcomeBody(model({ language: 'de', workbenchLanguage: 'de', inBrowser: true }));
+
+      expect(html).to.contain('<strong>Computor: Willkommen und Hilfe</strong>');
+      expect(html).to.not.contain('Welcome and Help');
+      expect(html).to.contain('den Befehl <strong>Computor: Anmelden</strong>');
+      expect(html).to.contain('den Befehl <strong>Computor: Backend-URL ändern</strong>');
+      expect(html).to.not.contain('Change Backend URL');
+    });
   });
 
   describe('help for tutors and lecturers', () => {

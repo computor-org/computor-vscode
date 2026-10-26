@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import {
   formatBudgetCompact,
   formatBudgetLong,
+  formatBudgetTagged,
   submissionBudget,
   testBudget,
 } from '../../../src/ui/tree/limitFormatting';
@@ -72,6 +73,14 @@ describe('limitFormatting', () => {
 
     it('stays unlimited when nothing sets a limit', () => {
       expect(submissionBudget({ submission_count: 9 }).exhausted).to.equal(false);
+    });
+  });
+
+  describe('formatBudgetTagged', () => {
+    it('writes the counter as the web app does: 1T, or 1/3T when capped', () => {
+      expect(formatBudgetTagged(testBudget({ result_count: 1 }), 'T')).to.equal('1T');
+      expect(formatBudgetTagged(testBudget({ result_count: 1, max_test_runs: 3 }), 'T')).to.equal('1/3T');
+      expect(formatBudgetTagged(submissionBudget({ max_submissions: 1 }), 'A')).to.equal('0/1A');
     });
   });
 });

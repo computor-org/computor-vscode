@@ -123,7 +123,7 @@
       },
       {
         "command": "computor.changeRealmUrl",
-        "title": "Change Backend URL",
+        "title": "%command.changeRealmUrl%",
         "category": "Computor"
       },
       {
@@ -160,7 +160,7 @@
       },
       {
         "command": "computor.login",
-        "title": "Login",
+        "title": "%command.login%",
         "category": "Computor"
       },
       {
@@ -999,7 +999,7 @@
         "command": "computor.showTestResults",
         "title": "%command.showTestResults%",
         "icon": "$(beaker)",
-        "category": "Computor Test Results"
+        "category": "%category.testResults%"
       },
       {
         "command": "computor.tutor.refresh",
@@ -1468,12 +1468,12 @@
         },
         {
           "id": "computor-messages-input",
-          "title": "Message Input",
+          "title": "%view.messagesInput%",
           "icon": "$(comment)"
         },
         {
           "id": "computor-comments-input",
-          "title": "Comment Input",
+          "title": "%view.commentsInput%",
           "icon": "$(note)"
         }
       ]
@@ -1560,31 +1560,31 @@
           "type": "webview",
           "name": "%view.resultDetails%",
           "icon": "$(beaker)",
-          "contextualTitle": "Test Results"
+          "contextualTitle": "%view.testResults%"
         },
         {
           "id": "computor.testResultsView",
           "name": "%view.resultTree%",
           "icon": "$(beaker)",
-          "contextualTitle": "Test Results"
+          "contextualTitle": "%view.testResults%"
         }
       ],
       "computor-messages-input": [
         {
           "id": "computor.messagesInputPanel",
           "type": "webview",
-          "name": "Compose",
+          "name": "%view.compose%",
           "icon": "$(comment)",
-          "contextualTitle": "Message Input"
+          "contextualTitle": "%view.messagesInput%"
         }
       ],
       "computor-comments-input": [
         {
           "id": "computor.courseMemberCommentsInputPanel",
           "type": "webview",
-          "name": "Compose",
+          "name": "%view.compose%",
           "icon": "$(note)",
-          "contextualTitle": "Comment Input"
+          "contextualTitle": "%view.commentsInput%"
         }
       ]
     },

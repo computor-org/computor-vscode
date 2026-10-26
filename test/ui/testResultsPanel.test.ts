@@ -5,6 +5,7 @@ import {
   TestResultsPanelProvider,
   TestResultsTreeDataProvider
 } from '../../src/ui/panels/TestResultsPanel';
+import { setUiProfileLanguage, uiLocale } from '../../src/utils/uiLanguage';
 
 /**
  * The Result Details view shows the details of the entry selected in the
@@ -189,7 +190,7 @@ describe('Result Tree timestamp', () => {
   }
 
   // Fixed instant so the assertions do not depend on the current DST offset.
-  const expectedLocal = (iso: string) => new Date(iso).toLocaleString();
+  const expectedLocal = (iso: string) => new Date(iso).toLocaleString(uiLocale());
 
   it('reads an offset-less MATLAB timestamp as UTC, not local time', () => {
     // Verbatim from a stored MATLAB result_json.
@@ -240,5 +241,38 @@ describe('Result Tree timestamp', () => {
     });
 
     expect(description).to.equal('not a date');
+  });
+});
+
+/**
+ * The Result Tree sat in a German VS Code with "Artifacts (2)" and a US date,
+ * "10/26/2026, 12:32:09 AM". Computor's own labels and the date follow the UI
+ * language; names from the test report ("Python Test Suite") are data.
+ */
+describe('Result Tree language', () => {
+  afterEach(() => setUiProfileLanguage(undefined));
+
+  function roots(): any[] {
+    const tree = new TestResultsTreeDataProvider({});
+    tree.setResultArtifacts('r1', [
+      { id: 'a1', filename: 'Solution.student_test_5_figure_1.png', file_size: 2300 } as any
+    ]);
+    tree.refresh({ type: 'python', name: 'Python Test Suite', timestamp: '2026-10-25T23:32:09Z', tests: [] });
+    return tree.getChildren();
+  }
+
+  it('labels the artifacts and dates the run in German', () => {
+    setUiProfileLanguage('de');
+    const [artifacts, report] = roots();
+    expect(artifacts.label).to.equal('Ergebnisdateien');
+    expect(artifacts.children[0].toolTip).to.equal('PNG-Bild');
+    expect(report.description).to.match(/^\d{1,2}\.\d{1,2}\.2026, \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('keeps English labels for an English UI', () => {
+    setUiProfileLanguage('en');
+    const [artifacts] = roots();
+    expect(artifacts.label).to.equal('Artifacts');
+    expect(artifacts.children[0].toolTip).to.equal('PNG image');
   });
 });

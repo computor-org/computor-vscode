@@ -36,5 +36,12 @@
   "view.resultDetails": "Result Details",
   "view.resultTree": "Result Tree",
   "view.student.courses": "Courses",
-  "command.welcome": "Welcome and Help"
+  "command.welcome": "Welcome and Help",
+  "view.messagesInput": "Message Input",
+  "view.commentsInput": "Comment Input",
+  "view.compose": "Compose",
+  "view.testResults": "Test Results",
+  "category.testResults": "Computor Test Results",
+  "command.changeRealmUrl": "Change Backend URL",
+  "command.login": "Login"
 }
