@@ -441,6 +441,15 @@ function rowActions(say: Say, n: Names): Array<[CodiconName, string, string]> {
   ];
 }
 
+/** The picture of a native assignment row; the steps below it name its icons. */
+function renderRowOnly(model: Pick<WelcomeModel, 'rowPictureSvg'>, say: Say): string {
+  return model.rowPictureSvg
+    ? `<figure class="welcome-row"><div class="welcome-row-picture" role="img" aria-label="${escapeHtml(say(
+      'An assignment row with its title and action icons.',
+      'Eine Aufgabenzeile mit ihrem Titel und ihren Aktionssymbolen.'))}">${model.rowPictureSvg}</div></figure>`
+    : '';
+}
+
 /** The native assignment row and its action legend. */
 function renderRowPicture(model: Pick<WelcomeModel, 'rowPictureSvg' | 'workbenchLanguage'>, say: Say, compact = false): string {
   const picture = model.rowPictureSvg
@@ -517,7 +526,7 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
   ];
 
   return section('welcome-tutorial', say('Start working on an assignment', 'Mit einer Aufgabe beginnen'), `
-    ${renderRowPicture(model, say)}
+    ${renderRowOnly(model, say)}
     <ol class="welcome-steps">
       ${steps.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
     </ol>
