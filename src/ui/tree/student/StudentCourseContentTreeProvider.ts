@@ -8,7 +8,7 @@ import { StudentRepositoryProvisioningService } from '../../../services/StudentR
 import type { WebSocketService } from '../../../services/WebSocketService';
 import { CourseChannelSubscription } from '../courseChannelSubscription';
 import {
-    formatBudgetCompact,
+    formatBudgetTagged,
     submissionBudget,
     testBudget,
 } from '../limitFormatting';
@@ -62,6 +62,10 @@ interface CloneRepositoryItem {
 
 /** Run from a course's "repository not ready" row; registered by StudentCommands. */
 export const RETRY_COURSE_SETUP_COMMAND = 'computor.student.retryCourseRepository';
+
+/** Row letters for the test-run and submission counters, as on the web app. */
+const testRunLetter = (): string => 'T';
+const submissionLetter = (): string => say('S', 'A');
 
 /** Why Test and Submit are missing, and what the learner can do. */
 function setupProblemText(): string {
@@ -1933,22 +1937,28 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             entries.push(`🔔 ${unreadCount}`);
         }
 
-        // Test runs, then submissions, as a positional pair: "(1)(0)", or
-        // "(0/2)" with a limit, so a capped assignment shows its budget before
-        // the first run instead of appearing unlimited until it refuses one.
-        // An untouched, unlimited assignment showed a bare "(0)(0)" that told
-        // a learner nothing; it stays empty until something has happened.
-        // The tooltip names both counters.
+        // Test runs, then submissions, tagged as the web app's assignment list
+        // writes them: "1T / 1S" in English, "1T / 1A" in German, or "0/2T"
+        // with a limit, so a capped assignment shows its budget before the
+        // first run instead of appearing unlimited until it refuses one. The
+        // bare positional "(1)(0)" left a learner guessing which was which.
+        // An untouched, unlimited assignment stays empty until something has
+        // happened. The tooltip spells out both letters.
         const tests = testBudget(this.courseContent as any, this.submissionGroup as any);
         const submissions = submissionBudget(this.courseContent as any, this.submissionGroup as any);
         const testsKnown = tests.max !== null || typeof (this.courseContent as any)?.result_count === 'number';
         const submissionsKnown = submissions.max !== null || typeof this.submissionGroup?.count === 'number';
         const anything = [tests, submissions].some(budget => budget.max !== null || budget.used > 0);
+        const counters: string[] = [];
         if (anything && testsKnown) {
-            entries.push(formatBudgetCompact(tests));
+            counters.push(formatBudgetTagged(tests, testRunLetter()));
         }
         if (anything && submissionsKnown) {
-            entries.push(formatBudgetCompact(submissions));
+            counters.push(formatBudgetTagged(submissions, submissionLetter()));
+        }
+        if (counters.length > 0) {
+            const separated = entries.length > 0 && !entries[entries.length - 1]!.endsWith(' ');
+            entries.push(`${separated ? ' ' : ''}${counters.join(' / ')}`);
         }
 
         // Built as a list rather than appended to, because `description` was
@@ -2004,12 +2014,12 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         // Attempts and points
         const tests = testBudget(this.courseContent as any, this.submissionGroup as any);
         if (tests.max !== null || typeof (this.courseContent as any)?.result_count === 'number') {
-            lines.push(`${say('Tests', 'Testläufe')}: ${budget(tests)}`);
+            lines.push(`${say('Test runs', 'Testläufe')} (${testRunLetter()}): ${budget(tests)}`);
         }
 
         const submissions = submissionBudget(this.courseContent as any, this.submissionGroup as any);
         if (submissions.max !== null || typeof this.submissionGroup?.count === 'number') {
-            lines.push(`${say('Submissions', 'Abgaben')}: ${budget(submissions)}`);
+            lines.push(`${say('Submissions', 'Abgaben')} (${submissionLetter()}): ${budget(submissions)}`);
         }
 
         // Show result percentage (0..1 -> percent) above grading
