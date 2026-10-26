@@ -37,6 +37,8 @@ import { revealUri } from '../utils/reveal';
 import { submissionBudget, testBudget, type Budget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
 import { helpPageFor } from '../utils/studentHelpPages';
+import { isSubmittablePath } from '../utils/submittableFiles';
+import { HttpError } from '../exceptions/errors/HttpError';
 import {
   availableDescriptionLanguages,
   listDescriptionFiles,
@@ -48,6 +50,13 @@ import {
 
 /** Workspace folder the browser-side export lands in before it is downloaded. */
 const EXPORT_DIR_NAME = 'exports';
+
+/** Test-specific wording for an assignment with nothing to upload yet. */
+const nothingToTest = (): string => say(
+  'Nothing to test yet: the files for your solution are still empty. '
+  + 'Write your solution first, then test again.',
+  'Es gibt noch nichts zu testen: Die Dateien für deine Lösung sind noch leer. Schreibe zuerst deine Lösung und teste sie dann.'
+);
 
 interface StudentDescriptionPreviewOptions extends MarkdownPreviewOptions {
   silent?: boolean;
@@ -1369,9 +1378,9 @@ export class StudentCommands {
         // After saving, so unsaved work in open editors counts as work.
         if (!await this.directoryHasNonEmptyFile(submissionDirectory)) {
           notify.warning(
-            say('Nothing to submit yet: this assignment\'s files are all empty. '
+            say('Nothing to submit yet: the files for your solution are still empty. '
             + 'Write your solution first, then submit again.',
-            'Es gibt noch nichts abzugeben: Alle Dateien dieser Aufgabe sind leer. Schreibe zuerst deine Lösung und gib sie dann ab.')
+            'Es gibt noch nichts abzugeben: Die Dateien für deine Lösung sind noch leer. Schreibe zuerst deine Lösung und gib sie dann ab.')
           );
           return;
         }
@@ -1927,11 +1936,7 @@ export class StudentCommands {
 
         // After saving, so unsaved work in open editors counts as work.
         if (!await this.directoryHasNonEmptyFile(submissionDirectory)) {
-          notify.warning(
-            say('Nothing to test yet: this assignment\'s files are all empty. '
-            + 'Write your solution first, then test again.',
-            'Es gibt noch nichts zu testen: Alle Dateien dieser Aufgabe sind leer. Schreibe zuerst deine Lösung und teste sie dann.')
-          );
+          notify.warning(nothingToTest());
           return;
         }
 
@@ -2058,6 +2063,11 @@ export class StudentCommands {
         // "Maximum Test Runs Exceeded") keeps its catalog title and severity;
         // a template string would flatten it to plain text.
         if (!reachedTestSubmission) {
+          if (error instanceof HttpError && error.errorCode === 'SUBMIT_014') {
+            // The backend's text for this code speaks of submitting; this was a test.
+            notify.warning(nothingToTest());
+            return;
+          }
           notify.error(
             error instanceof Error ? error : new Error(`Could not run the test: ${String(error)}`)
           );
@@ -2501,13 +2511,14 @@ export class StudentCommands {
   }
 
   /**
-   * True when the directory holds at least one non-empty file (`.git` excluded).
-   * Pre-flight for the submit/test flows: an untouched assignment contains only
-   * the empty stub files, which the backend refuses anyway (SUBMIT_014) —
-   * catching it here answers the student before anything is committed, pushed
-   * or uploaded (computor-org/issues#378).
+   * True when the directory holds at least one non-empty file the backend
+   * would keep. Pre-flight for the submit/test flows: an untouched assignment
+   * contains only the empty stub files next to its README and media, which the
+   * backend drops before refusing the upload (SUBMIT_014). Catching it here
+   * answers the student before anything is committed, pushed or uploaded
+   * (computor-org/issues#378), and in the words of the action they started.
    */
-  private async directoryHasNonEmptyFile(currentPath: string): Promise<boolean> {
+  private async directoryHasNonEmptyFile(currentPath: string, root: string = currentPath): Promise<boolean> {
     const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -2518,10 +2529,14 @@ export class StudentCommands {
       const entryPath = path.join(currentPath, entry.name);
 
       if (entry.isDirectory()) {
-        if (await this.directoryHasNonEmptyFile(entryPath)) {
+        if (await this.directoryHasNonEmptyFile(entryPath, root)) {
           return true;
         }
       } else if (entry.isFile()) {
+        const relPath = path.relative(root, entryPath).split(path.sep).join('/');
+        if (!isSubmittablePath(relPath)) {
+          continue;
+        }
         const stat = await fs.promises.stat(entryPath);
         if (stat.size > 0) {
           return true;
