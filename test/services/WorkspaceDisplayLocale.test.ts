@@ -182,10 +182,11 @@ describe('WorkspaceDisplayLocale', () => {
     const result = new Promise<string>(done => { resolve = done; });
     const instance = service('en', async () => { calls++; return result; });
     const pending = instance.poll();
-    await instance.poll();
+    const overlapping = instance.poll();
+    expect(overlapping).to.equal(pending);
     instance.dispose();
     resolve('de');
-    await pending;
+    await Promise.all([pending, overlapping]);
     await instance.poll();
     expect(calls).to.equal(1);
     expect(reloads).to.equal(0);
