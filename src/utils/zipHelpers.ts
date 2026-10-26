@@ -31,8 +31,17 @@ export function safeExtractTarget(destDir: string, entryName: string): string | 
  * Extract a git-archive ZIP buffer into `destDir`, stripping the single wrapper
  * directory git servers add (e.g. `repo-<sha>/`). Returns the number of files
  * written. Entries that would escape `destDir` are skipped and logged.
+ *
+ * By default existing files are overwritten. With `{ overwrite: false }` an
+ * existing target is left untouched (and not counted), so only missing files are
+ * restored. Use that wherever the destination may hold the learner's own work.
  */
-export async function extractZipBuffer(buffer: Buffer, destDir: string): Promise<number> {
+export async function extractZipBuffer(
+  buffer: Buffer,
+  destDir: string,
+  options: { overwrite?: boolean } = {},
+): Promise<number> {
+  const overwrite = options.overwrite !== false;
   const zip = await JSZip.loadAsync(buffer);
   const entries = Object.values(zip.files);
   const tops = new Set(entries.filter(e => !e.dir).map(e => e.name.split('/')[0]));
@@ -49,7 +58,19 @@ export async function extractZipBuffer(buffer: Buffer, destDir: string): Promise
       continue;
     }
     await fs.promises.mkdir(path.dirname(target), { recursive: true });
-    await fs.promises.writeFile(target, await entry.async('nodebuffer'));
+    const data = await entry.async('nodebuffer');
+    if (overwrite) {
+      await fs.promises.writeFile(target, data);
+    } else {
+      // 'wx' fails atomically when the target exists, so a file the learner
+      // changed in the meantime is never clobbered.
+      try {
+        await fs.promises.writeFile(target, data, { flag: 'wx' });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'EEXIST') { continue; }
+        throw e;
+      }
+    }
     count++;
   }
   return count;

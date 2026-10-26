@@ -1228,7 +1228,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                     const buffer = await this.apiService.downloadTemplateArchive(courseId);
                     await fs.promises.mkdir(model.repoRoot, { recursive: true });
                     progress.report({ message: say('Extracting…', 'Wird entpackt …') });
-                    await extractZipBuffer(buffer, model.repoRoot);
+                    // Never overwrite the learner's files: a retry only restores what is missing.
+                    await extractZipBuffer(buffer, model.repoRoot, { overwrite: false });
                     this.clearSetupProblem(courseId);
                     return model.repoRoot;
                 }
