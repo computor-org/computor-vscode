@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { AUX_COLUMN, ensureAuxColumn } from '../editorLayout';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
+import { say } from '../../utils/uiLanguage';
+import { escapeHtml } from '../webviews/shared/webviewHelpers';
 
 /** One opened artifact image. */
 interface ArtifactEntry {
@@ -76,7 +78,7 @@ export class ArtifactsPanel implements vscode.Disposable {
   private create(preserveFocus: boolean): void {
     const panel = vscode.window.createWebviewPanel(
       ArtifactsPanel.viewType,
-      'Artifacts',
+      say('Artifacts', 'Ergebnisdateien'),
       { viewColumn: AUX_COLUMN, preserveFocus },
       {
         enableScripts: true,
@@ -172,22 +174,25 @@ export class ArtifactsPanel implements vscode.Disposable {
 
   private getHtmlContent(webview: vscode.Webview): string {
     return renderWebviewPage(webview, this.extensionUri, {
-      title: 'Artifacts',
+      title: say('Artifacts', 'Ergebnisdateien'),
       cssFiles: ['figures/figures.css'],
       scriptFiles: ['figures/figures.js'],
       bodyHtml: `
       <div class="figures" id="figures">
         <div class="figures-empty" id="figuresEmpty">
-          <p>No artifacts open.</p>
-          <p class="text-muted">Figure artifacts from test results appear here when you open them from the Results panel.</p>
+          <p>${escapeHtml(say('No artifacts open.', 'Keine Ergebnisdatei geöffnet.'))}</p>
+          <p class="text-muted">${escapeHtml(say(
+            'Figure artifacts from test results appear here when you open them from the Results panel.',
+            'Abbildungen aus Testergebnissen erscheinen hier, wenn du sie in den Ergebnissen öffnest.'
+          ))}</p>
         </div>
         <div class="figures-stage hidden" id="figuresStage">
           <div class="figures-toolbar">
             <span class="figures-stage-title" id="figuresStageTitle"></span>
             <span class="figures-stage-meta" id="figuresStageMeta"></span>
             <span class="flex-spacer"></span>
-            <button class="btn secondary" data-action="closeSelected" title="Close this artifact">Close</button>
-            <button class="btn secondary" data-action="closeAll" title="Close every artifact">Close All</button>
+            <button class="btn secondary" data-action="closeSelected" title="${escapeHtml(say('Close this artifact', 'Diese Datei schließen'))}">${escapeHtml(say('Close', 'Schließen'))}</button>
+            <button class="btn secondary" data-action="closeAll" title="${escapeHtml(say('Close every artifact', 'Alle Dateien schließen'))}">${escapeHtml(say('Close All', 'Alle schließen'))}</button>
           </div>
           <div class="figures-canvas"><img id="figuresStageImage" alt=""></div>
         </div>

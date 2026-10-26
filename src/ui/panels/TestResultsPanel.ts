@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { say } from '../../utils/uiLanguage';
+import { formatUiDateTime, say } from '../../utils/uiLanguage';
 import { ResultArtifactInfo } from '../../types/generated/common';
 import { escapeHtml } from '../webviews/shared/webviewHelpers';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
@@ -190,9 +190,10 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
 
         return {
             id: 'artifacts',
-            label: 'Artifacts',
+            label: say('Artifacts', 'Ergebnisdateien'),
             description: `(${this.resultArtifacts.length})`,
-            toolTip: 'Test result artifacts - click to download and open',
+            toolTip: say('Files the test run produced. Click one to open it.',
+                'Dateien, die der Testlauf erzeugt hat. Klicke auf eine, um sie zu öffnen.'),
             themeIcon: new vscode.ThemeIcon('package'),
             collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
             children: artifactChildren
@@ -206,49 +207,24 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
     private getFileTypeDescription(filename: string, contentType?: string | null): string {
         const ext = this.getFileExtension(filename);
 
-        const fileTypes: Record<string, string> = {
-            'png': 'PNG Image',
-            'jpg': 'JPEG Image',
-            'jpeg': 'JPEG Image',
-            'gif': 'GIF Image',
-            'bmp': 'Bitmap Image',
-            'webp': 'WebP Image',
-            'svg': 'SVG Vector Image',
-            'ico': 'Icon File',
-            'pdf': 'PDF Document',
-            'txt': 'Text File',
-            'json': 'JSON File',
-            'xml': 'XML File',
-            'html': 'HTML File',
-            'css': 'CSS Stylesheet',
-            'js': 'JavaScript File',
-            'ts': 'TypeScript File',
-            'py': 'Python File',
-            'java': 'Java File',
-            'c': 'C Source File',
-            'cpp': 'C++ Source File',
-            'h': 'C/C++ Header File',
-            'md': 'Markdown File',
-            'yaml': 'YAML File',
-            'yml': 'YAML File',
-            'csv': 'CSV File',
-            'log': 'Log File',
-            'zip': 'ZIP Archive',
-            'tar': 'TAR Archive',
-            'gz': 'GZip Archive',
-            'rar': 'RAR Archive',
-            '7z': '7-Zip Archive'
-        };
-
-        if (fileTypes[ext]) {
-            return fileTypes[ext]!;
+        // A kind, named in the UI language: "PNG image" / "PNG-Bild".
+        const kinds: Array<[string[], string, string]> = [
+            [['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico'], 'image', 'Bild'],
+            [['pdf'], 'document', 'Dokument'],
+            [['zip', 'tar', 'gz', 'rar', '7z'], 'archive', 'Archiv'],
+            [['c', 'cpp', 'h', 'py', 'java', 'js', 'ts', 'm', 'r', 'jl', 'f90'], 'source file', 'Quelltext'],
+        ];
+        const kind = kinds.find(([extensions]) => extensions.includes(ext));
+        if (kind) {
+            const name = ext === 'jpg' ? 'JPEG' : ext.toUpperCase();
+            return say(`${name} ${kind[1]}`, `${name}-${kind[2]}`);
         }
 
         if (contentType) {
             return contentType;
         }
 
-        return ext ? `${ext.toUpperCase()} File` : 'File';
+        return ext ? say(`${ext.toUpperCase()} file`, `${ext.toUpperCase()}-Datei`) : say('File', 'Datei');
     }
 
     private getFileIcon(filename: string): vscode.ThemeIcon {
@@ -312,7 +288,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
         if (isNaN(date.getTime())) {
             return raw; // unparseable — show it verbatim rather than "Invalid Date"
         }
-        return date.toLocaleString();
+        return formatUiDateTime(date);
     }
 
     private formatFileSize(bytes: number): string {
@@ -385,7 +361,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
 
                 const treeValue: ResultsTreeNode = {
                     id: itemId,
-                    label: item.name ? item.name : 'Unnamed Item',
+                    label: item.name ? item.name : say('Unnamed item', 'Ohne Namen'),
                     description: totalSubtests > 0 ? `[${passedSubtests}/${totalSubtests}]` : '',
                     passed: item.result === 'PASSED' && allSubtestsPassed,
                     isTest: true,
@@ -447,7 +423,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                         id: envId,
                         label: say('Environment', 'Umgebung'),
                         description: undefined,
-                        toolTip: 'Environment',
+                        toolTip: say('Environment', 'Umgebung'),
                         collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
                         children: subs
                     });
@@ -467,7 +443,7 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                         id: summaryId,
                         label: say('Summary', 'Zusammenfassung'),
                         description: undefined,
-                        toolTip: 'Summary',
+                        toolTip: say('Summary', 'Zusammenfassung'),
                         collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
                         themeIcon: new vscode.ThemeIcon('bracket-dot'),
                         children: subs

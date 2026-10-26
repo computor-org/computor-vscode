@@ -37,3 +37,20 @@ export function uiLanguage(): 'de' | 'en' {
 export function say(en: string, de: string): string {
   return uiLanguage() === 'de' ? de : en;
 }
+
+/**
+ * The locale for dates and numbers in the extension's own text: the VS Code
+ * display locale when it is in the UI language (so "en-GB" keeps its order),
+ * otherwise the UI language itself. `toLocaleString()` without a locale used
+ * the host's, which put "10/26/2026, 12:32:09 AM" beside German text.
+ */
+export function uiLocale(): string {
+  const language = uiLanguage();
+  const display = vscode.env?.language?.trim();
+  return display && display.toLowerCase().split(/[-_]/)[0] === language ? display : language;
+}
+
+/** A date and time in {@link uiLocale}, e.g. "26.10.2026, 00:32:09". */
+export function formatUiDateTime(date: Date): string {
+  return date.toLocaleString(uiLocale());
+}
