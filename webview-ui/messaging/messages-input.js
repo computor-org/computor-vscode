@@ -102,6 +102,48 @@
     if (mention.dropdown) { mention.dropdown.style.display = 'none'; }
   }
 
+  // The dropdown is a fixed overlay anchored at the caret (issues#486). In
+  // flow below the editor, the composer clipped it whenever the panel was
+  // shorter than editor plus list.
+  const MENTION_LIST_MAX = 180; // px, matches .mention-dropdown max-height
+  const MENTION_EDGE = 8;       // px kept free at the panel's edges
+
+  function caretRect() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0).cloneRange();
+      range.collapse(true);
+      const rect = range.getClientRects()[0];
+      if (rect) { return rect; }
+    }
+    const body = document.getElementById('message-body');
+    return body ? body.getBoundingClientRect() : null;
+  }
+
+  function positionMentionDropdown() {
+    const dd = mention.dropdown;
+    if (!dd || dd.style.display === 'none') { return; }
+    const caret = caretRect();
+    if (!caret) { return; }
+    dd.style.maxHeight = '';
+    const place = mentionUtil.placeMentionList({
+      caret: caret,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      listWidth: dd.offsetWidth,
+      wanted: Math.min(dd.offsetHeight, MENTION_LIST_MAX),
+      max: MENTION_LIST_MAX,
+      edge: MENTION_EDGE,
+      gap: 2
+    });
+    dd.style.maxHeight = place.maxHeight + 'px';
+    dd.style.top = place.top === null ? '' : place.top + 'px';
+    dd.style.bottom = place.bottom === null ? '' : place.bottom + 'px';
+    dd.style.left = place.left + 'px';
+  }
+
+  window.addEventListener('resize', () => { if (mention.open) { positionMentionDropdown(); } });
+
   // --- contenteditable editor (#message-body) ---
   // The body is a contenteditable div (not a textarea) so mentions render as
   // atomic chips with the uuid hidden in data-id, while the serialized wire
@@ -197,6 +239,7 @@
       });
       dd.appendChild(status);
       dd.style.display = 'block';
+      positionMentionDropdown();
       return;
     }
     mention.items.forEach((u, i) => {
@@ -212,6 +255,11 @@
       dd.appendChild(item);
     });
     dd.style.display = 'block';
+    positionMentionDropdown();
+    // The list is rebuilt on every keystroke, which resets its scroll; keep
+    // the arrow-key selection visible when the room above or below is short.
+    const active = dd.querySelector('.mention-item.active');
+    if (active) { active.scrollIntoView({ block: 'nearest' }); }
   }
 
   function updateMentionFilter() {
@@ -661,7 +709,7 @@
       const initialValue = state.messageContent || (state.editingMessage ? state.editingMessage.content || '' : '');
       setEditorContent(editor, initialValue);
 
-      // Dropdown for @-mention autocomplete (normal flow, below the editor).
+      // Dropdown for @-mention autocomplete (fixed overlay at the caret).
       const mentionDropdown = createElement('div', { className: 'mention-dropdown' });
       mentionDropdown.style.display = 'none';
       mention.dropdown = mentionDropdown;
@@ -675,6 +723,7 @@
       });
       editor.addEventListener('keydown', onEditorKeydown);
       editor.addEventListener('blur', () => setTimeout(closeMentionDropdown, 120));
+      editor.addEventListener('scroll', () => { if (mention.open) { positionMentionDropdown(); } });
       // Paste as plain text so foreign HTML/styles never enter the editor.
       editor.addEventListener('paste', (e) => {
         e.preventDefault();
