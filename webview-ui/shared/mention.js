@@ -106,8 +106,29 @@
     );
   }
 
+  /**
+   * Where the autocomplete list goes as an overlay at the caret (issues#486).
+   * Below the caret when `wanted` px fit there, otherwise on whichever side
+   * has more room, with maxHeight capped to that room so the list never runs
+   * off the panel. Returns CSS px: `top` for a list opening down, `bottom`
+   * (from the viewport's bottom edge) for one opening up; the other is null.
+   */
+  function placeMentionList(o) {
+    const below = o.viewportHeight - o.caret.bottom - o.edge;
+    const above = o.caret.top - o.edge;
+    const down = below >= o.wanted || below >= above;
+    const maxLeft = o.viewportWidth - o.listWidth - o.edge;
+    return {
+      top: down ? o.caret.bottom + o.gap : null,
+      bottom: down ? null : o.viewportHeight - o.caret.top + o.gap,
+      left: Math.max(o.edge, Math.min(o.caret.left, maxLeft)),
+      maxHeight: Math.max(0, Math.min(o.max, down ? below : above))
+    };
+  }
+
   return {
     matchMentionTrigger: matchMentionTrigger,
+    placeMentionList: placeMentionList,
     hasTutorAliases: hasTutorAliases,
     formatMentionName: formatMentionName,
     mentionMatches: mentionMatches,

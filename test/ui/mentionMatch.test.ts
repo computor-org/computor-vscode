@@ -6,9 +6,12 @@ import { expect } from 'chai';
 // @ts-ignore -- no type declarations for the plain-JS asset
 import mentionAsset from '../../webview-ui/shared/mention.js';
 
-const { matchMentionTrigger, mentionMatches, formatMentionName, foldName, hasTutorAliases } =
+type Placement = { top: number | null; bottom: number | null; left: number; maxHeight: number };
+
+const { matchMentionTrigger, mentionMatches, formatMentionName, foldName, hasTutorAliases, placeMentionList } =
   mentionAsset as {
     matchMentionTrigger: (before: unknown) => { query: string } | null;
+    placeMentionList: (o: Record<string, unknown>) => Placement;
     hasTutorAliases: (users: unknown) => boolean;
     mentionMatches: (u: Record<string, unknown>, q: string) => boolean;
     formatMentionName: (u: Record<string, unknown> | null | undefined) => string;
@@ -150,5 +153,39 @@ describe('webview-ui/shared/mention.js hasTutorAliases', () => {
     expect(hasTutorAliases([{ id: 'h', given_name: 'Anna', aliases: [] }])).to.equal(false);
     expect(hasTutorAliases([])).to.equal(false);
     expect(hasTutorAliases(undefined)).to.equal(false);
+  });
+});
+
+describe('webview-ui/shared/mention.js placeMentionList (issues#486)', () => {
+  // A message panel docked at the bottom of the window: 180px tall, the caret
+  // on the editor's first line. In flow below the editor, the list was clipped
+  // here and showed no candidate at all.
+  const base = { viewportWidth: 1400, listWidth: 200, max: 180, edge: 8, gap: 2 };
+
+  it('opens below the caret when the list fits there', () => {
+    const p = placeMentionList({ ...base, viewportHeight: 600, wanted: 150,
+      caret: { top: 100, bottom: 118, left: 60 } });
+    expect(p).to.deep.equal({ top: 120, bottom: null, left: 60, maxHeight: 180 });
+  });
+
+  it('opens above the caret in a short panel and caps the height to that room', () => {
+    const p = placeMentionList({ ...base, viewportHeight: 180, wanted: 150,
+      caret: { top: 110, bottom: 128, left: 60 } });
+    expect(p.top).to.equal(null);
+    expect(p.bottom).to.equal(180 - 110 + 2);
+    expect(p.maxHeight).to.equal(110 - 8);
+  });
+
+  it('stays below when that side has more room, even if the list does not fit', () => {
+    const p = placeMentionList({ ...base, viewportHeight: 200, wanted: 150,
+      caret: { top: 40, bottom: 58, left: 60 } });
+    expect(p.top).to.equal(60);
+    expect(p.maxHeight).to.equal(200 - 58 - 8);
+  });
+
+  it('keeps the list inside a narrow panel', () => {
+    const p = placeMentionList({ ...base, viewportWidth: 300, viewportHeight: 600, wanted: 100,
+      caret: { top: 100, bottom: 118, left: 250 } });
+    expect(p.left).to.equal(300 - 200 - 8);
   });
 });

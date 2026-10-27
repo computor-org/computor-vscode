@@ -74,7 +74,7 @@ body {
 .input-header {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-1);
   flex-shrink: 0;
   padding-bottom: var(--sp-1);
   border-bottom: 1px solid var(--c-border);
@@ -381,10 +381,21 @@ body {
   flex-shrink: 0;
 }
 
-/* @-mention autocomplete */
+/*
+ * @-mention autocomplete — an overlay at the caret, like the editor's own
+ * suggest widget. It used to sit in normal flow below the editor, where the
+ * composer's overflow:hidden cut it off: in a short bottom panel no candidate
+ * was visible at all, and in a tall one it spanned the full width under the
+ * editor (issues#486). messages-input.js places it below the caret, or above
+ * when that side has more room, and caps max-height to the space it gets.
+ */
 .mention-dropdown {
-  margin-top: var(--sp-1);
+  position: fixed;
+  width: max-content;
+  min-width: 12rem;
+  max-width: calc(100vw - 2 * var(--sp-2));
   max-height: 180px;
+  box-sizing: border-box;
   overflow-y: auto;
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
   border-radius: var(--radius);
