@@ -13,7 +13,8 @@
     editorPlaceholders: window.__INITIAL_STATE__?.editorPlaceholders,
     messageContent: '',
     typingUsers: [], // { userId, userName }
-    showSubject: true // false for conversational scopes (chat) and replies
+    showSubject: true, // false for conversational scopes (chat) and replies
+    tutorRoutingNotice: null // set where unaddressed messages go to Lena
   }, render);
 
   const root = () => document.getElementById('app');
@@ -87,8 +88,11 @@
   // Only advertise the tutor handles once the server has shown that it
   // resolves them; older servers keep plain `@lena` as ordinary text.
   function editorPlaceholder() {
+    if (state.tutorRoutingNotice && state.editorPlaceholders?.routed) {
+      return state.editorPlaceholders.routed;
+    }
     return mention.tutorAliases
-      ? state.editorPlaceholders?.tutor || 'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
+      ? state.editorPlaceholders?.tutor || 'Write your message… (Ctrl/Cmd+Enter to send; @lena for Lena, the AI tutor; @ for people)'
       : state.editorPlaceholders?.plain || 'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)';
   }
 
@@ -527,6 +531,17 @@
     }
 
     const form = createElement('div', { className: 'input-form' });
+
+    // Before sending, not after: the learner decides whether an AI gets it.
+    if (state.tutorRoutingNotice) {
+      const notice = createElement('div', {
+        className: 'tutor-routing-notice',
+        attributes: { role: 'note' }
+      });
+      notice.appendChild(createElement('span', { textContent: '🤖', attributes: { 'aria-hidden': 'true' } }));
+      notice.appendChild(createElement('span', { textContent: state.tutorRoutingNotice }));
+      form.appendChild(notice);
+    }
 
     // Subject row — only on announcement scopes, and only for the subject.
     // It used to exist on every scope purely to host the Send button, which

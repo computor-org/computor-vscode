@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { resolveTutorAgent } from '../../services/TutorAgentInfo';
+import { say } from '../../utils/uiLanguage';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { canReplyInScope, deriveScopeFromCreatePayload, kindForScope } from '../../services/MessagePermissions';
@@ -21,6 +23,8 @@ export interface MessageTargetContext {
   query: Record<string, string>;
   createPayload: Record<string, unknown>;
   sourceRole?: 'student' | 'tutor' | 'lecturer';
+  /** Course the target belongs to, for course settings such as routing to Lena. */
+  courseId?: string;
   /** WebSocket channel for real-time updates (e.g., "submission_group:uuid") */
   wsChannel?: string;
   /** When true, the input panel hides compose UI and shows a read-only notice. */
@@ -192,6 +196,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     const messages = this.enrichMessages(normalizedMessages, identity);
     const payload: MessagesWebviewData = { target, messages, identity };
     await this.show(`Messages: ${target.title}`, payload);
+    void this.postTutorAgent(target);
 
     // Subscribe to WebSocket channel for real-time updates
     this.subscribeToChannel(target);
@@ -213,6 +218,27 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       this.inputPanel.setWebSocketChannel(target.wsChannel);
       await this.inputPanel.reveal();
     }
+  }
+
+  // Lena's messages carry an AI label, so nobody mistakes them for a person's.
+  private async postTutorAgent(target: MessageTargetContext): Promise<void> {
+    const info = await resolveTutorAgent(this.apiService, target).catch(() => undefined);
+    if (!info?.id || !this.panel || this.getCurrentTarget() !== target) {
+      return;
+    }
+    this.panel.webview.postMessage({
+      command: 'updateState',
+      data: {
+        tutorAgent: {
+          id: info.id,
+          label: say('AI', 'KI'),
+          tooltip: say(
+            'Written by Lena, an AI tutor. Its answers can be wrong.',
+            'Geschrieben von Lena, einer KI-Tutorin. Ihre Antworten können falsch sein.'
+          )
+        }
+      }
+    });
   }
 
   /**

@@ -2107,7 +2107,8 @@ export class StudentCommands {
         query: { scope: 'course_member', course_member_id: member.id },
         createPayload: { course_member_id: member.id },
         wsChannel: `course_member:${member.id}`,
-        sourceRole: 'student'
+        sourceRole: 'student',
+        courseId
       });
     } catch {
       notify.error(say('Could not open course questions. Try again after refreshing the course view.',
@@ -2407,6 +2408,7 @@ export class StudentCommands {
           query,
           createPayload,
           sourceRole: 'student',
+          courseId,
           wsChannel,
           readOnly,
           readOnlyReason: readOnly ? COURSE_ANNOUNCEMENT_DENIED_REASON : undefined

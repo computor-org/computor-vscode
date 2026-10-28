@@ -329,9 +329,21 @@
       createElement('span', { textContent: getAuthorDisplay(message) })
     ];
 
+    const tutorAgent = state.tutorAgent;
+    const byTutorAgent = Boolean(tutorAgent && tutorAgent.id &&
+      String(message.author_id || '').toLowerCase() === String(tutorAgent.id).toLowerCase());
+    if (byTutorAgent) {
+      // Lena is a course tutor by membership; the AI label replaces that role.
+      metaLeftChildren.push(createElement('span', {
+        className: 'badge xs author-role-badge role-ai',
+        textContent: tutorAgent.label || 'AI',
+        attributes: { title: tutorAgent.tooltip || null }
+      }));
+    }
+
     // Add author role badge if available (from author_course_member)
     const authorRole = message.author_course_member?.course_role_id;
-    const roleLabel = getAuthorRoleLabel(authorRole);
+    const roleLabel = byTutorAgent ? null : getAuthorRoleLabel(authorRole);
     if (roleLabel) {
       const roleClass = authorRole ? authorRole.replace('_', '') : '';
       const roleBadge = createElement('span', {
