@@ -3,6 +3,20 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.7
+
+- In courses where Lena, the AI tutor, answers messages without an @mention, the message box
+  says so before you send, and Lena's messages carry an AI label. The placeholder names only
+  `@lena`; `@luna` and `@ai` keep working.
+- The @-mention list opens as an overlay at the caret instead of being cut off below the editor.
+- A course opens at the first exercise you have not handed in, with one localized Welcome page
+  shared by desktop VS Code and the browser workspace.
+- Test and Submit from the Command Palette act on the selected assignment and confirm first.
+- Assignment actions and workspace guidance are localized; the status bar shows workspace
+  sign-in progress instead of a notification.
+- Lecturers can import course members from Excel files again.
+- Shipped dependencies with known vulnerabilities are updated.
+
 ## 2027.3.6
 
 - Report a Problem sends your report to the Computor support team as a ticket on servers that
