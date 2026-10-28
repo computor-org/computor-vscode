@@ -8,11 +8,13 @@ import { setUiCourseLanguage, setUiProfileLanguage } from '../../src/utils/uiLan
 
 const english = {
   plain: 'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)',
-  tutor: 'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)'
+  tutor: 'Write your message… (Ctrl/Cmd+Enter to send; @lena for Lena, the AI tutor; @ for people)',
+  routed: 'Your message goes to Lena, an AI… (Ctrl/Cmd+Enter to send; @Name for a person)'
 };
 const german = {
   plain: 'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden, Markdown, @ zum Erwähnen)',
-  tutor: 'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden; @lena, @luna oder @ai für Lena; @ für Personen)'
+  tutor: 'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden; @lena für Lena, die KI-Tutorin; @ für Personen)',
+  routed: 'Deine Nachricht geht an Lena, eine KI… (Strg/Cmd+Enter zum Senden; @Name für eine Person)'
 };
 
 describe('message composer locale', () => {

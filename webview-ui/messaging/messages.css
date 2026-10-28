@@ -317,6 +317,11 @@ body {
   color: var(--vscode-editor-background);
 }
 
+.author-role-badge.role-ai {
+  background-color: var(--vscode-charts-green);
+  color: var(--vscode-editor-background);
+}
+
 /* Typing indicator specifics on top of chat-shared.css */
 .typing-indicator {
   padding: var(--sp-2) var(--sp-3);

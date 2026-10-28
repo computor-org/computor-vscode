@@ -53,6 +53,19 @@ body {
   line-height: 1.4;
 }
 
+.tutor-routing-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--vscode-notificationsInfoIcon-foreground);
+  border-radius: var(--radius);
+  background: var(--vscode-editorWidget-background);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
 .read-only-icon {
   font-size: 14px;
   opacity: 0.8;

@@ -8,6 +8,7 @@ import { notify } from '../../utils/notify';
 import { say } from '../../utils/uiLanguage';
 import { deriveScopeFromCreatePayload, scopeHasSubject } from '../../services/MessagePermissions';
 import { MESSAGE_TARGET_FIELDS } from '../../types/generated/constants';
+import { resolveTutorAgent, TutorAgentInfo } from '../../services/TutorAgentInfo';
 
 interface TypingUser {
   userId: string;
@@ -23,6 +24,7 @@ interface InputPanelState {
   wsChannel?: string;
   typingUsers: TypingUser[];
   mentionableUsers?: MessageMentionRef[];
+  tutorAgent?: TutorAgentInfo;
 }
 
 export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
@@ -101,9 +103,21 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     this.state.messages = messages;
     this.state.replyTo = undefined;
     this.state.editingMessage = undefined;
+    this.state.tutorAgent = undefined;
     this.postState();
     // Pre-fetch the audience so the @-mention dropdown is ready on first keystroke.
     void this.fetchAndPostMentionable();
+    void this.resolveTutorRouting(target);
+  }
+
+  private async resolveTutorRouting(target: MessageTargetContext): Promise<void> {
+    const info = await resolveTutorAgent(this.api, target).catch(() => undefined);
+    // A later setTarget owns the panel by now.
+    if (!info || this.state.target !== target) {
+      return;
+    }
+    this.state.tutorAgent = info;
+    this.postState();
   }
 
   // Scope for the @-mention audience query: replies inherit the parent's scope;
@@ -336,17 +350,32 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     return scopeHasSubject(deriveScopeFromCreatePayload(payload));
   }
 
-  private editorPlaceholders(): { plain: string; tutor: string } {
+  private editorPlaceholders(): { plain: string; tutor: string; routed: string } {
     return {
       plain: say(
         'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)',
         'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden, Markdown, @ zum Erwähnen)'
       ),
       tutor: say(
-        'Write your message… (Ctrl/Cmd+Enter to send; @lena, @luna or @ai for Lena; @ for people)',
-        'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden; @lena, @luna oder @ai für Lena; @ für Personen)'
+        'Write your message… (Ctrl/Cmd+Enter to send; @lena for Lena, the AI tutor; @ for people)',
+        'Schreib deine Nachricht… (Strg/Cmd+Enter zum Senden; @lena für Lena, die KI-Tutorin; @ für Personen)'
+      ),
+      routed: say(
+        'Your message goes to Lena, an AI… (Ctrl/Cmd+Enter to send; @Name for a person)',
+        'Deine Nachricht geht an Lena, eine KI… (Strg/Cmd+Enter zum Senden; @Name für eine Person)'
       )
     };
+  }
+
+  // Shown above the editor wherever a message without @mention goes to Lena.
+  private tutorRoutingNotice(): string | undefined {
+    if (!this.state.tutorAgent?.routesUnaddressed) {
+      return undefined;
+    }
+    return say(
+      'In this course, messages without an @mention go to Lena, an AI tutor, which answers automatically. Its answers can be wrong. To reach your teachers, mention them with @Name.',
+      'In diesem Kurs gehen Nachrichten ohne @-Erwähnung an Lena, eine KI-Tutorin, die automatisch antwortet. Ihre Antworten können falsch sein. Deine Lehrenden erreichst du, indem du sie mit @Name erwähnst.'
+    );
   }
 
   private postState(): void {
@@ -362,7 +391,8 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
         loading: this.state.loading,
         typingUsers: this.state.typingUsers,
         showSubject: this.shouldShowSubject(),
-        editorPlaceholders: this.editorPlaceholders()
+        editorPlaceholders: this.editorPlaceholders(),
+        tutorRoutingNotice: this.tutorRoutingNotice() ?? null
       }
     });
   }

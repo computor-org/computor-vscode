@@ -81,7 +81,7 @@ describe('course questions from bundled course Help', () => {
       title: 'Course question', subtitle: 'Current course',
       query: { scope: 'course_member', course_member_id: 'own-member' },
       createPayload: { course_member_id: 'own-member' },
-      wsChannel: 'course_member:own-member', sourceRole: 'student'
+      wsChannel: 'course_member:own-member', sourceRole: 'student', courseId: 'current-course'
     }]);
   });
 
