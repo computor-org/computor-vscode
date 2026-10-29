@@ -6,7 +6,8 @@
     "sourceType": "module"
   },
   "plugins": [
-    "@typescript-eslint"
+    "@typescript-eslint",
+    "@stylistic/ts"
   ],
   "rules": {
     "@typescript-eslint/naming-convention": [
@@ -16,7 +17,7 @@
         "format": ["camelCase", "PascalCase"]
       }
     ],
-    "@typescript-eslint/semi": "warn",
+    "@stylistic/ts/semi": "warn",
     "curly": ["warn", "multi-line"],
     "eqeqeq": "warn",
     "no-throw-literal": "warn",
