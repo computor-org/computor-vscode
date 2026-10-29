@@ -12,7 +12,7 @@ import {
   UserUpdate
 } from '../../types/generated';
 import { notify } from '../../utils/notify';
-import { onDidChangeUiLanguage, say } from '../../utils/uiLanguage';
+import { onDidChangeUiLanguage, say, sayFailed } from '../../utils/uiLanguage';
 
 interface UserProfileViewState {
   user?: UserGet;
@@ -56,7 +56,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       const state = await this.loadState();
       await this.show(say('My Profile', 'Mein Profil'), state);
     } catch (error: any) {
-      notify.error(say(`Failed to open profile: ${error?.message || error}`, `Das Profil konnte nicht geöffnet werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to open profile`, `Das Profil konnte nicht geöffnet werden`, error?.message || error));
     }
   }
 

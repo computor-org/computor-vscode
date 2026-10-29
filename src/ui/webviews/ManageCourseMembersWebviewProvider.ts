@@ -4,6 +4,7 @@ import { CourseMemberList, CourseGroupList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 // Course role hierarchy mirrored from the backend (permissions/roles.py +
 // principal.py). Used for UI gating only — the backend still enforces the
@@ -311,8 +312,8 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
     if (!this.courseId) return;
     const picked = await vscode.window.showOpenDialog({
       canSelectMany: false,
-      openLabel: 'Select member file',
-      filters: { 'Member lists': ['csv', 'tsv', 'txt', 'json', 'xlsx', 'xls', 'xml'] },
+      openLabel: say('Select member file', 'Mitgliederliste auswählen'),
+      filters: { [say('Member lists', 'Mitgliederlisten')]: ['csv', 'tsv', 'txt', 'json', 'xlsx', 'xls', 'xml'] },
     });
     const uri = picked && picked[0];
     if (!uri) return;

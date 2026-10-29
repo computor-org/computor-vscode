@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { formatUiDateTime, say } from '../../../utils/uiLanguage';
 import type {
   DocumentEntry,
   DocumentScope,
@@ -23,7 +24,7 @@ export type DocumentsTreeItem =
 // ----- Status / utility rows -----
 
 export class DocumentsLoadingItem extends vscode.TreeItem {
-  constructor(message: string = 'Loading…') {
+  constructor(message: string = say('Loading…', 'Wird geladen …')) {
     super(message, vscode.TreeItemCollapsibleState.None);
     this.iconPath = new vscode.ThemeIcon('loading~spin');
     this.contextValue = 'documents.loading';
@@ -65,7 +66,7 @@ export class DocumentsOrgItem extends vscode.TreeItem {
     this.scope = { scope: 'organization', scopeId: organization.id };
     this.id = `documents-org-${organization.id}`;
     this.iconPath = new vscode.ThemeIcon('organization');
-    this.tooltip = `Organization · ${organization.path}`;
+    this.tooltip = `${say('Organization', 'Organisation')} · ${organization.path}`;
     this.contextValue = 'documents.scope.organization';
   }
 }
@@ -81,7 +82,7 @@ export class DocumentsCourseFamilyItem extends vscode.TreeItem {
     this.scope = { scope: 'course_family', scopeId: courseFamily.id };
     this.id = `documents-family-${courseFamily.id}`;
     this.iconPath = new vscode.ThemeIcon('folder-library');
-    this.tooltip = `Course family · ${courseFamily.path}`;
+    this.tooltip = `${say('Course family', 'Kursfamilie')} · ${courseFamily.path}`;
     this.contextValue = 'documents.scope.course_family';
   }
 }
@@ -98,7 +99,7 @@ export class DocumentsCourseItem extends vscode.TreeItem {
     this.scope = { scope: 'course', scopeId: course.id };
     this.id = `documents-course-${course.id}`;
     this.iconPath = new vscode.ThemeIcon('mortar-board');
-    this.tooltip = `Course · ${course.path}`;
+    this.tooltip = `${say('Course', 'Kurs')} · ${course.path}`;
     this.contextValue = 'documents.scope.course';
   }
 }
@@ -165,10 +166,10 @@ function stateContextSuffix(state: DocumentSyncState): string {
 function describeStateBadge(state: DocumentSyncState): string | undefined {
   switch (state) {
     case 'synced': return undefined;
-    case 'modified': return '● changed here';
-    case 'local-only': return '● not published';
-    case 'remote-only': return '· on server';
-    case 'remote-changed': return '⟳ newer on server';
+    case 'modified': return say('● changed here', '● hier geändert');
+    case 'local-only': return say('● not published', '● nicht veröffentlicht');
+    case 'remote-only': return say('· on server', '· auf dem Server');
+    case 'remote-changed': return say('⟳ newer on server', '⟳ neuer auf dem Server');
   }
 }
 
@@ -176,31 +177,32 @@ function describeTooltip(entry: DocumentEntry): string {
   const lines: string[] = [entry.relativePath];
   switch (entry.state) {
     case 'synced':
-      lines.push('Published, and this workspace has the same version.');
+      lines.push(say('Published, and this workspace has the same version.', 'Veröffentlicht; dieser Arbeitsbereich hat dieselbe Fassung.'));
       break;
     case 'modified':
-      lines.push('Changed in this workspace. Upload to publish your version.');
+      lines.push(say('Changed in this workspace. Upload to publish your version.', 'In diesem Arbeitsbereich geändert. Lade die Datei hoch, um deine Fassung zu veröffentlichen.'));
       break;
     case 'local-only':
-      lines.push('Only in this workspace. Upload to publish it.');
+      lines.push(say('Only in this workspace. Upload to publish it.', 'Nur in diesem Arbeitsbereich. Lade die Datei hoch, um sie zu veröffentlichen.'));
       break;
     case 'remote-only':
-      lines.push('Published on the server; this workspace has no copy yet. Click to fetch one.');
+      lines.push(say('Published on the server; this workspace has no copy yet. Click to fetch one.', 'Auf dem Server veröffentlicht; dieser Arbeitsbereich hat noch keine Kopie. Klicke, um eine zu holen.'));
       break;
     case 'remote-changed':
-      lines.push('The published version moved past your copy. Fetch it again to catch up.');
+      lines.push(say('The published version moved past your copy. Fetch it again to catch up.', 'Die veröffentlichte Fassung ist neuer als deine Kopie. Hol sie noch einmal, um aufzuholen.'));
       break;
   }
-  lines.push('Published documents are served under /docs — use "Copy Public URL" for the address.');
+  lines.push(say('Published documents are served under /docs — use "Copy Public URL" for the address.',
+    'Veröffentlichte Dokumente liegen unter /docs; die Adresse bekommst du mit „Öffentliche URL kopieren“.'));
   if (entry.remote?.lastModified) {
     try {
-      lines.push(`Last modified: ${new Date(entry.remote.lastModified).toLocaleString()}`);
+      lines.push(`${say('Last modified', 'Zuletzt geändert')}: ${formatUiDateTime(new Date(entry.remote.lastModified))}`);
     } catch {
-      lines.push(`Last modified: ${entry.remote.lastModified}`);
+      lines.push(`${say('Last modified', 'Zuletzt geändert')}: ${entry.remote.lastModified}`);
     }
   }
   if (entry.remote?.size != null) {
-    lines.push(`Size: ${entry.remote.size} bytes`);
+    lines.push(say(`Size: ${entry.remote.size} bytes`, `Größe: ${entry.remote.size} Byte`));
   }
   return lines.join('\n');
 }

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { TutorCourseMemberList } from '../../../types/generated/courses';
+import { say } from '../../../utils/uiLanguage';
 
 export const NO_GROUP_SENTINEL = '__no_group__';
 
@@ -29,7 +30,7 @@ export function buildMemberTooltip(member: TutorCourseMemberList): string {
     parts.push(`${user.given_name || ''} ${user.family_name || ''}`.trim());
   }
   if (user?.email) {
-    parts.push(`Email: ${user.email}`);
+    parts.push(`${say('Email', 'E-Mail')}: ${user.email}`);
   }
   return parts.join('\n');
 }
@@ -48,8 +49,8 @@ export class TutorOrganizationFilterItem extends vscode.TreeItem {
     this.id = `tutor-filter-org-${organizationId}`;
     this.contextValue = 'tutorFilterOrganization';
     this.iconPath = new vscode.ThemeIcon('organization');
-    this.tooltip = `Organization: ${label}`;
-    this.description = 'Organization';
+    this.tooltip = `${say('Organization', 'Organisation')}: ${label}`;
+    this.description = say('Organization', 'Organisation');
   }
 }
 
@@ -66,9 +67,9 @@ export class TutorCourseFamilyFilterItem extends vscode.TreeItem {
     this.contextValue = 'tutorFilterCourseFamily';
     this.iconPath = new vscode.ThemeIcon('folder-library');
     this.tooltip = organizationLabel
-      ? `Course Family: ${label}\nOrganization: ${organizationLabel}`
-      : `Course Family: ${label}`;
-    this.description = 'Course Family';
+      ? `${say('Course Family', 'Kursfamilie')}: ${label}\n${say('Organization', 'Organisation')}: ${organizationLabel}`
+      : `${say('Course Family', 'Kursfamilie')}: ${label}`;
+    this.description = say('Course Family', 'Kursfamilie');
   }
 }
 
@@ -84,16 +85,16 @@ export class TutorCourseFilterItem extends vscode.TreeItem {
     this.id = `tutor-filter-course-${course.id}`;
     this.contextValue = isSelected ? 'tutorFilterCourse.selected' : 'tutorFilterCourse';
     this.iconPath = new vscode.ThemeIcon(isSelected ? 'book' : 'book');
-    const tooltipLines: string[] = [`Course: ${label}`];
+    const tooltipLines: string[] = [`${say('Course', 'Kurs')}: ${label}`];
     if (parents?.courseFamilyLabel) {
-      tooltipLines.push(`Course Family: ${parents.courseFamilyLabel}`);
+      tooltipLines.push(`${say('Course Family', 'Kursfamilie')}: ${parents.courseFamilyLabel}`);
     }
     if (parents?.organizationLabel) {
-      tooltipLines.push(`Organization: ${parents.organizationLabel}`);
+      tooltipLines.push(`${say('Organization', 'Organisation')}: ${parents.organizationLabel}`);
     }
     this.tooltip = tooltipLines.join('\n');
     if (isSelected) {
-      this.description = '(selected)';
+      this.description = say('(selected)', '(ausgewählt)');
     }
     // Clicking a course selects it, the way clicking a group or a member does.
     // Selection used to happen only on *expand*, so a course left expanded
@@ -112,7 +113,7 @@ export class TutorGroupFilterItem extends vscode.TreeItem {
     public readonly courseId: string,
     currentGroupLabel: string
   ) {
-    super(`Course Groups: ${currentGroupLabel}`, vscode.TreeItemCollapsibleState.Collapsed);
+    super(`${say('Course Groups', 'Kursgruppen')}: ${currentGroupLabel}`, vscode.TreeItemCollapsibleState.Collapsed);
     this.id = `tutor-filter-groups-${courseId}`;
     this.contextValue = 'tutorGroupFilter';
     this.iconPath = new vscode.ThemeIcon('filter');

@@ -7,7 +7,7 @@ import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager'
 import { GitEnvironmentService } from '../../services/GitEnvironmentService';
 import { BackendConnectionService } from '../../services/BackendConnectionService';
 import { notify } from '../../utils/notify';
-import { say } from '../../utils/uiLanguage';
+import { say, sayFailed } from '../../utils/uiLanguage';
 
 const execFileAsync = promisify(execFile);
 
@@ -52,7 +52,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       // its field whether or not the view was already on screen.
       await this.show(say('Computor Settings', 'Computor-Einstellungen'), initialState);
     } catch (error: any) {
-      notify.error(say(`Failed to open settings: ${error?.message || error}`, `Die Einstellungen konnten nicht geöffnet werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to open settings`, `Die Einstellungen konnten nicht geöffnet werden`, error?.message || error));
     }
   }
 
@@ -148,7 +148,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       await this.settingsManager.setBaseUrl(data.backendUrl.trim());
       this.postNotice('success', say('Backend URL saved.', 'Die Server-Adresse wurde gespeichert.'), 'backendUrl');
     } catch (error: any) {
-      this.postNotice('error', say(`Failed to save backend URL: ${error?.message || error}`, `Die Server-Adresse konnte nicht gespeichert werden: ${error?.message || error}`), 'backendUrl');
+      this.postNotice('error', sayFailed(`Failed to save backend URL`, `Die Server-Adresse konnte nicht gespeichert werden`, error?.message || error), 'backendUrl');
     }
   }
 
@@ -158,7 +158,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       await this.setGitConfig('user.email', data.gitEmail.trim());
       this.postNotice('success', say('Git configuration saved.', 'Die Git-Einrichtung wurde gespeichert.'), 'gitConfig');
     } catch (error: any) {
-      this.postNotice('error', say(`Failed to save git config: ${error?.message || error}`, `Die Git-Einrichtung konnte nicht gespeichert werden: ${error?.message || error}`), 'gitConfig');
+      this.postNotice('error', sayFailed(`Failed to save git config`, `Die Git-Einrichtung konnte nicht gespeichert werden`, error?.message || error), 'gitConfig');
     }
   }
 
@@ -220,7 +220,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       });
       this.postNotice('success', say(`Provider token saved for ${data.url}.`, `Das Token für ${data.url} wurde gespeichert.`));
     } catch (error: any) {
-      this.postNotice('error', say(`Failed to save Provider token: ${error?.message || error}`, `Das Token konnte nicht gespeichert werden: ${error?.message || error}`));
+      this.postNotice('error', sayFailed(`Failed to save Provider token`, `Das Token konnte nicht gespeichert werden`, error?.message || error));
     }
   }
 
@@ -238,7 +238,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       });
       this.postNotice('success', say(`Provider token removed for ${data.url}.`, `Das Token für ${data.url} wurde entfernt.`));
     } catch (error: any) {
-      this.postNotice('error', say(`Failed to remove Provider token: ${error?.message || error}`, `Das Token konnte nicht entfernt werden: ${error?.message || error}`));
+      this.postNotice('error', sayFailed(`Failed to remove Provider token`, `Das Token konnte nicht entfernt werden`, error?.message || error));
     }
   }
 

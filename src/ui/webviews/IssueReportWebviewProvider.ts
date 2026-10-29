@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
-import { say } from '../../utils/uiLanguage';
+import { say, sayFailed } from '../../utils/uiLanguage';
 import type { IssueReportingMode } from '../IssueReportStatusBarService';
 
 /** Mirrors what the backend accepts; kept small so nothing implicit is sent. */
@@ -184,7 +184,7 @@ export function submitFailureMessage(error: unknown): string {
     return say('This Computor deployment does not accept problem reports.', 'Diese Computor-Installation nimmt keine Problemmeldungen an.');
   }
   const detail = error instanceof Error ? error.message : String(error);
-  return say(`Could not submit the problem report: ${detail}`, `Die Problemmeldung konnte nicht gesendet werden: ${detail}`);
+  return sayFailed(`Could not submit the problem report`, `Die Problemmeldung konnte nicht gesendet werden`, detail);
 }
 
 /**

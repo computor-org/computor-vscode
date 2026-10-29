@@ -4,6 +4,7 @@ import { UiStateService } from '../../services/UiStateService';
 import { CourseMemberCommentList } from '../../types/generated';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
+import { say, sayFailed, uiLanguage } from '../../utils/uiLanguage';
 
 interface InputPanelState {
   courseMemberId?: string;
@@ -108,6 +109,11 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
     }
   }
 
+  /** Relabels the composer in place, keeping a half-written comment. */
+  public refreshLanguage(): void {
+    void this.view?.webview.postMessage({ command: 'setLanguage', data: { language: uiLanguage() } });
+  }
+
   private postState(): void {
     if (!this.view) {
       return;
@@ -133,11 +139,11 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
 
   private async handleCreateComment(data: { message: string }): Promise<void> {
     if (!this.state.courseMemberId) {
-      notify.warning('Select a course member to comment on first.');
+      notify.warning(say('Select a course member to comment on first.', 'Wähle zuerst ein Kursmitglied aus, das du kommentieren möchtest.'));
       return;
     }
     if (!data?.message?.trim()) {
-      notify.warning('Comment text is required.');
+      notify.warning(say('Comment text is required.', 'Bitte gib einen Kommentar ein.'));
       return;
     }
     try {
@@ -148,7 +154,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
         await this.onCommentChangedCallback();
       }
     } catch (error: any) {
-      notify.error(`Failed to create comment: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to create comment', 'Der Kommentar konnte nicht gespeichert werden', error?.message || error));
     } finally {
       this.postLoading(false);
     }
@@ -159,7 +165,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
       return;
     }
     if (!data?.message?.trim()) {
-      notify.warning('Comment text is required.');
+      notify.warning(say('Comment text is required.', 'Bitte gib einen Kommentar ein.'));
       return;
     }
     try {
@@ -170,7 +176,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
         await this.onCommentChangedCallback();
       }
     } catch (error: any) {
-      notify.error(`Failed to update comment: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to update comment', 'Der Kommentar konnte nicht geändert werden', error?.message || error));
     } finally {
       this.postLoading(false);
     }
@@ -182,7 +188,7 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
     }
 
     this.view.webview.html = renderWebviewPage(this.view.webview, this.extensionUri, {
-      title: 'Comment',
+      title: say('Comment', 'Kommentar'),
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['messaging/comments-input.css'],
       scriptFiles: ['messaging/comments-input.js']

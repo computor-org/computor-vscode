@@ -28,7 +28,7 @@ import { listStudentRepositories } from '../services/ForgejoCredentialFanout';
 import { execAsyncWithTimeout } from '../utils/exec';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
-import { say, uiLanguage } from '../utils/uiLanguage';
+import { say, sayFailed, uiLanguage } from '../utils/uiLanguage';
 import { localizedTitle } from '../utils/contentLanguage';
 import { notify } from '../utils/notify';
 import { getTreeHandle } from '../ui/treeRegistry';
@@ -693,7 +693,7 @@ export class StudentCommands {
         // credential-embedded clone URL — keep the token out of logs and the toast.
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Repository setup failed:', message);
-        notify.error(say(`Repository setup failed: ${message}`, `Das Repository konnte nicht eingerichtet werden: ${message}`));
+        notify.error(sayFailed(`Repository setup failed`, `Das Repository konnte nicht eingerichtet werden`, message));
       }
     });
   }
@@ -758,7 +758,7 @@ export class StudentCommands {
     } catch (error: any) {
       const message = redactGitCredentials(error?.message || String(error));
       console.error('[StudentCommands] Failed to commit course:', message);
-      notify.error(say(`Failed to commit course: ${message}`, `Der Kurs konnte nicht gesichert werden: ${message}`));
+      notify.error(sayFailed(`Failed to commit course`, `Der Kurs konnte nicht gesichert werden`, message));
     }
   }
 
@@ -845,7 +845,7 @@ export class StudentCommands {
       } catch (error: any) {
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Template update failed:', message);
-        notify.error(say(`Template update failed: ${message}`, 'Das Repository konnte nicht aus der Kursvorlage aktualisiert werden. Versuche es bitte erneut.'));
+        notify.error(sayFailed('Template update failed', 'Das Repository konnte nicht aus der Kursvorlage aktualisiert werden. Versuche es bitte erneut', message));
       }
     });
   }
@@ -924,7 +924,7 @@ export class StudentCommands {
         try {
           buffer = await this.apiService.downloadTemplateArchive(cid);
         } catch (err: any) {
-          notify.error(say(`Could not download the template: ${err?.message || String(err)}`, `Die Kursvorlage konnte nicht heruntergeladen werden: ${err?.message || String(err)}`));
+          notify.error(sayFailed(`Could not download the template`, `Die Kursvorlage konnte nicht heruntergeladen werden`, err?.message || String(err)));
           return;
         }
 
@@ -1114,7 +1114,7 @@ export class StudentCommands {
         await this.openRemoteDescription(pick.a.content, false, options);
       } catch (error: any) {
         console.error('Failed to show README preview:', error);
-        notify.error(say(`Failed to show README preview: ${error.message || error}`, `Die Anleitung konnte nicht angezeigt werden: ${error.message || error}`));
+        notify.error(sayFailed(`Failed to show README preview`, `Die Anleitung konnte nicht angezeigt werden`, error.message || error));
       }
     });
 
@@ -1163,7 +1163,7 @@ export class StudentCommands {
         await showMarkdownPreview(this.context, path.join(directory, chosen.file), options);
       } catch (error: any) {
         console.error('Failed to preview description language:', error);
-        notify.error(say(`Failed to open the description: ${error?.message || error}`, `Die Anleitung konnte nicht geöffnet werden: ${error?.message || error}`));
+        notify.error(sayFailed(`Failed to open the description`, `Die Anleitung konnte nicht geöffnet werden`, error?.message || error));
       }
     });
 
@@ -1198,7 +1198,7 @@ export class StudentCommands {
       
       try {
         if (!this.repositoryManager) {
-          notify.error('Repository manager not available');
+          notify.error(say('Repository manager not available', 'Die Repository-Verwaltung ist nicht verfügbar.'));
           return;
         }
         await vscode.window.withProgress({
@@ -1212,7 +1212,7 @@ export class StudentCommands {
         this.treeDataProvider.refresh();
         notify.info(say('Repository cloned/updated. Expand the assignment to see files.', 'Das Repository ist geklont und aktuell. Klappe die Aufgabe auf, um ihre Dateien zu sehen.'));
       } catch (error: any) {
-        notify.error(say(`Failed to clone repository: ${error?.message || error}`, `Das Repository konnte nicht geklont werden: ${error?.message || error}`));
+        notify.error(sayFailed(`Failed to clone repository`, `Das Repository konnte nicht geklont werden`, error?.message || error));
       }
     });
 
@@ -1236,7 +1236,7 @@ export class StudentCommands {
 
       try {
         if (!this.repositoryManager) {
-          notify.error('Repository manager not available');
+          notify.error(say('Repository manager not available', 'Die Repository-Verwaltung ist nicht verfügbar.'));
           return;
         }
         await vscode.window.withProgress({
@@ -1249,7 +1249,7 @@ export class StudentCommands {
         this.treeDataProvider.refresh();
         notify.info(say('Repository cloned/updated for the submission group.', 'Das Repository der Abgabegruppe ist geklont und aktuell.'));
       } catch (error: any) {
-        notify.error(say(`Failed to clone repository: ${error?.message || error}`, `Das Repository konnte nicht geklont werden: ${error?.message || error}`));
+        notify.error(sayFailed(`Failed to clone repository`, `Das Repository konnte nicht geklont werden`, error?.message || error));
       }
     });
 
@@ -1841,7 +1841,7 @@ export class StudentCommands {
         await this.treeDataProvider.refreshContentItem(item.courseContent.id);
       } catch (error: any) {
         console.error('Failed to commit assignment:', error);
-        notify.error(say(`Failed to commit assignment: ${error.message}`, 'Die Änderungen konnten nicht gespeichert und hochgeladen werden. Versuche es bitte erneut.'));
+        notify.error(sayFailed('Failed to commit assignment', 'Die Änderungen konnten nicht gespeichert und hochgeladen werden. Versuche es bitte erneut', error.message));
       }
     });
 
@@ -1954,7 +1954,7 @@ export class StudentCommands {
             } catch (pushError) {
               console.error('[TestAssignment] Git push failed:', pushError);
               const reason = pushError instanceof Error ? pushError.message : String(pushError);
-              throw new Error(say(`Failed to push changes to remote: ${reason}`, `Deine Änderungen konnten nicht hochgeladen werden: ${reason}`));
+              throw new Error(sayFailed(`Failed to push changes to remote`, `Deine Änderungen konnten nicht hochgeladen werden`, reason));
             }
 
             progress.report({ message: say('Getting commit hash...', 'Version wird ermittelt …') });
@@ -2058,7 +2058,7 @@ export class StudentCommands {
             return;
           }
           notify.error(
-            error instanceof Error ? error : new Error(say(`Could not run the test: ${String(error)}`, `Der Test konnte nicht gestartet werden: ${String(error)}`))
+            error instanceof Error ? error : new Error(sayFailed(`Could not run the test`, `Der Test konnte nicht gestartet werden`, String(error)))
           );
         }
       }
@@ -2441,7 +2441,7 @@ export class StudentCommands {
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      notify.error(say(`Failed to open messages: ${error?.message || error}`, `Die Nachrichten konnten nicht geöffnet werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to open messages`, `Die Nachrichten konnten nicht geöffnet werden`, error?.message || error));
     }
   }
 
@@ -2502,7 +2502,7 @@ export class StudentCommands {
           }
         } catch (e: any) {
           console.error('[StudentCommands] Submit without git failed:', e);
-          notify.error(say(`Submit failed: ${e?.message || String(e)}`, 'Deine Lösung konnte nicht abgegeben werden. Versuche es bitte erneut.'));
+          notify.error(sayFailed('Submit failed', 'Deine Lösung konnte nicht abgegeben werden. Versuche es bitte erneut', e?.message || String(e)));
         }
       }
     );
@@ -2754,7 +2754,7 @@ export class StudentCommands {
       await this.contentDetailsWebviewProvider.showDetails(viewState);
     } catch (error: any) {
       console.error('Failed to show course content details:', error);
-      notify.error(say(`Failed to open details: ${error?.message || error}`, `Die Details konnten nicht geöffnet werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to open details`, `Die Details konnten nicht geöffnet werden`, error?.message || error));
     }
   }
   

@@ -39,7 +39,7 @@ import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
-import { formatUiDateTime, onDidChangeUiLanguage, say, setUiAccount } from './utils/uiLanguage';
+import { formatUiDateTime, onDidChangeUiLanguage, say, sayFailed, setUiAccount } from './utils/uiLanguage';
 import { UiLanguageSync } from './services/UiLanguageSync';
 import { revealUri } from './utils/reveal';
 import {
@@ -761,6 +761,7 @@ class UnifiedController {
       IssueReportStatusBarService.refreshLanguage();
       void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
       this.messagesInputPanel?.refreshLanguage();
+      this.commentsInputPanel?.refreshLanguage();
       this.artifactsPanel?.refreshLanguage();
     }));
 
@@ -1397,6 +1398,7 @@ class UnifiedController {
     const tutorSettingsManager = new ComputorSettingsManager(this.context);
     const filterTree = new TutorFilterTreeProvider(api, selection, tutorSettingsManager);
     if (this.wsService) filterTree.setWebSocketService(this.wsService);
+    this.disposables.push(onDidChangeUiLanguage(() => filterTree.refresh()));
 
     // One way in for "the tutor is now looking at this course", shared by the
     // course node's click, its expand, and picking a member of another course.
@@ -1444,7 +1446,7 @@ class UnifiedController {
       // is thrown away.
       await selectTutorCourse(item.courseId);
       if (item.isNoGroup) {
-        await selection.selectGroup(NO_GROUP_SENTINEL, 'No Group');
+        await selection.selectGroup(NO_GROUP_SENTINEL, say('No Group', 'Ohne Gruppe'));
       } else {
         await selection.selectGroup(item.groupId, item.groupLabel);
       }
@@ -1567,6 +1569,7 @@ class UnifiedController {
     }, this.disposables);
 
     const exampleTree = new LecturerExampleTreeProvider(this.context, api);
+    this.disposables.push(onDidChangeUiLanguage(() => exampleTree.refresh()));
     const exampleTreeView = registerTreeView('computor.lecturer.examples', {
       provider: exampleTree,
       options: {
@@ -1644,6 +1647,7 @@ class UnifiedController {
     const { DocumentsTreeProvider } = await import('./ui/tree/lecturer-documents/DocumentsTreeProvider');
     const { DocumentsCommands } = await import('./commands/DocumentsCommands');
     const documentsTree = new DocumentsTreeProvider(api);
+    this.disposables.push(onDidChangeUiLanguage(() => documentsTree.refresh()));
     registerTreeView('computor.lecturer.documents', {
       provider: documentsTree,
       options: {
@@ -1705,6 +1709,7 @@ class UnifiedController {
     }
 
     const tree = new ChatInboxTreeProvider(this.context, api, messagesWebview);
+    this.disposables.push(onDidChangeUiLanguage(() => tree.redraw()));
     if (this.wsService) {
       tree.setWebSocketService(this.wsService);
     }
@@ -2133,7 +2138,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
         await persistSession(context, sessionAuthFromClient(existing));
         notify.info(say(`Re-authenticated: ${baseUrl}`, `Erneut angemeldet: ${baseUrl}`));
       } catch (error: any) {
-        notify.error(say(`Re-authentication failed: ${error?.message || error}`, `Die erneute Anmeldung ist fehlgeschlagen: ${error?.message || error}`));
+        notify.error(sayFailed(`Re-authentication failed`, `Die erneute Anmeldung ist fehlgeschlagen`, error?.message || error));
       }
       return;
     }
@@ -2150,7 +2155,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       sso = await runSsoWithProgress(baseUrl);
     } catch (error: any) {
       // Cancelled, timed out, or the browser handshake failed.
-      notify.warning(say(`Sign-in not completed: ${error?.message || error}`, `Die Anmeldung wurde nicht abgeschlossen: ${error?.message || error}`));
+      notify.warning(sayFailed(`Sign-in not completed`, `Die Anmeldung wurde nicht abgeschlossen`, error?.message || error));
       return;
     }
 
@@ -2167,7 +2172,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     } catch (error: any) {
       console.error('Login failed:', error);
       backendConnectionService.stopHealthCheck();
-      notify.error(say(`Login failed: ${error?.message || error}`, `Die Anmeldung ist fehlgeschlagen: ${error?.message || error}`));
+      notify.error(sayFailed(`Login failed`, `Die Anmeldung ist fehlgeschlagen`, error?.message || error));
       return;
     }
 

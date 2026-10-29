@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import { INVISIBLE_BADGE, hiddenBadge, isHidden, isHiddenHere } from '../visibility';
+import { say, uiLocale } from '../../../utils/uiLanguage';
 import {
   OrganizationList,
   CourseFamilyList,
@@ -36,13 +37,26 @@ const RELEASE_STATE_ICONS: Record<ReleaseState, string> = {
   'never-deployed': '⏳'
 };
 
-const RELEASE_STATE_LABELS: Record<ReleaseState, string> = {
-  'deployed': 'deployed',
-  'deploying': 'deploying',
-  'failed': 'failed',
-  'update-not-deployed': 'update not deployed',
-  'never-deployed': 'not deployed yet'
+const RELEASE_STATE_LABELS: Record<ReleaseState, [string, string]> = {
+  'deployed': ['deployed', 'freigegeben'],
+  'deploying': ['deploying', 'wird freigegeben'],
+  'failed': ['failed', 'fehlgeschlagen'],
+  'update-not-deployed': ['update not deployed', 'Änderung nicht freigegeben'],
+  'never-deployed': ['not deployed yet', 'noch nicht freigegeben']
 };
+
+function releaseStateLabel(state: ReleaseState): string {
+  return say(...RELEASE_STATE_LABELS[state]);
+}
+
+function unlimited(value: number | null | undefined): string {
+  return value === null || value === undefined ? say('unlimited', 'unbegrenzt') : String(value);
+}
+
+function memberCountLabel(count: number): string {
+  if (count === 0) return say('No members', 'Keine Mitglieder');
+  return count === 1 ? say('1 member', '1 Mitglied') : say(`${count} members`, `${count} Mitglieder`);
+}
 
 export interface CourseContentAssignmentInfo {
   directoryName?: string;
@@ -68,8 +82,8 @@ export class OrganizationTreeItem extends vscode.TreeItem {
     this.id = `org-${organization.id}`;
     this.contextValue = 'organization';
     this.iconPath = new vscode.ThemeIcon('organization');
-    this.tooltip = `Organization: ${orgTitle}`;
-    this.description = 'Organization';
+    this.tooltip = `${say('Organization', 'Organisation')}: ${orgTitle}`;
+    this.description = say('Organization', 'Organisation');
   }
 }
 
@@ -85,17 +99,17 @@ export class CourseFamilyTreeItem extends vscode.TreeItem {
     this.id = `family-${courseFamily.id}`;
     this.contextValue = 'courseFamily';
     this.iconPath = new vscode.ThemeIcon('folder-library');
-    this.tooltip = `Course Family: ${familyTitle}\nOrganization: ${orgTitle}`;
-    this.description = 'Course Family';
+    this.tooltip = `${say('Course Family', 'Kursfamilie')}: ${familyTitle}\n${say('Organization', 'Organisation')}: ${orgTitle}`;
+    this.description = say('Course Family', 'Kursfamilie');
   }
 }
 
 function formatArchivedDate(value: string | null | undefined): string {
   if (!value) {
-    return 'yes';
+    return say('yes', 'ja');
   }
   const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
+  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(uiLocale());
 }
 
 export class CourseTreeItem extends vscode.TreeItem {
@@ -122,21 +136,25 @@ export class CourseTreeItem extends vscode.TreeItem {
     // The course-wide budget defaults, shown only once set: they are the
     // bottom tier, so an assignment naming its own limit overrides them and a
     // tutor's per-student grant overrides both.
-    const tooltipParts = [`Course: ${courseTitle}`, `Course Family: ${familyTitle}`, `Organization: ${orgTitle}`];
+    const tooltipParts = [
+      `${say('Course', 'Kurs')}: ${courseTitle}`,
+      `${say('Course Family', 'Kursfamilie')}: ${familyTitle}`,
+      `${say('Organization', 'Organisation')}: ${orgTitle}`
+    ];
     if (archived) {
-      tooltipParts.push(`Archived: ${formatArchivedDate(course.archived_at)}`);
+      tooltipParts.push(`${say('Archived', 'Archiviert')}: ${formatArchivedDate(course.archived_at)}`);
     }
     const maxTestRuns = (course as any).max_test_runs;
     const maxSubmissions = (course as any).max_submissions;
     if (maxTestRuns != null || maxSubmissions != null) {
-      tooltipParts.push(`Default test runs: ${maxTestRuns ?? 'unlimited'}`);
-      tooltipParts.push(`Default submissions: ${maxSubmissions ?? 'unlimited'}`);
+      tooltipParts.push(`${say('Default test runs', 'Standardzahl der Testläufe')}: ${unlimited(maxTestRuns)}`);
+      tooltipParts.push(`${say('Default submissions', 'Standardzahl der Abgaben')}: ${unlimited(maxSubmissions)}`);
     }
 
     this.tooltip = tooltipWithDescription(tooltipParts, (course as any).description);
 
     // Set description to indicate this is a Course
-    this.description = archived ? 'Course · Archived' : 'Course';
+    this.description = archived ? say('Course · Archived', 'Kurs · archiviert') : say('Course', 'Kurs');
     withDescription(this, courseTitle, (course as any).description);
   }
 }
@@ -321,39 +339,39 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       const versionId = getExampleVersionId(this.courseContent);
       if (versionId) {
         if (this.exampleVersionInfo) {
-          parts.push(`Version tag: ${this.exampleVersionInfo.version_tag || 'unknown'}`);
+          parts.push(`${say('Version tag', 'Versions-Tag')}: ${this.exampleVersionInfo.version_tag || say('unknown', 'unbekannt')}`);
         } else {
-          parts.push('Version tag: loading...');
+          parts.push(`${say('Version tag', 'Versions-Tag')}: ${say('loading…', 'wird geladen …')}`);
         }
       } else {
-        parts.push('Version tag: <not set>');
+        parts.push(`${say('Version tag', 'Versions-Tag')}: ${say('<not set>', '<nicht gesetzt>')}`);
       }
     }
 
     if (this.assignmentInfo?.directoryName) {
-      parts.push(`Directory: ${this.assignmentInfo.directoryName}`);
+      parts.push(`${say('Directory', 'Ordner')}: ${this.assignmentInfo.directoryName}`);
     } else if (this.assignmentDirectory) {
-      parts.push(`Directory: ${this.assignmentDirectory}`);
+      parts.push(`${say('Directory', 'Ordner')}: ${this.assignmentDirectory}`);
     }
 
     if (this.assignmentInfo?.versionIdentifier) {
-      parts.push(`Deployment commit: ${this.assignmentInfo.versionIdentifier}`);
+      parts.push(`${say('Deployment commit', 'Freigegebener Commit')}: ${this.assignmentInfo.versionIdentifier}`);
     }
 
     if (this.assignmentInfo?.versionTag) {
-      parts.push(`Version tag: ${this.assignmentInfo.versionTag}`);
+      parts.push(`${say('Version tag', 'Versions-Tag')}: ${this.assignmentInfo.versionTag}`);
     }
 
     const releaseState = this.getReleaseState();
     if (releaseState) {
-      parts.push(`Status: ${RELEASE_STATE_LABELS[releaseState]}`);
+      parts.push(`Status: ${releaseStateLabel(releaseState)}`);
       // Naming the command matters: the state is cleared by a button the
       // lecturer has to find, not by waiting for something to finish.
       if (releaseState === 'update-not-deployed' || releaseState === 'never-deployed') {
-        parts.push('Run "Release Content" to deploy it to students');
+        parts.push(say('Run "Release Content" to deploy it to students', 'Wähle „Inhalt freigeben“, damit die Studierenden ihn bekommen'));
       }
     } else if (hasExampleAssigned(this.courseContent)) {
-      parts.push('Status: not deployed yet');
+      parts.push(`Status: ${releaseStateLabel('never-deployed')}`);
     }
 
     // Budgets a student works against. Spelled out here because the
@@ -361,8 +379,8 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     const maxTestRuns = (this.courseContent as any).max_test_runs;
     const maxSubmissions = (this.courseContent as any).max_submissions;
     if (maxTestRuns != null || maxSubmissions != null) {
-      parts.push(`Test runs: ${maxTestRuns ?? 'unlimited'}`);
-      parts.push(`Submissions: ${maxSubmissions ?? 'unlimited'}`);
+      parts.push(`${say('Test runs', 'Testläufe')}: ${unlimited(maxTestRuns)}`);
+      parts.push(`${say('Submissions', 'Abgaben')}: ${unlimited(maxSubmissions)}`);
     }
 
     const tooltip = tooltipWithDescription(
@@ -381,7 +399,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       // Fall back to the never-released wording when the status is missing, so a
       // content row never loses its badge entirely.
       const releaseState = this.getReleaseState() ?? 'never-deployed';
-      parts.push(`${RELEASE_STATE_ICONS[releaseState]} ${RELEASE_STATE_LABELS[releaseState]}`);
+      parts.push(`${RELEASE_STATE_ICONS[releaseState]} ${releaseStateLabel(releaseState)}`);
 
       if (assignment?.hasNewerVersion) {
         parts.push('⬆ update available');
@@ -436,9 +454,9 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
     public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
     const labels = {
-      'contents': 'Contents',
-      'contentTypes': 'Content Types',
-      'groups': 'Groups'
+      'contents': say('Contents', 'Inhalte'),
+      'contentTypes': say('Content Types', 'Inhaltstypen'),
+      'groups': say('Groups', 'Gruppen')
     };
     
     const icons = {
@@ -448,9 +466,10 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
     };
     
     const tooltips = {
-      'contents': 'Course contents organized in a tree structure',
-      'contentTypes': 'Reusable labels (title, color, kind) that course content is tagged with. Creating one does not create any content.',
-      'groups': 'Course groups and their members'
+      'contents': say('Course contents organized in a tree structure', 'Die Inhalte des Kurses als Baum'),
+      'contentTypes': say('Reusable labels (title, color, kind) that course content is tagged with. Creating one does not create any content.',
+        'Wiederverwendbare Kennzeichnungen (Titel, Farbe, Art), mit denen Kursinhalte versehen werden. Wer eine anlegt, legt damit noch keinen Inhalt an.'),
+      'groups': say('Course groups and their members', 'Die Kursgruppen und ihre Mitglieder')
     };
     
     super(
@@ -472,8 +491,10 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
       if (course.visible === false) {
         this.contextValue = 'course.contents.hidden';
         this.description = INVISIBLE_BADGE;
-        this.tooltip = 'Students see no content in this course. '
-          + 'Individual units and assignments can also be hidden on their own.';
+        this.tooltip = say('Students see no content in this course. '
+          + 'Individual units and assignments can also be hidden on their own.',
+        'Die Studierenden sehen in diesem Kurs keine Inhalte. '
+          + 'Einzelne Einheiten und Aufgaben lassen sich auch für sich allein ausblenden.');
       }
     }
   }
@@ -524,14 +545,14 @@ export class CourseGroupTreeItem extends vscode.TreeItem {
     public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
     super(
-      group.title || `Group ${group.id.slice(0, 8)}`,
+      group.title || `${say('Group', 'Gruppe')} ${group.id.slice(0, 8)}`,
       collapsibleState
     );
     this.id = `group-${group.id}`;
     this.contextValue = 'course.group';
     this.iconPath = new vscode.ThemeIcon('symbol-array');
-    this.tooltip = `Group: ${group.title || group.id}\nMembers: ${memberCount}`;
-    this.description = memberCount > 0 ? `${memberCount} members` : 'No members';
+    this.tooltip = `${say('Group', 'Gruppe')}: ${group.title || group.id}\n${say('Members', 'Mitglieder')}: ${memberCount}`;
+    this.description = memberCountLabel(memberCount);
   }
 }
 
@@ -545,15 +566,15 @@ export class NoGroupTreeItem extends vscode.TreeItem {
     public readonly providedCollapsibleState?: vscode.TreeItemCollapsibleState
   ) {
     super(
-      'No Group',
+      say('No Group', 'Ohne Gruppe'),
       providedCollapsibleState !== undefined ? providedCollapsibleState :
         (memberCount > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None)
     );
     this.id = `no-group-${course.id}`;
     this.contextValue = 'course.noGroup';
     this.iconPath = new vscode.ThemeIcon('person');
-    this.tooltip = `Members not assigned to any group: ${memberCount}`;
-    this.description = memberCount > 0 ? `${memberCount} members` : 'No members';
+    this.tooltip = `${say('Members not assigned to any group', 'Mitglieder ohne Gruppe')}: ${memberCount}`;
+    this.description = memberCountLabel(memberCount);
   }
 }
 
@@ -579,13 +600,13 @@ export class CourseMemberTreeItem extends vscode.TreeItem {
     const tooltipParts = [`${displayName}`];
 
     if (member.user?.email) {
-      tooltipParts.push(`Email: ${member.user.email}`);
+      tooltipParts.push(`${say('Email', 'E-Mail')}: ${member.user.email}`);
     }
     if (roleTitle) {
-      tooltipParts.push(`Role: ${roleTitle}`);
+      tooltipParts.push(`${say('Role', 'Rolle')}: ${roleTitle}`);
     }
     if (group) {
-      tooltipParts.push(`Group: ${group.title || group.id}`);
+      tooltipParts.push(`${say('Group', 'Gruppe')}: ${group.title || group.id}`);
     }
 
     this.tooltip = tooltipParts.join('\n');
@@ -604,7 +625,7 @@ export function formatMemberDisplayName(member: CourseMemberList): string {
   if (user?.given_name) {
     return user.given_name;
   }
-  return user?.email || `User ${member.user_id.slice(0, 8)}`;
+  return user?.email || `${say('User', 'Person')} ${member.user_id.slice(0, 8)}`;
 }
 
 export function compareMembersByName(a: CourseMemberList, b: CourseMemberList): number {
@@ -620,11 +641,11 @@ export class LoadMoreTreeItem extends vscode.TreeItem {
     public readonly currentOffset: number,
     public readonly pageSize: number = 20
   ) {
-    super('Load more...', vscode.TreeItemCollapsibleState.None);
+    super(say('Load more…', 'Mehr laden …'), vscode.TreeItemCollapsibleState.None);
     this.id = `loadmore-${parentId}-${currentOffset}`;
     this.contextValue = 'loadMore';
     this.iconPath = new vscode.ThemeIcon('ellipsis');
-    this.tooltip = `Load ${pageSize} more items`;
+    this.tooltip = say(`Load ${pageSize} more items`, `${pageSize} weitere Einträge laden`);
     this.command = {
       command: 'computor.loadMoreItems',
       title: 'Load More',

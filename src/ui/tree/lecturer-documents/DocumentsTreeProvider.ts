@@ -4,6 +4,7 @@ import * as path from 'path';
 import type { ComputorApiService } from '../../../services/ComputorApiService';
 import { DocumentsCacheService, type DocumentScope } from '../../../services/DocumentsCacheService';
 import { notify } from '../../../utils/notify';
+import { say, sayFailed } from '../../../utils/uiLanguage';
 import {
   DocumentsOrgItem,
   DocumentsCourseFamilyItem,
@@ -145,7 +146,7 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
         items.push(item);
       }
     } catch (err: any) {
-      items.push(new DocumentsErrorItem(`Failed to load organizations: ${err?.message || err}`));
+      items.push(new DocumentsErrorItem(sayFailed('Failed to load organizations', 'Die Organisationen konnten nicht geladen werden', err?.message || err)));
     }
     items.push(...(await this.listSystemRootEntries(orgPaths)));
     return items;
@@ -255,7 +256,7 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
       ));
     } catch (err: any) {
       const message = err?.message || String(err);
-      items = [new DocumentsErrorItem(`Failed to list documents: ${message}`)];
+      items = [new DocumentsErrorItem(sayFailed('Failed to list documents', 'Die Dokumente konnten nicht aufgelistet werden', message))];
     }
 
     this.listingCache.set(cacheKey, items);
@@ -301,13 +302,13 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
    *  can review them before clicking Upload. */
   async handleDrop(target: DocumentsTreeItem | undefined, sources: vscode.DataTransfer): Promise<void> {
     if (!target) {
-      notify.warning('Drop into an organization, course family, course, or document folder.');
+      notify.warning(say('Drop into an organization, course family, course, or document folder.', 'Zieh die Dateien auf eine Organisation, eine Kursfamilie, einen Kurs oder einen Dokumentordner.'));
       return;
     }
 
     const dest = this.resolveDropTarget(target);
     if (!dest) {
-      notify.warning('Drop target is not a documents container.');
+      notify.warning(say('Drop target is not a documents container.', 'Hier lassen sich keine Dokumente ablegen.'));
       return;
     }
 
@@ -341,9 +342,10 @@ export class DocumentsTreeProvider extends BaseTreeDataProvider<DocumentsTreeIte
 
     this.invalidateDirectory(dest.scope, dest.parentPath);
     if (failed > 0) {
-      notify.warning(`Added ${added} item(s), ${failed} failed.`);
+      notify.warning(say(`Added ${added} item(s), ${failed} failed.`, `${added} Einträge hinzugefügt, ${failed} fehlgeschlagen.`));
     } else if (added > 0) {
-      notify.info(`Added ${added} item(s) as local-only. Right-click the scope to Upload All Pending when ready.`);
+      notify.info(say(`Added ${added} item(s) as local-only. Right-click the scope to Upload All Pending when ready.`,
+        `${added} Einträge nur lokal hinzugefügt. Wenn du so weit bist, wähle im Kontextmenü des Bereichs „Alle ausstehenden hochladen“.`));
     }
   }
 

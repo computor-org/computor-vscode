@@ -294,12 +294,34 @@
   }
 
   // The extension writes the reading language into <html lang>.
-  const pageLanguage = document.documentElement.lang === 'de' ? 'de' : 'en';
+  let pageLanguage = document.documentElement.lang === 'de' ? 'de' : 'en';
+  const languageListeners = [];
 
   /** The English or the German text, by the page language. */
   function say(en, de) {
     return pageLanguage === 'de' ? de : en;
   }
+
+  /**
+   * Switches the page language in place. Pages with something typed in
+   * redraw from their state on a change instead of being reloaded, which
+   * would throw the half-written text away.
+   */
+  function setLanguage(language) {
+    const next = language === 'de' ? 'de' : 'en';
+    if (next === pageLanguage) { return false; }
+    pageLanguage = next;
+    document.documentElement.lang = next;
+    window.ComputorWebview.language = next;
+    for (const listener of languageListeners.slice()) { listener(next); }
+    return true;
+  }
+
+  function onLanguageChange(listener) {
+    languageListeners.push(listener);
+  }
+
+  onCommand('setLanguage', (data) => { setLanguage(data && data.language); });
 
   window.ComputorWebview = {
     vscode: vscode,
@@ -317,6 +339,8 @@
     initTabs: initTabs,
     debounce: debounce,
     language: pageLanguage,
-    say: say
+    say: say,
+    setLanguage: setLanguage,
+    onLanguageChange: onLanguageChange
   };
 })();

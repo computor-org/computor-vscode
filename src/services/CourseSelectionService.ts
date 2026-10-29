@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
 import { StatusBarService } from '../ui/StatusBarService';
 import { notify } from '../utils/notify';
+import { say, sayFailed } from '../utils/uiLanguage';
 
 export interface CourseInfo {
     id: string;
@@ -93,7 +94,7 @@ export class CourseSelectionService {
             const courses = await this.apiService.getStudentCourses();
             
             if (!courses || courses.length === 0) {
-                notify.info('No courses available');
+                notify.info(say('No courses available', 'Keine Kurse verfügbar'));
                 return undefined;
             }
 
@@ -113,8 +114,8 @@ export class CourseSelectionService {
 
             // Show quick pick
             const selected = await vscode.window.showQuickPick(quickPickItems, {
-                placeHolder: 'Select a course to work on',
-                title: 'Course Selection',
+                placeHolder: say('Select a course to work on', 'Wähle den Kurs, an dem du arbeiten möchtest'),
+                title: say('Course Selection', 'Kursauswahl'),
                 ignoreFocusOut: true
             });
 
@@ -124,7 +125,7 @@ export class CourseSelectionService {
             }
         } catch (error) {
             if (options?.throwOnError) throw error;
-            notify.error(`Failed to fetch courses: ${error}`);
+            notify.error(sayFailed('Failed to fetch courses', 'Die Kurse konnten nicht geladen werden', error));
         }
 
         return undefined;

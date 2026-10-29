@@ -5,7 +5,7 @@ import * as os from 'os';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
-import { say } from '../utils/uiLanguage';
+import { say, sayFailed } from '../utils/uiLanguage';
 
 /**
  * Commands for logging out and clearing credentials
@@ -83,7 +83,7 @@ export class LogoutCommands {
       }
     } catch (error: any) {
       console.error('Logout failed:', error);
-      notify.error(say(`Failed to sign out: ${error.message || error}`, `Die Abmeldung ist fehlgeschlagen: ${error.message || error}`));
+      notify.error(sayFailed(`Failed to sign out`, `Die Abmeldung ist fehlgeschlagen`, error.message || error));
     }
   }
 
@@ -168,7 +168,7 @@ export class LogoutCommands {
       });
     } catch (error: any) {
       console.error('Clear all data failed:', error);
-      notify.error(say(`Failed to clear data: ${error.message || error}`, `Die Daten konnten nicht gelöscht werden: ${error.message || error}`));
+      notify.error(sayFailed(`Failed to clear data`, `Die Daten konnten nicht gelöscht werden`, error.message || error));
     }
   }
 

@@ -7,16 +7,17 @@ import { renderWebviewPage } from '../../src/ui/webviews/shared/webviewPage';
 import { webviewPanels } from '../helpers/vscode-stub';
 import { setUiProfileLanguage } from '../../src/utils/uiLanguage';
 import { StudentCourseContentDetailsWebviewProvider } from '../../src/ui/webviews/StudentCourseContentDetailsWebviewProvider';
+import { MessagesInputPanelProvider } from '../../src/ui/panels/MessagesInputPanel';
 
 const root = path.resolve(__dirname, '../..');
 const read = (file: string) => fs.readFileSync(path.join(root, 'webview-ui', file), 'utf8');
 
 /** A DOM just large enough for base.js and comments-input.js to render into. */
-function page(lang: string) {
+function page(lang: string, savedState?: any) {
   const node = (): any => ({
     style: {}, dataset: {}, textContent: '', className: '', childNodes: [] as any[], attributes: {} as Record<string, string>,
     appendChild(child: any) { this.childNodes.push(child); return child; },
-    addEventListener() {}, setAttribute(key: string, value: string) { this.attributes[key] = value; },
+    addEventListener() {}, focus() {}, setSelectionRange() {}, setAttribute(key: string, value: string) { this.attributes[key] = value; },
     set innerHTML(_: string) { this.childNodes = []; }
   });
   const mount = node();
@@ -27,11 +28,14 @@ function page(lang: string) {
     createTextNode: (text: string) => ({ textContent: text }),
     addEventListener() {}
   };
-  const window: any = { acquireVsCodeApi: () => ({ postMessage() {}, getState() {}, setState() {} }),
-    addEventListener() {} };
+  const listeners: Function[] = [];
+  const window: any = { acquireVsCodeApi: () => ({ postMessage() {}, getState: () => savedState, setState() {} }),
+    addEventListener(name: string, listener: Function) { if (name === 'message') listeners.push(listener); } };
   const context = { window, document, acquireVsCodeApi: window.acquireVsCodeApi, console };
   runInNewContext(read('shared/base.js'), context);
-  return { context, mount };
+  /** Posts a message from the extension to every script on the page. */
+  const deliver = (message: any) => { for (const listener of listeners) listener({ data: message }); };
+  return { context, mount, deliver };
 }
 
 function texts(node: any): string[] {
@@ -79,5 +83,28 @@ describe('webview language', () => {
     } finally {
       for (const subscription of subscriptions) subscription.dispose();
     }
+  });
+
+  it('relabels the comment composer on a switch and keeps the half-written comment', () => {
+    const { context, mount, deliver } = page('de', { drafts: { 'member-1': 'Halb geschrieben' } });
+    runInNewContext(read('messaging/comments-input.js'), context);
+    deliver({ command: 'updateState', data: { courseMemberId: 'member-1', title: 'Ada', editingComment: null, loading: false } });
+    expect(texts(mount)).to.include('Neuer Kommentar');
+    deliver({ command: 'setLanguage', data: { language: 'en' } });
+    expect(texts(mount)).to.include('New comment');
+    const textarea = mount.childNodes[0].childNodes.find((node: any) => node.className === 'comments-input-textarea');
+    expect(textarea.value).to.equal('Halb geschrieben');
+    expect(context.document.documentElement.lang).to.equal('en');
+  });
+
+  it('switches the message composer in place instead of resetting it', () => {
+    const posted: any[] = [];
+    const panel = new MessagesInputPanelProvider(vscode.Uri.file(root), {} as any);
+    (panel as any).view = { webview: { postMessage: (message: any) => { posted.push(message); return Promise.resolve(true); } } };
+    setUiProfileLanguage('de');
+    panel.refreshLanguage();
+    expect(posted.map(message => message.command)).to.deep.equal(['setLanguage']);
+    expect(posted[0].data.language).to.equal('de');
+    expect(posted[0].data.editorPlaceholders.plain).to.match(/^Schreib deine Nachricht/);
   });
 });

@@ -6,6 +6,7 @@ import { TutorTestGet, ResultArtifactInfo, TutorTestArtifactInfo } from '../type
 import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { showErrorWithSeverity } from '../utils/errorDisplay';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 
 /**
  * Service for managing tutor test execution and results
@@ -75,14 +76,14 @@ export class TutorTestService {
     try {
       // Check if submission path exists
       if (!await this.workspaceStructure.directoryExists(submissionPath)) {
-        notify.error('Submission directory not found. Please checkout the submission first.');
+        notify.error(say('Submission directory not found. Please checkout the submission first.', 'Der Ordner der Abgabe fehlt. Checke die Abgabe zuerst aus.'));
         return undefined;
       }
 
       return await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `Running test for ${assignmentTitle}`,
+          title: say(`Running test for ${assignmentTitle}`, `Test für ${assignmentTitle} läuft`),
           cancellable: true
         },
         async (progress, token) => {
@@ -182,7 +183,7 @@ export class TutorTestService {
         // Check for timeout
         if (Date.now() - startTime > this.MAX_POLL_DURATION) {
           this.stopPolling(testId);
-          notify.warning(`Test timed out after 5 minutes`);
+          notify.warning(say('Test timed out after 5 minutes', 'Der Test wurde nach 5 Minuten abgebrochen.'));
           resolve({ status: 'TIMEOUT' });
           return;
         }
@@ -199,20 +200,20 @@ export class TutorTestService {
 
           // Update progress message
           const elapsed = Math.round((Date.now() - startTime) / 1000);
-          progress.report({ message: `Running test... (${elapsed}s)` });
+          progress.report({ message: say(`Running test… (${elapsed}s)`, `Test läuft … (${elapsed} s)`) });
 
           // Check if test is complete
           if (testStatus.status === 'completed') {
             this.stopPolling(testId);
-            notify.info('Test completed');
+            notify.info(say('Test completed', 'Test abgeschlossen.'));
             resolve({ status: 'SUCCESS' });
           } else if (testStatus.status === 'failed') {
             this.stopPolling(testId);
-            notify.warning('Test failed');
+            notify.warning(say('Test failed', 'Der Test ist fehlgeschlagen.'));
             resolve({ status: 'FAILED' });
           } else if (testStatus.status === 'timeout') {
             this.stopPolling(testId);
-            notify.warning('Test timed out on the server');
+            notify.warning(say('Test timed out on the server', 'Der Test wurde auf dem Server wegen Zeitüberschreitung abgebrochen.'));
             resolve({ status: 'TIMEOUT' });
           }
           // Continue polling if status is 'pending' or 'running'
@@ -310,12 +311,12 @@ export class TutorTestService {
         const uri = vscode.Uri.file(artifactsPath);
         await vscode.commands.executeCommand('revealInExplorer', uri);
       } else {
-        notify.info('No test results available');
+        notify.info(say('No test results available', 'Keine Testergebnisse vorhanden.'));
       }
 
     } catch (error: any) {
       console.error('[TutorTestService] Error opening test results:', error);
-      notify.error('Failed to open test results');
+      notify.error(say('Failed to open test results', 'Die Testergebnisse konnten nicht geöffnet werden.'));
     }
   }
 

@@ -773,6 +773,10 @@
     mount.appendChild(view);
   }
 
+  // The list redraws from state and keeps its scroll, so a new language
+  // loses nothing that is loaded.
+  window.ComputorWebview.onLanguageChange(() => render());
+
   window.addEventListener('message', (event) => {
     const message = event.data;
     if (!message) return;

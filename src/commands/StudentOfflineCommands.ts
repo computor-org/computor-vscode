@@ -6,7 +6,7 @@ import { OfflineRepositoryManager } from '../services/OfflineRepositoryManager';
 import { commandRegistrar } from './commandHelpers';
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 import { notify } from '../utils/notify';
-import { say } from '../utils/uiLanguage';
+import { say, sayFailed } from '../utils/uiLanguage';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 
 /**
@@ -79,7 +79,7 @@ export class StudentOfflineCommands {
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to add course:', error);
-            notify.error(say(`Failed to add course: ${error.message}`, `Der Kurs konnte nicht hinzugefügt werden: ${error.message}`));
+            notify.error(sayFailed(`Failed to add course`, `Der Kurs konnte nicht hinzugefügt werden`, error.message));
         }
     }
 
@@ -144,13 +144,13 @@ export class StudentOfflineCommands {
                 progress.report({ increment: 100, message: say('Successfully saved!', 'Gespeichert.') });
             });
 
-            notify.info(`✓ Successfully saved ${assignmentName}`);
+            notify.info(say(`✓ Successfully saved ${assignmentName}`, `✓ ${assignmentName} gespeichert.`));
 
             // Refresh tree to update git status
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to save assignment:', error);
-            notify.error(say(`Failed to save assignment: ${error.message}`, `Die Aufgabe konnte nicht gespeichert werden: ${error.message}`));
+            notify.error(sayFailed(`Failed to save assignment`, `Die Aufgabe konnte nicht gespeichert werden`, error.message));
         }
     }
 
@@ -255,13 +255,13 @@ export class StudentOfflineCommands {
                 }
             });
 
-            notify.info(`✓ Successfully updated ${repoName}`);
+            notify.info(say(`✓ Successfully updated ${repoName}`, `✓ ${repoName} aktualisiert.`));
 
             // Refresh tree to update git status
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to pull changes:', error);
-            notify.error(say(`Failed to update: ${error.message}`, `Die Aktualisierung ist fehlgeschlagen: ${error.message}`));
+            notify.error(sayFailed(`Failed to update`, `Die Aktualisierung ist fehlgeschlagen`, error.message));
         }
     }
 
@@ -337,7 +337,7 @@ export class StudentOfflineCommands {
             await showMarkdownPreview(this.context, readmePath);
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to show README preview:', error);
-            notify.error(say(`Failed to show README preview: ${error.message}`, `Die Anleitung konnte nicht angezeigt werden: ${error.message}`));
+            notify.error(sayFailed(`Failed to show README preview`, `Die Anleitung konnte nicht angezeigt werden`, error.message));
         }
     }
 

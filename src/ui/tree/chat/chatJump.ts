@@ -3,6 +3,7 @@ import type { ComputorApiService } from '../../../services/ComputorApiService';
 import { messageContextOf } from '../../../services/MessageLabelResolver';
 import { TutorSelectionService } from '../../../services/TutorSelectionService';
 import { notify } from '../../../utils/notify';
+import { say } from '../../../utils/uiLanguage';
 import { getTreeHandle, TreeHandle } from '../../treeRegistry';
 import { suppressSelectionSideEffects } from '../../treeRestore';
 import type { ChatThread } from './ChatInboxTreeItems';
@@ -133,7 +134,7 @@ export async function jumpToAssignment(
 ): Promise<void> {
   let target = resolveJumpTarget(thread, currentUserId);
   if (!target) {
-    notify.warning('This message is not attached to an assignment.');
+    notify.warning(say('This message is not attached to an assignment.', 'Diese Nachricht gehört zu keiner Aufgabe.'));
     return;
   }
 
@@ -161,7 +162,7 @@ export async function jumpToAssignment(
   }
 
   if (!target.courseId || !target.courseContentId) {
-    notify.warning('Cannot resolve the assignment behind this conversation (older backend?).');
+    notify.warning(say('Cannot resolve the assignment behind this conversation (older backend?).', 'Die Aufgabe zu dieser Unterhaltung lässt sich nicht ermitteln (älterer Server?).'));
     return;
   }
 
@@ -211,13 +212,13 @@ async function jumpAsTutor(target: JumpTarget, api: ComputorApiService): Promise
   if (target.members.length > 1) {
     const picked = await vscode.window.showQuickPick(
       target.members.map(m => ({ label: m.name || m.courseMemberId, member: m })),
-      { title: 'Open which group member?', placeHolder: 'The group has several members' }
+      { title: say('Open which group member?', 'Welches Gruppenmitglied öffnen?'), placeHolder: say('The group has several members', 'Die Gruppe hat mehrere Mitglieder') }
     );
     if (!picked) { return; }
     member = picked.member;
   }
   if (!member) {
-    notify.warning('This submission group has no members to open.');
+    notify.warning(say('This submission group has no members to open.', 'Diese Abgabegruppe hat keine Mitglieder, die sich öffnen ließen.'));
     return;
   }
 

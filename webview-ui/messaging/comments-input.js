@@ -170,6 +170,16 @@
           draft: message.data?.editingComment ? state.draft : readDraft(message.data?.courseMemberId)
         });
         break;
+      case 'setLanguage': {
+        // Relabel from state; an edit in progress lives only in the textarea.
+        const textarea = document.querySelector && document.querySelector('.comments-input-textarea');
+        if (textarea && state.editingComment) {
+          state.editingComment = Object.assign({}, state.editingComment, { message: textarea.value });
+        }
+        window.ComputorWebview.setLanguage(message.data?.language);
+        render();
+        break;
+      }
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
         break;

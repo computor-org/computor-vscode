@@ -27,7 +27,7 @@ import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { hasDescription, PREVIEW_STUDENT_DESCRIPTION_COMMAND, withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
-import { say, uiLanguage } from '../../../utils/uiLanguage';
+import { say, sayFailed, uiLanguage } from '../../../utils/uiLanguage';
 import { localizedTitle } from '../../../utils/contentLanguage';
 import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
 import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
@@ -566,11 +566,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
             const courseId = await this.findCourseIdForContent(element.courseContent);
             if (!courseId) {
-                return [new MessageItem('Could not determine the course for this assignment.', 'warning')];
+                return [new MessageItem(say('Could not determine the course for this assignment.', 'Der Kurs dieser Aufgabe konnte nicht ermittelt werden.'), 'warning')];
             }
             const model = await this.resolveCourseGit(wsRoot, courseId);
             if (!model.configured) {
-                return [new MessageItem('This course has no git repository configured.', 'info')];
+                return [new MessageItem(say('This course has no git repository configured.', 'Für diesen Kurs ist kein Git-Repository eingerichtet.'), 'info')];
             }
             return this.getAssignmentChildrenNewModel(element, wsRoot, courseId, directory, model);
         }
@@ -621,12 +621,12 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 const courses = await this.apiService.getStudentCourses({ force: shouldForce });
                 if (!courses || courses.length === 0) {
                     console.log('[StudentTree] No courses available');
-                    return [new MessageItem('No courses available.', 'warning')];
+                    return [new MessageItem(say('No courses available.', 'Keine Kurse verfügbar.'), 'warning')];
                 }
 
                 if (this.workspaceCourseId) {
                     const course = courses.find(candidate => candidate.id === this.workspaceCourseId);
-                    if (!course) return [new MessageItem('This course is no longer available.', 'warning')];
+                    if (!course) return [new MessageItem(say('This course is no longer available.', 'Dieser Kurs ist nicht mehr verfügbar.'), 'warning')];
                     this.subscribeToCourseChannels([course.id]);
                     const item = await this.buildCourseRootItem(course, shouldForce);
                     this.forceRefresh = false;
@@ -683,7 +683,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             } catch (error: any) {
                 console.error('Failed to load course root:', error);
                 const message = error?.response?.data?.message || error?.message || 'Unknown error';
-                return [new MessageItem(`Error loading course: ${message}`, 'error')];
+                return [new MessageItem(sayFailed('Error loading course', 'Der Kurs konnte nicht geladen werden', message), 'error')];
             }
         }
 
@@ -1110,10 +1110,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         model: CourseGitModel,
     ): Promise<TreeItem[]> {
         if (!wsRoot) {
-            return [new MessageItem('Open a workspace folder to set up your repository.', 'warning')];
+            return [new MessageItem(say('Open a workspace folder to set up your repository.', 'Öffne einen Arbeitsbereichsordner, um dein Repository einzurichten.'), 'warning')];
         }
         if (!model.mode) {
-            return [new MessageItem(`This course offers no usable git mode (${model.modes.join(', ') || 'none'}).`, 'warning')];
+            return [new MessageItem(say(`This course offers no usable git mode (${model.modes.join(', ') || 'none'}).`, `Dieser Kurs bietet keine nutzbare Git-Variante an (${model.modes.join(', ') || 'keine'}).`), 'warning')];
         }
 
         let repoRoot = model.repoRoot;
@@ -1344,7 +1344,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 ));
             }
             if (items.length === 0) {
-                return [new MessageItem('Empty assignment - no files available', 'info')];
+                return [new MessageItem(say('Empty assignment - no files available', 'Leere Aufgabe – keine Dateien vorhanden'), 'info')];
             }
             items.sort((a, b) => {
                 const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
@@ -1356,7 +1356,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             return items;
         } catch (error) {
             console.error('Error reading assignment directory:', error);
-            return [new MessageItem('Error reading repository files', 'error')];
+            return [new MessageItem(say('Error reading repository files', 'Die Dateien des Repositorys konnten nicht gelesen werden'), 'error')];
         }
     }
 

@@ -7,6 +7,7 @@ import { CourseMemberParserFactory } from '../../utils/parsers/CourseMemberParse
 import { CourseMemberImportRow } from '../../utils/parsers/ICourseMemberParser';
 import * as path from 'path';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 interface ImportMemberRow extends CourseMemberImportRow {
   rowNumber: number;
@@ -340,10 +341,10 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       canSelectFolders: false,
       canSelectMany: false,
       filters: {
-        'Course Member Files': supportedExtensions,
-        'All Files': ['*']
+        [say('Course Member Files', 'Mitgliederlisten')]: supportedExtensions,
+        [say('All Files', 'Alle Dateien')]: ['*']
       },
-      title: 'Select file containing course members'
+      title: say('Select file containing course members', 'Datei mit den Kursmitgliedern auswählen')
     });
 
     if (!fileUri || fileUri.length === 0) {
