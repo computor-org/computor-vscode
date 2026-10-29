@@ -2480,6 +2480,8 @@ export interface MaintenanceStatusGet {
   scheduled_at?: string | null;
   scheduled_by?: string | null;
   scheduled_by_name?: string | null;
+  /** The message in German and English ({'de': ..., 'en': ...}); clients show the reader's language and fall back to `message` */
+  message_i18n?: Record<string, string> | null;
 }
 
 /**

@@ -5,7 +5,8 @@ import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnass
 import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { UiStateService } from './UiStateService';
 import { notify } from '../utils/notify';
-import { formatUiDateTime, say } from '../utils/uiLanguage';
+import { formatUiDateTime, say, uiLanguage } from '../utils/uiLanguage';
+import { localizedText } from '../utils/contentLanguage';
 
 // WebSocket message types from server
 export interface WsMessageNew {
@@ -69,6 +70,18 @@ export interface WsChannelUnsubscribed {
 export interface WsError {
   type: 'error';
   message: string;
+}
+
+/**
+ * Maintenance events carry `message_i18n` ({de, en}) beside `message`; the
+ * reader's language replaces `message` in place, so every handler shows it.
+ */
+export function localizeMaintenanceMessage(message: { message?: string; data?: unknown; message_i18n?: Record<string, string> | null }): void {
+  for (const payload of [message, message.data]) {
+    if (!payload || typeof payload !== 'object') continue;
+    const event = payload as { message?: string; message_i18n?: Record<string, string> | null };
+    if (event.message_i18n) event.message = localizedText(event.message_i18n, uiLanguage(), event.message) ?? event.message;
+  }
 }
 
 export interface WsMaintenanceActivated {
@@ -601,6 +614,7 @@ export class WebSocketService {
   private handleMessage(data: string): void {
     try {
       const message = JSON.parse(data) as WsServerMessage;
+      if (message.type.startsWith('maintenance:')) localizeMaintenanceMessage(message as never);
 
       switch (message.type) {
         case 'message:new':

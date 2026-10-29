@@ -30,7 +30,7 @@ import { registerPublicLearning } from './commands/PublicLearningCommands';
 
 import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
-import { WebSocketService } from './services/WebSocketService';
+import { WebSocketService, localizeMaintenanceMessage } from './services/WebSocketService';
 import { BackendConnectionService } from './services/BackendConnectionService';
 import { CredentialRecoveryService } from './services/CredentialRecoveryService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
@@ -1969,6 +1969,7 @@ class UnifiedController {
     try {
       const status = await api.getMaintenanceStatus();
       if (!status || !this.wsService) return;
+      localizeMaintenanceMessage(status);
 
       if (status.active) {
         this.httpClient?.setMaintenanceMode(true, status.message);

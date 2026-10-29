@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
-import { WebSocketService, WS_CLOSE_AUTH_FAILED, WsClientMessage } from '../../src/services/WebSocketService';
+import { WebSocketService, WS_CLOSE_AUTH_FAILED, WsClientMessage, localizeMaintenanceMessage } from '../../src/services/WebSocketService';
+import { setUiProfileLanguage } from '../../src/utils/uiLanguage';
 import { CredentialRecoveryService } from '../../src/services/CredentialRecoveryService';
 import { UiStateService } from '../../src/services/UiStateService';
 import { CourseChannelSubscription } from '../../src/ui/tree/courseChannelSubscription';
@@ -131,6 +132,22 @@ describe('WebSocketService status and channel ownership (#259)', () => {
     expect(statuses[0]!.visible, 'disposed status must not react to view events').to.equal(false);
   });
 
+  it('hands maintenance handlers the message in the reading language', async () => {
+    setUiProfileLanguage('de');
+    try {
+      const socket = await connect();
+      const seen: string[] = [];
+      service.subscribe([], 'maintenance', { onMaintenanceDeactivated: (message) => { seen.push(message); } });
+      socket.receive({
+        type: 'maintenance:deactivated', active: false, message: 'Maintenance complete. Full service has been restored.',
+        message_i18n: { de: 'Die Wartung ist abgeschlossen.', en: 'Maintenance complete. Full service has been restored.' },
+      });
+      expect(seen).to.deep.equal(['Die Wartung ist abgeschlossen.']);
+    } finally {
+      setUiProfileLanguage(null);
+    }
+  });
+
   it('passes submission_group:updated from the user inbox to its handler (#554)', async () => {
     const socket = await connect();
     const seen: object[] = [];
@@ -251,5 +268,31 @@ describe('WebSocketService status and channel ownership (#259)', () => {
     expect(Socket.instances).to.have.length(1);
     expect(service.getConnectionState()).to.equal('disconnected');
     expect(statuses[0]!.visible).to.equal(false);
+  });
+});
+
+describe('maintenance texts in the reading language', () => {
+  afterEach(() => setUiProfileLanguage(null));
+
+  for (const [language, expected] of [['de', 'Die geplante Wartung wurde abgesagt.'], ['en', 'Scheduled maintenance has been cancelled.']] as const) {
+    it(`replaces the message with its ${language} entry`, () => {
+      setUiProfileLanguage(language);
+      const event = {
+        type: 'maintenance:cancelled', message: 'Scheduled maintenance has been cancelled.',
+        message_i18n: { de: 'Die geplante Wartung wurde abgesagt.', en: 'Scheduled maintenance has been cancelled.' },
+      };
+      localizeMaintenanceMessage(event);
+      expect(event.message).to.equal(expected);
+    });
+  }
+
+  it('localizes a reminder payload and keeps a message without a pair', () => {
+    setUiProfileLanguage('de');
+    const reminder = { type: 'maintenance:reminder', data: { message: 'Locked at 6 pm.', message_i18n: { de: 'Ab 18 Uhr gesperrt.' } } };
+    const plain = { type: 'maintenance:activated', message: 'Kurz offline.' };
+    localizeMaintenanceMessage(reminder);
+    localizeMaintenanceMessage(plain);
+    expect(reminder.data.message).to.equal('Ab 18 Uhr gesperrt.');
+    expect(plain.message).to.equal('Kurz offline.');
   });
 });
