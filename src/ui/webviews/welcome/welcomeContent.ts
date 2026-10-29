@@ -356,6 +356,11 @@ function sayer(model: Pick<WelcomeModel, 'language'>): Say {
   return (en, de) => (model.language === 'de' ? de : en);
 }
 
+/** Tutors and lecturers hold the student role too; their page opens on teaching (computor-org/issues#541). */
+function isStaff(model: Pick<WelcomeModel, 'roles'>): boolean {
+  return model.roles.includes('tutor') || model.roles.includes('lecturer');
+}
+
 function helpButton(page: string, label: string): string {
   return `<button type="button" class="btn secondary sm" data-action="help" data-page="${escapeHtml(page)}">${escapeHtml(label)}</button>`;
 }
@@ -401,8 +406,11 @@ function renderHero(model: WelcomeModel, say: Say): string {
     ${logo}
     <div>
       <h1>${welcomeTitle(model)}${name}!</h1>
-      <p>${say('Your courses inside VS Code: read the task, write and test your code, and hand it in.',
-        'Deine Kurse in VS Code: Aufgabe lesen, Code schreiben und testen, Lösung abgeben.')}</p>
+      <p>${isStaff(model)
+        ? say('Your teaching inside VS Code: review, test and grade what your students hand in, and see the course as they see it.',
+          'Deine Lehre in VS Code: Abgaben deiner Studierenden durchsehen, testen und bewerten und den Kurs so sehen, wie sie ihn sehen.')
+        : say('Your courses inside VS Code: read the task, write and test your code, and hand it in.',
+          'Deine Kurse in VS Code: Aufgabe lesen, Code schreiben und testen, Lösung abgeben.')}</p>
     </div>
   </div>`;
 }
@@ -444,7 +452,8 @@ function renderCourses(model: WelcomeModel, say: Say): string {
 
   // A launched workspace already shows the Student view; offering to open it
   // again leads nowhere (computor-org/issues#527).
-  const roles = model.launch ? model.roles.filter(role => role !== 'student') : model.roles;
+  const offered = model.launch ? model.roles.filter(role => role !== 'student') : model.roles;
+  const roles = isStaff(model) ? [...offered.filter(role => role !== 'student'), ...offered.filter(role => role === 'student')] : offered;
   const buttons = roles.map((role, index) => viewButton(role, index === 0, say)).join('');
   const intro = model.courses.length === 1
     ? say('Welcome to your course!', 'Willkommen in deinem Kurs!')
@@ -559,7 +568,13 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
         `Wenn du mit dem Ergebnis zufrieden bist, wähle die Wolke mit dem Pfeil ${action('cloud-upload', n('computor.student.submitAssignment'))}. Damit gibst du die Aufgabe zur Bewertung ab, und zwar in der Fassung, die du zuletzt getestet hast. Auch die Abgaben können begrenzt sein.`)]
   ];
 
-  return section('welcome-tutorial', say('Start working on an assignment', 'Mit einer Aufgabe beginnen'), `
+  const staff = isStaff(model);
+  const title = staff ? say('How students work', 'So arbeiten Studierende') : say('Start working on an assignment', 'Mit einer Aufgabe beginnen');
+  const lead = staff
+    ? say('The steps your students follow, as this page shows them to a student. ',
+      'Die Schritte, denen deine Studierenden folgen, so wie diese Seite sie ihnen zeigt. ')
+    : '';
+  return section('welcome-tutorial', title, `
     ${renderRowOnly(model, say)}
     <p class="welcome-steps-lead"><strong>${say('Step by step', 'Schritt für Schritt')}</strong></p>
     <ol class="welcome-steps">
@@ -570,7 +585,7 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
     ${renderAskForHelp(model, say)}
     <p class="text-muted">${say('Not every course uses every step. The assignment row shows the actions available in your course.',
       'Nicht jeder Kurs nutzt jeden Schritt. Die Aufgabenzeile zeigt dir, welche Aktionen dein Kurs anbietet.')}</p>`,
-  say('Every assignment is a row in the Student view. Point to an assignment or focus its row to show its action icons. The same actions are available in the context menu.',
+  lead + say('Every assignment is a row in the Student view. Point to an assignment or focus its row to show its action icons. The same actions are available in the context menu.',
     'Jede Aufgabe ist eine Zeile in der Student-Ansicht. Zeige auf eine Aufgabe oder fokussiere ihre Zeile, damit ihre Aktionssymbole erscheinen. Dieselben Aktionen findest du im Kontextmenü.'));
 }
 
@@ -787,7 +802,36 @@ function renderStaff(model: WelcomeModel, say: Say): string {
     );
   }
 
-  return section('welcome-staff', say('For tutors and lecturers', 'Für Tutorinnen, Tutoren und Lehrende'), linkRows(rows),
+  // The tutor and lecturer views are not translated, so their names stay English.
+  const steps: Array<[string, string]> = [
+    ...(isTutor ? [
+      [say('Open the Tutor view.', 'Öffne die Tutor-Ansicht.'),
+        say('Click <strong>Computor Tutor</strong> in the Activity Bar on the far left.',
+          'Klicke in der Aktivitätsleiste ganz links auf <strong>Computor Tutor</strong>.')],
+      [say('Pick a student.', 'Wähle eine Person aus.'),
+        say('Under <strong>Courses &amp; Members</strong>, click a course and then a member; their work appears under <strong>Courses</strong>. A 📝 behind a name counts submissions you have not reviewed yet, a 🔔 unread messages.',
+          'Klicke unter <strong>Courses &amp; Members</strong> auf einen Kurs und dann auf eine Person, deren Arbeit darauf unter <strong>Courses</strong> erscheint. Ein 📝 hinter einem Namen zählt die Abgaben, die du noch nicht durchgesehen hast, ein 🔔 die ungelesenen Nachrichten.')],
+      [say('Review and grade.', 'Prüfe und bewerte.'),
+        say('Click an assignment to download the latest submission and the reference solution. Test it, set the grade with the grading icon on its row, and say in the assignment\'s messages what to change.',
+          'Klicke auf eine Aufgabe, um die letzte Abgabe und die Musterlösung herunterzuladen. Teste die Abgabe, vergib mit dem Bewertungssymbol in ihrer Zeile die Bewertung und schreib in den Nachrichten zur Aufgabe, was noch zu ändern ist.')]
+    ] as Array<[string, string]> : []),
+    ...(isLecturer ? [
+      [say('Build the course.', 'Baue den Kurs auf.'),
+        say('In <strong>Computor Lecturer</strong>, <strong>Courses</strong> holds your courses with their content, content types and groups, and <strong>Examples</strong> the library of reusable assignments.',
+          'In <strong>Computor Lecturer</strong> findest du unter <strong>Courses</strong> deine Kurse mit ihren Inhalten, Inhaltstypen und Gruppen und unter <strong>Examples</strong> die Bibliothek wiederverwendbarer Aufgaben.')]
+    ] as Array<[string, string]> : [])
+  ];
+  const students = model.roles.includes('student')
+    ? `<p>${say('Your account has the Student view too. <em>How students work</em>, under <em>More</em>, walks through it as your students meet it.',
+      'Dein Konto hat auch die Student-Ansicht. Wie deine Studierenden sie kennenlernen, zeigt <em>So arbeiten Studierende</em> unter <em>Mehr</em>.')}</p>`
+    : '';
+
+  return section('welcome-staff', say('Teaching with Computor', 'Lehren mit Computor'), `
+    <ol class="welcome-steps">
+      ${steps.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
+    </ol>
+    ${linkRows(rows)}
+    ${students}`,
     say(`Teaching has its own icons in the Activity Bar: ${icons}.`, `Für die Lehre gibt es eigene Symbole in der Aktivitätsleiste: ${icons}.`));
 }
 
@@ -827,14 +871,18 @@ export function renderWelcomeBody(model: WelcomeModel): string {
   // Before sign-in the role is unknown, and most people opening Computor are
   // students — so the tutorial shows unless the account is known not to be one.
   const showTutorial = !model.signedIn || model.roles.includes('student');
+  const students = `
+    ${showTutorial ? renderTutorial(model, say) : ''}
+    ${showTutorial ? renderMarks(say) : ''}
+    ${renderHelp(say, namer(model))}`;
+  // Tutors and lecturers open on teaching; how students work follows as an add-on (computor-org/issues#541).
+  const staff = isStaff(model);
   return `<div class="page-root welcome-page"${model.language === 'de' ? ' lang="de"' : ''}>
     ${renderHero(model, say)}
     ${renderCourses(model, say)}
-    ${showTutorial ? renderTutorial(model, say) : ''}
-    ${showTutorial ? renderMarks(say) : ''}
-    ${renderHelp(say, namer(model))}
+    ${staff ? renderStaff(model, say) : students}
     ${renderMoreHeading(say)}
-    ${renderStaff(model, say)}
+    ${staff ? students : ''}
     ${renderGitColours(say)}
     ${renderOtherEdition(model, say)}
     ${renderCredits(model, say)}
