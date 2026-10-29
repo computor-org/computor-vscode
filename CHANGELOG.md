@@ -3,6 +3,12 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.8
+
+- The connection indicator follows the visible Computor views and asks for attention only after
+  automatic reconnects have failed. Leaving a course stops its live updates, and a reconnect
+  restores the remaining ones.
+
 ## 2027.3.7
 
 - In courses where Lena, the AI tutor, answers messages without an @mention, the message box
