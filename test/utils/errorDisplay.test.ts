@@ -96,16 +96,18 @@ describe('showErrorWithSeverity', () => {
     expect(shown[0]!.message).to.equal('Your session has expired. Please sign in again.');
   });
 
-  it('localizes a known learner rejection and preserves its severity', () => {
-    setUiProfileLanguage('de');
+  it("shows the server's localized title and reason and preserves the severity", () => {
     seedCatalog('warning');
     const catalog = (errorCatalog as any).catalog;
     catalog.errors.SUBMIT_014 = { ...catalog.errors[CODE], code: 'SUBMIT_014' };
     showErrorWithSeverity(new HttpError('Bad Request', 400, 'Bad Request', {
-      error_code: 'SUBMIT_014', detail: 'Nothing to submit: /tmp/private-upload'
+      error_code: 'SUBMIT_014',
+      title: 'Nichts abzugeben',
+      message: 'Deine Abgabe enthält keine Dateien. Schreibe zuerst deine Lösung und gib sie dann noch einmal ab.',
+      message_en: 'Your submission contains no files. Write your solution first, then submit again.'
     }));
     expect(shown).to.deep.equal([{ level: 'warning', message:
-      'Es gibt noch nichts abzugeben. Schreibe zuerst deine Lösung und gib sie dann ab.' }]);
+      'Nichts abzugeben: Deine Abgabe enthält keine Dateien. Schreibe zuerst deine Lösung und gib sie dann noch einmal ab.' }]);
   });
 
   it("shows the server's own reason, not the catalog's per-code text", () => {

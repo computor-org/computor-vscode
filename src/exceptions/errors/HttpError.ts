@@ -11,6 +11,8 @@ export class HttpError extends Error {
    * note on `serverDetail` below, and `utils/errorDisplay`.
    */
   public readonly serverDetail?: string;
+  /** The server's heading for the error code, in the reader's language. */
+  public readonly serverTitle?: string;
 
   constructor(
     message: string,
@@ -47,6 +49,7 @@ export class HttpError extends Error {
     this.errorCode = errorCode;
     this.backendError = backendError;
     this.serverDetail = serverDetail;
+    this.serverTitle = typeof response?.title === 'string' && response.title.trim() ? response.title.trim() : undefined;
   }
 
   /**
