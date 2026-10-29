@@ -16,7 +16,9 @@ import { GitWrapper } from '../../../git/GitWrapper';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { notify } from '../../../utils/notify';
-import { say, sayFailed } from '../../../utils/uiLanguage';
+import { say, sayFailed, uiLanguage } from '../../../utils/uiLanguage';
+import { localizedKindTitle } from '../../../utils/contentLanguage';
+import { localizedRoleTitle } from '../../../utils/roleLabels';
 import {
   courseContentCollapsibleState,
   OrganizationTreeItem,
@@ -539,7 +541,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
             element.course,
             element.courseFamily,
             element.organization,
-            type.course_content_kind?.title || kindMap.get(type.course_content_kind_id)
+            localizedKindTitle(type.course_content_kind_id, type.course_content_kind?.title || kindMap.get(type.course_content_kind_id), uiLanguage())
           ));
         }
       }
@@ -1011,7 +1013,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       }
     }
     return sortedMembers.map(member => new CourseMemberTreeItem(
-      member, course, courseFamily, organization, group, roleTitles.get(member.course_role_id)
+      member, course, courseFamily, organization, group, localizedRoleTitle(member.course_role_id, roleTitles.get(member.course_role_id)) || undefined
     ));
   }
 

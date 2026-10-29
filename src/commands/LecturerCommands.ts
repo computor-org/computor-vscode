@@ -58,7 +58,8 @@ import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
-import { say, uiLocale } from '../utils/uiLanguage';
+import { say, uiLanguage, uiLocale } from '../utils/uiLanguage';
+import { localizedKindTitle } from '../utils/contentLanguage';
 import { revealUri } from '../utils/reveal';
 import {
   computeInsertPosition,
@@ -1449,7 +1450,7 @@ export class LecturerCommands {
     const picked = await vscode.window.showQuickPick(
       matching.map(t => ({
         label: t.title || t.slug,
-        description: t.course_content_kind?.title || t.course_content_kind_id || '',
+        description: localizedKindTitle(t.course_content_kind_id, t.course_content_kind?.title, uiLanguage()) || '',
         contentType: t
       })),
       { placeHolder: say('Select content type', 'Inhaltstyp auswählen') }
@@ -1635,8 +1636,8 @@ export class LecturerCommands {
         .map(ct => ({
           label: ct.title || ct.slug,
           description: ct.course_content_kind_id === currentKind
-            ? (ct.course_content_kind_id || 'unknown')
-            : say(`$(warning) ${ct.course_content_kind_id || 'unknown'} — changes the kind; only possible while the content is empty`, `$(warning) ${ct.course_content_kind_id || 'unknown'} – ändert die Art; nur möglich, solange der Inhalt leer ist`),
+            ? (localizedKindTitle(ct.course_content_kind_id, undefined, uiLanguage()) || say('unknown', 'unbekannt'))
+            : say(`$(warning) ${localizedKindTitle(ct.course_content_kind_id, undefined, uiLanguage()) || 'unknown'} — changes the kind; only possible while the content is empty`, `$(warning) ${localizedKindTitle(ct.course_content_kind_id, undefined, uiLanguage()) || 'unbekannt'} – ändert die Art; nur möglich, solange der Inhalt leer ist`),
           id: ct.id,
           contentType: ct
         }));
@@ -2530,7 +2531,7 @@ export class LecturerCommands {
     // the category a *type* belongs to — a lecturer in issues#387 created a
     // type called "Unit 1" believing it had created a unit.
     const kindItems = contentKinds.map(k => ({
-      label: k.title || k.id,
+      label: localizedKindTitle(k.id, k.title, uiLanguage()) || k.id,
       description: k.submittable ? say('submittable', 'mit Abgabe') : say('not submittable', 'ohne Abgabe'),
       detail: k.has_descendants
         ? say('Groups other content; students do not submit to it (e.g. a week or a chapter)', 'Fasst andere Inhalte zusammen; Studierende geben dazu nichts ab (z. B. eine Woche oder ein Kapitel)')

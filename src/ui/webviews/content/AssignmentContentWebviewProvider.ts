@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, detailGrid, badge, deploymentBadge, formGroup, textInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, detailGrid, badge, deploymentBadge, deploymentStatusLabel, formGroup, textInput } from '../shared/webviewHelpers';
 import { say, uiLocale } from '../../../utils/uiLanguage';
 import { notify } from '../../../utils/notify';
 
@@ -67,10 +67,10 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
     const unassignNote = deploymentStatus === 'deployed' || deploymentStatus === 'deploying'
       ? say(
         `<div class="notice warning">Cannot unassign while the status is
-         <strong>${escapeHtml(deploymentStatus)}</strong>. Unassignment is only
+         <strong>${escapeHtml(deploymentStatusLabel(deploymentStatus))}</strong>. Unassignment is only
          allowed for pending or failed deployments.</div>`,
         `<div class="notice warning">Solange der Status
-         <strong>${escapeHtml(deploymentStatus)}</strong> ist, lässt sich die Zuweisung nicht aufheben.
+         <strong>${escapeHtml(deploymentStatusLabel(deploymentStatus))}</strong> ist, lässt sich die Zuweisung nicht aufheben.
          Das geht nur bei ausstehenden oder fehlgeschlagenen Bereitstellungen.</div>`
       )
       : '';

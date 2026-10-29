@@ -4,6 +4,8 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { canManageScopeMembership } from '../../services/ScopePermissions';
 import type { UserList } from '../../types/generated/users';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
+import { localizedRoleTitle } from '../../utils/roleLabels';
 
 export type ScopeKind = 'organization' | 'course_family';
 
@@ -57,20 +59,23 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       }
       this.currentTarget = target;
       const state = await this.loadState(target);
-      const title = `${target.kind === 'organization' ? 'Organization' : 'Course Family'} members: ${target.scopeTitle}`;
+      const title = say(
+        `${target.kind === 'organization' ? 'Organization' : 'Course Family'} members: ${target.scopeTitle}`,
+        `Mitglieder ${target.kind === 'organization' ? 'der Organisation' : 'der Kursfamilie'}: ${target.scopeTitle}`
+      );
       await this.show(title, state);
     } catch (error: any) {
-      notify.error(`Failed to open members panel: ${error?.message || error}`);
+      notify.error(say(`Failed to open members panel: ${error?.message || error}`, `Die Mitgliederansicht konnte nicht geöffnet werden: ${error?.message || error}`));
     }
   }
 
   protected async getWebviewContent(data?: ScopeMembershipViewState): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Members', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Members', 'Mitglieder'), say('<p>Loading…</p>', '<p>Wird geladen …</p>'));
     }
 
     return this.renderPage({
-      title: 'Members',
+      title: say('Members', 'Mitglieder'),
       bodyHtml: '<div id="app" class="page-root"></div>',
       cssFiles: ['courses/scope-membership.css'],
       scriptFiles: ['courses/scope-membership.js'],
@@ -136,7 +141,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       this.panel.webview.postMessage({ command: 'updateState', data: state });
       if (notice) { this.postNotice(notice); }
     } catch (error: any) {
-      this.handleError('Failed to refresh members', error);
+      this.handleError(say('Failed to refresh members', 'Die Mitglieder konnten nicht aktualisiert werden'), error);
     }
   }
 
@@ -162,10 +167,10 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
   private async fetchRoles(target: ScopeMembershipTarget): Promise<NormalizedRole[]> {
     if (target.kind === 'organization') {
       const list = await this.apiService.listOrganizationRoles();
-      return list.map(r => ({ id: r.id, title: r.title }));
+      return list.map(r => ({ id: r.id, title: localizedRoleTitle(r.id, r.title) }));
     }
     const list = await this.apiService.listCourseFamilyRoles();
-    return list.map(r => ({ id: r.id, title: r.title }));
+    return list.map(r => ({ id: r.id, title: localizedRoleTitle(r.id, r.title) }));
   }
 
   // ----- Mutations -----
@@ -174,7 +179,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     if (!this.currentTarget || !raw || typeof raw !== 'object') { return; }
     const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
     if (!roleId) {
-      this.postNotice({ type: 'warning', message: 'Pick a role.' });
+      this.postNotice({ type: 'warning', message: say('Pick a role.', 'Wähle eine Rolle.') });
       return;
     }
 
@@ -185,17 +190,17 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       try {
         userId = await this.resolveUserIdentifier(identifier) ?? '';
       } catch (error: any) {
-        this.handleError('Failed to look up user', error);
+        this.handleError(say('Failed to look up user', 'Die Person konnte nicht gesucht werden'), error);
         return;
       }
       if (!userId) {
-        this.postNotice({ type: 'warning', message: `No user found for "${identifier}".` });
+        this.postNotice({ type: 'warning', message: say(`No user found for "${identifier}".`, `Keine Person gefunden für „${identifier}“.`) });
         return;
       }
     }
 
     if (!userId) {
-      this.postNotice({ type: 'warning', message: 'Provide an email/username or pick from the list.' });
+      this.postNotice({ type: 'warning', message: say('Provide an email/username or pick from the list.', 'Gib eine E-Mail-Adresse oder einen Benutzernamen an oder wähle aus der Liste.') });
       return;
     }
 
@@ -206,7 +211,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     if (!this.currentTarget || !raw || typeof raw !== 'object') { return; }
     const roleId = typeof raw.role_id === 'string' ? raw.role_id.trim() : '';
     if (!roleId) {
-      this.postNotice({ type: 'warning', message: 'Pick a role first.' });
+      this.postNotice({ type: 'warning', message: say('Pick a role first.', 'Wähle zuerst eine Rolle.') });
       return;
     }
 
@@ -214,11 +219,11 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     try {
       users = await this.apiService.getUsers();
     } catch (error: any) {
-      this.handleError('Cannot browse users (you may lack permission). Try email or username.', error);
+      this.handleError(say('Cannot browse users (you may lack permission). Try email or username.', 'Die Personenliste lässt sich nicht durchsuchen (eventuell fehlt dir die Berechtigung). Versuche es mit E-Mail-Adresse oder Benutzernamen.'), error);
       return;
     }
     if (!users || users.length === 0) {
-      this.postNotice({ type: 'info', message: 'No users available to browse.' });
+      this.postNotice({ type: 'info', message: say('No users available to browse.', 'Keine Personen zum Durchsuchen verfügbar.') });
       return;
     }
 
@@ -227,7 +232,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       .filter(u => !u.archived_at && !u.is_service && !memberUserIds.has(u.id))
       .sort((a, b) => formatUserLabel(a).localeCompare(formatUserLabel(b)));
     if (candidates.length === 0) {
-      this.postNotice({ type: 'info', message: 'No additional users available to add.' });
+      this.postNotice({ type: 'info', message: say('No additional users available to add.', 'Keine weiteren Personen zum Hinzufügen verfügbar.') });
       return;
     }
 
@@ -238,7 +243,7 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
         userId: u.id
       })),
       {
-        placeHolder: 'Select a user to add',
+        placeHolder: say('Select a user to add', 'Person zum Hinzufügen auswählen'),
         matchOnDescription: true,
         matchOnDetail: true
       }
@@ -279,9 +284,9 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
           course_family_role_id: roleId
         });
       }
-      await this.refreshState({ type: 'success', message: 'Member added.' });
+      await this.refreshState({ type: 'success', message: say('Member added.', 'Mitglied hinzugefügt.') });
     } catch (error: any) {
-      this.handleError('Failed to add member', error);
+      this.handleError(say('Failed to add member', 'Das Mitglied konnte nicht hinzugefügt werden'), error);
     }
   }
 
@@ -296,9 +301,9 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       } else {
         await this.apiService.updateCourseFamilyMember(memberId, { course_family_role_id: roleId });
       }
-      await this.refreshState({ type: 'success', message: 'Role updated.' });
+      await this.refreshState({ type: 'success', message: say('Role updated.', 'Rolle aktualisiert.') });
     } catch (error: any) {
-      this.handleError('Failed to update role', error);
+      this.handleError(say('Failed to update role', 'Die Rolle konnte nicht aktualisiert werden'), error);
     }
   }
 
@@ -308,8 +313,8 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
     if (!memberId) { return; }
 
     const confirmation = await notify.confirm(
-      'Remove this user from the scope?',
-      'Remove'
+      say('Remove this user from the scope?', 'Diese Person aus dem Bereich entfernen?'),
+      say('Remove', 'Entfernen')
     );
     if (!confirmation) { return; }
 
@@ -319,9 +324,9 @@ export class ScopeMembershipWebviewProvider extends BaseWebviewProvider {
       } else {
         await this.apiService.deleteCourseFamilyMember(memberId);
       }
-      await this.refreshState({ type: 'success', message: 'Member removed.' });
+      await this.refreshState({ type: 'success', message: say('Member removed.', 'Mitglied entfernt.') });
     } catch (error: any) {
-      this.handleError('Failed to remove member', error);
+      this.handleError(say('Failed to remove member', 'Das Mitglied konnte nicht entfernt werden'), error);
     }
   }
 

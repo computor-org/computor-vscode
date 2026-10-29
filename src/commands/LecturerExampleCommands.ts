@@ -23,7 +23,8 @@ import type { ReplaceOptions, ReplaceTarget } from '../utils/exampleTextReplace'
 import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
-import { say, uiLocale } from '../utils/uiLanguage';
+import { say, uiLanguage, uiLocale } from '../utils/uiLanguage';
+import { localizedKindTitle } from '../utils/contentLanguage';
 
 /**
  * Simplified example commands for the lecturer view
@@ -1941,7 +1942,7 @@ export class LecturerExampleCommands {
           if (fullType?.course_content_kind?.submittable) {
             submittableTypes.push({
               type: type,
-              kindTitle: fullType.course_content_kind.title || 'Assignment'
+              kindTitle: localizedKindTitle(fullType.course_content_kind_id, fullType.course_content_kind.title, uiLanguage()) || 'Assignment'
             });
           }
         } catch (error) {
@@ -1987,7 +1988,7 @@ export class LecturerExampleCommands {
                 fullType.course_content_kind.has_descendants) {
               units.push({
                 content: content,
-                kindTitle: fullType.course_content_kind.title || 'Unit'
+                kindTitle: localizedKindTitle(fullType.course_content_kind_id, fullType.course_content_kind.title, uiLanguage()) || 'Unit'
               });
             }
           } catch (error) {

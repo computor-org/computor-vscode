@@ -2,6 +2,7 @@
   'use strict';
 
   const vscode = window.vscodeApi || acquireVsCodeApi();
+  const say = window.ComputorWebview.say;
   const state = window.__INITIAL_STATE__ || {};
 
   const roleLabels = state.roleLabels || {};
@@ -62,45 +63,45 @@
   // ---- shell (built once) -------------------------------------------------
   function buildShell() {
     const tabs = canManage
-      ? `<button class="tab" data-tab="roster">Members (<span id="member-count">${members.length}</span>)</button>
-         <button class="tab" data-tab="add">Add from list</button>
-         <button class="tab" data-tab="email">By email</button>
-         <button class="tab" data-tab="file">Import file</button>`
-      : `<button class="tab" data-tab="roster">Members (<span id="member-count">${members.length}</span>)</button>`;
+      ? `<button class="tab" data-tab="roster">${say('Members', 'Mitglieder')} (<span id="member-count">${members.length}</span>)</button>
+         <button class="tab" data-tab="add">${say('Add from list', 'Aus Liste hinzufügen')}</button>
+         <button class="tab" data-tab="email">${say('By email', 'Per E-Mail')}</button>
+         <button class="tab" data-tab="file">${say('Import file', 'Datei importieren')}</button>`
+      : `<button class="tab" data-tab="roster">${say('Members', 'Mitglieder')} (<span id="member-count">${members.length}</span>)</button>`;
 
     const addPanels = canManage
       ? `
       <section id="tab-add" class="tab-panel">
-        <p class="hint">You can only see users your permissions allow. Members already in the course are hidden — pick a role and add them.</p>
-        <input id="user-search" type="text" placeholder="Search by name or email…" autocomplete="off" />
+        <p class="hint">${say('You can only see users your permissions allow. Members already in the course are hidden — pick a role and add them.', 'Du siehst nur Personen, die deine Berechtigungen zulassen. Wer schon im Kurs ist, wird ausgeblendet. Wähle eine Rolle und füge die Personen hinzu.')}</p>
+        <input id="user-search" type="text" placeholder="${say('Search by name or email…', 'Nach Name oder E-Mail suchen …')}" autocomplete="off" />
         <div id="users-status" class="status"></div>
         <table class="table grid">
-          <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
+          <thead><tr><th>${say('User', 'Person')}</th><th>${say('Role', 'Rolle')}</th><th></th></tr></thead>
           <tbody id="users-body"></tbody>
         </table>
         <div class="pager">
           <span id="users-page-label" class="text-muted"></span>
           <span>
-            <button id="users-prev" class="btn-secondary">Previous</button>
-            <button id="users-next" class="btn-secondary">Next</button>
+            <button id="users-prev" class="btn-secondary">${say('Previous', 'Zurück')}</button>
+            <button id="users-next" class="btn-secondary">${say('Next', 'Weiter')}</button>
           </span>
         </div>
       </section>
       <section id="tab-email" class="tab-panel">
-        <p class="hint">Adds the user with this email, creating the account if it does not exist yet. Use this for people not yet in the system.</p>
+        <p class="hint">${say('Adds the user with this email, creating the account if it does not exist yet. Use this for people not yet in the system.', 'Fügt die Person mit dieser E-Mail-Adresse hinzu und legt das Konto an, falls es noch nicht existiert. Das ist für Personen gedacht, die noch nicht im System sind.')}</p>
         <form id="email-form">
-          <label>Email *<input id="email-input" type="email" placeholder="person@example.org" required /></label>
-          <label>Given name<input id="email-given" type="text" /></label>
-          <label>Family name<input id="email-family" type="text" /></label>
-          <label>Role *<select id="email-role">${roleOptions(assignableRoles[0])}</select></label>
-          <label>Group<input id="email-group" type="text" placeholder="Optional — created if missing" /></label>
-          <button id="email-submit" type="submit">Add by email</button>
+          <label>${say('Email', 'E-Mail')} *<input id="email-input" type="email" placeholder="person@example.org" required /></label>
+          <label>${say('Given name', 'Vorname')}<input id="email-given" type="text" /></label>
+          <label>${say('Family name', 'Nachname')}<input id="email-family" type="text" /></label>
+          <label>${say('Role', 'Rolle')} *<select id="email-role">${roleOptions(assignableRoles[0])}</select></label>
+          <label>${say('Group', 'Gruppe')}<input id="email-group" type="text" placeholder="${say('Optional — created if missing', 'Optional; wird bei Bedarf angelegt')}" /></label>
+          <button id="email-submit" type="submit">${say('Add by email', 'Per E-Mail hinzufügen')}</button>
         </form>
         <div id="email-status" class="status"></div>
       </section>
       <section id="tab-file" class="tab-panel">
-        <p class="hint">Upload a CSV, JSON, Excel (.xlsx) or Excel-XML student list. Review and adjust the rows, then import the ones you want.</p>
-        <button id="file-pick" class="btn-secondary">Choose file…</button>
+        <p class="hint">${say('Upload a CSV, JSON, Excel (.xlsx) or Excel-XML student list. Review and adjust the rows, then import the ones you want.', 'Lade eine Teilnehmerliste als CSV, JSON, Excel (.xlsx) oder Excel-XML hoch. Prüfe und korrigiere die Zeilen und importiere dann die gewünschten.')}</p>
+        <button id="file-pick" class="btn-secondary">${say('Choose file…', 'Datei auswählen …')}</button>
         <div id="file-status" class="status"></div>
         <div id="file-preview"></div>
       </section>`
@@ -108,18 +109,18 @@
 
     const readonlyNotice = canManage
       ? ''
-      : `<div class="notice info">You have read-only access to this roster. A lecturer role (or higher) on this course is required to add or change members.</div>`;
+      : `<div class="notice info">${say('You have read-only access to this roster. A lecturer role (or higher) on this course is required to add or change members.', 'Du hast nur Lesezugriff auf diese Liste. Um Mitglieder hinzuzufügen oder zu ändern, brauchst du in diesem Kurs mindestens die Rolle Lehrende.')}</div>`;
 
     app.innerHTML = `
       <header class="header">
-        <h1>Members</h1>
-        <div class="text-muted">${esc(state.courseName || 'Course')}</div>
+        <h1>${say('Members', 'Mitglieder')}</h1>
+        <div class="text-muted">${esc(state.courseName || say('Course', 'Kurs'))}</div>
       </header>
       <nav class="tabs">${tabs}</nav>
       <section id="tab-roster" class="tab-panel">
         ${readonlyNotice}
         <table class="table grid">
-          <thead><tr><th>Member</th><th>Role</th><th>Group</th><th></th></tr></thead>
+          <thead><tr><th>${say('Member', 'Mitglied')}</th><th>${say('Role', 'Rolle')}</th><th>${say('Group', 'Gruppe')}</th><th></th></tr></thead>
           <tbody id="roster-body"></tbody>
         </table>
       </section>
@@ -155,7 +156,7 @@
     if (!body) return;
 
     if (!members.length) {
-      body.innerHTML = `<tr><td colspan="4" class="empty">No members yet.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="4" class="empty">${say('No members yet.', 'Noch keine Mitglieder.')}</td></tr>`;
       return;
     }
     body.innerHTML = members
@@ -164,11 +165,11 @@
           ? `<select class="member-role" data-id="${esc(m.id)}">${roleOptions(m.roleId)}</select>`
           : `<span class="badge badge-muted">${esc(roleLabel(m.roleId))}</span>`;
         const actionCell = m.manageable
-          ? `<button class="link-danger remove-member" data-id="${esc(m.id)}" data-name="${esc(m.name)}">Remove</button>`
+          ? `<button class="link-danger remove-member" data-id="${esc(m.id)}" data-name="${esc(m.name)}">${say('Remove', 'Entfernen')}</button>`
           : '';
         return `<tr>
           <td>
-            <div class="strong">${esc(m.name)}${m.isSelf ? ' <span class="text-muted">(you)</span>' : ''}</div>
+            <div class="strong">${esc(m.name)}${m.isSelf ? ' <span class="text-muted">' + say('(you)', '(du)') + '</span>' : ''}</div>
             <div class="text-muted">${esc(m.email || '—')}</div>
           </td>
           <td>${roleCell}</td>
@@ -198,17 +199,17 @@
 
     const visible = visibleUserList();
     if (usersLoading) {
-      body.innerHTML = `<tr><td colspan="3" class="empty">Loading users…</td></tr>`;
+      body.innerHTML = `<tr><td colspan="3" class="empty">${say('Loading users…', 'Personen werden geladen …')}</td></tr>`;
     } else if (!visible.length) {
-      body.innerHTML = `<tr><td colspan="3" class="empty">No users to add.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="3" class="empty">${say('No users to add.', 'Keine Personen zum Hinzufügen.')}</td></tr>`;
     } else {
       body.innerHTML = visible
         .map((u) => {
           const isAdded = addedUsers.has(u.id);
           const err = rowError[u.id];
           const action = isAdded
-            ? `<span class="ok">Added ✓</span>`
-            : `<button class="add-user" data-id="${esc(u.id)}">Add</button>`;
+            ? `<span class="ok">${say('Added', 'Hinzugefügt')} ✓</span>`
+            : `<button class="add-user" data-id="${esc(u.id)}">${say('Add', 'Hinzufügen')}</button>`;
           return `<tr>
             <td>
               <div class="strong">${esc(u.name)}</div>
@@ -227,7 +228,7 @@
     }
 
     const label = document.getElementById('users-page-label');
-    if (label) label.textContent = `Page ${userPage + 1}`;
+    if (label) label.textContent = `${say('Page', 'Seite')} ${userPage + 1}`;
     const prev = document.getElementById('users-prev');
     const next = document.getElementById('users-next');
     if (prev) prev.disabled = userPage === 0 || usersLoading;
@@ -249,8 +250,8 @@
         const name = `${r.given_name || ''} ${r.family_name || ''}`.trim() || r.email;
         const status = res
           ? res.ok
-            ? '<span class="ok">Added ✓</span>'
-            : `<span class="error" title="${esc(res.message || '')}">Failed</span>`
+            ? '<span class="ok">' + say('Added', 'Hinzugefügt') + ' ✓</span>'
+            : `<span class="error" title="${esc(res.message || '')}">${say('Failed', 'Fehlgeschlagen')}</span>`
           : '<span class="text-muted">—</span>';
         const dis = fileImporting ? ' disabled' : '';
         return `<tr>
@@ -264,12 +265,12 @@
       .join('');
     preview.innerHTML = `
       <table class="table grid">
-        <thead><tr><th></th><th>User</th><th>Role</th><th>Group</th><th>Status</th></tr></thead>
+        <thead><tr><th></th><th>${say('User', 'Person')}</th><th>${say('Role', 'Rolle')}</th><th>${say('Group', 'Gruppe')}</th><th>Status</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
       <div class="pager">
-        <span class="text-muted">${selCount} selected</span>
-        <button id="file-import"${fileImporting || selCount === 0 ? ' disabled' : ''}>${fileImporting ? 'Importing…' : 'Import selected'}</button>
+        <span class="text-muted">${say(`${selCount} selected`, `${selCount} ausgewählt`)}</span>
+        <button id="file-import"${fileImporting || selCount === 0 ? ' disabled' : ''}>${fileImporting ? say('Importing…', 'Wird importiert …') : say('Import selected', 'Ausgewählte importieren')}</button>
       </div>`;
   }
 
@@ -293,7 +294,7 @@
       vscode.postMessage({ command: 'refresh' });
       const st = document.getElementById('file-status');
       if (st) {
-        st.textContent = 'Import finished.';
+        st.textContent = say('Import finished.', 'Import abgeschlossen.');
         st.className = 'status ok';
       }
       return;
@@ -385,7 +386,7 @@
         if (btn) {
           const id = btn.getAttribute('data-id');
           btn.disabled = true;
-          btn.textContent = 'Adding…';
+          btn.textContent = say('Adding…', 'Wird hinzugefügt …');
           delete rowError[id];
           vscode.postMessage({
             command: 'addMember',
@@ -403,7 +404,7 @@
         if (!email) return;
         const status = document.getElementById('email-status');
         if (status) {
-          status.textContent = 'Adding…';
+          status.textContent = say('Adding…', 'Wird hinzugefügt …');
           status.className = 'status';
         }
         vscode.postMessage({
@@ -477,7 +478,7 @@
           addedUsers.add(d.userId);
           delete rowError[d.userId];
         } else {
-          rowError[d.userId] = d.message || 'Failed to add';
+          rowError[d.userId] = d.message || say('Failed to add', 'Hinzufügen fehlgeschlagen');
         }
         renderUsers();
         break;
@@ -487,7 +488,7 @@
         const status = document.getElementById('email-status');
         if (status) {
           status.textContent = d.ok
-            ? (d.workflowId ? `${d.message} (repository provisioning started)` : d.message)
+            ? (d.workflowId ? say(`${d.message} (repository provisioning started)`, `${d.message} (Repository wird angelegt)`) : d.message)
             : d.message;
           status.className = 'status ' + (d.ok ? 'ok' : 'error');
         }
@@ -519,10 +520,10 @@
             st.textContent = d.error;
             st.className = 'status error';
           } else if (!fileRows.length) {
-            st.textContent = 'No members with an email address were found in the file.';
+            st.textContent = say('No members with an email address were found in the file.', 'In der Datei wurden keine Mitglieder mit E-Mail-Adresse gefunden.');
             st.className = 'status';
           } else {
-            st.textContent = `Parsed ${fileRows.length} member(s) from ${d.filename || 'the file'}.`;
+            st.textContent = say(`Parsed ${fileRows.length} member(s) from ${d.filename || 'the file'}.`, `${fileRows.length} Mitglied(er) aus ${d.filename || 'der Datei'} gelesen.`);
             st.className = 'status';
           }
         }

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
-import { INVISIBLE_BADGE, hiddenBadge, isHidden, isHiddenHere } from '../visibility';
+import { invisibleBadge, hiddenBadge, isHidden, isHiddenHere } from '../visibility';
 import { say, uiLocale } from '../../../utils/uiLanguage';
 import {
   OrganizationList,
@@ -490,7 +490,7 @@ export class CourseFolderTreeItem extends vscode.TreeItem {
       // `course.contents` and must keep working.
       if (course.visible === false) {
         this.contextValue = 'course.contents.hidden';
-        this.description = INVISIBLE_BADGE;
+        this.description = invisibleBadge();
         this.tooltip = say('Students see no content in this course. '
           + 'Individual units and assignments can also be hidden on their own.',
         'Die Studierenden sehen in diesem Kurs keine Inhalte. '
