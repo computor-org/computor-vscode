@@ -4,6 +4,7 @@ import { CourseContentGet, CourseList, CourseContentTypeList, CourseContentKindL
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 import { notify } from '../../../utils/notify';
+import { say } from '../../../utils/uiLanguage';
 import { EDIT_DESCRIPTION_COMMAND } from '../../descriptionEditor';
 
 export interface CourseContentWebviewData {
@@ -82,7 +83,7 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         data.contentId as string,
         data.updates as Record<string, unknown>
       );
-      notify.info('Content updated successfully');
+      notify.info(say('Content updated successfully', 'Der Inhalt wurde aktualisiert.'));
 
       if (this.treeDataProvider) {
         this.treeDataProvider.updateNode('courseContent', data.contentId as string, {
@@ -91,7 +92,7 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         });
       }
     } catch (error) {
-      notify.error(`Failed to update content: ${error}`);
+      notify.error(say(`Failed to update content: ${error}`, `Der Inhalt konnte nicht aktualisiert werden: ${error}`));
     }
   }
 
@@ -108,10 +109,10 @@ export abstract class BaseCourseContentWebviewProvider extends BaseWebviewProvid
         if (this.panel) {
           this.panel.webview.html = content;
         }
-        notify.info('Content refreshed');
+        notify.info(say('Content refreshed', 'Inhalt aktualisiert.'));
       }
     } catch (error) {
-      notify.error(`Failed to refresh: ${error}`);
+      notify.error(say(`Failed to refresh: ${error}`, `Aktualisieren fehlgeschlagen: ${error}`));
     }
   }
 

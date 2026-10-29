@@ -15,6 +15,7 @@ import { hasExampleChanged } from '../../utils/exampleDiffHelper';
 import type { BumpPart } from '../../utils/versionHelpers';
 import type { ExampleUploadRequest } from '../../types/generated';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 interface ExampleInfo {
   directory: string;
@@ -53,12 +54,12 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     const examples = await this.collectExamples();
 
     return this.renderPage({
-      title: 'Upload All Examples',
+      title: say('Upload All Examples', 'Alle Beispiele hochladen'),
       container: true,
       headerHtml: `<h1>Upload All Examples</h1>
       <p>Upload all local working examples to the server.</p>`,
       bodyHtml: `<div class="policy-section">
-      <h2>Version Bump Policy</h2>
+      <h2>${say('Version Bump Policy', 'Versionserhöhung')}</h2>
       <div class="policy-options">
         <label class="radio-option">
           <input type="radio" name="bumpPolicy" value="patch" checked>
@@ -76,11 +77,11 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     </div>
 
     <div class="examples-section">
-      <h2>Examples <span id="exampleCount" class="count-badge"></span></h2>
+      <h2>${say('Examples', 'Beispiele')} <span id="exampleCount" class="count-badge"></span></h2>
       <div class="example-list">
         <label id="listHeader" class="example-list-header">
           <span class="example-checkbox">
-            <input type="checkbox" id="selectAllToggle" aria-label="Select all examples">
+            <input type="checkbox" id="selectAllToggle" aria-label="${say('Select all examples', 'Alle Beispiele auswählen')}">
           </span>
           <span id="selectionSummary" class="selection-summary"></span>
         </label>
@@ -89,8 +90,8 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     </div>
 
     <div class="actions">
-      <button id="uploadBtn" class="btn" disabled>Upload Changed</button>
-      <button id="uploadSelectedBtn" class="btn-secondary" disabled>Upload Selected</button>
+      <button id="uploadBtn" class="btn" disabled>${say('Upload Changed', 'Geänderte hochladen')}</button>
+      <button id="uploadSelectedBtn" class="btn-secondary" disabled>${say('Upload Selected', 'Ausgewählte hochladen')}</button>
     </div>
 
     <div id="summary" class="summary" style="display:none;"></div>`,
@@ -186,7 +187,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
     if (needsRepo) {
       const repos = await this.apiService.getExampleRepositories();
       if (!repos || repos.length === 0) {
-        notify.error('No example repositories found. Please create one first.');
+        notify.error(say('No example repositories found. Please create one first.', 'Keine Beispiel-Repositorys gefunden. Lege zuerst eines an.'));
         this.isUploading = false;
         return;
       }
@@ -197,7 +198,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
       } else {
         const picked = await vscode.window.showQuickPick(
           repos.map(r => ({ label: r.name, description: r.source_url, id: r.id })),
-          { placeHolder: 'Select a repository for new examples not yet on the server' }
+          { placeHolder: say('Select a repository for new examples not yet on the server', 'Repository für neue Beispiele auswählen, die noch nicht auf dem Server sind') }
         );
         if (!picked) {
           this.isUploading = false;
@@ -281,7 +282,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
 
     const result = await this.apiService.uploadExample(uploadRequest);
     if (!result) {
-      throw new Error('Upload returned no result');
+      throw new Error(say('Upload returned no result', 'Das Hochladen lieferte kein Ergebnis'));
     }
 
     const exampleId = (result as any).example_id || example.exampleId;
@@ -290,7 +291,7 @@ export class UploadAllExamplesWebviewProvider extends BaseWebviewProvider {
 
     // Create version snapshot
     try {
-      if (!exampleId) { throw new Error('No example ID available'); }
+      if (!exampleId) { throw new Error(say('No example ID available', 'Keine Beispiel-ID vorhanden')); }
       const versions = await this.apiService.getExampleVersions(exampleId);
       const uploadedVersion = versions?.find((v: { version_tag: string }) =>
         normalizeSemVer(v.version_tag) === uploadVersion

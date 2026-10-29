@@ -6,6 +6,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { escapeHtml } from './shared/webviewHelpers';
 import blockRegistryJson from '../../data/block-registry.json';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 interface TestYamlEditorData {
   filePath: string;
@@ -150,7 +151,7 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
 
   protected async getWebviewContent(data?: TestYamlEditorData): Promise<string> {
     if (!data || !this.panel) {
-      return this.getBaseHtml('Test Editor', '<p>No data available</p>');
+      return this.getBaseHtml(say('Test Editor', 'Test-Editor'), say('<p>No data available</p>', '<p>Keine Daten verfügbar</p>'));
     }
 
     const registry = this.loadBlockRegistry();
@@ -159,8 +160,8 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
       || this.detectLanguage(data.exampleDir);
 
     return this.renderPage({
-      title: 'Test Editor',
-      headerHtml: `<h1>Test Configuration</h1>
+      title: say('Test Editor', 'Test-Editor'),
+      headerHtml: `<h1>${say('Test Configuration', 'Testkonfiguration')}</h1>
     <p>${escapeHtml(data.exampleTitle || '')} &mdash; test.yaml</p>`,
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['content/test-yaml-editor.css'],
@@ -189,12 +190,12 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
   private async handleSave(data: { filePath: string; testSuite: Record<string, unknown> }): Promise<void> {
     try {
       this.saveTestYaml(data.filePath, data.testSuite);
-      notify.info('test.yaml saved successfully');
+      notify.info(say('test.yaml saved successfully', 'test.yaml gespeichert.'));
       if (this.panel) {
         this.panel.webview.postMessage({ command: 'saved' });
       }
     } catch (error) {
-      notify.error(`Failed to save test.yaml: ${error}`);
+      notify.error(say(`Failed to save test.yaml: ${error}`, `test.yaml konnte nicht gespeichert werden: ${error}`));
     }
   }
 
@@ -206,7 +207,7 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
       // (computor-org/issues#286).
       await vscode.window.showTextDocument(doc, { viewColumn: AUX_COLUMN });
     } catch (error) {
-      notify.error(`Failed to open file: ${error}`);
+      notify.error(say(`Failed to open file: ${error}`, `Die Datei konnte nicht geöffnet werden: ${error}`));
     }
   }
 }

@@ -2,7 +2,7 @@
 
 (function () {
   const vscode = window.vscodeApi || acquireVsCodeApi();
-  const { escapeHtml, formatDate } = window.ComputorWebview;
+  const { escapeHtml, formatDate, say } = window.ComputorWebview;
   let state = window.__INITIAL_STATE__ || {};
 
   function init() {
@@ -17,13 +17,13 @@
     const { example, repository, versions, latestVersion, isDownloaded, localVersion, currentVersion } = state;
 
     if (!example) {
-      app.innerHTML = '<div class="empty-state">No example selected.</div>';
+      app.innerHTML = `<div class="empty-state">${say('No example selected.', 'Kein Beispiel ausgewählt.')}</div>`;
       return;
     }
 
     const sortedVersions = (versions || []).slice().sort((a, b) => b.version_number - a.version_number);
-    const displayVersion = localVersion || currentVersion || (latestVersion ? latestVersion.version_tag : 'N/A');
-    const repoName = repository ? (repository.title || repository.name) : 'Unknown';
+    const displayVersion = localVersion || currentVersion || (latestVersion ? latestVersion.version_tag : say('N/A', 'k. A.'));
+    const repoName = repository ? (repository.title || repository.name) : say('Unknown', 'Unbekannt');
     const title = example.title || example.directory;
 
     app.innerHTML = `
@@ -33,37 +33,37 @@
           <p class="detail-subtitle">${escapeHtml(example.identifier || example.directory)}</p>
         </div>
         ${isDownloaded
-          ? `<span class="status-pill checked-out" title="Checked out locally">
+          ? `<span class="status-pill checked-out" title="${say('Checked out locally', 'Lokal ausgecheckt')}">
                <span class="pill-icon">✓</span>
-               Checked out · <span class="pill-version">${escapeHtml(displayVersion)}</span>
+               ${say('Checked out', 'Ausgecheckt')} · <span class="pill-version">${escapeHtml(displayVersion)}</span>
              </span>`
-          : `<span class="status-pill not-checked-out" title="Not checked out">
+          : `<span class="status-pill not-checked-out" title="${say('Not checked out', 'Nicht ausgecheckt')}">
                <span class="pill-icon">○</span>
-               Remote only
+               ${say('Remote only', 'Nur auf dem Server')}
              </span>`
         }
       </header>
 
       <section class="detail-section">
-        <h2 class="section-title">Details</h2>
+        <h2 class="section-title">${say('Details', 'Details')}</h2>
         <div class="card">
           <dl class="field-grid">
-            <dt>Identifier</dt>
+            <dt>${say('Identifier', 'Kennung')}</dt>
             <dd><code>${escapeHtml(example.identifier)}</code></dd>
-            <dt>Directory</dt>
+            <dt>${say('Directory', 'Verzeichnis')}</dt>
             <dd><code>${escapeHtml(example.directory)}</code></dd>
-            <dt>Repository</dt>
+            <dt>${say('Repository', 'Repository')}</dt>
             <dd>${escapeHtml(repoName)}</dd>
             ${example.subject ? `
-              <dt>Subject</dt>
+              <dt>${say('Subject', 'Fach')}</dt>
               <dd>${escapeHtml(example.subject)}</dd>
             ` : ''}
             ${example.category ? `
-              <dt>Category</dt>
+              <dt>${say('Category', 'Kategorie')}</dt>
               <dd>${escapeHtml(example.category)}</dd>
             ` : ''}
             ${example.tags && example.tags.length > 0 ? `
-              <dt>Tags</dt>
+              <dt>${say('Tags', 'Schlagwörter')}</dt>
               <dd><div class="tag-list">${example.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div></dd>
             ` : ''}
           </dl>
@@ -71,30 +71,30 @@
       </section>
 
       <section class="detail-section">
-        <h2 class="section-title">Actions</h2>
+        <h2 class="section-title">${say('Actions', 'Aktionen')}</h2>
         <div class="card">
           <div class="action-row">
-            <button class="btn" id="checkoutLatestBtn">Checkout Latest</button>
-            <button class="btn secondary" id="refreshBtn">Refresh</button>
+            <button class="btn" id="checkoutLatestBtn">${say('Checkout Latest', 'Neueste auschecken')}</button>
+            <button class="btn secondary" id="refreshBtn">${say('Refresh', 'Aktualisieren')}</button>
           </div>
           ${isDownloaded ? `
             <div class="action-row">
-              <span class="action-label">Bump version:</span>
+              <span class="action-label">${say('Bump version:', 'Version erhöhen:')}</span>
               <span class="bump-group">
-                <button class="btn secondary" data-bump="patch" title="Bump patch (x.y.Z)">Patch</button>
-                <button class="btn secondary" data-bump="minor" title="Bump minor (x.Y.0)">Minor</button>
-                <button class="btn secondary" data-bump="major" title="Bump major (X.0.0)">Major</button>
+                <button class="btn secondary" data-bump="patch" title="${say('Bump patch (x.y.Z)', 'Patch erhöhen (x.y.Z)')}">Patch</button>
+                <button class="btn secondary" data-bump="minor" title="${say('Bump minor (x.Y.0)', 'Minor erhöhen (x.Y.0)')}">Minor</button>
+                <button class="btn secondary" data-bump="major" title="${say('Bump major (X.0.0)', 'Major erhöhen (X.0.0)')}">Major</button>
               </span>
-              <button class="btn" id="uploadBtn">Upload working copy</button>
+              <button class="btn" id="uploadBtn">${say('Upload working copy', 'Arbeitskopie hochladen')}</button>
             </div>
           ` : ''}
         </div>
       </section>
 
       <section class="detail-section">
-        <h2 class="section-title">Versions (${sortedVersions.length})</h2>
+        <h2 class="section-title">${say('Versions', 'Versionen')} (${sortedVersions.length})</h2>
         ${sortedVersions.length === 0
-          ? '<div class="empty-state">No versions available yet.</div>'
+          ? `<div class="empty-state">${say('No versions available yet.', 'Noch keine Versionen vorhanden.')}</div>`
           : `<div class="version-table">
               ${sortedVersions.map(v => {
                 const isLatest = latestVersion && v.id === latestVersion.id;
@@ -108,8 +108,8 @@
                     <span class="version-number">#${v.version_number}</span>
                     <span class="version-date">${formatDate(v.created_at, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     <span class="version-actions">
-                      <button class="btn secondary sm" data-checkout-version="${escapeHtml(v.id)}" title="Checkout this version">
-                        Checkout
+                      <button class="btn secondary sm" data-checkout-version="${escapeHtml(v.id)}" title="${say('Checkout this version', 'Diese Version auschecken')}">
+                        ${say('Checkout', 'Auschecken')}
                       </button>
                     </span>
                   </div>`;

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { CourseContentKindList } from '../../../types/generated';
+import { say } from '../../../utils/uiLanguage';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 import { BaseCourseContentWebviewProvider } from './BaseCourseContentWebviewProvider';
 import { AssignmentContentWebviewProvider } from './AssignmentContentWebviewProvider';
@@ -60,11 +61,11 @@ export class CourseContentWebviewFactory {
    */
   static getProviderType(contentKind: CourseContentKindList): string {
     if (contentKind.submittable) {
-      return 'Assignment';
+      return say('Assignment', 'Aufgabe');
     }
     if (contentKind.has_descendants) {
-      return 'Unit';
+      return say('Unit', 'Einheit');
     }
-    return 'Generic';
+    return say('Generic', 'Inhalt');
   }
 }

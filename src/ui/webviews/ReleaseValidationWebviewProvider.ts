@@ -3,6 +3,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { escapeHtml } from './shared/webviewHelpers';
 import { renderWebviewPage } from './shared/webviewPage';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 interface ValidationError {
   course_content_id: string;
@@ -32,7 +33,7 @@ export class ReleaseValidationWebviewProvider {
   async showValidationErrors(errors: ValidationResult, courseTitle: string): Promise<void> {
     const panel = vscode.window.createWebviewPanel(
       'releaseValidation',
-      '⚠️ Release Validation Failed',
+      say('⚠️ Release Validation Failed', '⚠️ Prüfung vor der Freigabe fehlgeschlagen'),
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -47,7 +48,7 @@ export class ReleaseValidationWebviewProvider {
       switch (message.command) {
         case 'viewContent':
           // Could navigate to the content in the tree
-          notify.info(`Navigate to assignment: ${message.data?.courseContentId}`);
+          notify.info(say(`Navigate to assignment: ${message.data?.courseContentId}`, `Zur Aufgabe wechseln: ${message.data?.courseContentId}`));
           break;
         case 'close':
           panel.dispose();
@@ -59,34 +60,34 @@ export class ReleaseValidationWebviewProvider {
   private getHtmlContent(webview: vscode.Webview, errors: ValidationResult, courseTitle: string): string {
     const bodyHtml = `
       <div class="error-summary">
-        <h2>⚠️ Cannot Release Course</h2>
-        <p><strong>${escapeHtml(errors.error || 'Validation failed')}</strong></p>
-        <p>Found ${errors.total_issues || 0} issue(s) that must be resolved before release.</p>
-        <p style="margin-top: 10px; font-style: italic;">Course: ${escapeHtml(courseTitle)}</p>
+        <h2>⚠️ ${say('Cannot Release Course', 'Kurs kann nicht freigegeben werden')}</h2>
+        <p><strong>${escapeHtml(errors.error || say('Validation failed', 'Prüfung fehlgeschlagen'))}</strong></p>
+        <p>${say(`Found ${errors.total_issues || 0} issue(s) that must be resolved before release.`, `${errors.total_issues || 0} Problem(e) gefunden, die vor der Freigabe behoben werden müssen.`)}</p>
+        <p style="margin-top: 10px; font-style: italic;">${say('Course', 'Kurs')}: ${escapeHtml(courseTitle)}</p>
       </div>
 
-      <h3>Issues Found:</h3>
+      <h3>${say('Issues Found:', 'Gefundene Probleme:')}</h3>
       <div class="error-list">
         ${(errors.validation_errors || []).map((error, index) => `
           <div class="error-item">
             <h3>${index + 1}. ${escapeHtml(error.title)}</h3>
             <div class="error-item-content">
               <div class="info-row">
-                <span class="label">Path:</span>
+                <span class="label">${say('Path:', 'Pfad:')}</span>
                 <span class="value"><span class="code">${escapeHtml(error.path)}</span></span>
               </div>
               <div class="info-row">
-                <span class="label">Issue:</span>
+                <span class="label">${say('Issue:', 'Problem:')}</span>
                 <span class="value">${escapeHtml(error.issue)}</span>
               </div>
               <div class="info-row">
-                <span class="label">Content ID:</span>
+                <span class="label">${say('Content ID:', 'Inhalts-ID:')}</span>
                 <span class="value"><span class="code">${escapeHtml(error.course_content_id)}</span></span>
               </div>
             </div>
             <div class="actions">
               <button class="btn-secondary" data-action="viewContent" data-id="${escapeHtml(error.course_content_id)}">
-                View in Tree
+                ${say('View in Tree', 'Im Baum anzeigen')}
               </button>
             </div>
           </div>
@@ -94,17 +95,17 @@ export class ReleaseValidationWebviewProvider {
       </div>
 
       <div class="next-steps">
-        <h3>📝 Next Steps:</h3>
+        <h3>📝 ${say('Next Steps:', 'Nächste Schritte:')}</h3>
         <ol>
-          <li>Review each assignment listed above</li>
-          <li>Recreate assignments with examples assigned from the course tree</li>
-          <li>After all assignments have examples, try releasing again</li>
+          <li>${say('Review each assignment listed above', 'Prüfe jede oben aufgeführte Aufgabe')}</li>
+          <li>${say('Recreate assignments with examples assigned from the course tree', 'Lege die Aufgaben im Kursbaum mit zugewiesenem Beispiel neu an')}</li>
+          <li>${say('After all assignments have examples, try releasing again', 'Sobald alle Aufgaben ein Beispiel haben, gib den Kurs erneut frei')}</li>
         </ol>
-        <p><strong>Need help?</strong> Each assignment must have an example assigned before you can release the course to students.</p>
+        <p><strong>${say('Need help?', 'Hilfe gefällig?')}</strong> ${say('Each assignment must have an example assigned before you can release the course to students.', 'Jeder Aufgabe muss ein Beispiel zugewiesen sein, bevor du den Kurs für Studierende freigeben kannst.')}</p>
       </div>
 
       <div class="close-row">
-        <button class="btn-secondary" data-action="close">Close</button>
+        <button class="btn-secondary" data-action="close">${say('Close', 'Schließen')}</button>
       </div>`;
 
     const inlineScript = `
@@ -114,7 +115,7 @@ export class ReleaseValidationWebviewProvider {
       });`;
 
     return renderWebviewPage(webview, this.extensionUri, {
-      title: 'Release Validation Failed',
+      title: say('Release Validation Failed', 'Prüfung vor der Freigabe fehlgeschlagen'),
       bodyHtml,
       cssFiles: ['content/release-validation.css'],
       inlineScript
