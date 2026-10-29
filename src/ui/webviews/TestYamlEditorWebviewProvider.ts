@@ -6,7 +6,8 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { escapeHtml } from './shared/webviewHelpers';
 import blockRegistryJson from '../../data/block-registry.json';
 import { notify } from '../../utils/notify';
-import { say } from '../../utils/uiLanguage';
+import { say, uiLanguage } from '../../utils/uiLanguage';
+import { localizeBlockRegistry } from './blockRegistryLanguage';
 
 interface TestYamlEditorData {
   filePath: string;
@@ -167,7 +168,7 @@ export class TestYamlEditorWebviewProvider extends BaseWebviewProvider {
       cssFiles: ['content/test-yaml-editor.css'],
       scriptFiles: ['content/test-yaml-editor.js'],
       initialState: {
-        registry,
+        registry: localizeBlockRegistry(registry, uiLanguage()),
         testSuite: existingData || null,
         detectedLanguage: detectedLanguage || null,
         filePath: data.filePath,

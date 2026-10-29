@@ -53,6 +53,23 @@ export function localizedTitle(
   return item ? localizedText(item.title_i18n, language, item.title) : undefined;
 }
 
+// The backend seeds these two kinds with English titles only.
+const KIND_TITLES: Record<string, { en: string; de: string }> = {
+  assignment: { en: 'Assignment', de: 'Aufgabe' },
+  unit: { en: 'Unit', de: 'Einheit' }
+};
+
+/** A content kind's title in `language`; an unknown kind keeps the title it was sent with. */
+export function localizedKindTitle(
+  kindId: string | null | undefined, title: string | null | undefined, language: string
+): string | undefined {
+  const known = kindId ? KIND_TITLES[kindId] : undefined;
+  if (known && (language === 'de' || language === 'en')) {
+    return known[language];
+  }
+  return title || kindId || undefined;
+}
+
 const UNIT_TITLE = /^(?:Week|Woche)\s+(\d+)$/i;
 
 /** "Week N" and "Woche N" follow the reading language; other titles stay. */

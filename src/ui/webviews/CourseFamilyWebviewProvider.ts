@@ -5,6 +5,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -21,7 +22,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
     organization: OrganizationList;
   }): Promise<string> {
     if (!data?.courseFamily) {
-      return this.getBaseHtml('Course Family', '<p>No course family data available</p>');
+      return this.getBaseHtml(say('Course Family', 'Kursfamilie'), say('<p>No course family data available</p>', '<p>Keine Daten zur Kursfamilie verfügbar</p>'));
     }
 
     const { courseFamily, organization } = data;
@@ -36,21 +37,21 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
 
     const headerHtml = `
       <h1>${escapeHtml(courseFamily.title || courseFamily.path)}</h1>
-      <p>Course Family in ${escapeHtml(organization?.title || organization?.path)}</p>`;
+      <p>${say('Course Family in', 'Kursfamilie in')} ${escapeHtml(organization?.title || organization?.path)}</p>`;
 
-    const detailsHtml = section('Course Family', `
+    const detailsHtml = section(say('Course Family', 'Kursfamilie'), `
       ${detailGrid(`
       ${infoRowCode('ID', courseFamily.id)}
-      ${infoRowCode('Path', courseFamily.path)}
-      ${infoRowText('Organization', organization?.title || organization?.path)}
-      ${infoRowText('Courses', String(coursesCount))}
+      ${infoRowCode(say('Path', 'Pfad'), courseFamily.path)}
+      ${infoRowText(say('Organization', 'Organisation'), organization?.title || organization?.path)}
+      ${infoRowText(say('Courses', 'Kurse'), String(coursesCount))}
     `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', courseFamily.title, { required: true, placeholder: 'Course family title' }))}
-        ${formGroup('Description', textareaInput('description', courseFamily.description, { placeholder: 'Course family description' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', courseFamily.title, { required: true, placeholder: say('Course family title', 'Titel der Kursfamilie') }))}
+        ${formGroup(say('Description', 'Beschreibung'), textareaInput('description', courseFamily.description, { placeholder: say('Course family description', 'Beschreibung der Kursfamilie') }))}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
         </div>
       </form>
     `);
@@ -81,7 +82,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Course Family', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Course Family', 'Kursfamilie'), headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -89,7 +90,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
       case 'updateCourseFamily':
         try {
           await this.apiService.updateCourseFamily(message.data.familyId, message.data.updates);
-          notify.info('Course family updated successfully');
+          notify.info(say('Course family updated successfully', 'Die Kursfamilie wurde aktualisiert.'));
 
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('courseFamily', message.data.familyId, message.data.updates);
@@ -97,7 +98,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
             vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
-          notify.error(`Failed to update course family: ${error}`);
+          notify.error(say(`Failed to update course family: ${error}`, `Die Kursfamilie konnte nicht aktualisiert werden: ${error}`));
         }
         break;
 
@@ -110,7 +111,7 @@ export class CourseFamilyWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            notify.error(`Failed to refresh: ${error}`);
+            notify.error(say(`Failed to refresh: ${error}`, `Aktualisieren fehlgeschlagen: ${error}`));
           }
         }
         break;

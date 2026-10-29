@@ -1,5 +1,5 @@
 (function () {
-  const { escapeHtml } = window.ComputorWebview;
+  const { escapeHtml, say } = window.ComputorWebview;
   const vscode = window.vscodeApi || acquireVsCodeApi();
 
   let state = window.__INITIAL_STATE__ || null;
@@ -37,33 +37,33 @@
     if (!root) { return; }
 
     if (!state || !state.target) {
-      root.innerHTML = '<p>Loading…</p>';
+      root.innerHTML = '<p>' + say('Loading…', 'Wird geladen …') + '</p>';
       return;
     }
 
     const { target, members, availableRoles, canManage } = state;
-    const headerLabel = target.kind === 'organization' ? 'Organization' : 'Course Family';
+    const headerLabel = target.kind === 'organization' ? say('Organization', 'Organisation') : say('Course Family', 'Kursfamilie');
 
     root.innerHTML = `
       <header class="header">
         <h1>${escapeHtml(target.scopeTitle)}</h1>
-        <p>${escapeHtml(target.scopeSubtitle || headerLabel)} · Members</p>
-        ${canManage ? '' : '<p class="notice info">You have read-only access. Backend rejects mutations from non-managers.</p>'}
+        <p>${escapeHtml(target.scopeSubtitle || headerLabel)} · ${say('Members', 'Mitglieder')}</p>
+        ${canManage ? '' : `<p class="notice info">${say('You have read-only access. Backend rejects mutations from non-managers.', 'Du hast nur Lesezugriff. Änderungen nimmt der Server nur von Personen mit Verwaltungsrechten an.')}</p>`}
       </header>
 
       ${noticeHtml()}
 
       <section class="section stack tight">
         <div class="section-header">
-          <h2>Members (${members.length})</h2>
+          <h2>${say('Members', 'Mitglieder')} (${members.length})</h2>
         </div>
         ${members.length === 0
-          ? '<p class="text-muted">No members yet.</p>'
+          ? `<p class="text-muted">${say('No members yet.', 'Noch keine Mitglieder.')}</p>`
           : `<table class="table scope-members">
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Role</th>
+                  <th>${say('User', 'Person')}</th>
+                  <th>${say('Role', 'Rolle')}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -86,7 +86,7 @@
                       </td>
                       <td class="member-actions">
                         ${canManage
-                          ? `<button type="button" class="btn-danger btn-sm" data-remove-member="${escapeHtml(member.id)}">Remove</button>`
+                          ? `<button type="button" class="btn-danger btn-sm" data-remove-member="${escapeHtml(member.id)}">${say('Remove', 'Entfernen')}</button>`
                           : ''}
                       </td>
                     </tr>
@@ -99,24 +99,24 @@
       ${canManage ? `
       <section class="section stack tight">
         <div class="section-header">
-          <h2>Add Member</h2>
+          <h2>${say('Add Member', 'Mitglied hinzufügen')}</h2>
         </div>
         <form id="add-member-form" class="form-grid scope-add-form">
           <div class="form-field">
-            <label for="add-role">Role</label>
+            <label for="add-role">${say('Role', 'Rolle')}</label>
             <select id="add-role" name="role_id" required>
-              <option value="" disabled${localState.addRoleId ? '' : ' selected'}>Choose a role…</option>
+              <option value="" disabled${localState.addRoleId ? '' : ' selected'}>${say('Choose a role…', 'Rolle auswählen …')}</option>
               ${availableRoles.map(r => `<option value="${escapeHtml(r.id)}"${r.id === localState.addRoleId ? ' selected' : ''}>${escapeHtml(r.title || r.id)}</option>`).join('')}
             </select>
           </div>
           <div class="form-field">
-            <label for="add-identifier">Email</label>
+            <label for="add-identifier">${say('Email', 'E-Mail')}</label>
             <input id="add-identifier" name="identifier" type="text" placeholder="user@example.com" autocomplete="off" />
-            <p class="field-hint">Looks up the user by exact email.</p>
+            <p class="field-hint">${say('Looks up the user by exact email.', 'Sucht die Person über die genaue E-Mail-Adresse.')}</p>
           </div>
           <div class="form-actions end">
-            <button type="button" id="browse-users-btn" class="btn-secondary">Browse users…</button>
-            <button type="submit" class="btn">Add Member</button>
+            <button type="button" id="browse-users-btn" class="btn-secondary">${say('Browse users…', 'Personen durchsuchen …')}</button>
+            <button type="submit" class="btn">${say('Add Member', 'Mitglied hinzufügen')}</button>
           </div>
         </form>
       </section>
@@ -136,11 +136,11 @@
         const roleId = roleSelect && 'value' in roleSelect ? roleSelect.value : '';
         const identifier = identifierInput && 'value' in identifierInput ? identifierInput.value.trim() : '';
         if (!roleId) {
-          showNotice('warning', 'Pick a role.');
+          showNotice('warning', say('Pick a role.', 'Wähle eine Rolle.'));
           return;
         }
         if (!identifier) {
-          showNotice('warning', 'Type an email/username or use Browse users…');
+          showNotice('warning', say('Type an email/username or use Browse users…', 'Gib eine E-Mail-Adresse oder einen Benutzernamen ein oder nutze „Personen durchsuchen …“.'));
           return;
         }
         post('addMember', { identifier, role_id: roleId });
@@ -153,7 +153,7 @@
         const roleSelect = document.getElementById('add-role');
         const roleId = roleSelect && 'value' in roleSelect ? roleSelect.value : '';
         if (!roleId) {
-          showNotice('warning', 'Pick a role first.');
+          showNotice('warning', say('Pick a role first.', 'Wähle zuerst eine Rolle.'));
           return;
         }
         post('browseAndAdd', { role_id: roleId });

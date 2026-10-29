@@ -1,6 +1,6 @@
 (function() {
   const vscode = window.vscodeApi || acquireVsCodeApi();
-  const { escapeHtml } = window.ComputorWebview;
+  const { escapeHtml, say } = window.ComputorWebview;
   const state = window.__INITIAL_STATE__ || {};
 
   let currentFilter = 'all';
@@ -15,7 +15,7 @@
 
   function init() {
     if (!state.members || !state.availableRoles) {
-      showError('No import data available');
+      showError(say('No import data available', 'Keine Importdaten verfügbar'));
       return;
     }
 
@@ -61,53 +61,53 @@
 
     app.innerHTML = `
       <div class="header">
-        <h1>Course Members</h1>
-        <p>${members.length} member(s)</p>
+        <h1>${say('Course Members', 'Kursmitglieder')}</h1>
+        <p>${say(`${members.length} member(s)`, `${members.length} Mitglied(er)`)}</p>
       </div>
 
       <div class="controls">
         <div class="filter-bar">
-          <span class="filter-label">Filter:</span>
+          <span class="filter-label">${say('Filter:', 'Filter:')}</span>
           <button class="filter-button ${currentFilter === 'all' ? 'active' : ''}" data-filter="all">
-            All <span class="badge">${members.length}</span>
+            ${say('All', 'Alle')} <span class="badge">${members.length}</span>
           </button>
           <button class="filter-button ${currentFilter === 'missing' ? 'active' : ''}" data-filter="missing">
-            New <span class="badge">${statusCounts.missing}</span>
+            ${say('New', 'Neu')} <span class="badge">${statusCounts.missing}</span>
           </button>
           <button class="filter-button ${currentFilter === 'existing' ? 'active' : ''}" data-filter="existing">
-            Existing <span class="badge">${statusCounts.existing}</span>
+            ${say('Existing', 'Vorhanden')} <span class="badge">${statusCounts.existing}</span>
           </button>
           <button class="filter-button ${currentFilter === 'modified' ? 'active' : ''}" data-filter="modified">
-            Modified <span class="badge">${statusCounts.modified}</span>
+            ${say('Modified', 'Geändert')} <span class="badge">${statusCounts.modified}</span>
           </button>
         </div>
 
         <div class="action-bar">
           <button class="btn btn-secondary" id="loadFileBtn" ${isImporting ? 'disabled' : ''}>
-            📁 Load Import File
+            📁 ${say('Load Import File', 'Importdatei laden')}
           </button>
           <button class="btn btn-secondary" id="addMemberBtn" ${isImporting ? 'disabled' : ''}>
-            ➕ Add New Member
+            ➕ ${say('Add New Member', 'Neues Mitglied hinzufügen')}
           </button>
           <button class="btn btn-secondary" id="selectAllBtn" ${isImporting ? 'disabled' : ''}>
-            Select All
+            ${say('Select All', 'Alle auswählen')}
           </button>
           <button class="btn btn-secondary" id="deselectAllBtn" ${isImporting ? 'disabled' : ''}>
-            Deselect All
+            ${say('Deselect All', 'Auswahl aufheben')}
           </button>
           <button class="btn" id="importBtn" ${selectedCount === 0 || isImporting ? 'disabled' : ''}>
-            ${isImporting ? '<span class="spinner"></span>' : ''} Import Selected (${selectedCount})
+            ${isImporting ? '<span class="spinner"></span>' : ''} ${say('Import Selected', 'Ausgewählte importieren')} (${selectedCount})
           </button>
         </div>
 
         <div class="options-bar">
           <label class="option-checkbox">
             <input type="checkbox" id="createGroupsCheckbox" ${isImporting ? 'disabled' : ''} checked>
-            <span>Create missing groups</span>
+            <span>${say('Create missing groups', 'Fehlende Gruppen anlegen')}</span>
           </label>
           <label class="option-checkbox">
             <input type="checkbox" id="updateExistingCheckbox" ${isImporting ? 'disabled' : ''} checked>
-            <span>Update existing members</span>
+            <span>${say('Update existing members', 'Vorhandene Mitglieder aktualisieren')}</span>
           </label>
         </div>
       </div>
@@ -124,21 +124,21 @@
                   Status ${renderSortIcon('status')}
                 </th>
                 <th class="email-cell sortable" data-sort="email">
-                  Email ${renderSortIcon('email')}
+                  ${say('Email', 'E-Mail')} ${renderSortIcon('email')}
                 </th>
                 <th class="given-name-cell sortable" data-sort="given_name">
-                  Given Name ${renderSortIcon('given_name')}
+                  ${say('Given Name', 'Vorname')} ${renderSortIcon('given_name')}
                 </th>
                 <th class="family-name-cell sortable" data-sort="family_name">
-                  Family Name ${renderSortIcon('family_name')}
+                  ${say('Family Name', 'Nachname')} ${renderSortIcon('family_name')}
                 </th>
                 <th class="group-cell sortable" data-sort="course_group_title">
-                  Group ${renderSortIcon('course_group_title')}
+                  ${say('Group', 'Gruppe')} ${renderSortIcon('course_group_title')}
                 </th>
                 <th class="role-cell sortable" data-sort="selectedRoleId">
-                  Course Role ${renderSortIcon('selectedRoleId')}
+                  ${say('Course Role', 'Kursrolle')} ${renderSortIcon('selectedRoleId')}
                 </th>
-                <th class="result-cell">Result</th>
+                <th class="result-cell">${say('Result', 'Ergebnis')}</th>
               </tr>
             </thead>
           </table>
@@ -153,7 +153,7 @@
       </div>
 
       <div class="summary" id="importSummary">
-        <h3>Import Complete</h3>
+        <h3>${say('Import Complete', 'Import abgeschlossen')}</h3>
         <div class="summary-stats" id="summaryStats"></div>
       </div>
     `;
@@ -197,7 +197,7 @@
 
   function renderResultCell(member) {
     if (member.isImporting) {
-      return '<span class="result-badge result-importing"><span class="spinner"></span> Importing...</span>';
+      return '<span class="result-badge result-importing"><span class="spinner"></span> ' + say('Importing...', 'Wird importiert …') + '</span>';
     }
     if (!member.importResult) {
       return '';
@@ -209,11 +209,11 @@
     if (status === 'success') {
       resultClass = 'result-success';
       resultIcon = '✓';
-      displayStatus = 'success';
+      displayStatus = say('success', 'erfolgreich');
     } else if (status === 'error') {
       resultClass = 'result-error';
       resultIcon = '✗';
-      displayStatus = 'error';
+      displayStatus = say('error', 'Fehler');
     } else {
       resultClass = 'result-pending';
       resultIcon = '';
@@ -246,7 +246,7 @@
     const selectedCount = members.filter(m => m.isSelected).length;
     const importBtn = document.getElementById('importBtn');
     if (importBtn) {
-      importBtn.innerHTML = `${isImporting ? '<span class="spinner"></span>' : ''} Import Selected (${selectedCount})`;
+      importBtn.innerHTML = `${isImporting ? '<span class="spinner"></span>' : ''} ${say('Import Selected', 'Ausgewählte importieren')} (${selectedCount})`;
       importBtn.disabled = selectedCount === 0 || isImporting;
     }
 
@@ -281,7 +281,7 @@
       return `
         <tr>
           <td colspan="9" class="empty-state">
-            No members match the current filter
+            ${say('No members match the current filter', 'Kein Mitglied passt zum aktuellen Filter')}
           </td>
         </tr>
       `;
@@ -290,9 +290,9 @@
     return visibleMembers.map(member => {
       const statusClass = `status-${member.status}`;
       const statusLabel = {
-        missing: 'New',
-        existing: 'Exists',
-        modified: 'Modified'
+        missing: say('New', 'Neu'),
+        existing: say('Exists', 'Vorhanden'),
+        modified: say('Modified', 'Geändert')
       }[member.status] || member.status;
 
       const resultHtml = renderResultCell(member);
@@ -356,7 +356,7 @@
   }
 
   function renderGroupOptionsWithCustom(currentValue) {
-    let options = '<option value="">(No Group)</option>';
+    let options = '<option value="">' + say('(No Group)', '(Ohne Gruppe)') + '</option>';
 
     // Add existing groups
     availableGroups.forEach(group => {
@@ -366,17 +366,17 @@
     });
 
     // Add "Custom..." option
-    options += '<option value="__CUSTOM__">+ New Group...</option>';
+    options += '<option value="__CUSTOM__">+ ' + say('New Group...', 'Neue Gruppe …') + '</option>';
 
     // If current value is not in the list and not empty, add it as selected custom option
     if (currentValue && !availableGroups.find(g => (g.title || g.id) === currentValue)) {
-      options = '<option value="">(No Group)</option>';
+      options = '<option value="">' + say('(No Group)', '(Ohne Gruppe)') + '</option>';
       availableGroups.forEach(group => {
         const title = group.title || group.id;
         options += `<option value="${escapeHtml(title)}">${escapeHtml(title)}</option>`;
       });
       options += `<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)}</option>`;
-      options += '<option value="__CUSTOM__">+ New Group...</option>';
+      options += '<option value="__CUSTOM__">+ ' + say('New Group...', 'Neue Gruppe …') + '</option>';
     }
 
     return options;
@@ -616,7 +616,7 @@
     reader.onerror = () => {
       vscode.postMessage({
         command: 'showError',
-        data: { message: 'Failed to read dropped file' }
+        data: { message: say('Failed to read dropped file', 'Die abgelegte Datei konnte nicht gelesen werden') }
       });
     };
 
@@ -750,7 +750,7 @@
       if (status === 'finished') {
         member.importResult = {
           status: 'success',
-          message: data.result?.message || 'Import completed successfully'
+          message: data.result?.message || say('Import completed successfully', 'Import abgeschlossen')
         };
       } else {
         // failed, deferred, cancelled
@@ -787,15 +787,15 @@
     if (summaryStats && summary) {
       summaryStats.innerHTML = `
         <div class="summary-stat">
-          <span class="summary-stat-label">Total</span>
+          <span class="summary-stat-label">${say('Total', 'Gesamt')}</span>
           <span class="summary-stat-value">${data.total}</span>
         </div>
         <div class="summary-stat">
-          <span class="summary-stat-label">Success</span>
+          <span class="summary-stat-label">${say('Success', 'Erfolgreich')}</span>
           <span class="summary-stat-value" style="color: var(--c-success);">${data.success}</span>
         </div>
         <div class="summary-stat">
-          <span class="summary-stat-label">Errors</span>
+          <span class="summary-stat-label">${say('Errors', 'Fehler')}</span>
           <span class="summary-stat-value" style="color: var(--c-error);">${data.errors}</span>
         </div>
       `;
@@ -875,7 +875,7 @@
 
     const menuItem = document.createElement('div');
     menuItem.className = 'context-menu-item';
-    menuItem.textContent = '🗑️ Remove Row';
+    menuItem.textContent = '🗑️ ' + say('Remove Row', 'Zeile entfernen');
     menuItem.addEventListener('click', () => {
       handleRemoveMember(rowNumber);
       menu.remove();

@@ -5,6 +5,7 @@ import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvi
 import { CourseGroupGet, CourseList } from '../../types/generated';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 export class CourseGroupWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -22,27 +23,27 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
     membersCount?: number;
   }): Promise<string> {
     if (!data?.group) {
-      return this.getBaseHtml('Course Group', '<p>No course group data available</p>');
+      return this.getBaseHtml(say('Course Group', 'Kursgruppe'), say('<p>No course group data available</p>', '<p>Keine Daten zur Kursgruppe verfügbar</p>'));
     }
 
     const { group, course, membersCount } = data;
 
     const headerHtml = `
       <h1>${escapeHtml(group.title || group.id)}</h1>
-      <p>Course Group${course ? ` in ${escapeHtml(course.title || course.path)}` : ''}</p>`;
+      <p>${say('Course Group', 'Kursgruppe')}${course ? ` ${say('in', 'in')} ${escapeHtml(course.title || course.path)}` : ''}</p>`;
 
-    const detailsHtml = section('Course Group', `
+    const detailsHtml = section(say('Course Group', 'Kursgruppe'), `
       ${detailGrid(`
       ${infoRowCode('ID', group.id)}
-      ${course ? infoRowText('Course', course.title || course.path) : ''}
-      ${infoRowText('Members', String(membersCount || 0))}
+      ${course ? infoRowText(say('Course', 'Kurs'), course.title || course.path) : ''}
+      ${infoRowText(say('Members', 'Mitglieder'), String(membersCount || 0))}
     `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', group.title, { required: true, placeholder: 'Group title' }))}
-        ${formGroup('Description', textareaInput('description', group.description, { placeholder: 'Group description' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', group.title, { required: true, placeholder: say('Group title', 'Titel der Gruppe') }))}
+        ${formGroup(say('Description', 'Beschreibung'), textareaInput('description', group.description, { placeholder: say('Group description', 'Beschreibung der Gruppe') }))}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
         </div>
       </form>
     `);
@@ -73,7 +74,7 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Course Group', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Course Group', 'Kursgruppe'), headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -81,13 +82,13 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
       case 'updateCourseGroup':
         try {
           await this.apiService.updateCourseGroup(message.data.groupId, message.data.updates);
-          notify.info('Course group updated successfully');
+          notify.info(say('Course group updated successfully', 'Die Kursgruppe wurde aktualisiert.'));
 
           if (this.treeDataProvider) {
             await this.treeDataProvider.refresh();
           }
         } catch (error) {
-          notify.error(`Failed to update course group: ${error}`);
+          notify.error(say(`Failed to update course group: ${error}`, `Die Kursgruppe konnte nicht aktualisiert werden: ${error}`));
         }
         break;
 
@@ -108,7 +109,7 @@ export class CourseGroupWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            notify.error(`Failed to refresh: ${error}`);
+            notify.error(say(`Failed to refresh: ${error}`, `Aktualisieren fehlgeschlagen: ${error}`));
           }
         }
         break;

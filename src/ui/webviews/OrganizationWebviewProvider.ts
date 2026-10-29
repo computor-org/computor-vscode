@@ -5,6 +5,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 export class OrganizationWebviewProvider extends BaseWebviewProvider {
   private apiService: ComputorApiService;
@@ -20,7 +21,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
     organization: OrganizationGet;
   }): Promise<string> {
     if (!data?.organization) {
-      return this.getBaseHtml('Organization', '<p>No organization data available</p>');
+      return this.getBaseHtml(say('Organization', 'Organisation'), say('<p>No organization data available</p>', '<p>Keine Daten zur Organisation verfügbar</p>'));
     }
 
     const { organization } = data;
@@ -35,20 +36,20 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
 
     const headerHtml = `
       <h1>${escapeHtml(organization.title || organization.path)}</h1>
-      <p>Organization</p>`;
+      <p>${say('Organization', 'Organisation')}</p>`;
 
-    const detailsHtml = section('Organization', `
+    const detailsHtml = section(say('Organization', 'Organisation'), `
       ${detailGrid(`
       ${infoRowCode('ID', organization.id)}
-      ${infoRowCode('Path', organization.path)}
-      ${infoRowText('Course Families', String(courseFamiliesCount))}
+      ${infoRowCode(say('Path', 'Pfad'), organization.path)}
+      ${infoRowText(say('Course Families', 'Kursfamilien'), String(courseFamiliesCount))}
     `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', organization.title, { required: true, placeholder: 'Organization title' }))}
-        ${formGroup('Description', textareaInput('description', organization.description, { placeholder: 'Organization description' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', organization.title, { required: true, placeholder: say('Organization title', 'Titel der Organisation') }))}
+        ${formGroup(say('Description', 'Beschreibung'), textareaInput('description', organization.description, { placeholder: say('Organization description', 'Beschreibung der Organisation') }))}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
         </div>
       </form>
     `);
@@ -79,7 +80,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Organization', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Organization', 'Organisation'), headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -87,7 +88,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
       case 'updateOrganization':
         try {
           await this.apiService.updateOrganization(message.data.organizationId, message.data.updates);
-          notify.info('Organization updated successfully');
+          notify.info(say('Organization updated successfully', 'Die Organisation wurde aktualisiert.'));
 
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('organization', message.data.organizationId, message.data.updates);
@@ -95,7 +96,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
             vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
-          notify.error(`Failed to update organization: ${error}`);
+          notify.error(say(`Failed to update organization: ${error}`, `Die Organisation konnte nicht aktualisiert werden: ${error}`));
         }
         break;
 
@@ -108,7 +109,7 @@ export class OrganizationWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            notify.error(`Failed to refresh: ${error}`);
+            notify.error(say(`Failed to refresh: ${error}`, `Aktualisieren fehlgeschlagen: ${error}`));
           }
         }
         break;

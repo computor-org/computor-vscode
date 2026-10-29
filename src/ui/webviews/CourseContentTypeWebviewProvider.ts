@@ -5,6 +5,8 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, infoRow, section, badge, colorSwatch, formGroup, textInput, textareaInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { say, uiLanguage } from '../../utils/uiLanguage';
+import { localizedKindTitle } from '../../utils/contentLanguage';
 import { showErrorWithSeverity } from '../../utils/errorDisplay';
 
 export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
@@ -23,7 +25,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
     contentKind?: CourseContentKindList;
   }): Promise<string> {
     if (!data?.contentType) {
-      return this.getBaseHtml('Content Type', '<p>No content type data available</p>');
+      return this.getBaseHtml(say('Content Type', 'Inhaltstyp'), say('<p>No content type data available</p>', '<p>Keine Daten zum Inhaltstyp verfügbar</p>'));
     }
 
     const { contentType, course, contentKind } = data;
@@ -42,33 +44,33 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
 
     const headerHtml = `
       <h1>${colorSwatch(color)} ${escapeHtml(contentType.title || contentType.slug)}</h1>
-      <p>Content Type in ${escapeHtml(course?.title || course?.path)}</p>`;
+      <p>${say('Content Type in', 'Inhaltstyp in')} ${escapeHtml(course?.title || course?.path)}</p>`;
 
     const kindBadges = kind ? `
-      ${infoRow('Submittable', kind.submittable ? badge('Yes', 'success') : badge('No', 'muted'))}
-      ${infoRow('Can Have Children', kind.has_descendants ? badge('Yes', 'info') : badge('No', 'muted'))}
-      ${infoRow('Can Have Parent', kind.has_ascendants ? badge('Yes', 'info') : badge('No', 'muted'))}
+      ${infoRow(say('Submittable', 'Mit Abgabe'), kind.submittable ? badge(say('Yes', 'Ja'), 'success') : badge(say('No', 'Nein'), 'muted'))}
+      ${infoRow(say('Can Have Children', 'Kann Untereinträge haben'), kind.has_descendants ? badge(say('Yes', 'Ja'), 'info') : badge(say('No', 'Nein'), 'muted'))}
+      ${infoRow(say('Can Have Parent', 'Kann übergeordnet eingeordnet werden'), kind.has_ascendants ? badge(say('Yes', 'Ja'), 'info') : badge(say('No', 'Nein'), 'muted'))}
     ` : '';
 
-    const detailsHtml = section('Content Type', `
+    const detailsHtml = section(say('Content Type', 'Inhaltstyp'), `
       ${detailGrid(`
       ${infoRowCode('ID', contentType.id)}
-      ${infoRowText('Content Kind', kind?.title || contentType.course_content_kind_id)}
+      ${infoRowText(say('Content Kind', 'Inhaltsart'), localizedKindTitle(contentType.course_content_kind_id, kind?.title, uiLanguage()))}
       ${kindBadges}
     `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', contentType.title, { placeholder: 'Content type title' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', contentType.title, { placeholder: say('Content type title', 'Titel des Inhaltstyps') }))}
         ${formGroup('Slug', textInput('slug', contentType.slug, { required: true, pattern: '[a-z0-9_-]+', placeholder: 'content-type-slug' }))}
-        ${formGroup('Color', `
+        ${formGroup(say('Color', 'Farbe'), `
           <div class="color-input-row">
             <input type="color" id="colorPicker" value="${escapeHtml(color)}">
             <input type="text" id="colorText" name="color" value="${escapeHtml(color)}" placeholder="#000000">
           </div>
         `)}
-        ${formGroup('Description', textareaInput('description', contentType.description, { placeholder: 'Content type description' }))}
+        ${formGroup(say('Description', 'Beschreibung'), textareaInput('description', contentType.description, { placeholder: say('Content type description', 'Beschreibung des Inhaltstyps') }))}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
         </div>
       </form>
     `);
@@ -108,7 +110,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Content Type', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Content Type', 'Inhaltstyp'), headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -116,7 +118,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
       case 'updateContentType':
         try {
           await this.apiService.updateCourseContentType(message.data.typeId, message.data.updates);
-          notify.info('Content type updated successfully');
+          notify.info(say('Content type updated successfully', 'Der Inhaltstyp wurde aktualisiert.'));
 
           if (this.treeDataProvider) {
             const courseData = this.currentData as { course: CourseList };
@@ -128,7 +130,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
             vscode.commands.executeCommand('computor.lecturer.refresh');
           }
         } catch (error) {
-          showErrorWithSeverity(error as Error, 'Failed to update content type');
+          showErrorWithSeverity(error as Error, say('Failed to update content type', 'Der Inhaltstyp konnte nicht aktualisiert werden'));
         }
         break;
 
@@ -152,7 +154,7 @@ export class CourseContentTypeWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            notify.error(`Failed to refresh: ${error}`);
+            notify.error(say(`Failed to refresh: ${error}`, `Aktualisieren fehlgeschlagen: ${error}`));
           }
         }
         break;

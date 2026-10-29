@@ -5,6 +5,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, detailGrid } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 import { EDIT_DESCRIPTION_COMMAND } from '../descriptionEditor';
 
 export class CourseWebviewProvider extends BaseWebviewProvider {
@@ -23,7 +24,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
     organization: OrganizationList;
   }): Promise<string> {
     if (!data?.course) {
-      return this.getBaseHtml('Course', '<p>No course data available</p>');
+      return this.getBaseHtml(say('Course', 'Kurs'), say('<p>No course data available</p>', '<p>Keine Kursdaten verfügbar</p>'));
     }
 
     const { course, courseFamily, organization } = data;
@@ -35,32 +36,32 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
 
     const headerHtml = `
       <h1>${escapeHtml(course.title || course.path)}</h1>
-      <p>Course in ${escapeHtml(courseFamily?.title || courseFamily?.path)} / ${escapeHtml(organization?.title || organization?.path)}</p>`;
+      <p>${say('Course in', 'Kurs in')} ${escapeHtml(courseFamily?.title || courseFamily?.path)} / ${escapeHtml(organization?.title || organization?.path)}</p>`;
 
-    const detailsHtml = section('Course', `
+    const detailsHtml = section(say('Course', 'Kurs'), `
       ${detailGrid(`
       ${infoRowCode('ID', course.id)}
-      ${infoRowCode('Path', course.path)}
-      ${infoRowText('Course Family', courseFamily?.title || courseFamily?.path)}
-      ${infoRowText('Organization', organization?.title || organization?.path)}
-      ${gitUrl ? infoRowCode('Git Repository', gitUrl) : ''}
+      ${infoRowCode(say('Path', 'Pfad'), course.path)}
+      ${infoRowText(say('Course Family', 'Kursfamilie'), courseFamily?.title || courseFamily?.path)}
+      ${infoRowText(say('Organization', 'Organisation'), organization?.title || organization?.path)}
+      ${gitUrl ? infoRowCode(say('Git Repository', 'Git-Repository'), gitUrl) : ''}
     `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', course.title, { placeholder: 'Course title' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', course.title, { placeholder: say('Course title', 'Titel des Kurses') }))}
         ${formGroup(
-          'Default Max Test Runs',
-          textInput('maxTestRuns', String((course as any).max_test_runs ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }),
-          'Applies to assignments that set no limit of their own.'
+          say('Default Max Test Runs', 'Standard-Höchstzahl der Testläufe'),
+          textInput('maxTestRuns', String((course as any).max_test_runs ?? ''), { type: 'number', min: 0, placeholder: say('empty = unlimited', 'leer = unbegrenzt') }),
+          say('Applies to assignments that set no limit of their own.', 'Gilt für Aufgaben ohne eigenes Limit.')
         )}
         ${formGroup(
-          'Default Max Submissions',
-          textInput('maxSubmissions', String((course as any).max_submissions ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }),
-          'Applies to assignments that set no limit of their own. A tutor can still grant one student extra attempts.'
+          say('Default Max Submissions', 'Standard-Höchstzahl der Abgaben'),
+          textInput('maxSubmissions', String((course as any).max_submissions ?? ''), { type: 'number', min: 0, placeholder: say('empty = unlimited', 'leer = unbegrenzt') }),
+          say('Applies to assignments that set no limit of their own. A tutor can still grant one student extra attempts.', 'Gilt für Aufgaben ohne eigenes Limit. Tutor:innen können einzelnen Studierenden weiterhin zusätzliche Versuche gewähren.')
         )}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
-          <button type="button" class="btn-secondary" data-action="editDescription">Edit Description...</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
+          <button type="button" class="btn-secondary" data-action="editDescription">${say('Edit Description...', 'Beschreibung bearbeiten …')}</button>
         </div>
       </form>
     `);
@@ -105,7 +106,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Course', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Course', 'Kurs'), headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleMessage(message: any): Promise<void> {
@@ -113,13 +114,13 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
       case 'updateCourse':
         try {
           await this.apiService.updateCourse(message.data.courseId, message.data.updates);
-          notify.info('Course updated successfully');
+          notify.info(say('Course updated successfully', 'Der Kurs wurde aktualisiert.'));
 
           if (this.treeDataProvider) {
             this.treeDataProvider.updateNode('course', message.data.courseId, message.data.updates);
           }
         } catch (error) {
-          notify.error(`Failed to update course: ${error}`);
+          notify.error(say(`Failed to update course: ${error}`, `Der Kurs konnte nicht aktualisiert werden: ${error}`));
         }
         break;
 
@@ -132,7 +133,7 @@ export class CourseWebviewProvider extends BaseWebviewProvider {
               this.panel.webview.html = await this.getWebviewContent(this.currentData);
             }
           } catch (error) {
-            notify.error(`Failed to refresh: ${error}`);
+            notify.error(say(`Failed to refresh: ${error}`, `Aktualisieren fehlgeschlagen: ${error}`));
           }
         }
         break;
