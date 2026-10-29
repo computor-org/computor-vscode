@@ -3134,6 +3134,7 @@
     "check:backend-compat": "node scripts/check-backend-compat.mjs"
   },
   "devDependencies": {
+    "@stylistic/eslint-plugin-ts": "^2.13.0",
     "@types/chai": "^4.3.4",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.1",
@@ -3141,8 +3142,8 @@
     "@types/node-fetch": "^2.6.0",
     "@types/semver": "^7.8.0",
     "@types/vscode": "^1.74.0",
-    "@typescript-eslint/eslint-plugin": "^5.45.0",
-    "@typescript-eslint/parser": "^5.45.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
     "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "^3.9.2",
     "c8": "^12.0.0",
