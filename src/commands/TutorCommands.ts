@@ -22,6 +22,8 @@ import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { pickLatestSubmissionArtifactId, sortSubmissionArtifactsByRecency } from '../utils/submissionArtifacts';
 import { tutorTestTargetFor } from '../ui/tree/tutor/tutorTestTarget';
 import { tutorHelpPageFor } from '../utils/tutorHelpPages';
+import { helpPagePath } from '../utils/studentHelpPages';
+import { say } from '../utils/uiLanguage';
 interface TutorFilterRefreshable {
   refreshFilters(): void;
 }
@@ -494,14 +496,14 @@ export class TutorCommands {
   private async showHelp(item?: any): Promise<void> {
     try {
       const helpFileName = tutorHelpPageFor(item?.contextValue);
-      const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
+      const helpPath = helpPagePath(this.context.extensionPath, helpFileName);
 
       if (!fs.existsSync(helpPath)) {
         notify.warning(`Help file not found: ${helpFileName}`);
         return;
       }
 
-      await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
+      await showMarkdownPreview(this.context, helpPath, { title: say('Computor Help', 'Computor-Hilfe') });
     } catch (error) {
       console.error('[showHelp] Failed to show help:', error);
       notify.error('Failed to open help documentation');

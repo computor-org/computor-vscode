@@ -106,6 +106,15 @@ describe('course questions from bundled course Help', () => {
     expect(webviewPanels[1]!.webview.options.enableCommandUris).to.equal(false);
   });
 
+  it('opens the German course Help for a German reader, with its question command', async () => {
+    setUiProfileLanguage('de');
+    await handlers.get('computor.student.help')!({ contextValue: 'studentCourseRoot', courseId: 'help-course' });
+    const panel = webviewPanels[0]!;
+    expect(panel.title).to.equal('Computor-Hilfe');
+    expect(panel.webview.html).to.contain('"markdown":"# Kurse\\n');
+    expect(panel.webview.options.enableCommandUris).to.deep.equal(['computor.student.askCourseQuestion']);
+  });
+
   it('enables the course question again after following Help links away and back', async () => {
     await handlers.get('computor.student.help')!({ contextValue: 'studentCourseRoot', courseId: 'help-course' });
     const panel = webviewPanels[0]!;

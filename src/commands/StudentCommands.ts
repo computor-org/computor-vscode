@@ -36,7 +36,7 @@ import { assignmentForFile, assignmentFromSelection, AssignmentItem, confirmatio
 import { revealUri } from '../utils/reveal';
 import { submissionBudget, testBudget, type Budget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
-import { helpPageFor } from '../utils/studentHelpPages';
+import { helpPageFor, helpPagePath } from '../utils/studentHelpPages';
 import { isSubmittablePath } from '../utils/submittableFiles';
 import { HttpError } from '../exceptions/errors/HttpError';
 import {
@@ -2107,7 +2107,7 @@ export class StudentCommands {
   private async showHelp(item?: any): Promise<void> {
     try {
       const helpFileName = helpPageFor(item?.contextValue);
-      const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
+      const helpPath = helpPagePath(this.context.extensionPath, helpFileName);
 
       if (!fs.existsSync(helpPath)) {
         notify.warning(`Help file not found: ${helpFileName}`);
@@ -2129,7 +2129,7 @@ export class StudentCommands {
         helpItem = helpItem.parent;
       }
       this.courseHelpCourseId = helpCourseId ?? CourseSelectionService.getInstance().getCurrentCourseId();
-      await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
+      await showMarkdownPreview(this.context, helpPath, { title: say('Computor Help', 'Computor-Hilfe') });
 
     } catch (error) {
       console.error('[showHelp] Failed to show help:', error);

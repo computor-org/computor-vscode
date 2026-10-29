@@ -6,6 +6,8 @@ import { showMarkdownPreview } from './markdownPreview';
 import { focusViewContainer } from '../focusViewContainer';
 import { containerById } from '../viewContainers';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
+import { helpPagePath } from '../../utils/studentHelpPages';
 import {
   collectWelcomeFacts,
   renderWelcomeBody,
@@ -152,9 +154,9 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
   private async perform(intent: WelcomeIntent): Promise<void> {
     switch (intent.kind) {
       case 'help': {
-        const helpPath = path.join(this.context.extensionPath, 'docs', 'help', intent.page);
+        const helpPath = helpPagePath(this.context.extensionPath, intent.page);
         try {
-          await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
+          await showMarkdownPreview(this.context, helpPath, { title: say('Computor Help', 'Computor-Hilfe') });
         } catch (error) {
           console.error('[Welcome] Failed to open help page:', error);
           notify.error('Failed to open help documentation');

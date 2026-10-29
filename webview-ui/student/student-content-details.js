@@ -5,7 +5,16 @@
     ...(window.__INITIAL_STATE__ || {})
   };
 
-  const { escapeHtml, formatDateTime: formatDate } = window.ComputorWebview;
+  const { escapeHtml, formatDateTime: formatDate, say, language } = window.ComputorWebview;
+
+  // Grading statuses as the course tree names them.
+  const germanStatus = {
+    not_reviewed: 'Nicht bewertet',
+    corrected: 'Bewertet',
+    correction_necessary: 'Korrektur nötig',
+    improvement_possible: 'Verbesserung möglich',
+    submitted: 'Abgegeben'
+  };
 
   function formatPercent(value) {
     if (value === undefined || value === null || Number.isNaN(value)) {
@@ -29,6 +38,10 @@
   function formatStatus(value) {
     if (!value) {
       return '-';
+    }
+    const german = germanStatus[String(value).trim().toLowerCase()];
+    if (german && language === 'de') {
+      return german;
     }
     return String(value)
       .toLowerCase()
@@ -63,7 +76,7 @@
     if (actions.localPath) {
       const openFolderBtn = document.createElement('button');
       openFolderBtn.className = 'btn secondary';
-      openFolderBtn.textContent = 'Reveal in Explorer';
+      openFolderBtn.textContent = say('Reveal in Explorer', 'Im Explorer anzeigen');
       openFolderBtn.addEventListener('click', () => sendMessage('openFolder', { path: actions.localPath }));
       actionsContainer.appendChild(openFolderBtn);
     }
@@ -71,7 +84,7 @@
     if (actions.webUrl) {
       const openRepoBtn = document.createElement('button');
       openRepoBtn.className = 'btn secondary';
-      openRepoBtn.textContent = 'Open Repository';
+      openRepoBtn.textContent = say('Open Repository', 'Repository öffnen');
       openRepoBtn.addEventListener('click', () => sendMessage('openRepository', { url: actions.webUrl }));
       actionsContainer.appendChild(openRepoBtn);
     }
@@ -79,7 +92,7 @@
     if (actions.cloneUrl) {
       const copyBtn = document.createElement('button');
       copyBtn.className = 'btn ghost';
-      copyBtn.textContent = 'Copy Clone URL';
+      copyBtn.textContent = say('Copy Clone URL', 'Klon-URL kopieren');
       copyBtn.addEventListener('click', () => sendMessage('copyCloneUrl', { url: actions.cloneUrl }));
       actionsContainer.appendChild(copyBtn);
     }
@@ -87,7 +100,7 @@
     if (actions.localPath) {
       const copyPathBtn = document.createElement('button');
       copyPathBtn.className = 'btn ghost';
-      copyPathBtn.textContent = 'Copy Path';
+      copyPathBtn.textContent = say('Copy Path', 'Pfad kopieren');
       copyPathBtn.addEventListener('click', () => sendMessage('copyPath', { path: actions.localPath }));
       actionsContainer.appendChild(copyPathBtn);
     }
@@ -97,8 +110,8 @@
     if (!Array.isArray(history) || history.length === 0) {
       return `
         <section class="card grading-history">
-          <h2>Grading History</h2>
-          <div class="empty-state">No grading history yet.</div>
+          <h2>${say('Grading History', 'Bisherige Bewertungen')}</h2>
+          <div class="empty-state">${say('No grading history yet.', 'Noch keine Bewertungen.')}</div>
         </section>
       `;
     }
@@ -107,7 +120,7 @@
       const gradeText = formatPercent(entry.gradePercent);
       const statusText = formatStatus(entry.status);
       const gradedAt = formatDate(entry.gradedAt) || '-';
-      const grader = entry.graderName || 'Unknown';
+      const grader = entry.graderName || say('Unknown', 'Unbekannt');
       const feedback = entry.feedback ? `<div class="history-feedback">${escapeHtml(entry.feedback)}</div>` : '';
 
       return `
@@ -117,7 +130,7 @@
             <span class="history-status chip">${escapeHtml(statusText)}</span>
             <span class="history-date">${escapeHtml(gradedAt)}</span>
           </div>
-          <div class="history-meta">Graded by ${escapeHtml(grader)}</div>
+          <div class="history-meta">${say('Graded by', 'Bewertet von')} ${escapeHtml(grader)}</div>
           ${feedback}
         </article>
       `;
@@ -125,7 +138,7 @@
 
     return `
       <section class="card grading-history">
-        <h2>Grading History</h2>
+        <h2>${say('Grading History', 'Bisherige Bewertungen')}</h2>
         <div class="history-list">${items}</div>
       </section>
     `;
@@ -135,8 +148,8 @@
     if (!Array.isArray(results) || results.length === 0) {
       return `
         <section class="card results-history">
-          <h2>Results History</h2>
-          <div class="empty-state">No test results yet.</div>
+          <h2>${say('Results History', 'Bisherige Ergebnisse')}</h2>
+          <div class="empty-state">${say('No test results yet.', 'Noch keine Testergebnisse.')}</div>
         </section>
       `;
     }
@@ -156,11 +169,11 @@
       const completedRaw = updatedRaw && createdRaw && updatedRaw !== createdRaw ? updatedRaw : undefined;
       const completedDisplay = completedRaw ? formatDate(completedRaw) || '-' : '-';
       const isSubmission = pickValue(entry, ['submit']) === true;
-      const attemptLabel = isSubmission ? 'Submission' : 'Test Run';
-      const testLabel = hasTest ? 'Tests Complete' : 'Awaiting Tests';
+      const attemptLabel = isSubmission ? say('Submission', 'Abgabe') : say('Test Run', 'Testlauf');
+      const testLabel = hasTest ? say('Tests Complete', 'Tests abgeschlossen') : say('Awaiting Tests', 'Tests ausstehend');
       const scoreLabel = hasTest
-        ? (isSubmission ? 'Submission Score' : 'Test Result')
-        : 'No Evaluation';
+        ? (isSubmission ? say('Submission Score', 'Ergebnis der Abgabe') : say('Test Result', 'Testergebnis'))
+        : say('No Evaluation', 'Keine Auswertung');
 
       const chips = [
         `<span class="chip chip-strong">${escapeHtml(attemptLabel)}</span>`,
@@ -172,8 +185,8 @@
 
       const detailCards = [];
       detailCards.push({ label: scoreLabel, value: scoreText, modifier: 'history-card--score' });
-      detailCards.push({ label: 'Attempt Type', value: attemptLabel });
-      detailCards.push({ label: 'Tests', value: hasTest ? 'Completed' : '-' });
+      detailCards.push({ label: say('Attempt Type', 'Art des Versuchs'), value: attemptLabel });
+      detailCards.push({ label: 'Tests', value: hasTest ? say('Completed', 'Abgeschlossen') : '-' });
 
       const detailMarkup = `<div class="history-body">${detailCards.map(card => {
         const classes = ['history-card'];
@@ -220,7 +233,7 @@
 
     return `
       <section class="card results-history">
-        <h2>Results History</h2>
+        <h2>${say('Results History', 'Bisherige Ergebnisse')}</h2>
         <div class="history-list">${items}</div>
       </section>
     `;
@@ -269,24 +282,24 @@
       addStatusChip(contentType.title || contentType.slug);
     }
     if (metrics.submitted) {
-      addStatusChip('Submitted');
+      addStatusChip(say('Submitted', 'Abgegeben'));
     }
     addStatusChip(metrics.gradeStatus || submissionGroup.status);
 
     const repoInfoItems = [];
     if (repository.fullPath) {
-      repoInfoItems.push(`<div class="info-item"><span class="info-item-label">Remote Path</span><span class="info-item-value monospace">${escapeHtml(repository.fullPath)}</span></div>`);
+      repoInfoItems.push(`<div class="info-item"><span class="info-item-label">${say('Remote Path', 'Pfad auf dem Server')}</span><span class="info-item-value monospace">${escapeHtml(repository.fullPath)}</span></div>`);
     }
     if (repository.cloneUrl) {
-      repoInfoItems.push(`<div class="info-item"><span class="info-item-label">Clone URL</span><span class="info-item-value monospace">${escapeHtml(repository.cloneUrl)}</span></div>`);
+      repoInfoItems.push(`<div class="info-item"><span class="info-item-label">${say('Clone URL', 'Klon-URL')}</span><span class="info-item-value monospace">${escapeHtml(repository.cloneUrl)}</span></div>`);
     }
     if (repository.localPath) {
-      repoInfoItems.push(`<div class="info-item"><span class="info-item-label">Local Path</span><span class="info-item-value monospace">${escapeHtml(repository.localPath)}</span></div>`);
+      repoInfoItems.push(`<div class="info-item"><span class="info-item-label">${say('Local Path', 'Lokaler Pfad')}</span><span class="info-item-value monospace">${escapeHtml(repository.localPath)}</span></div>`);
     }
-    repoInfoItems.push(`<div class="info-item"><span class="info-item-label">Cloned</span><span class="info-item-value">${repository.isCloned ? 'Yes' : 'No'}</span></div>`);
+    repoInfoItems.push(`<div class="info-item"><span class="info-item-label">${say('Cloned', 'Geklont')}</span><span class="info-item-value">${repository.isCloned ? say('Yes', 'Ja') : say('No', 'Nein')}</span></div>`);
 
     const teamItems = (team.members || []).map(member => {
-      const name = member.name || member.full_name || member.username || 'Unknown member';
+      const name = member.name || member.full_name || member.username || say('Unknown member', 'Unbekanntes Mitglied');
       return `<div class="team-member">${escapeHtml(name)}</div>`;
     });
 
@@ -308,53 +321,53 @@
     root.innerHTML = `
       <div class="view-header">
         <div class="header-row">
-          <h1>${escapeHtml(content.title || content.path || 'Course Content')}</h1>
-          <button type="button" class="btn secondary header-close" data-close>Close</button>
+          <h1>${escapeHtml(content.title || content.path || say('Course Content', 'Kursinhalt'))}</h1>
+          <button type="button" class="btn secondary header-close" data-close>${say('Close', 'Schließen')}</button>
         </div>
         ${headerSubtitle}
         ${chips}
       </div>
 
       <section class="card">
-        <h2>Overview</h2>
+        <h2>${say('Overview', 'Überblick')}</h2>
         <div class="info-grid">
           <div class="info-item">
-            <span class="info-item-label">Content Path</span>
+            <span class="info-item-label">${say('Content Path', 'Pfad des Inhalts')}</span>
             <span class="info-item-value">${escapeHtml(content.path || '-')}</span>
           </div>
           <div class="info-item">
-            <span class="info-item-label">Type</span>
-            <span class="info-item-value">${escapeHtml(contentType.title || contentType.slug || 'Unknown')}</span>
+            <span class="info-item-label">${say('Type', 'Typ')}</span>
+            <span class="info-item-value">${escapeHtml(contentType.title || contentType.slug || say('Unknown', 'Unbekannt'))}</span>
           </div>
           <div class="info-item">
-            <span class="info-item-label">Course</span>
-            <span class="info-item-value">${escapeHtml(data.course?.title || 'Current course')}</span>
+            <span class="info-item-label">${say('Course', 'Kurs')}</span>
+            <span class="info-item-value">${escapeHtml(data.course?.title || say('Current course', 'Aktueller Kurs'))}</span>
           </div>
           <div class="info-item">
-            <span class="info-item-label">Group Size</span>
+            <span class="info-item-label">${say('Group Size', 'Gruppengröße')}</span>
             <span class="info-item-value">${formatCount(team.currentSize, team.maxSize)}</span>
           </div>
         </div>
       </section>
 
       <section class="card">
-        <h2>Progress &amp; Results</h2>
+        <h2>${say('Progress &amp; Results', 'Fortschritt und Ergebnisse')}</h2>
         <div class="stat-grid">
           <div class="stat-card">
             <strong>${formatCount(metrics.testsRun, metrics.maxTests)}</strong>
-            <span>Test Runs</span>
+            <span>${say('Test Runs', 'Testläufe')}</span>
           </div>
           <div class="stat-card">
             <strong>${formatCount(metrics.submissions, metrics.maxSubmissions)}</strong>
-            <span>Submissions</span>
+            <span>${say('Submissions', 'Abgaben')}</span>
           </div>
           <div class="stat-card">
             <strong>${formatPercent(metrics.resultPercent)}</strong>
-            <span>Latest Test Result</span>
+            <span>${say('Latest Test Result', 'Letztes Testergebnis')}</span>
           </div>
           <div class="stat-card">
             <strong>${formatPercent(metrics.gradePercent)}</strong>
-            <span>Grading</span>
+            <span>${say('Grading', 'Bewertung')}</span>
           </div>
         </div>
         <div class="info-grid">
@@ -363,16 +376,16 @@
             <span class="info-item-value">${escapeHtml(statusDisplay)}</span>
           </div>
           <div class="info-item">
-            <span class="info-item-label">Feedback</span>
+            <span class="info-item-label">${say('Feedback', 'Rückmeldung')}</span>
             <span class="info-item-value">${escapeHtml(metrics.feedback || '-')}</span>
           </div>
           <div class="info-item">
-            <span class="info-item-label">Graded by</span>
+            <span class="info-item-label">${say('Graded by', 'Bewertet von')}</span>
             <span class="info-item-value">${escapeHtml(metrics.gradedBy || '-')}</span>
           </div>
           <div class="info-item">
-            <span class="info-item-label">Graded at</span>
-            <span class="info-item-value">${escapeHtml(gradedAt || 'Not graded')}</span>
+            <span class="info-item-label">${say('Graded at', 'Bewertet am')}</span>
+            <span class="info-item-value">${escapeHtml(gradedAt || say('Not graded', 'Nicht bewertet'))}</span>
           </div>
         </div>
       </section>
@@ -386,8 +399,8 @@
       </section>
 
       <section class="card">
-        <h2>Submission Group</h2>
-        ${teamItems.length > 0 ? `<div class="team-list">${teamItems.join('')}</div>` : '<div class="empty-state">No additional team members.</div>'}
+        <h2>${say('Submission Group', 'Abgabegruppe')}</h2>
+        ${teamItems.length > 0 ? `<div class="team-list">${teamItems.join('')}</div>` : `<div class="empty-state">${say('No additional team members.', 'Keine weiteren Teammitglieder.')}</div>`}
       </section>
 
       ${renderResultsHistory(resultsHistory)}

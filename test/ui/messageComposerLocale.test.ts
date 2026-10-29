@@ -49,7 +49,7 @@ describe('message composer locale', () => {
       const mount = node();
       const window = { __INITIAL_STATE__: { editorPlaceholders: placeholders },
         addEventListener: (name: string, handler: Function) => { handlers[name] = handler; },
-        ComputorWebview: { vscode: { postMessage() {} }, escapeHtml: (text: string) => text,
+        ComputorWebview: { vscode: { postMessage() {} }, escapeHtml: (text: string) => text, say: (english: string) => english,
           mention: { hasTutorAliases: () => true },
           el: (tag: string, props: any) => {
             const element = node();

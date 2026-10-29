@@ -283,6 +283,14 @@
     };
   }
 
+  // The extension writes the reading language into <html lang>.
+  const pageLanguage = document.documentElement.lang === 'de' ? 'de' : 'en';
+
+  /** The English or the German text, by the page language. */
+  function say(en, de) {
+    return pageLanguage === 'de' ? de : en;
+  }
+
   window.ComputorWebview = {
     vscode: vscode,
     post: post,
@@ -297,6 +305,8 @@
     createStore: createStore,
     setLoading: setLoading,
     initTabs: initTabs,
-    debounce: debounce
+    debounce: debounce,
+    language: pageLanguage,
+    say: say
   };
 })();

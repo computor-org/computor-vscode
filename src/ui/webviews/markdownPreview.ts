@@ -107,7 +107,8 @@ export async function showMarkdownPreview(
     path.dirname(filePath),
     options.title ?? path.basename(filePath),
     options,
-    path.resolve(filePath) === path.join(context.extensionUri.fsPath, 'docs', 'help', 'student-course.md')
+    ['student-course.md', 'student-course_de.md']
+      .some(page => path.resolve(filePath) === path.join(context.extensionUri.fsPath, 'docs', 'help', page))
       ? ['computor.student.askCourseQuestion'] : undefined
   );
 }

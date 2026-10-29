@@ -2,7 +2,8 @@ import { expect } from 'chai';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { HELP_PAGES, helpPageFor } from '../../src/utils/studentHelpPages';
+import { HELP_PAGES, helpPageFor, helpPagePath } from '../../src/utils/studentHelpPages';
+import { TUTOR_HELP_PAGES } from '../../src/utils/tutorHelpPages';
 
 /**
  * The student help: which page a row leads to, and whether the pages hold up.
@@ -128,6 +129,32 @@ describe('student help', () => {
       for (const page of Object.values(HELP_PAGES)) {
         const text = fs.readFileSync(path.join(HELP_DIR, page), 'utf8');
         expect(text.trim().length, `empty help page: ${page}`).to.be.greaterThan(200);
+      }
+    });
+  });
+
+  describe('in German', () => {
+    const extensionPath = path.join(HELP_DIR, '..', '..');
+
+    it('every student and tutor page has a German version with the same sections', () => {
+      for (const page of [...Object.values(HELP_PAGES), ...Object.values(TUTOR_HELP_PAGES)]) {
+        const german = helpPagePath(extensionPath, page, 'de');
+        expect(path.basename(german), page).to.equal(page.replace(/\.md$/, '_de.md'));
+        const headings = (file: string) => (fs.readFileSync(file, 'utf8').match(/^#+ /gm) ?? []).length;
+        expect(headings(german), page).to.equal(headings(path.join(HELP_DIR, page)));
+      }
+    });
+
+    it('opens the English page for an English reader', () => {
+      expect(helpPagePath(extensionPath, HELP_PAGES.course, 'en')).to.equal(path.join(HELP_DIR, HELP_PAGES.course));
+    });
+
+    it('links German pages only to German pages', () => {
+      for (const page of fs.readdirSync(HELP_DIR).filter(name => name.endsWith('_de.md'))) {
+        const text = fs.readFileSync(path.join(HELP_DIR, page), 'utf8');
+        for (const [, target] of text.matchAll(/\]\(([^)#:]+\.md)(#[^)]*)?\)/g)) {
+          expect(target, `${page} links to ${target}`).to.match(/_de\.md$/);
+        }
       }
     });
   });
