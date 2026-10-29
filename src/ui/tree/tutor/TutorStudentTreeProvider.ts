@@ -25,6 +25,8 @@ import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import { withRepoLock } from '../../../utils/repoLock';
 import { safeExtractTarget } from '../../../utils/zipHelpers';
+import { localizedTitle } from '../../../utils/contentLanguage';
+import { uiLanguage } from '../../../utils/uiLanguage';
 
 function getEmbeddedCourseContentType(courseContent: any): any | undefined {
   const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
@@ -254,7 +256,8 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       const isUnit = contentKind ? !!contentKind.has_descendants : false;
 
       const node: ContentNode = {
-        name: content.title || content.path.split('.').pop() || content.path,
+        // The tutor endpoint has no ?localize=; its maps are resolved here.
+        name: localizedTitle(content, uiLanguage()) || content.path.split('.').pop() || content.path,
         children: new Map(),
         courseContent: content,
         contentKind,
@@ -871,8 +874,9 @@ class TutorUnitItem extends vscode.TreeItem {
       `${count} item${count !== 1 ? 's' : ''}`
     ];
     const ct = getEmbeddedCourseContentType(this.node.courseContent);
-    if (ct?.title) {
-      tooltipLines.push(`Type: ${ct.title}`);
+    const typeTitle = localizedTitle(ct, uiLanguage());
+    if (typeTitle) {
+      tooltipLines.push(`Type: ${typeTitle}`);
     }
     const status = (this.node.courseContent as any)?.status || this.node.submissionGroup?.status;
     if (status) {
@@ -924,7 +928,7 @@ class TutorContentItem extends vscode.TreeItem {
     const collapsibleState = isAssignment
       ? (startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
       : vscode.TreeItemCollapsibleState.None;
-    super(content.title || content.path, collapsibleState);
+    super(localizedTitle(content, uiLanguage()) || content.path, collapsibleState);
     this.memberId = memberId;
     this.isAssignment = isAssignment;
     this.assignmentDirectory = assignmentDirectory;
@@ -993,7 +997,7 @@ class TutorContentItem extends vscode.TreeItem {
     if (unread > 0) {
       labelParts.push(`[🔔${unread}]`);
     }
-    const baseName = this.content.title || this.content.path;
+    const baseName = localizedTitle(this.content, uiLanguage()) || this.content.path;
     this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;
 
     // Build description with test/submission counts like student view

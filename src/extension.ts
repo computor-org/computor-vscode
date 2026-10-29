@@ -1060,6 +1060,7 @@ class UnifiedController {
     this.disposables.push(onDidChangeUiLanguage(() => {
       tree.refresh();
       statusBar.refreshLanguage();
+      void courseSelectionService.refreshLanguage().catch(err => console.warn('Course title could not be refreshed:', err));
       const shown = shownDescription;
       if (shown && shown.generation === readingPreviewGeneration()) {
         beginMarkdownPreviewRequest();
@@ -1464,6 +1465,8 @@ class UnifiedController {
     const { TutorStudentTreeProvider } = await import('./ui/tree/tutor/TutorStudentTreeProvider');
     const tree = new TutorStudentTreeProvider(api, selection);
     if (this.wsService) tree.setWebSocketService(this.wsService);
+    // Content and type titles are resolved per render from their language maps.
+    this.disposables.push(onDidChangeUiLanguage(() => tree.refresh()));
     registerTreeView('computor.tutor.courses', {
       provider: tree,
       options: { showCollapseAll: true },
@@ -1524,6 +1527,7 @@ class UnifiedController {
   private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
     if (this.wsService) tree.setWebSocketService(this.wsService);
+    this.disposables.push(onDidChangeUiLanguage(() => tree.refresh()));
 
     const breadcrumb = new LecturerBreadcrumbStatusBar();
     this.disposables.push(breadcrumb);

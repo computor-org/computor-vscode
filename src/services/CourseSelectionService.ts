@@ -155,6 +155,17 @@ export class CourseSelectionService {
 
     }
 
+    /** The selected course's title again, as the API gives it in the current reading language. */
+    async refreshLanguage(): Promise<void> {
+        const current = this.currentCourseInfo;
+        if (!current) return;
+        const course = (await this.apiService.getStudentCourses()).find(c => c.id === current.id);
+        if (!course || this.currentCourseInfo !== current) return;
+        this.currentCourseInfo = { ...current, title: course.title || course.path };
+        await this.context.globalState.update('selectedCourseInfo', this.currentCourseInfo);
+        this.statusBarService.updateCourse(this.currentCourseInfo.title);
+    }
+
     getCurrentCourseId(): string | undefined {
         return this.currentCourseId;
     }
