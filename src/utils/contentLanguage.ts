@@ -34,6 +34,18 @@ export function withoutLeadingHeading(markdown: string): string {
   return markdown;
 }
 
+/**
+ * A title in the reading language from its per-language map, else the stored
+ * title. For objects the backend does not translate with `?localize=`, such
+ * as a content type; an older backend sends no map.
+ */
+export function titleInLanguage(
+  item: { title?: string | null; title_i18n?: Record<string, string> | null },
+  language: string
+): string | undefined {
+  return item.title_i18n?.[language]?.trim() || item.title || undefined;
+}
+
 const UNIT_TITLE = /^(?:Week|Woche)\s+(\d+)$/i;
 
 /** "Week N" and "Woche N" follow the reading language; other titles stay. */

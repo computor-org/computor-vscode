@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { RequestInterceptor } from '../types/HttpTypes';
-import { automaticLanguage } from '../utils/uiLanguage';
+import { automaticLanguage, uiLanguage } from '../utils/uiLanguage';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
 import { HttpError } from '../exceptions/errors/HttpError';
@@ -146,6 +146,17 @@ export const acceptLanguageInterceptor: RequestInterceptor = {
   onRequest: config => ({ ...config, headers: { ...config.headers, 'Accept-Language': automaticLanguage() } }),
   onError: error => Promise.reject(error)
 };
+
+/**
+ * Asks the student endpoints for titles and descriptions in the reading
+ * language (a stored text without that translation comes back unchanged). An
+ * older backend ignores the unknown query parameter and sends the stored text.
+ * Cache keys of these responses carry the language, so a language switch
+ * never reads the other language's rows.
+ */
+function studentLocalize(): string {
+  return `localize=${uiLanguage()}`;
+}
 
 export class ComputorApiService {
   private static instance?: ComputorApiService;
@@ -1200,14 +1211,14 @@ export class ComputorApiService {
     if (!contentId) {
       return;
     }
-    multiTierCache.delete(`studentCourseContent-${contentId}`);
+    multiTierCache.deletePrefix(`studentCourseContent-${contentId}@`);
   }
 
   clearStudentCourseContentsCache(courseId?: string): void {
     if (courseId) {
-      multiTierCache.delete(`studentCourseContents-${courseId}`);
+      multiTierCache.deletePrefix(`studentCourseContents-${courseId}@`);
     }
-    multiTierCache.delete('studentCourseContents-all');
+    multiTierCache.deletePrefix('studentCourseContents-all@');
   }
 
   clearAllCaches(): void {
@@ -2188,11 +2199,11 @@ export class ComputorApiService {
   async getStudentCourses(options?: { force?: boolean; throwOnError?: boolean }): Promise<any[]> {
     try {
       return await this.cachedRequest({
-        cacheKey: 'studentCourses',
+        cacheKey: `studentCourses@${uiLanguage()}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<any[]>('/students/courses')).data;
+          return (await client.get<any[]>(`/students/courses?${studentLocalize()}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force
@@ -2207,11 +2218,11 @@ export class ComputorApiService {
   async getStudentCourse(courseId: string, options?: { force?: boolean }): Promise<any | undefined> {
     try {
       return await this.cachedRequest({
-        cacheKey: `studentCourse-${courseId}`,
+        cacheKey: `studentCourse-${courseId}@${uiLanguage()}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<any>(`/students/courses/${courseId}`)).data;
+          return (await client.get<any>(`/students/courses/${courseId}?${studentLocalize()}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force
@@ -2226,9 +2237,9 @@ export class ComputorApiService {
     courseId?: string,
     options?: { force?: boolean; throwOnError?: boolean }
   ): Promise<CourseContentStudentList[]> {
-    const cacheKey = courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all';
+    const cacheKey = `${courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all'}@${uiLanguage()}`;
     if (options?.force && courseId) {
-      multiTierCache.delete('studentCourseContents-all');
+      multiTierCache.deletePrefix('studentCourseContents-all@');
     }
     try {
       return await this.cachedRequest({
@@ -2236,7 +2247,7 @@ export class ComputorApiService {
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          const params = courseId ? `?course_id=${courseId}` : '';
+          const params = `?${courseId ? `course_id=${courseId}&` : ''}${studentLocalize()}`;
           // Deliberately NOT filtered client-side (issue #338). The backend is
           // the only filter, and it already drops hidden content for students.
           // Rows that reach here hidden mean the caller is a lecturer or tutor
@@ -2261,11 +2272,11 @@ export class ComputorApiService {
   ): Promise<CourseContentStudentGet | undefined> {
     try {
       return await this.cachedRequest({
-        cacheKey: `studentCourseContent-${contentId}`,
+        cacheKey: `studentCourseContent-${contentId}@${uiLanguage()}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`)).data;
+          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}?${studentLocalize()}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force
@@ -2282,11 +2293,11 @@ export class ComputorApiService {
   ): Promise<CourseContentStudentGet | undefined> {
     try {
       return await this.cachedRequest({
-        cacheKey: `studentCourseContentDetails-${contentId}`,
+        cacheKey: `studentCourseContentDetails-${contentId}@${uiLanguage()}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`)).data;
+          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}?${studentLocalize()}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force

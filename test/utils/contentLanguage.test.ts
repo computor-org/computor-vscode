@@ -3,6 +3,7 @@ import {
   descriptionHeading,
   descriptionInLanguage,
   localizedUnitTitle,
+  titleInLanguage,
   withoutLeadingHeading
 } from '../../src/utils/contentLanguage';
 
@@ -55,4 +56,13 @@ describe('contentLanguage', () => {
     });
   });
 
+  describe('titleInLanguage', () => {
+    it('takes the reading language from the map and the stored title without one', () => {
+      const type = { title: 'Übung', title_i18n: { en: 'Exercise', de: ' ' } };
+      expect(titleInLanguage(type, 'en')).to.equal('Exercise');
+      expect(titleInLanguage(type, 'de')).to.equal('Übung');
+      expect(titleInLanguage({ title: 'Übung' }, 'en')).to.equal('Übung');
+      expect(titleInLanguage({ title: null }, 'en')).to.equal(undefined);
+    });
+  });
 });
