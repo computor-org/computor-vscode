@@ -126,6 +126,18 @@ describe('WebSocketService status and channel ownership (#259)', () => {
     expect(statuses[0]!.visible, 'disposed status must not react to view events').to.equal(false);
   });
 
+  it('passes submission_group:updated from the user inbox to its handler (#554)', async () => {
+    const socket = await connect();
+    const seen: object[] = [];
+    service.subscribe([], 'tree', { onSubmissionGroupUpdated: (event) => { seen.push(event); } });
+    socket.receive({
+      type: 'submission_group:updated', channel: 'user:1',
+      data: { course_id: 'c1', course_content_id: 'a1', submission_group_id: 'sg1', grading: 1 },
+    });
+    expect(seen).to.have.length(1);
+    expect(seen[0]).to.include({ type: 'submission_group:updated', course_id: 'c1', course_content_id: 'a1', grading: 1 });
+  });
+
   it('shows global reconnect attention only after the last automatic attempt fails', async () => {
     let socket = await connect();
     probeError = new Error('ECONNREFUSED');

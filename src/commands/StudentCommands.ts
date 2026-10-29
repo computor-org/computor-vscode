@@ -1711,15 +1711,7 @@ export class StudentCommands {
               });
 
               if (courseId) {
-                // Clear cache and fetch fresh data with course_id filter
-                this.apiService.clearStudentCourseContentsCache(courseId);
-                this.apiService.clearStudentCourseContentCache(courseContentId);
-
-                // This will make: GET /students/course-contents?course_id=...
-                await this.apiService.getStudentCourseContents(courseId, { force: true });
-
-                // Now refresh the tree item with the fresh data
-                await this.treeDataProvider.refreshContentItem(courseContentId);
+                await this.treeDataProvider.refreshContentItem(courseContentId, courseId);
                 console.log('[submitAssignment] Tree refresh complete');
               } else {
                 console.warn('[submitAssignment] No courseId available, doing full refresh');
@@ -1847,8 +1839,7 @@ export class StudentCommands {
 
         notify.info(say(`Successfully committed and pushed ${assignmentTitle}`, `Änderungen für ${assignmentTitle} wurden gespeichert und hochgeladen.`));
 
-        // Optionally refresh the tree to update any status indicators
-        this.treeDataProvider.refreshNode(item);
+        await this.treeDataProvider.refreshContentItem(item.courseContent.id);
       } catch (error: any) {
         console.error('Failed to commit assignment:', error);
         notify.error(say(`Failed to commit assignment: ${error.message}`, 'Die Änderungen konnten nicht gespeichert und hochgeladen werden. Versuche es bitte erneut.'));
@@ -2047,11 +2038,8 @@ export class StudentCommands {
         }
 
         // Only refresh if test completed successfully
-        if (testSucceeded) {
-          // Clear the cache for this specific content to ensure fresh data
-          this.apiService.clearStudentCourseContentCache(courseContentId);
-          // Use full refresh to ensure tree updates properly
-          this.treeDataProvider.refresh();
+        if (testSucceeded && courseContentId) {
+          await this.treeDataProvider.refreshContentItem(courseContentId);
         }
       } catch (error: any) {
         console.error('Failed to test assignment:', error);

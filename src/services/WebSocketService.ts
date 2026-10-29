@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
-import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated } from '../types/generated/websocket';
+import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated, WSSubmissionGroupUpdated } from '../types/generated/websocket';
 import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { UiStateService } from './UiStateService';
 import { notify } from '../utils/notify';
@@ -148,8 +148,9 @@ export type WsDeploymentAssigned = WSDeploymentAssigned & { type: 'deployment:as
 export type WsDeploymentUnassigned = WSDeploymentUnassigned & { type: 'deployment:unassigned' };
 export type WsCourseContentUpdated = WSCourseContentUpdated & { type: 'course:content_updated' };
 export type WsCourseUpdated = WSCourseUpdated & { type: 'course:updated' };
+export type WsSubmissionGroupUpdated = WSSubmissionGroupUpdated & { type: 'submission_group:updated' };
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsPermissionsUpdated | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated;
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsPermissionsUpdated | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated | WsSubmissionGroupUpdated;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -223,6 +224,7 @@ export interface WebSocketEventHandlers {
   onDeploymentUnassigned?: (event: WsDeploymentUnassigned) => void;
   onCourseContentUpdated?: (event: WsCourseContentUpdated) => void;
   onCourseUpdated?: (event: WsCourseUpdated) => void;
+  onSubmissionGroupUpdated?: (event: WsSubmissionGroupUpdated) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: string) => void;
@@ -801,6 +803,17 @@ export class WebSocketService {
           console.log(`[WebSocket] Course updated: ${courseData.course_id} change=${courseData.change_type}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onCourseUpdated?.({ ...courseData, type: 'course:updated' } as WsCourseUpdated);
+          });
+          break;
+        }
+
+        case 'submission_group:updated': {
+          // Test result, submission or grading changed (issue #554). Arrives on
+          // the member's user:<id> inbox and on submission_group:<id>.
+          const groupData = (message as any).data || message;
+          console.log(`[WebSocket] Submission group updated: ${groupData.submission_group_id} content=${groupData.course_content_id}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onSubmissionGroupUpdated?.({ ...groupData, type: 'submission_group:updated' } as WsSubmissionGroupUpdated);
           });
           break;
         }
