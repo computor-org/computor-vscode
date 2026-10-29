@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { notify } from './notify';
+import { say } from './uiLanguage';
 
 /**
  * The single entry point for putting text on the user's clipboard.
@@ -30,7 +31,7 @@ export async function copyToClipboard(
     const landed =
       vscode.env.uiKind === vscode.UIKind.Web ? true : await writeLanded(text);
     if (landed) {
-      void notify.info(successMessage ?? `${label} copied to clipboard: ${text}`);
+      void notify.info(successMessage ?? say(`${label} copied to clipboard: ${text}`, `${label} in die Zwischenablage kopiert: ${text}`));
       return true;
     }
   } catch (error) {
@@ -57,8 +58,8 @@ async function writeLanded(text: string): Promise<boolean> {
 /** Last resort: show the text somewhere the user can select and copy it. */
 async function offerManualCopy(text: string, label: string): Promise<void> {
   await vscode.window.showInputBox({
-    title: `${label} — press Ctrl/Cmd+C to copy`,
-    prompt: 'Your browser did not allow Computor to write to the clipboard directly.',
+    title: say(`${label} — press Ctrl/Cmd+C to copy`, `${label} – zum Kopieren Strg/Cmd+C drücken`),
+    prompt: say('Your browser did not allow Computor to write to the clipboard directly.', 'Dein Browser hat Computor nicht erlaubt, direkt in die Zwischenablage zu schreiben.'),
     value: text,
     ignoreFocusOut: true
   });

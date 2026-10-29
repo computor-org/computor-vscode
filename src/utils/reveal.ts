@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { copyToClipboard } from './clipboard';
+import { say } from './uiLanguage';
 
 /**
  * Reveal a file or folder for the user: the OS file manager on desktop, the
@@ -26,8 +27,8 @@ export async function revealUri(uri: vscode.Uri): Promise<void> {
 
   await copyToClipboard(
     uri.fsPath,
-    'Path',
-    `Cannot open the system file manager in the browser. Path copied to clipboard: ${uri.fsPath}`
+    say('Path', 'Pfad'),
+    say(`Cannot open the system file manager in the browser. Path copied to clipboard: ${uri.fsPath}`, `Im Browser lässt sich der Dateimanager des Systems nicht öffnen. Der Pfad wurde in die Zwischenablage kopiert: ${uri.fsPath}`)
   );
 }
 

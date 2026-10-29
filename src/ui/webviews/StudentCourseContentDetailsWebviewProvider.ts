@@ -150,14 +150,14 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
 
   private async handleOpenFolder(folderPath?: string): Promise<void> {
     if (!folderPath) {
-      notify.warning('No local folder available for this content.');
+      notify.warning(say('No local folder available for this content.', 'Zu diesem Inhalt gibt es keinen lokalen Ordner.'));
       return;
     }
 
     try {
       const exists = fs.existsSync(folderPath);
       if (!exists) {
-        notify.warning('The local folder for this assignment could not be found.');
+        notify.warning(say('The local folder for this assignment could not be found.', 'Der lokale Ordner dieser Aufgabe wurde nicht gefunden.'));
         return;
       }
 
@@ -171,7 +171,7 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
 
   private async handleOpenRepository(url?: string): Promise<void> {
     if (!url) {
-      notify.warning('No repository URL available for this content.');
+      notify.warning(say('No repository URL available for this content.', 'Zu diesem Inhalt ist keine Repository-Adresse bekannt.'));
       return;
     }
 
@@ -185,18 +185,18 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
   /** Named to match the tree's "Copy Path" — same action, same words. */
   private async handleCopyPath(folderPath?: string): Promise<void> {
     if (!folderPath) {
-      notify.warning('No local folder available for this content.');
+      notify.warning(say('No local folder available for this content.', 'Zu diesem Inhalt gibt es keinen lokalen Ordner.'));
       return;
     }
-    await copyToClipboard(folderPath, 'Path');
+    await copyToClipboard(folderPath, say('Path', 'Pfad'));
   }
 
   private async handleCopyCloneUrl(url?: string): Promise<void> {
     if (!url) {
-      notify.warning('No clone URL available for this content.');
+      notify.warning(say('No clone URL available for this content.', 'Zu diesem Inhalt ist keine Klon-Adresse bekannt.'));
       return;
     }
 
-    await copyToClipboard(url, 'Clone URL');
+    await copyToClipboard(url, say('Clone URL', 'Klon-Adresse'));
   }
 }

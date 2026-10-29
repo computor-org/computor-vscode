@@ -111,9 +111,9 @@ Packt die Aufgaben, die du auf deinem Rechner hast, in eine einzige ZIP-Datei,
 damit dir deine Arbeit bleibt, wenn der Kurs endet und dein Zugriff auf das
 Repository erlischt. Den Aufbau des Archivs wählst du selbst:
 
-- ***Tree*** — bildet die Kursgliederung nach, die Ordner tragen die Titel der
+- ***Baum*** — bildet die Kursgliederung nach, die Ordner tragen die Titel der
   Inhalte
-- ***Flat*** — ein Ordner je Aufgabe, benannt nach der Kennung ihres Beispiels
+- ***Flach*** — ein Ordner je Aufgabe, benannt nach der Kennung ihres Beispiels
 
 Im Browser wird das Archiv in deinem Arbeitsbereich unter `exports/` gespeichert
 und anschließend auf deinen Computer heruntergeladen. Blockiert dein Browser den

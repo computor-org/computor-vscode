@@ -14,6 +14,7 @@ import { WorkspaceStructureManager } from '../utils/workspaceStructure';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
 import type { CourseMemberRepositoryGet } from '../types/courseGit';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import { revealUri } from '../utils/reveal';
 import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { propagateForgejoCloneCredential } from './ForgejoCredentialFanout';
@@ -79,7 +80,7 @@ export class StudentRepositoryManager {
   ): Promise<void> {
     const report = onProgress || (() => {});
     console.log('[StudentRepositoryManager] Starting auto-setup of repositories');
-    report('Discovering course contents...');
+    report(say('Discovering course contents...', 'Kursinhalte werden geladen …'));
     
     try {
       // Ensure workspace directories exist
@@ -90,7 +91,7 @@ export class StudentRepositoryManager {
       
       if (!courseContents || courseContents.length === 0) {
         console.log('[StudentRepositoryManager] No course contents found');
-        report('No course contents found');
+        report(say('No course contents found', 'Keine Kursinhalte gefunden'));
         return;
       }
       
@@ -99,12 +100,12 @@ export class StudentRepositoryManager {
       
       if (repositories.length === 0) {
         console.log('[StudentRepositoryManager] No repositories to clone');
-        report('No repositories to clone');
+        report(say('No repositories to clone', 'Keine Repositorys zum Klonen'));
         return;
       }
       
       console.log(`[StudentRepositoryManager] Found ${repositories.length} repositories to process`);
-      report(`Found ${repositories.length} repositories to process`);
+      report(say(`Found ${repositories.length} repositories to process`, `${repositories.length} Repositorys gefunden`));
       
       // Group by course
       const reposByCourse = new Map<string, RepositoryInfo[]>();
@@ -131,12 +132,12 @@ export class StudentRepositoryManager {
           console.log(`[StudentRepositoryManager] Skipping course ${courseIdForRepo} (not expanded)`);
           continue;
         }
-        report(`Processing repositories for course ${courseIdForRepo} (${repos.length})`);
+        report(say(`Processing repositories for course ${courseIdForRepo} (${repos.length})`, `Repositorys des Kurses werden eingerichtet (${repos.length}) …`));
         await this.processRepositoriesForCourse(courseIdForRepo, repos, courseContents, report, cancellationToken);
       }
       
       console.log('[StudentRepositoryManager] Repository setup completed');
-      report('Repository setup completed');
+      report(say('Repository setup completed', 'Repositorys sind eingerichtet'));
       
     } catch (error) {
       if (error instanceof GitCancelledError) {
@@ -326,7 +327,7 @@ export class StudentRepositoryManager {
     }
 
     console.log(`[StudentRepositoryManager] Found ${uniqueRepos.size} unique repositories for course ${courseId}`);
-    report(`Found ${uniqueRepos.size} unique repositories`);
+    report(say(`Found ${uniqueRepos.size} unique repositories`, `${uniqueRepos.size} Repositorys gefunden`));
 
     // Clone/update each unique repository only once
     for (const [, repoInfos] of uniqueRepos) {
@@ -339,7 +340,7 @@ export class StudentRepositoryManager {
         const cloneUrl = firstRepo.cloneUrl;
         const fullPath = (firstRepo as any).fullPath;
         const repoName = firstRepo.assignmentTitle || fullPath;
-        report(`Setting up ${repoName}...`);
+        report(say(`Setting up ${repoName}...`, `${repoName} wird eingerichtet …`));
         token = await this.setupUniqueRepository(courseId, fullPath, cloneUrl, repoInfos, token, courseContents, upstreamUrl, upstreamAuth, courseRepo, forgejoManaged, onProgress, cancellationToken);
       }
     }
@@ -409,11 +410,11 @@ export class StudentRepositoryManager {
           return token;
         }
         console.log(`[StudentRepositoryManager] Cloning repository ${cloneUrl}`);
-        report(`Cloning ${repoName}...`);
+        report(say(`Cloning ${repoName}...`, `${repoName} wird geklont …`));
         token = await this.cloneRepository(repoPath, cloneUrl, token as string, cancellationToken);
       } else {
         console.log(`[StudentRepositoryManager] Repository exists at ${repoPath}, updating`);
-        report(`Updating ${repoName}...`);
+        report(say(`Updating ${repoName}...`, `${repoName} wird aktualisiert …`));
         // Managed Forgejo repos authenticate via the credentials already embedded in
         // their remote, so the (possibly absent) token here is only bookkeeping.
         token = await this.updateRepository(repoPath, cloneUrl, token as string, repoName, report, cancellationToken, refreshAuth);
@@ -423,11 +424,11 @@ export class StudentRepositoryManager {
       // owns the whole cycle including the push back to origin.
       if (upstreamUrl) {
         console.log('[StudentRepositoryManager] Checking for template updates');
-        report('Checking for template updates...');
+        report(say('Checking for template updates...', 'Kursvorlage wird auf Änderungen geprüft …'));
         const updated = await this.syncForkWithUpstream(repoPath, upstreamUrl, token, upstreamAuth, refreshAuth);
         if (updated) {
           console.log('[StudentRepositoryManager] Repository updated from template');
-          report('Template updates merged.');
+          report(say('Template updates merged.', 'Änderungen aus der Kursvorlage wurden übernommen.'));
         }
       }
       return token;
@@ -821,7 +822,7 @@ export class StudentRepositoryManager {
       // other course or environment) is healed by re-minting and retrying
       // once (computor-org/issues#318).
       if (refreshAuth && this.isAuthenticationError(error)) {
-        report(`Refreshing credentials for ${repoName}...`);
+        report(say(`Refreshing credentials for ${repoName}...`, `Zugangsdaten für ${repoName} werden erneuert …`));
         if (await refreshAuth()) {
           try {
             await attempt();
@@ -848,7 +849,7 @@ export class StudentRepositoryManager {
         return token;
       }
 
-      report(`Detected remote replacement for ${repoName}. Creating backup...`);
+      report(say(`Detected remote replacement for ${repoName}. Creating backup...`, `Das Remote-Repository von ${repoName} wurde ersetzt. Sicherungskopie wird angelegt …`));
 
       let backupPath: string | undefined;
       try {
@@ -867,20 +868,21 @@ export class StudentRepositoryManager {
       // rather than relying on the catch above.
       if (!backupPath) {
         notify.error(
-          `Computor could not back up the repository "${repoName}", so it was left untouched. ` +
-          `Please copy your work somewhere safe, then remove the folder manually to let Computor recreate it.`
+          say(`Computor could not back up the repository "${repoName}", so it was left untouched. ` +
+          `Please copy your work somewhere safe, then remove the folder manually to let Computor recreate it.`, `Computor konnte keine Sicherungskopie von „${repoName}“ anlegen und hat das Repository deshalb nicht verändert. ` +
+          `Kopiere deine Arbeit an einen sicheren Ort und lösche den Ordner danach selbst, damit Computor ihn neu anlegen kann.`)
         );
         return token;
       }
 
       const confirmed = await notify.confirm(
-        `The remote for "${repoName}" is a different repository. Computor can recreate it from the remote.`,
-        'Recreate Repository',
-        `Your current files were backed up to ${backupPath}. The backup contains your files only — it does NOT include Git history, so any commits that were never pushed will be lost.`
+        say(`The remote for "${repoName}" is a different repository. Computor can recreate it from the remote.`, `Das Remote-Repository von „${repoName}“ ist ein anderes Repository. Computor kann es daraus neu anlegen.`),
+        say('Recreate Repository', 'Repository neu anlegen'),
+        say(`Your current files were backed up to ${backupPath}. The backup contains your files only — it does NOT include Git history, so any commits that were never pushed will be lost.`, `Deine aktuellen Dateien wurden nach ${backupPath} gesichert. Die Sicherung enthält nur die Dateien und KEINE Git-Historie; Commits, die nie hochgeladen wurden, gehen also verloren.`)
       );
       if (!confirmed) {
         notify.warning(
-          `Left "${repoName}" untouched. Your backup is at ${backupPath}.`
+          say(`Left "${repoName}" untouched. Your backup is at ${backupPath}.`, `„${repoName}“ bleibt unverändert. Deine Sicherungskopie liegt unter ${backupPath}.`)
         );
         return token;
       }
@@ -889,28 +891,31 @@ export class StudentRepositoryManager {
         await fs.promises.rm(repoPath, { recursive: true, force: true });
       } catch (removeError) {
         console.error(`[StudentRepositoryManager] Failed to remove repository at ${repoPath}:`, removeError);
-        notify.error(`Computor could not reset the repository "${repoName}". Please remove it manually and try again.`);
+        notify.error(say(`Computor could not reset the repository "${repoName}". Please remove it manually and try again.`, `Computor konnte das Repository „${repoName}“ nicht zurücksetzen. Lösche es bitte selbst und versuche es noch einmal.`));
         throw removeError;
       }
 
-      report(`Recreating ${repoName} from origin...`);
+      report(say(`Recreating ${repoName} from origin...`, `${repoName} wird neu angelegt …`));
       let refreshedToken = token;
       try {
         refreshedToken = await this.cloneRepository(repoPath, cloneUrl, token);
       } catch (cloneError) {
         console.error(`[StudentRepositoryManager] Re-clone failed for ${repoPath}:`, cloneError);
-        notify.error(`Computor could not recreate the repository "${repoName}". Your previous files were backed up at ${backupPath}.`);
+        notify.error(say(`Computor could not recreate the repository "${repoName}". Your previous files were backed up at ${backupPath}.`, `Computor konnte das Repository „${repoName}“ nicht neu anlegen. Deine bisherigen Dateien sind unter ${backupPath} gesichert.`));
         throw cloneError;
       }
 
+      const openBackup = say('Open Backup Folder', 'Sicherungsordner öffnen');
       const choice = await notify.warning(
-        `The repository "${repoName}" was recreated because the remote is a different repository. ` +
+        say(`The repository "${repoName}" was recreated because the remote is a different repository. ` +
         `A backup of your files (without Git history) is at ${backupPath}. ` +
-        `This is unusual—if it happens again, please inform your course instructor.`,
-        'Open Backup Folder',
-        'Dismiss'
+        `This is unusual—if it happens again, please inform your course instructor.`, `Das Repository „${repoName}“ wurde neu angelegt, weil das Remote-Repository ein anderes ist. ` +
+        `Eine Sicherungskopie deiner Dateien (ohne Git-Historie) liegt unter ${backupPath}. ` +
+        `Das kommt selten vor. Wenn es wieder passiert, sag bitte deinen Lehrenden Bescheid.`),
+        openBackup,
+        say('Dismiss', 'Schließen')
       );
-      if (choice === 'Open Backup Folder') {
+      if (choice === openBackup) {
         await revealUri(vscode.Uri.file(backupPath));
       }
 
@@ -938,10 +943,10 @@ export class StudentRepositoryManager {
     this.syncFailureAlerted.add(repoPath);
 
     const detail = relation === 'diverged'
-      ? `Your local branch and the remote have both moved on, so Computor cannot fast-forward. Your work is safe — commit and push it, or merge the remote changes, to get back in sync.`
-      : `Computor could not update it just now. Your work is safe; the copy you see may be out of date.`;
+      ? say(`Your local branch and the remote have both moved on, so Computor cannot fast-forward. Your work is safe — commit and push it, or merge the remote changes, to get back in sync.`, `Dein lokaler Branch und das Remote-Repository haben sich beide weiterentwickelt, deshalb kann Computor sie nicht einfach zusammenführen. Deine Arbeit ist sicher: Sichere sie mit einem Commit und lade sie hoch, oder übernimm die Änderungen vom Remote-Repository, um wieder auf dem gleichen Stand zu sein.`)
+      : say(`Computor could not update it just now. Your work is safe; the copy you see may be out of date.`, `Computor konnte es gerade nicht aktualisieren. Deine Arbeit ist sicher, die angezeigte Kopie ist aber womöglich nicht mehr aktuell.`);
 
-    void notify.warning(`Could not update "${repoName}". ${detail}`);
+    void notify.warning(say(`Could not update "${repoName}". ${detail}`, `„${repoName}“ konnte nicht aktualisiert werden. ${detail}`));
   }
 
   /**
@@ -964,19 +969,19 @@ export class StudentRepositoryManager {
       const { stdout } = await execAsync(`git remote get-url ${remoteName}`, { cwd: repoPath });
       const currentUrl = stdout.trim();
       if (!currentUrl) {
-        notify.error(`Remote "${remoteName}" is not configured for this repository.`);
+        notify.error(say(`Remote "${remoteName}" is not configured for this repository.`, `Das Remote „${remoteName}“ ist für dieses Repository nicht eingerichtet.`));
         return false;
       }
 
       const sanitizedUrl = stripCredentialsFromGitUrl(currentUrl);
       if (!sanitizedUrl) {
-        notify.error('Unsupported remote URL format. Update the remote manually and retry.');
+        notify.error(say('Unsupported remote URL format. Update the remote manually and retry.', 'Dieses Format der Remote-Adresse wird nicht unterstützt. Ändere das Remote selbst und versuche es noch einmal.'));
         return false;
       }
 
       const origin = extractOriginFromGitUrl(sanitizedUrl);
       if (!origin) {
-        notify.error('Unable to determine GitLab host for this repository.');
+        notify.error(say('Unable to determine GitLab host for this repository.', 'Der GitLab-Server dieses Repositorys wurde nicht gefunden.'));
         return false;
       }
 
@@ -988,7 +993,7 @@ export class StudentRepositoryManager {
         if (courseId) {
           return !!(await this.refreshForgejoCredentials(courseId, repoPath));
         }
-        notify.error('Your repository access has expired. Use the refresh button in the course view to restore it.');
+        notify.error(say('Your repository access has expired. Use the refresh button in the course view to restore it.', 'Dein Zugang zum Repository ist abgelaufen. Stelle ihn mit der Schaltfläche „Aktualisieren“ in der Kursübersicht wieder her.'));
         return false;
       }
 
@@ -1012,7 +1017,7 @@ export class StudentRepositoryManager {
       return true;
     } catch (error) {
       console.error('[StudentRepositoryManager] Failed to refresh repository credentials:', error);
-      notify.error('Could not update Git credentials. Please try again.');
+      notify.error(say('Could not update Git credentials. Please try again.', 'Die Git-Zugangsdaten konnten nicht erneuert werden. Versuche es bitte noch einmal.'));
       return false;
     }
   }

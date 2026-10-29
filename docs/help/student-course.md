@@ -119,7 +119,7 @@ own computer: you can pull updates and push your work with that token from any
 git client. The token works like a password, so treat it like one. It stays
 valid on its own — it is not the credential the workspace manages.
 
-This is different from *Export Course Examples* below: the export is a plain
+This is different from *Export Course Examples* above: the export is a plain
 ZIP of the files with no git in it, for keeping your work after the course.
 The clone stays connected to the course. Either way, the workspace remains the
 supported place to work — testing and submitting happen there.

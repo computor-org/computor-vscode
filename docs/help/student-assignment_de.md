@@ -103,7 +103,7 @@ Ordner. Die neue Datei öffnet sich sofort.
 **Kopieren und Verschieben.** *Datei kopieren…* und *Datei verschieben…* bieten
 nur Ordner innerhalb derselben Aufgabe an, damit Arbeit nicht versehentlich in
 einer anderen Übung landet. Ist der Name schon vergeben, wirst du gefragt, ob du
-*Keep Both* (beide behalten) oder *Overwrite* (überschreiben) willst.
+*Beide behalten* oder *Überschreiben* willst.
 *Ausschneiden*, *Kopieren* und *Einfügen* sind die Alternative in zwei Schritten;
 *Einfügen* erscheint, sobald etwas zum Einfügen bereitliegt.
 

@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { commandRegistrar } from './commandHelpers';
 import { copyToClipboard } from '../utils/clipboard';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import { revealUri } from '../utils/reveal';
 import { openStudentFile } from '../ui/editorLayout';
 import type { ComputorApiService } from '../services/ComputorApiService';
@@ -31,6 +32,9 @@ const CLIPBOARD_CONTEXT_KEY = 'computor.student.fs.hasClipboard';
 /** How deep Copy/Move To looks for destination folders. Assignments are small;
  *  this only keeps a pathological tree from stalling the quick pick. */
 const MAX_DESTINATION_DEPTH = 6;
+
+const keepBoth = (): string => say('Keep Both', 'Beide behalten');
+const overwriteLabel = (): string => say('Overwrite', 'Überschreiben');
 
 /** A directory a New/Paste can write into, plus the root that bounds it. */
 interface Container {
@@ -119,19 +123,19 @@ export class StudentFileCommands {
     register('computor.student.fs.copyPath', async (item: any) => {
       const target = this.resolveAnyPath(item);
       if (!target) {
-        void notify.warning('This item has no path on disk yet.');
+        void notify.warning(say('This item has no path on disk yet.', 'Dieser Eintrag liegt noch nicht auf dem Datenträger.'));
         return;
       }
-      await copyToClipboard(target.path, 'Path');
+      await copyToClipboard(target.path, say('Path', 'Pfad'));
     });
     register('computor.student.fs.copyRelativePath', async (item: any) => {
       const target = this.resolveAnyPath(item);
       if (!target) {
-        void notify.warning('This item has no path on disk yet.');
+        void notify.warning(say('This item has no path on disk yet.', 'Dieser Eintrag liegt noch nicht auf dem Datenträger.'));
         return;
       }
       const relative = path.relative(target.root, target.path);
-      await copyToClipboard(relative || path.basename(target.path), 'Relative path');
+      await copyToClipboard(relative || path.basename(target.path), say('Relative path', 'Relativer Pfad'));
     });
   }
 
@@ -259,14 +263,14 @@ export class StudentFileCommands {
   private async createEntry(item: any, isDirectory: boolean): Promise<void> {
     const target = this.resolveContainer(item);
     if (!target) {
-      void notify.error('This item has no folder on disk yet.');
+      void notify.error(say('This item has no folder on disk yet.', 'Zu diesem Eintrag gibt es noch keinen Ordner auf dem Datenträger.'));
       return;
     }
 
     const name = await vscode.window.showInputBox({
-      title: isDirectory ? 'New Folder' : 'New File',
-      prompt: `Name of the new ${isDirectory ? 'folder' : 'file'}`,
-      placeHolder: isDirectory ? 'e.g. src' : 'e.g. solution.py',
+      title: say(isDirectory ? 'New Folder' : 'New File', isDirectory ? 'Neuer Ordner' : 'Neue Datei'),
+      prompt: say(`Name of the new ${isDirectory ? 'folder' : 'file'}`, isDirectory ? 'Name des neuen Ordners' : 'Name der neuen Datei'),
+      placeHolder: say(isDirectory ? 'e.g. src' : 'e.g. solution.py', isDirectory ? 'z. B. src' : 'z. B. solution.py'),
       ignoreFocusOut: true,
       validateInput: value => this.validateNewName(value, target.dir, target.root)
     });
@@ -291,13 +295,13 @@ export class StudentFileCommands {
     const base = validateSegment(value);
     if (base) { return base; }
     if (isProtectedName(value)) {
-      return `"${value}" is managed by Computor.`;
+      return say(`"${value}" is managed by Computor.`, `„${value}“ wird von Computor verwaltet.`);
     }
     if (dir === root && isReservedAtAssignmentRoot(value)) {
-      return `"${value}" is managed by Computor.`;
+      return say(`"${value}" is managed by Computor.`, `„${value}“ wird von Computor verwaltet.`);
     }
     if (fs.existsSync(path.join(dir, value))) {
-      return `"${value}" already exists.`;
+      return say(`"${value}" already exists.`, `„${value}“ gibt es bereits.`);
     }
     return undefined;
   }
@@ -309,8 +313,8 @@ export class StudentFileCommands {
     const current = path.basename(entry.path);
     const parentDir = path.dirname(entry.path);
     const name = await vscode.window.showInputBox({
-      title: 'Rename',
-      prompt: `New name for "${current}"`,
+      title: say('Rename', 'Umbenennen'),
+      prompt: say(`New name for "${current}"`, `Neuer Name für „${current}“`),
       value: current,
       ignoreFocusOut: true,
       validateInput: value =>
@@ -323,9 +327,9 @@ export class StudentFileCommands {
     const confirmed = await this.confirmIfSubmitted(
       item,
       entry,
-      `Rename "${current}" to "${name}"?`,
-      'Rename',
-      'The content is kept, only the name changes.'
+      say(`Rename "${current}" to "${name}"?`, `„${current}“ in „${name}“ umbenennen?`),
+      say('Rename', 'Umbenennen'),
+      say('The content is kept, only the name changes.', 'Der Inhalt bleibt erhalten, nur der Name ändert sich.')
     );
     if (!confirmed) { return; }
 
@@ -340,12 +344,12 @@ export class StudentFileCommands {
     const name = path.basename(entry.path);
     const detail = [
       await this.submittedNote(item, entry),
-      entry.isDirectory ? 'This removes everything inside it.' : undefined,
-      'Anything that came from the course template can be brought back with "Update Repository from Template".'
+      entry.isDirectory ? say('This removes everything inside it.', 'Dabei wird alles gelöscht, was darin liegt.') : undefined,
+      say('Anything that came from the course template can be brought back with "Update Repository from Template".', 'Alles, was aus der Kursvorlage stammt, kannst du mit „Repository aus Kursvorlage aktualisieren“ zurückholen.')
     ].filter(Boolean).join(' ');
     const confirmed = await notify.confirm(
-      `Delete ${entry.isDirectory ? 'folder' : 'file'} "${name}"?`,
-      'Delete',
+      say(`Delete ${entry.isDirectory ? 'folder' : 'file'} "${name}"?`, `${entry.isDirectory ? 'Ordner' : 'Datei'} „${name}“ löschen?`),
+      say('Delete', 'Löschen'),
       detail
     );
     if (!confirmed) { return; }
@@ -392,7 +396,7 @@ export class StudentFileCommands {
 
     if (!fs.existsSync(pending.path)) {
       await this.clearClipboard();
-      void notify.error(`"${path.basename(pending.path)}" no longer exists.`);
+      void notify.error(say(`"${path.basename(pending.path)}" no longer exists.`, `„${path.basename(pending.path)}“ gibt es nicht mehr.`));
       return;
     }
 
@@ -408,12 +412,12 @@ export class StudentFileCommands {
       }
       const choice = await notify.modal(
         'warning',
-        `"${name}" already exists here.`,
-        { actions: ['Keep Both', 'Overwrite'] }
+        say(`"${name}" already exists here.`, `„${name}“ gibt es hier bereits.`),
+        { actions: [keepBoth(), overwriteLabel()] }
       );
-      if (choice === 'Keep Both') {
+      if (choice === keepBoth()) {
         finalName = uniqueName(target.dir, name, fs.statSync(pending.path).isDirectory());
-      } else if (choice === 'Overwrite') {
+      } else if (choice === overwriteLabel()) {
         overwrite = true;
       } else {
         return;
@@ -434,9 +438,9 @@ export class StudentFileCommands {
       const note = submittedWarning(check, isDirectory);
       if (note) {
         const confirmed = await notify.confirm(
-          `Move "${name}" here?`,
-          'Move',
-          `${note} Its content is not changed, only its place in the assignment.`
+          say(`Move "${name}" here?`, `„${name}“ hierher verschieben?`),
+          say('Move', 'Verschieben'),
+          say(`${note} Its content is not changed, only its place in the assignment.`, `${note} Der Inhalt bleibt unverändert, nur der Ort in der Aufgabe ändert sich.`)
         );
         if (!confirmed) { return; }
       }
@@ -463,21 +467,21 @@ export class StudentFileCommands {
   private async transferTo(item: any, op: 'copy' | 'move'): Promise<void> {
     const entry = this.resolveEntry(item);
     if (!entry) {
-      void notify.warning('Select a file or folder inside an assignment first.');
+      void notify.warning(say('Select a file or folder inside an assignment first.', 'Wähle zuerst eine Datei oder einen Ordner in einer Aufgabe aus.'));
       return;
     }
 
     const assignmentRoot = this.assignmentRootFor(item) ?? entry.root;
     const choices = this.destinationChoices(assignmentRoot, entry);
     if (choices.length === 0) {
-      void notify.info('This assignment has no other folder to move into yet. Create one with "New Folder…" first.');
+      void notify.info(say('This assignment has no other folder to move into yet. Create one with "New Folder…" first.', 'Diese Aufgabe hat noch keinen anderen Ordner als Ziel. Lege zuerst mit „Neuer Ordner…“ einen an.'));
       return;
     }
 
     const name = path.basename(entry.path);
     const picked = await vscode.window.showQuickPick(choices, {
-      title: op === 'copy' ? `Copy "${name}" to…` : `Move "${name}" to…`,
-      placeHolder: 'Destination folder in this assignment',
+      title: say(op === 'copy' ? `Copy "${name}" to…` : `Move "${name}" to…`, op === 'copy' ? `„${name}“ kopieren nach …` : `„${name}“ verschieben nach …`),
+      placeHolder: say('Destination folder in this assignment', 'Zielordner in dieser Aufgabe'),
       ignoreFocusOut: true
     });
     if (!picked) { return; }
@@ -486,7 +490,7 @@ export class StudentFileCommands {
     // picker's filter must not land inside a backend-owned root folder.
     const destFirstSegment = path.relative(assignmentRoot, picked.dir).split(/[/\\]/)[0];
     if (destFirstSegment && isReservedAtAssignmentRoot(destFirstSegment)) {
-      void notify.error(`"${destFirstSegment}" is managed by Computor and cannot hold your files.`);
+      void notify.error(say(`"${destFirstSegment}" is managed by Computor and cannot hold your files.`, `„${destFirstSegment}“ wird von Computor verwaltet und kann deine Dateien nicht aufnehmen.`));
       return;
     }
 
@@ -495,12 +499,12 @@ export class StudentFileCommands {
     if (fs.existsSync(path.join(picked.dir, name))) {
       const choice = await notify.modal(
         'warning',
-        `"${name}" already exists in the destination.`,
-        { actions: ['Keep Both', 'Overwrite'] }
+        say(`"${name}" already exists in the destination.`, `„${name}“ gibt es im Zielordner bereits.`),
+        { actions: [keepBoth(), overwriteLabel()] }
       );
-      if (choice === 'Keep Both') {
+      if (choice === keepBoth()) {
         finalName = uniqueName(picked.dir, name, entry.isDirectory);
-      } else if (choice === 'Overwrite') {
+      } else if (choice === overwriteLabel()) {
         overwrite = true;
       } else {
         return;
@@ -513,9 +517,9 @@ export class StudentFileCommands {
       const confirmed = await this.confirmIfSubmitted(
         item,
         entry,
-        `Move "${name}" to ${picked.label}?`,
-        'Move',
-        'Its content is not changed, only its place in the assignment.'
+        say(`Move "${name}" to ${picked.label}?`, `„${name}“ nach ${picked.label} verschieben?`),
+        say('Move', 'Verschieben'),
+        say('Its content is not changed, only its place in the assignment.', 'Der Inhalt bleibt unverändert, nur der Ort in der Aufgabe ändert sich.')
       );
       if (!confirmed) { return; }
 
@@ -590,7 +594,7 @@ export class StudentFileCommands {
       // A folder can neither contain itself nor land inside its own subtree.
       .filter(dir => !(entry.isDirectory && isWithinRoot(entry.path, dir)))
       .map(dir => ({
-        label: dir === root ? '$(root-folder) Assignment root' : `$(folder) ${path.relative(root, dir)}`,
+        label: dir === root ? say('$(root-folder) Assignment root', '$(root-folder) Hauptordner der Aufgabe') : `$(folder) ${path.relative(root, dir)}`,
         dir
       }));
   }

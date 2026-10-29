@@ -39,7 +39,7 @@ import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
-import { onDidChangeUiLanguage, say, setUiAccount } from './utils/uiLanguage';
+import { formatUiDateTime, onDidChangeUiLanguage, say, setUiAccount } from './utils/uiLanguage';
 import { UiLanguageSync } from './services/UiLanguageSync';
 import { revealUri } from './utils/reveal';
 import {
@@ -237,7 +237,7 @@ async function runSsoWithProgress(baseUrl: string): Promise<SsoLoginResult> {
     title: 'Computor',
     cancellable: true
   }, async (progress, token) => {
-    progress.report({ message: 'Waiting for browser sign-in…' });
+    progress.report({ message: say('Waiting for browser sign-in…', 'Warte auf die Anmeldung im Browser …') });
     return ssoBrowserLogin(baseUrl, { cancellationToken: token });
   });
 }
@@ -402,7 +402,7 @@ async function writeMarker(file: string, data: { backendUrl: string }): Promise<
  * secret storage so it survives restarts; Logout clears it.
  */
 async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void> {
-  if (isAuthenticating) { notify.info('Login already in progress.'); return; }
+  if (isAuthenticating) { notify.info(say('Login already in progress.', 'Die Anmeldung läuft bereits.')); return; }
   if (activeSession) {
     notify.info('Already signed in. Log out first to switch accounts.');
     return;
@@ -434,7 +434,7 @@ async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void
       title: 'Computor',
       cancellable: false
     }, async (progress) => {
-      progress.report({ message: 'Connecting to backend…' });
+      progress.report({ message: say('Connecting to backend…', 'Verbindung zum Server wird hergestellt …') });
       backendConnectionService.setBaseUrl(baseUrl);
       const status = await backendConnectionService.checkBackendConnection(baseUrl);
       if (!status.isReachable) {
@@ -534,14 +534,15 @@ async function restoreSession(
 }
 
 async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExistingFolders: boolean }> {
-  const action = await notify.error('Login requires an open workspace.', 'Open Folder');
-  if (action !== 'Open Folder') return { opened: false, hadExistingFolders: false };
+  const openFolder = say('Open Folder', 'Ordner öffnen');
+  const action = await notify.error(say('Login requires an open workspace.', 'Für die Anmeldung muss ein Arbeitsbereich geöffnet sein.'), openFolder);
+  if (action !== openFolder) return { opened: false, hadExistingFolders: false };
 
   const folderUri = await vscode.window.showOpenDialog({
     canSelectFolders: true,
     canSelectFiles: false,
     canSelectMany: false,
-    openLabel: 'Select Workspace Folder'
+    openLabel: say('Select Workspace Folder', 'Arbeitsbereichsordner auswählen')
   });
   if (!folderUri || folderUri.length === 0) return { opened: false, hadExistingFolders: false };
 
@@ -592,11 +593,11 @@ async function handleComputorWorkspaceDetected(
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Connecting (workspace token)…' });
+        progress.report({ message: say('Connecting (workspace token)…', 'Verbindung wird hergestellt (Arbeitsbereich-Token) …') });
         backendConnectionService.setBaseUrl(baseUrl);
         const status = await backendConnectionService.checkBackendConnection(baseUrl);
         if (!status.isReachable) { return false; }
-        progress.report({ message: 'Authenticating…' });
+        progress.report({ message: say('Authenticating…', 'Anmeldung läuft …') });
         const client = new ApiKeyHttpClient(baseUrl, envToken, 'X-API-Token', '', 5000);
         if (!(await probeToken(client))) {
           console.error('Workspace API token is invalid');
@@ -617,7 +618,7 @@ async function handleComputorWorkspaceDetected(
         return;
       }
       console.warn('Workspace API token login failed, falling back to stored session');
-      void notify.warning('Automatic sign-in to this Computor workspace failed. Trying your stored session instead.');
+      void notify.warning(say('Automatic sign-in to this Computor workspace failed. Trying your stored session instead.', 'Die automatische Anmeldung in diesem Computor-Arbeitsbereich ist fehlgeschlagen. Deine gespeicherte Sitzung wird stattdessen versucht.'));
     }
 
     // Priority 2: silently restore a stored session (if auto-login is enabled)
@@ -627,16 +628,16 @@ async function handleComputorWorkspaceDetected(
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Connecting to backend…' });
+        progress.report({ message: say('Connecting to backend…', 'Verbindung zum Server wird hergestellt …') });
         backendConnectionService.setBaseUrl(baseUrl);
         const status = await backendConnectionService.checkBackendConnection(baseUrl);
         if (!status.isReachable) { return false; }
-        progress.report({ message: 'Restoring session…' });
+        progress.report({ message: say('Restoring session…', 'Sitzung wird wiederhergestellt …') });
         return restoreSession(context, baseUrl, (msg) => progress.report({ message: msg }));
       });
 
       if (restored) {
-        notify.info(`Logged in: ${baseUrl}`);
+        notify.info(say(`Logged in: ${baseUrl}`, `Angemeldet: ${baseUrl}`));
         return;
       }
     }
@@ -1123,12 +1124,12 @@ class UnifiedController {
       // Use external progress if available, otherwise show own popup
       const provisioning = new StudentRepositoryProvisioningService(this.context, api);
       const setupRepositories = async (progressReport: (msg: string) => void, cancellationToken?: vscode.CancellationToken) => {
-        progressReport('Preparing repositories...');
+        progressReport(say('Preparing repositories...', 'Repositorys werden vorbereitet …'));
         try {
           await repositoryManager.autoSetupRepositories(undefined, progressReport, expandedCourseIds, cancellationToken);
         } catch (e) {
           if (e instanceof GitCancelledError) {
-            notify.info('Repository setup was cancelled. Repositories will be set up when you expand a course.');
+            notify.info(say('Repository setup was cancelled. Repositories will be set up when you expand a course.', 'Die Einrichtung der Repositorys wurde abgebrochen. Sie werden eingerichtet, sobald du einen Kurs aufklappst.'));
           } else {
             console.error('[initializeStudentView] Repository auto-setup failed:', e);
           }
@@ -1148,7 +1149,7 @@ class UnifiedController {
       } else {
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
-          title: 'Preparing course repositories...',
+          title: say('Preparing course repositories...', 'Kurs-Repositorys werden vorbereitet …'),
           cancellable: true
         }, async (progress, token) => {
           await setupRepositories((msg) => progress.report({ message: msg }), token);
@@ -1961,10 +1962,10 @@ class UnifiedController {
       if (status.active) {
         this.httpClient?.setMaintenanceMode(true, status.message);
         this.wsService.updateMaintenanceStatusBar('active', status.message);
-        notify.warning(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`);
+        notify.warning(say(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`, `Wartungsmodus aktiv: ${status.message || 'Das System wird gerade gewartet.'}`));
       } else if (status.scheduled_at) {
         this.wsService.updateMaintenanceStatusBar('scheduled', status.message, status.scheduled_at);
-        notify.info(`Maintenance Scheduled for ${new Date(status.scheduled_at).toLocaleString()}: ${status.message || 'Scheduled maintenance is planned'}`);
+        notify.info(say(`Maintenance Scheduled for ${new Date(status.scheduled_at).toLocaleString()}: ${status.message || 'Scheduled maintenance is planned'}`, `Wartung geplant für ${formatUiDateTime(new Date(status.scheduled_at))}: ${status.message || 'Eine Wartung ist geplant.'}`));
       }
     } catch (error) {
       // Non-critical — don't block startup
@@ -2074,7 +2075,7 @@ async function explainBrowserSignInUnavailable(context: vscode.ExtensionContext)
 }
 
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
-  if (isAuthenticating) { notify.info('Login already in progress.'); return; }
+  if (isAuthenticating) { notify.info(say('Login already in progress.', 'Die Anmeldung läuft bereits.')); return; }
   if (!browserSignInAvailable()) {
     await explainBrowserSignInUnavailable(context);
     return;
@@ -2099,11 +2100,12 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     // existing client's tokens rather than tearing down the session, so role
     // commands held on context.subscriptions aren't re-registered.
     if (activeSession) {
+      const reauthenticate = say('Re-authenticate', 'Erneut anmelden');
       const answer = await notify.warning(
-        `Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`,
-        'Re-authenticate', 'Cancel'
+        say(`Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`, `Du bist bereits angemeldet (Ansichten: ${activeSession.getActiveViews().join(', ')}). Erneut anmelden?`),
+        reauthenticate, say('Cancel', 'Abbrechen')
       );
-      if (answer !== 'Re-authenticate') { return; }
+      if (answer !== reauthenticate) { return; }
 
       const existing = activeSession.getHttpClient?.();
       if (!(existing instanceof BearerTokenHttpClient)) {
@@ -2122,9 +2124,9 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
           userId: sso.userId
         });
         await persistSession(context, sessionAuthFromClient(existing));
-        notify.info(`Re-authenticated: ${baseUrl}`);
+        notify.info(say(`Re-authenticated: ${baseUrl}`, `Erneut angemeldet: ${baseUrl}`));
       } catch (error: any) {
-        notify.error(`Re-authentication failed: ${error?.message || error}`);
+        notify.error(say(`Re-authentication failed: ${error?.message || error}`, `Die erneute Anmeldung ist fehlgeschlagen: ${error?.message || error}`));
       }
       return;
     }
@@ -2141,7 +2143,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       sso = await runSsoWithProgress(baseUrl);
     } catch (error: any) {
       // Cancelled, timed out, or the browser handshake failed.
-      notify.warning(`Sign-in not completed: ${error?.message || error}`);
+      notify.warning(say(`Sign-in not completed: ${error?.message || error}`, `Die Anmeldung wurde nicht abgeschlossen: ${error?.message || error}`));
       return;
     }
 
@@ -2152,19 +2154,19 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Loading your courses…' });
+        progress.report({ message: say('Loading your courses…', 'Deine Kurse werden geladen …') });
         await activateSession(context, baseUrl, client, (m) => progress.report({ message: m }));
       });
     } catch (error: any) {
       console.error('Login failed:', error);
       backendConnectionService.stopHealthCheck();
-      notify.error(`Login failed: ${error?.message || error}`);
+      notify.error(say(`Login failed: ${error?.message || error}`, `Die Anmeldung ist fehlgeschlagen: ${error?.message || error}`));
       return;
     }
 
     await persistSession(context, sessionAuthFromClient(client));
     notify.info(
-      sso.isNewUser ? 'Welcome to Computor! Your account has been set up.' : `Logged in: ${baseUrl}`
+      sso.isNewUser ? say('Welcome to Computor! Your account has been set up.', 'Willkommen bei Computor! Dein Konto ist eingerichtet.') : say(`Logged in: ${baseUrl}`, `Angemeldet: ${baseUrl}`)
     );
   } finally {
     isAuthenticating = false;

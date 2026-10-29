@@ -58,8 +58,10 @@ export function assignmentForFile(
   return best ? { courseContent: best.content, submissionGroup: best.content.submission_group } : undefined;
 }
 
-export const NO_ASSIGNMENT_HINT = (action: string): string =>
-  `Select an assignment first, then run ${action}.`;
+export const NO_ASSIGNMENT_HINT = (action: string, language: 'de' | 'en' = 'en'): string =>
+  language === 'de'
+    ? `Wähle zuerst eine Aufgabe aus und starte dann „${action}“.`
+    : `Select an assignment first, then run ${action}.`;
 
 /** Wording of the confirmation shown before a palette command acts. */
 export function confirmationPrompt(kind: 'test' | 'submit', title: string, language: 'de' | 'en' = 'en'): {
