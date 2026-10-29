@@ -61,6 +61,25 @@ const ERROR_HTML = `<!DOCTYPE html>
 </div></body></html>`;
 
 /**
+ * Whether the browser sign-in below can complete in this window.
+ *
+ * The backend hands tokens only to the loopback receiver,
+ * http://127.0.0.1:<port>, and that address belongs to the extension host. It
+ * is the browser's own only when both run on one machine: desktop VS Code
+ * without a remote. In a browser workspace (code-server in a Coder workspace)
+ * or a remote window the browser cannot reach it, so "Sign in" opened nothing,
+ * or a tab that could not finish (computor.at, 2026-10-29).
+ */
+export function browserSignInAvailable(): boolean {
+  return vscode.env.uiKind !== vscode.UIKind.Web && !vscode.env.remoteName;
+}
+
+/** What to do instead where {@link browserSignInAvailable} is false. */
+export const browserSignInUnavailableHint =
+  'Signing in through the browser does not work in a hosted or remote workspace. ' +
+  'Restart this workspace from the Computor web app to renew its sign-in, or use an API token.';
+
+/**
  * Run the Keycloak SSO login in the system browser using a temporary loopback
  * HTTP server (the RFC 8252 native-app pattern). Requires no backend changes:
  * the backend treats `redirect_uri` as free-form and 302s the freshly-minted
