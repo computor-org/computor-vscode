@@ -18,7 +18,7 @@ import type { TrackedTree } from './ui/treeRestore';
 import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
 import { findInTree } from './ui/tree/chat/chatJump';
 import { WorkspaceLaunchContextService, findWorkspaceLaunchTarget, validWorkspaceLaunchContext, workspaceLaunchContent, workspaceLaunchContentKind, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
-import { beginMarkdownPreviewRequest, MarkdownPreviewOptions } from './ui/webviews/markdownPreview';
+import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, readingPreviewGeneration } from './ui/webviews/markdownPreview';
 import { readingLanguage, isCourseWelcomeContent, openWorkspaceCourseLaunch, showCourseWelcomeGuideOnce, showWorkspaceCourseLanding, showWorkspaceCourseUnit } from './services/WorkspaceCourseLanding';
 import { WorkspaceDisplayLocale, workspaceLocaleFile } from './services/WorkspaceDisplayLocale';
 
@@ -39,7 +39,8 @@ import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
-import { say, setUiCourseLanguage, setUiProfileLanguage } from './utils/uiLanguage';
+import { onDidChangeUiLanguage, say, setUiAccount } from './utils/uiLanguage';
+import { UiLanguageSync } from './services/UiLanguageSync';
 import { revealUri } from './utils/reveal';
 import {
   OrganizationTreeItem as LecturerOrganizationTreeItem,
@@ -726,6 +727,7 @@ class UnifiedController {
         fetchLanguage: async () => {
           const account = await api.getUserAccount({ force: true });
           if (!account) throw new Error('Could not load the account language.');
+          setUiAccount(account);
           return account.profile?.language_code;
         },
         fetchLaunchContext: identity
@@ -733,8 +735,7 @@ class UnifiedController {
           : undefined,
         displayLanguage: vscode.env.language,
         state: this.context.globalState,
-        reload: () => vscode.commands.executeCommand('workbench.action.reloadWindow'),
-        onLanguage: setUiProfileLanguage
+        reload: () => vscode.commands.executeCommand('workbench.action.reloadWindow')
       });
       this.workspaceDisplayLocale = locale;
       this.disposables.push(locale, vscode.window.onDidChangeWindowState(state => {
@@ -743,6 +744,22 @@ class UnifiedController {
       locale.start();
       await locale.poll();
     }
+
+    // A language changed on the web reaches this window without a reload
+    // (computor-org/issues#553). The hosted workspace also polls (above).
+    const languageSync = new UiLanguageSync({ fetchAccount: options => api.getUserAccount(options) });
+    if (!argvFile) {
+      await languageSync.refresh(false);
+      this.disposables.push(vscode.window.onDidChangeWindowState(state => {
+        if (state.focused) void languageSync.refreshOnFocus();
+      }));
+    }
+    this.disposables.push(onDidChangeUiLanguage(() => {
+      IssueReportStatusBarService.refreshLanguage();
+      void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
+      this.messagesInputPanel?.refreshLanguage();
+      this.artifactsPanel?.refreshLanguage();
+    }));
 
     this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
     const profileCommand = vscode.commands.registerCommand('computor.user.profile', async () => {
@@ -782,6 +799,10 @@ class UnifiedController {
     // whenever someone else grants or revokes a role/membership of this user.
     this.wsService.subscribe([], 'unified-controller-permissions', {
       onPermissionsUpdated: () => this.schedulePermissionsRefresh(),
+      onUserProfileUpdated: () => {
+        void languageSync.refresh(true);
+        void this.workspaceDisplayLocale?.poll();
+      },
     });
 
     // Check initial maintenance status (fire-and-forget)
@@ -937,11 +958,6 @@ class UnifiedController {
   ): Promise<void> {
     const report = onProgress || (() => {});
 
-    // The language of the extension's own rows and messages (uiLanguage).
-    if (!this.workspaceDisplayLocale) {
-      setUiProfileLanguage((await api.getUserAccount().catch(() => undefined))?.profile?.language_code);
-    }
-
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
 
@@ -997,10 +1013,7 @@ class UnifiedController {
     let lastSelectedAssignment: any | undefined;
     const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
     // A unit description can carry one section per language (the course welcome item).
-    setDescriptionLanguageResolver(item => {
-      const content = (item as any).courseContent ?? (item as any).node?.courseContent;
-      return readingLanguage(api, content?.course_id ?? workspaceLaunchCourseId ?? '');
-    });
+    setDescriptionLanguageResolver(() => readingLanguage(api));
     const unavailableTarget = () => {
       void notify.info(say('This material is no longer available in this course.',
         'Dieses Material ist in diesem Kurs nicht mehr verfügbar.'));
@@ -1035,8 +1048,25 @@ class UnifiedController {
         const content = workspaceLaunchContent(item);
         if (content) await showWorkspaceCourseUnit(this.context, api, content, options);
       });
+    // The tree selection last shown in the reading tab, to show it again in a new language.
+    let shownDescription: { item: any; generation?: number } | undefined;
+    const showDescription = async (item: any, explicit?: boolean) => {
+      const before = readingPreviewGeneration();
+      await previewDescription(item, explicit);
+      const after = readingPreviewGeneration();
+      if (item && after !== undefined && after !== before) shownDescription = { item, generation: after };
+    };
+    this.disposables.push(onDidChangeUiLanguage(() => {
+      tree.refresh();
+      statusBar.refreshLanguage();
+      const shown = shownDescription;
+      if (shown && shown.generation === readingPreviewGeneration()) {
+        beginMarkdownPreviewRequest();
+        void showDescription(shown.item, true);
+      }
+    }));
     this.disposables.push(vscode.commands.registerCommand(PREVIEW_STUDENT_DESCRIPTION_COMMAND,
-      (item) => previewDescription(item, true)));
+      (item) => showDescription(item, true)));
     registerTreeView('computor.student.courses', {
       provider: tree,
       options: { showCollapseAll: true },
@@ -1048,7 +1078,7 @@ class UnifiedController {
       },
       onSelection: (event) => {
         const selected = event.selection[0];
-        void previewDescription(selected);
+        void showDescription(selected);
         if (!selected) return;
         if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
           lastSelectedAssignment = selected;
@@ -1147,9 +1177,6 @@ class UnifiedController {
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
       if (!readingRequest.isCurrent()) return true;
-      const openedCourse = await api.getCourse(courseId).catch(() => undefined);
-      if (!readingRequest.isCurrent()) return true;
-      setUiCourseLanguage(openedCourse?.language_code);
       tree.setWorkspaceCourse(courseId);
       workspaceLaunchCourseId = courseId;
       // Initial launch runs before initializeViews enables its role contexts.

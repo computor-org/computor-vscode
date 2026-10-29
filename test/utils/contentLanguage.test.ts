@@ -3,7 +3,6 @@ import {
   descriptionHeading,
   descriptionInLanguage,
   localizedUnitTitle,
-  resolveContentLanguage,
   withoutLeadingHeading
 } from '../../src/utils/contentLanguage';
 
@@ -23,21 +22,6 @@ describe('contentLanguage', () => {
 
     it('leaves a description without markers unchanged', () => {
       expect(descriptionInLanguage('# Woche 1\n\n<!-- note -->', 'en')).to.equal('# Woche 1\n\n<!-- note -->');
-    });
-  });
-
-  describe('resolveContentLanguage', () => {
-    it('uses the language the learner chose', () => {
-      expect(resolveContentLanguage('en', 'de')).to.equal('en');
-    });
-
-    it('uses the course language when the learner chose none', () => {
-      expect(resolveContentLanguage(null, 'de')).to.equal('de');
-      expect(resolveContentLanguage('  ', 'DE')).to.equal('de');
-    });
-
-    it('falls back to English when neither is known', () => {
-      expect(resolveContentLanguage(undefined, null)).to.equal('en');
     });
   });
 

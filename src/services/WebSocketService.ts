@@ -142,6 +142,16 @@ export interface WsPermissionsUpdated {
   data: { user_id: string };
 }
 
+/**
+ * The current user's profile changed, on the web or in another client. Sent on
+ * the personal `user:<id>` channel; `language_code` is null for Automatic.
+ */
+export interface WsUserProfileUpdated {
+  type: 'user:profile_updated';
+  channel: string;
+  data: { user_id: string; language_code?: string | null };
+}
+
 // Re-export deployment/course event types from generated types
 export type WsDeploymentStatusChanged = WSDeploymentStatusChanged & { type: 'deployment:status_changed' };
 export type WsDeploymentAssigned = WSDeploymentAssigned & { type: 'deployment:assigned' };
@@ -150,7 +160,7 @@ export type WsCourseContentUpdated = WSCourseContentUpdated & { type: 'course:co
 export type WsCourseUpdated = WSCourseUpdated & { type: 'course:updated' };
 export type WsSubmissionGroupUpdated = WSSubmissionGroupUpdated & { type: 'submission_group:updated' };
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsPermissionsUpdated | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated | WsSubmissionGroupUpdated;
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsPermissionsUpdated | WsUserProfileUpdated | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated | WsSubmissionGroupUpdated;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -219,6 +229,7 @@ export interface WebSocketEventHandlers {
   onMaintenanceCancelled?: (message: string) => void;
   onMaintenanceReminder?: (minutesRemaining: number, scheduledAt: string, message: string) => void;
   onPermissionsUpdated?: (event: WsPermissionsUpdated) => void;
+  onUserProfileUpdated?: (event: WsUserProfileUpdated) => void;
   onDeploymentStatusChanged?: (event: WsDeploymentStatusChanged) => void;
   onDeploymentAssigned?: (event: WsDeploymentAssigned) => void;
   onDeploymentUnassigned?: (event: WsDeploymentUnassigned) => void;
@@ -755,6 +766,13 @@ export class WebSocketService {
           console.log('[WebSocket] Permissions updated for the current user');
           this.eventHandlers.forEach((handlers) => {
             handlers.onPermissionsUpdated?.(message as WsPermissionsUpdated);
+          });
+          break;
+        }
+
+        case 'user:profile_updated': {
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onUserProfileUpdated?.(message as WsUserProfileUpdated);
           });
           break;
         }

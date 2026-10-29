@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 
-import { setUiProfileLanguage, setUiCourseLanguage } from '../../src/utils/uiLanguage';
+import { setUiAccount, setUiProfileLanguage } from '../../src/utils/uiLanguage';
 import { errorCatalog } from '../../src/exceptions/ErrorCatalog';
 import { AuthenticationError, HttpError } from '../../src/exceptions/errors/HttpError';
 import { showErrorWithSeverity } from '../../src/utils/errorDisplay';
@@ -51,8 +51,7 @@ describe('showErrorWithSeverity', () => {
 
   beforeEach(() => {
     shown = [];
-    setUiProfileLanguage('en');
-    setUiCourseLanguage('de');
+    setUiAccount({ profile: { language_code: 'en' }, effective_language: 'de' });
     originalCatalog = (errorCatalog as any).catalog;
     originalInitialized = (errorCatalog as any).initialized;
     originalInfo = (vscode.window as any).showInformationMessage;
@@ -73,8 +72,7 @@ describe('showErrorWithSeverity', () => {
   });
 
   afterEach(() => {
-    setUiProfileLanguage(undefined);
-    setUiCourseLanguage(undefined);
+    setUiAccount({});
     (errorCatalog as any).catalog = originalCatalog;
     (errorCatalog as any).initialized = originalInitialized;
     (vscode.window as any).showInformationMessage = originalInfo;

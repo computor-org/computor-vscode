@@ -1,36 +1,109 @@
 import * as vscode from 'vscode';
-import { resolveContentLanguage } from './contentLanguage';
 
 /**
- * The language of the extension's own text at run time: tree rows, the
- * Results panel, the status bar, notifications. It follows the same order as
- * the welcome page — the learner's profile language, then the language of the
- * course the workspace was launched for — and falls back to the VS Code
- * display language, so a German page never sits beside English rows that
- * Computor wrote itself.
+ * The reading language of everything the extension writes or picks: tree
+ * rows, the Results panel, the status bar, notifications, the welcome page and
+ * which language section of a course text is shown. One rule, as on the web:
+ * the learner's profile language, else the language the backend resolved for
+ * this client (`effective_language`), else the VS Code display language. A
+ * course's own language is never the reading language; it only matters as a
+ * fallback for a text that has no version in the reading language.
  *
  * Command titles and view names are static (package.nls*.json) and follow
  * only the VS Code display language.
  */
 
+export type UiLanguage = 'de' | 'en';
+
 let profileLanguage: string | undefined;
-let courseLanguage: string | undefined;
+let effectiveLanguage: string | undefined;
+let launchLanguage: UiLanguage | undefined;
+const listeners = new Set<(language: UiLanguage) => void>();
+
+function supported(code: string | null | undefined): UiLanguage | undefined {
+  const language = code?.trim().toLowerCase().split(/[-_]/)[0];
+  return language === 'de' || language === 'en' ? language : undefined;
+}
+
+/** The VS Code display language as a reading language: German stays German, anything else reads English. */
+export function displayLanguage(display: string | null | undefined = vscode.env?.language): UiLanguage {
+  return supported(display) === 'de' ? 'de' : 'en';
+}
+
+export function pickUiLanguage(
+  profile?: string | null, effective?: string | null, display?: string | null
+): UiLanguage {
+  return supported(profile) ?? supported(effective) ?? displayLanguage(display);
+}
+
+/** What GET /user says about the reading language. */
+export interface LanguageAccount {
+  profile?: { language_code?: string | null } | null;
+  effective_language?: string | null;
+}
+
+/**
+ * The reading language for an account just fetched, or the current one when
+ * the account could not be read. A hosted workspace's launch carries the web
+ * app's resolved language for the browser, which outranks the one the
+ * backend derived from the workspace's own display language.
+ */
+export function accountLanguage(account: LanguageAccount | null | undefined): UiLanguage {
+  if (!account) return uiLanguage();
+  return pickUiLanguage(account.profile?.language_code, launchLanguage ?? account.effective_language, vscode.env?.language);
+}
+
+/**
+ * The language this client stands for when the profile is Automatic: the
+ * hosted launch's browser language, else the VS Code display language. Sent
+ * as Accept-Language; the backend puts the profile language first itself.
+ * The resolved language would feed an earlier profile choice back as the
+ * browser's after a switch to Automatic.
+ */
+export function automaticLanguage(): UiLanguage {
+  return launchLanguage ?? displayLanguage();
+}
+
+export function uiLanguage(): UiLanguage {
+  return pickUiLanguage(profileLanguage, launchLanguage ?? effectiveLanguage, vscode.env?.language);
+}
+
+function update(change: () => void): void {
+  const before = uiLanguage();
+  change();
+  const after = uiLanguage();
+  if (after === before) return;
+  for (const listener of [...listeners]) {
+    try {
+      listener(after);
+    } catch (error) {
+      console.warn('[uiLanguage] A language listener failed:', error);
+    }
+  }
+}
 
 export function setUiProfileLanguage(code: string | null | undefined): void {
-  profileLanguage = code?.trim() || undefined;
+  update(() => { profileLanguage = code?.trim() || undefined; });
 }
 
-export function setUiCourseLanguage(code: string | null | undefined): void {
-  courseLanguage = code?.trim() || undefined;
+/** Profile and backend-resolved language together, so one change notifies once. */
+export function setUiAccount(account: LanguageAccount | null | undefined): void {
+  if (!account) return;
+  update(() => {
+    profileLanguage = account.profile?.language_code?.trim() || undefined;
+    effectiveLanguage = account.effective_language?.trim() || undefined;
+  });
 }
 
-export function pickUiLanguage(profile?: string | null, course?: string | null, display?: string | null): 'de' | 'en' {
-  const language = resolveContentLanguage(profile, course || display);
-  return language.startsWith('de') ? 'de' : 'en';
+/** Set only by the managed workspace locale service, for this activation. */
+export function setWorkspaceLaunchLanguage(language: UiLanguage | undefined): void {
+  update(() => { launchLanguage = language; });
 }
 
-export function uiLanguage(): 'de' | 'en' {
-  return pickUiLanguage(profileLanguage, courseLanguage, vscode.env?.language);
+/** Called with the new language whenever {@link uiLanguage} changes. */
+export function onDidChangeUiLanguage(listener: (language: UiLanguage) => void): { dispose(): void } {
+  listeners.add(listener);
+  return { dispose: () => { listeners.delete(listener); } };
 }
 
 /** The English or the German text, by {@link uiLanguage}. */

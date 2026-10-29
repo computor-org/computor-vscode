@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { window } from '../helpers/vscode-stub';
 import { RETRY_COURSE_SETUP_COMMAND, StudentCourseContentTreeProvider } from '../../src/ui/tree/student/StudentCourseContentTreeProvider';
-import { pickUiLanguage, setUiCourseLanguage, setUiProfileLanguage } from '../../src/utils/uiLanguage';
+import { pickUiLanguage, setUiProfileLanguage } from '../../src/utils/uiLanguage';
 import { workbenchNames } from '../../src/ui/webviews/welcome/welcomeContent';
 
 /**
@@ -24,7 +24,6 @@ describe('student repository setup feedback', () => {
   afterEach(() => {
     delete win.withProgress;
     setUiProfileLanguage(undefined);
-    setUiCourseLanguage(undefined);
   });
 
   function fixture(outcome: any, mode = 'managed') {
@@ -167,7 +166,7 @@ describe('student assignment row accessibility', () => {
 });
 
 describe('extension text language', () => {
-  it('takes the profile, then the course, then the VS Code display language', () => {
+  it('takes the profile, then the backend\'s effective language, then the VS Code display language', () => {
     expect(pickUiLanguage('de-AT', 'en', 'en')).to.equal('de');
     expect(pickUiLanguage(undefined, 'de', 'en')).to.equal('de');
     expect(pickUiLanguage('en', 'de', 'de')).to.equal('en');

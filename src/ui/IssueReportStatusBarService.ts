@@ -66,8 +66,7 @@ export class IssueReportStatusBarService implements vscode.Disposable {
     const service = IssueReportStatusBarService.initialize();
     service.info = info;
     // Set here, after sign-in, when the learner's language is known.
-    service.item.text = `$(bug) ${say('Report problem', 'Problem melden')}`;
-    service.item.tooltip = say('Report a problem to the Computor team', 'Ein Problem an das Computor-Team melden');
+    service.label();
     const mode = issueReportingMode(info);
     if (mode !== 'off') {
       service.item.show();
@@ -76,6 +75,16 @@ export class IssueReportStatusBarService implements vscode.Disposable {
     }
     await vscode.commands.executeCommand('setContext', ISSUE_REPORTING_CONTEXT_KEY, mode !== 'off');
     await vscode.commands.executeCommand('setContext', ISSUE_REPORTING_TICKETS_CONTEXT_KEY, mode === 'tickets');
+  }
+
+  /** Relabel in the current language, without touching visibility. */
+  static refreshLanguage(): void {
+    IssueReportStatusBarService.instance?.label();
+  }
+
+  private label(): void {
+    this.item.text = `$(bug) ${say('Report problem', 'Problem melden')}`;
+    this.item.tooltip = say('Report a problem to the Computor team', 'Ein Problem an das Computor-Team melden');
   }
 
   dispose(): void {
