@@ -49,6 +49,9 @@ updates:
       # vsce 4 requires Node >= 22, while CI and the release workflow package on Node 20.
       - dependency-name: "@vscode/vsce"
         update-types: ["version-update:semver-major"]
+      # simple-git 4 strips ambient GIT_* variables from git (e.g. Coder's GIT_AUTHOR_*, a user's GIT_SSH_COMMAND) and drops the default export; adopt it with a reviewed change.
+      - dependency-name: simple-git
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
