@@ -17,7 +17,7 @@ import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '..
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { notify } from '../utils/notify';
-import { resolveContentLanguage } from '../utils/contentLanguage';
+import { readingLanguage } from '../services/WorkspaceCourseLanding';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { pickLatestSubmissionArtifactId, sortSubmissionArtifactsByRecency } from '../utils/submissionArtifacts';
 import { tutorTestTargetFor } from '../ui/tree/tutor/tutorTestTarget';
@@ -1242,18 +1242,7 @@ export class TutorCommands {
    * Searches recursively in case files are in subdirectories.
    */
   private async openReadmeFromDirectory(dir: string, courseId?: string): Promise<void> {
-    // Profile language, else the course's own language, else English.
-    let userLanguage: string | null | undefined;
-    let courseLanguage: string | null | undefined;
-    try {
-      userLanguage = (await this.apiService.getUserAccount())?.profile?.language_code;
-      if (!userLanguage && courseId) {
-        courseLanguage = (await this.apiService.getCourse(courseId))?.language_code;
-      }
-    } catch {
-      // Ignore language preference errors
-    }
-    const preferredLanguage = resolveContentLanguage(userLanguage, courseLanguage);
+    const preferredLanguage = await readingLanguage(this.apiService);
 
     // Matches README.md, README_en.md, index.md, index_de.md, etc.
     const descriptionPattern = /^(README|index)(_[a-z]{2})?\.md$/i;

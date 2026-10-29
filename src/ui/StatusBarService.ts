@@ -11,6 +11,7 @@ import { say } from '../utils/uiLanguage';
 export class StatusBarService implements vscode.Disposable {
     private static instance: StatusBarService;
     private courseItem: vscode.StatusBarItem;
+    private shown?: { courseName?: string };
 
     private constructor(context: vscode.ExtensionContext) {
         void context; // Mark as intentionally unused
@@ -37,15 +38,24 @@ export class StatusBarService implements vscode.Disposable {
     }
 
     updateCourse(courseName: string): void {
+        this.shown = { courseName };
         this.courseItem.text = `$(book) ${courseName}`;
         this.courseItem.tooltip = say('Click to switch course', 'Klicken, um den Kurs zu wechseln');
         this.courseItem.backgroundColor = undefined;
     }
 
     clearCourse(): void {
+        this.shown = {};
         this.courseItem.text = `$(book) ${say('No course selected', 'Kein Kurs ausgewählt')}`;
         this.courseItem.tooltip = say('Click to choose a course', 'Klicken, um einen Kurs auszuwählen');
         this.courseItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    }
+
+    /** Say the same again in the current language. */
+    refreshLanguage(): void {
+        if (!this.shown) return;
+        if (this.shown.courseName !== undefined) this.updateCourse(this.shown.courseName);
+        else this.clearCourse();
     }
 
     dispose(): void {

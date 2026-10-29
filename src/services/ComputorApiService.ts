@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import type { RequestInterceptor } from '../types/HttpTypes';
+import { automaticLanguage } from '../utils/uiLanguage';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
 import { HttpError } from '../exceptions/errors/HttpError';
@@ -135,6 +137,16 @@ function tutorMemberCourseContentCacheKey(memberId: string, courseContentId: str
 }
 
 
+/**
+ * The backend reads the reading language from Accept-Language (effective_language
+ * of GET /user, the language stored with a message) and assumes German without
+ * it, so every request carries the client's Automatic language.
+ */
+export const acceptLanguageInterceptor: RequestInterceptor = {
+  onRequest: config => ({ ...config, headers: { ...config.headers, 'Accept-Language': automaticLanguage() } }),
+  onError: error => Promise.reject(error)
+};
+
 export class ComputorApiService {
   private static instance?: ComputorApiService;
 
@@ -146,6 +158,7 @@ export class ComputorApiService {
 
   constructor(context: vscode.ExtensionContext, httpClient?: HttpClient) {
     this.httpClient = httpClient;
+    this.httpClient?.addRequestInterceptor?.(acceptLanguageInterceptor);
 
     // Store as singleton instance
     ComputorApiService.instance = this;
@@ -1869,12 +1882,33 @@ export class ComputorApiService {
     }
   }
 
-  async getUserAccount(options?: { force?: boolean }): Promise<UserGet | undefined> {
+  /** `effective_language` is the backend's reading language for this client (backend #464, not yet in the generated types). */
+  async getUserAccount(options?: { force?: boolean }): Promise<(UserGet & { effective_language?: string | null }) | undefined> {
     const user = await this.getCurrentUser(options);
     if (!user) {
       return undefined;
     }
     return user as unknown as UserGet;
+  }
+
+  /**
+   * Whether the caller joined this course through the public catalog.
+   * @backendCompat undefined where the backend has no such endpoint (404), which callers read as "not known"
+   */
+  async getOwnSelfEnrollment(courseId: string): Promise<{ course_id: string; self_registered: boolean; can_leave: boolean } | undefined> {
+    try {
+      return await this.cachedRequest({
+        cacheKey: `self-enrollment-${courseId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<{ course_id: string; self_registered: boolean; can_leave: boolean }>(
+            `/user/courses/${courseId}/self-enrollment`)).data;
+        }
+      });
+    } catch {
+      return undefined;
+    }
   }
 
   async getUserViews(): Promise<string[]> {

@@ -6,7 +6,7 @@ import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeLis
 import { copyToClipboard } from '../../utils/clipboard';
 import { notify } from '../../utils/notify';
 import { revealUri } from '../../utils/reveal';
-import { say } from '../../utils/uiLanguage';
+import { onDidChangeUiLanguage, say } from '../../utils/uiLanguage';
 
 export interface StudentContentDetailsViewState {
   course?: {
@@ -83,11 +83,24 @@ export interface StudentResultHistoryEntry {
 export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvider {
   constructor(context: vscode.ExtensionContext) {
     super(context, 'computor.student.contentDetails');
+    context.subscriptions?.push(onDidChangeUiLanguage(() => { void this.refreshLanguage(); }));
   }
 
   async showDetails(state: StudentContentDetailsViewState): Promise<void> {
+    await this.show(this.title(state), state);
+  }
+
+  /** The page reads its language once, from <html lang>: render it again, in place. */
+  async refreshLanguage(): Promise<void> {
+    const state = this.currentData as StudentContentDetailsViewState | undefined;
+    if (!this.panel || !state) return;
+    this.panel.title = this.title(state);
+    this.panel.webview.html = await this.getWebviewContent(state);
+  }
+
+  private title(state: StudentContentDetailsViewState): string {
     const title = state.content.title || state.content.path;
-    await this.show(say(`Content Details: ${title}`, `Details: ${title}`), state);
+    return say(`Content Details: ${title}`, `Details: ${title}`);
   }
 
   protected async getWebviewContent(data?: StudentContentDetailsViewState): Promise<string> {

@@ -15,8 +15,7 @@ import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/Me
 import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, revealMarkdownPreview, showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
-import { readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
-import { resolveContentLanguage } from '../utils/contentLanguage';
+import { readingLanguage, readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
 import { downloadFileInBrowser } from '../ui/webviews/browserDownload';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
@@ -432,32 +431,12 @@ export class StudentCommands {
   }
 
   /** Profile language if the learner chose one, else the course's, else English. */
-  private async contentLanguage(courseId?: string | null): Promise<string> {
-    let userLanguage: string | null | undefined;
-    let courseLanguage: string | null | undefined;
-    try {
-      userLanguage = (await this.apiService.getUserAccount())?.profile?.language_code;
-    } catch (error) {
-      console.warn('[contentLanguage] Failed to fetch the profile language:', error);
-    }
-    if (!userLanguage && courseId) {
-      try {
-        courseLanguage = (await this.apiService.getCourse(courseId))?.language_code;
-      } catch (error) {
-        console.warn('[contentLanguage] Failed to fetch the course language:', error);
-      }
-    }
-    return resolveContentLanguage(userLanguage, courseLanguage);
-  }
-
   private async openReadmeIfExists(dir: string, silent: boolean = false, options: MarkdownPreviewOptions = {}, courseId?: string): Promise<boolean> {
     const request = options.request ?? beginMarkdownPreviewRequest();
     options = { studentReading: true, ...options, request };
     try {
       let readmePath: string | undefined;
-      const preferredLanguage = await this.contentLanguage(
-        courseId ?? CourseSelectionService.getInstance().getCurrentCourseId()
-      );
+      const preferredLanguage = await readingLanguage(this.apiService);
 
       if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return true;
       const chosen = pickDescriptionFile(fs.readdirSync(dir), preferredLanguage);
@@ -543,7 +522,7 @@ export class StudentCommands {
       if (!chosen) return;
       markdown = await zip.file(chosen.file)?.async('string');
     } else {
-      markdown = await readStudentDescription(archive, await this.contentLanguage(content.course_id));
+      markdown = await readStudentDescription(archive, await readingLanguage(this.apiService));
     }
     if (!markdown) {
       if (!options.silent) notify.info('This assignment has no description.');

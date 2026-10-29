@@ -91,6 +91,11 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
         }
     }
 
+    /** The same result again, so the tree and the details are rebuilt in the current language. */
+    refreshLanguage(): void {
+        this.refresh(this.testResults);
+    }
+
     private hasResults(): boolean {
         return !!this.testResults
             && typeof this.testResults === 'object'

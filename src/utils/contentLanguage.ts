@@ -1,24 +1,8 @@
 /**
- * Which language a learner reads a course in, and the titles that follow it.
- *
- * The learner's explicit profile language wins, followed by a managed web
- * workspace's validated launch language, the course's language, then English.
- * Outside a managed workspace, the course remains the Automatic fallback.
+ * Course text in the reading language (see uiLanguage), and the titles that
+ * follow it. A course's own language is only the fallback for a text without
+ * a version in the reading language.
  */
-
-let workspaceLaunchLanguage: 'de' | 'en' | undefined;
-
-/** Set only by the managed workspace locale service after validating its launch. */
-export function setWorkspaceLaunchLanguage(language: 'de' | 'en' | undefined): void {
-  workspaceLaunchLanguage = language;
-}
-
-export function resolveContentLanguage(
-  userLanguage?: string | null,
-  courseLanguage?: string | null
-): string {
-  return userLanguage?.trim().toLowerCase() || workspaceLaunchLanguage || courseLanguage?.trim().toLowerCase() || 'en';
-}
 
 const HEADING = /^#\s+(.+?)\s*#*\s*$/m;
 

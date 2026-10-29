@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import { AddressInfo } from 'net';
+import { uiLanguage } from '../utils/uiLanguage';
 
 /**
  * Tokens returned by the Keycloak SSO browser flow.
@@ -27,6 +28,12 @@ export interface SsoLoginOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
+
+/** The backend's Keycloak login, with its pages in the reading language. */
+export function ssoLoginUrl(backendUrl: string, redirectUri: string, language: string): string {
+  const query = new URLSearchParams({ redirect_uri: redirectUri, ui_locales: language });
+  return `${backendUrl.replace(/\/$/, '')}/auth/keycloak/login?${query.toString()}`;
+}
 
 const SUCCESS_HTML = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Computor</title>
@@ -163,7 +170,7 @@ export function ssoBrowserLogin(backendUrl: string, options?: SsoLoginOptions): 
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as AddressInfo).port;
       const redirectUri = `http://127.0.0.1:${port}/${nonce}`;
-      const loginUrl = `${backendUrl.replace(/\/$/, '')}/auth/keycloak/login?redirect_uri=${encodeURIComponent(redirectUri)}`;
+      const loginUrl = ssoLoginUrl(backendUrl, redirectUri, uiLanguage());
 
       timeoutHandle = setTimeout(() => {
         settle(() => reject(new Error('SSO login timed out. Please try again.')));

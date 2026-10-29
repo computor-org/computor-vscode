@@ -1,7 +1,7 @@
 import { escapeHtml } from '../shared/webviewHelpers';
 import { HELP_PAGES } from '../../../utils/studentHelpPages';
 import { TUTOR_HELP_PAGES } from '../../../utils/tutorHelpPages';
-import { resolveContentLanguage } from '../../../utils/contentLanguage';
+import { accountLanguage, LanguageAccount } from '../../../utils/uiLanguage';
 import { courseStartPointer, hasStartedCourse } from '../../../utils/courseStart';
 import { contentIconSvg, ContentIconBadge, ContentIconCorner, ContentIconShape } from '../../../utils/contentIconSvg';
 import { codicon, CodiconName } from './codicons';
@@ -18,14 +18,13 @@ import type { CourseContentStudentList } from '../../../types/generated';
  * a desktop VS Code is one set of steps, shown both in the browser edition
  * and on a desktop that is not signed in yet (computor-org/issues#366).
  *
- * Free of `vscode` on purpose, like the help-page mappings it links to: the
+ * Free of `vscode` on purpose, apart from the shared language resolver: the
  * provider gathers the facts, this turns them into markup, and a plain Node
  * test can check every variant (student, tutor, lecturer, browser, desktop,
  * signed out) without an extension host.
  *
- * The page speaks German when the learner's profile language, or else the
- * launched course's language, is German (computor-org/issues#527), and
- * English otherwise.
+ * The page is in the reading language (uiLanguage), like the rest of the
+ * extension and the web app (computor-org/issues#527).
  */
 
 export type WelcomeLanguage = 'en' | 'de';
@@ -37,6 +36,8 @@ export interface WelcomeLaunch {
   startHere?: string;
   /** The learner has started, so `startHere` is the next open assignment (computor-org/issues#525). */
   resume?: boolean;
+  /** Joined through the public catalog: no lecturer or tutor answers, Lena does (computor-org/issues#527). */
+  selfRegistered?: boolean;
 
 }
 
@@ -185,7 +186,7 @@ interface CourseLike {
 
 /** The slice of ComputorApiService the page reads. Every call may fail on its own. */
 export interface WelcomeApi {
-  getUserAccount(): Promise<{ given_name?: string | null; profile?: { language_code?: string | null } | null } | undefined>;
+  getUserAccount(): Promise<({ given_name?: string | null } & LanguageAccount) | undefined>;
   getUserViews(): Promise<string[]>;
   getStudentCourses(): Promise<CourseLike[]>;
   getTutorCourses(): Promise<CourseLike[]>;
@@ -193,6 +194,7 @@ export interface WelcomeApi {
   getInstanceInfo(): Promise<{ web_url?: string | null } | undefined>;
   getCourse(courseId: string): Promise<{ title?: string | null; path?: string; language_code?: string | null } | undefined>;
   getStudentCourseContents(courseId: string): Promise<CourseContentStudentList[]>;
+  getOwnSelfEnrollment?(courseId: string): Promise<{ self_registered?: boolean } | undefined>;
 }
 
 export type WelcomeFacts = Pick<WelcomeModel, 'signedIn' | 'givenName' | 'roles' | 'courses' | 'webUrl' | 'language' | 'launch'>;
@@ -222,17 +224,18 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedC
   const roles = roleOrder.filter(role => views.includes(role));
   const none = Promise.resolve([] as CourseLike[]);
 
-  const [account, student, tutor, lecturer, info, launchedCourse, contents] = await Promise.all([
+  const [account, student, tutor, lecturer, info, launchedCourse, contents, enrollment] = await Promise.all([
     settle(api.getUserAccount(), undefined),
     roles.includes('student') ? settle(api.getStudentCourses(), [] as CourseLike[]) : none,
     roles.includes('tutor') ? settle(api.getTutorCourses(), [] as CourseLike[]) : none,
     roles.includes('lecturer') ? settle(api.getLecturerCourses(), [] as CourseLike[]) : none,
     settle(api.getInstanceInfo(), undefined),
     launchedCourseId ? settle(api.getCourse(launchedCourseId), undefined) : undefined,
-    launchedCourseId ? settle(api.getStudentCourseContents(launchedCourseId), [] as CourseContentStudentList[]) : []
+    launchedCourseId ? settle(api.getStudentCourseContents(launchedCourseId), [] as CourseContentStudentList[]) : [],
+    launchedCourseId && api.getOwnSelfEnrollment ? settle(api.getOwnSelfEnrollment(launchedCourseId), undefined) : undefined
   ]);
 
-  const language = welcomeLanguage(account?.profile?.language_code, launchedCourse?.language_code);
+  const language = accountLanguage(account);
   const courses = mergeCourses({ student, tutor, lecturer });
   const launchedTitle = launchedCourse?.title?.trim() || launchedCourse?.path?.trim()
     || courses.find(course => course.id === launchedCourseId)?.title;
@@ -246,14 +249,10 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedC
     launch: launchedCourseId && launchedTitle ? {
       title: launchedTitle,
       startHere: courseStartPointer(contents, language),
-      resume: hasStartedCourse(contents)
+      resume: hasStartedCourse(contents),
+      ...(enrollment?.self_registered ? { selfRegistered: true } : {})
     } : undefined
   };
-}
-
-/** The learner's own choice wins, then the launched course's language (as for the course landing). */
-export function welcomeLanguage(userLanguage?: string | null, courseLanguage?: string | null): WelcomeLanguage {
-  return resolveContentLanguage(userLanguage, courseLanguage).startsWith('de') ? 'de' : 'en';
 }
 
 /** Mirror the server's course order when combining separately ordered role lists. */
@@ -518,12 +517,18 @@ function renderRowPicture(model: Pick<WelcomeModel, 'rowPictureSvg' | 'workbench
     </figure>`;
 }
 
-/** Course questions use Messages; technical problems use support tickets. */
+/**
+ * Course questions use Messages; technical problems use support tickets. A
+ * self-enrolled learner has no lecturer or tutor, so Lena is named instead.
+ */
 function renderAskForHelp(model: WelcomeModel, say: Say): string {
   const stuck = `<strong>${say('Stuck?', 'Kommst du nicht weiter?')}</strong>`;
   const messages = action('comment-discussion', namer(model)('computor.student.showMessages'));
-  const ask = say(`${stuck} Choose ${messages} on an assignment row to ask for help in this course.`,
-    `${stuck} Wähle ${messages} an einer Aufgabenzeile, um in diesem Kurs um Hilfe zu bitten.`);
+  const ask = model.launch?.selfRegistered
+    ? say(`${stuck} Ask Lena, the AI tutor: choose ${messages} on an assignment row and write <code>@lena</code> in your message. She gives hints rather than complete solutions.`,
+      `${stuck} Frag Lena, die KI-Tutorin: Wähle ${messages} an einer Aufgabenzeile und schreib <code>@lena</code> in deine Nachricht. Sie gibt dir Hinweise statt fertiger Lösungen.`)
+    : say(`${stuck} Choose ${messages} on an assignment row to ask for help in this course.`,
+      `${stuck} Wähle ${messages} an einer Aufgabenzeile, um in diesem Kurs um Hilfe zu bitten.`);
   if (!model.signedIn) return `<p>${ask}</p>`;
 
   const ticket = say('For a technical problem with Computor itself, open a support ticket.',

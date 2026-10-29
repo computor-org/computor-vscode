@@ -383,6 +383,11 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  /** The placeholders and notices travel with the state; the draft stays. */
+  public refreshLanguage(): void {
+    this.postState();
+  }
+
   private postState(): void {
     if (!this.view) {
       return;
