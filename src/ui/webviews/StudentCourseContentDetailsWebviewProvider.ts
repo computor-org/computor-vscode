@@ -6,6 +6,7 @@ import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeLis
 import { copyToClipboard } from '../../utils/clipboard';
 import { notify } from '../../utils/notify';
 import { revealUri } from '../../utils/reveal';
+import { say } from '../../utils/uiLanguage';
 
 export interface StudentContentDetailsViewState {
   course?: {
@@ -86,16 +87,16 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
 
   async showDetails(state: StudentContentDetailsViewState): Promise<void> {
     const title = state.content.title || state.content.path;
-    await this.show(`Content Details: ${title}`, state);
+    await this.show(say(`Content Details: ${title}`, `Details: ${title}`), state);
   }
 
   protected async getWebviewContent(data?: StudentContentDetailsViewState): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Student Content Details', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Content Details', 'Details'), `<p>${say('Loading…', 'Wird geladen …')}</p>`);
     }
 
     return this.renderPage({
-      title: 'Student Content Details',
+      title: say('Content Details', 'Details'),
       bodyHtml: '<div id="app" class="view-root"></div>',
       cssFiles: ['student/student-content-details.css'],
       scriptFiles: ['student/student-content-details.js'],
