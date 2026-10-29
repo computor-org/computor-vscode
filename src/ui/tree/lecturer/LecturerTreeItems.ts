@@ -334,7 +334,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     if (hasExampleAssigned(this.courseContent)) {
       // Show example title if available
       if (this.exampleInfo?.title) {
-        parts.push(`Example: ${this.exampleInfo.title}`);
+        parts.push(say(`Example: ${this.exampleInfo.title}`, `Beispiel: ${this.exampleInfo.title}`));
       }
       const versionId = getExampleVersionId(this.courseContent);
       if (versionId) {
@@ -402,7 +402,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       parts.push(`${RELEASE_STATE_ICONS[releaseState]} ${releaseStateLabel(releaseState)}`);
 
       if (assignment?.hasNewerVersion) {
-        parts.push('⬆ update available');
+        parts.push(say('⬆ update available', '⬆ Aktualisierung verfügbar'));
       }
 
       // Make configured limits visible in the tree — a lecturer could
@@ -410,12 +410,12 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       const maxTestRuns = (this.courseContent as any).max_test_runs;
       const maxSubmissions = (this.courseContent as any).max_submissions;
       if (maxTestRuns != null || maxSubmissions != null) {
-        parts.push(`⛔ ${maxTestRuns ?? '∞'}T/${maxSubmissions ?? '∞'}S`);
+        parts.push(say(`⛔ ${maxTestRuns ?? '∞'}T/${maxSubmissions ?? '∞'}S`, `⛔ ${maxTestRuns ?? '∞'}T/${maxSubmissions ?? '∞'}A`));
       }
     }
 
     if ('archived_at' in this.courseContent && this.courseContent.archived_at) {
-      parts.push('📦 Archived');
+      parts.push(say('📦 Archived', '📦 Archiviert'));
     }
 
     // Students cannot see this (issue #338). Lecturers keep the row -- this is
@@ -648,7 +648,7 @@ export class LoadMoreTreeItem extends vscode.TreeItem {
     this.tooltip = say(`Load ${pageSize} more items`, `${pageSize} weitere Einträge laden`);
     this.command = {
       command: 'computor.loadMoreItems',
-      title: 'Load More',
+      title: say('Load More', 'Mehr laden'),
       arguments: [this]
     };
   }
