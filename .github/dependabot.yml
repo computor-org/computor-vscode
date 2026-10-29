@@ -30,6 +30,13 @@ updates:
       npm-runtime:
         dependency-type: production
         update-types: [minor, patch]
+    ignore:
+      # The API types must not exceed the oldest VS Code the extension supports (engines.vscode ^1.74.0).
+      - dependency-name: "@types/vscode"
+        versions: [">=1.75.0"]
+      # chai 5+ is ESM-only; under the CommonJS ts-node mocha setup it fails to load on Node 22 (require(esm) race).
+      - dependency-name: chai
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
