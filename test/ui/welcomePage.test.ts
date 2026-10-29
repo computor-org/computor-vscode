@@ -181,13 +181,13 @@ describe('welcome page content', () => {
       expect(html).to.contain('<code>●</code> <code>↑</code> <code>⚠</code>');
     });
 
-    it('keeps the Git colours, the other edition and the staff help below a More heading', () => {
-      const html = renderWelcomeBody(model({ roles: ['student', 'tutor'] }));
+    it('keeps the Git colours and the other edition below a More heading', () => {
+      const html = renderWelcomeBody(model());
 
       const more = html.indexOf('id="welcome-more"');
       expect(more).to.be.greaterThan(html.indexOf('id="welcome-marks"'));
       expect(more).to.be.greaterThan(html.indexOf('id="welcome-help"'));
-      for (const below of ['welcome-staff', 'welcome-git-colours', 'welcome-browser', 'welcome-credits']) {
+      for (const below of ['welcome-git-colours', 'welcome-browser', 'welcome-credits']) {
         expect(html.indexOf(`id="${below}"`), below).to.be.greaterThan(more);
       }
     });
@@ -321,6 +321,33 @@ describe('welcome page content', () => {
       expect(html).to.contain('data-page="tutor-course.md"');
       expect(html).to.contain('data-page="tutor-assignment.md"');
       expect(html).to.not.contain('data-link="lecturerGuide"');
+    });
+
+    it('opens on the teaching views and keeps how students work below More (computor-org/issues#541)', () => {
+      const html = renderWelcomeBody(model({ roles: ['student', 'tutor'] }));
+
+      const staff = html.indexOf('id="welcome-staff"');
+      const more = html.indexOf('id="welcome-more"');
+      expect(staff).to.be.greaterThan(html.indexOf('id="welcome-courses"'));
+      expect(more).to.be.greaterThan(staff);
+      for (const below of ['welcome-tutorial', 'welcome-marks', 'welcome-help']) {
+        expect(html.indexOf(`id="${below}"`), below).to.be.greaterThan(more);
+      }
+      expect(html).to.contain('How students work');
+      expect(html).to.not.contain('Start working on an assignment');
+      expect(html).to.contain('Courses &amp; Members');
+      expect(html).to.contain('class="btn" data-action="view" data-role="tutor"');
+      expect(html).to.contain('class="btn secondary" data-action="view" data-role="student"');
+    });
+
+    it('in German, introduces the teaching views and how students work', () => {
+      const html = renderWelcomeBody(model({ roles: ['student', 'tutor', 'lecturer'], language: 'de' }));
+
+      expect(html).to.contain('So arbeiten Studierende');
+      expect(html).to.not.contain('Mit einer Aufgabe beginnen');
+      expect(html).to.contain('Lehrende');
+      expect(html).to.not.contain('How students work');
+      expect(html.indexOf('id="welcome-staff"')).to.be.lessThan(html.indexOf('id="welcome-more"'));
     });
 
     it('adds the lecturer guides for a lecturer', () => {
