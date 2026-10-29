@@ -3,6 +3,23 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.10
+
+- The extension follows one reading language: your profile language, else the language the
+  backend works out from your browser, else the VS Code display language. The course's language
+  no longer decides. A change of your profile language applies at once, without a reload, and
+  a half-written message keeps its text.
+- Course, unit and assignment titles, content types, notifications, prompts, webviews, help
+  pages and the tutor and lecturer views are in German for German readers. Error messages start
+  with a German sentence and keep the raw detail as "Details:". Dates read "heute" or
+  "vor 3 Tagen". Command and view names follow the VS Code display language, which VS Code
+  sets for the whole window.
+- Sign-in pages, the page after sign-in and every request to the backend carry the reading
+  language, so the server answers, including errors and test feedback, in that language.
+- Status icons update after a test, a submission, a commit or a tutor's grading.
+- Tutors and lecturers open on an introduction to their own views; self-enrolled learners are
+  told that Lena answers their messages.
+
 ## 2027.3.9
 
 - In a browser workspace or a remote window, the extension no longer offers a browser sign-in
