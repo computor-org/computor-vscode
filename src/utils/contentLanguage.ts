@@ -34,6 +34,25 @@ export function withoutLeadingHeading(markdown: string): string {
   return markdown;
 }
 
+/** Per-language texts from the API (`title_i18n`, `description_i18n`). */
+export type TextMap = Record<string, string> | null | undefined;
+
+/**
+ * The entry of `map` for `language`, else `source`. A blank entry is a missing
+ * translation, the same rule as the backend's `?localize=` and the web.
+ */
+export function localizedText(map: TextMap, language: string, source: string | null | undefined): string | undefined {
+  const entry = map?.[language];
+  return typeof entry === 'string' && entry.trim() ? entry : source ?? undefined;
+}
+
+/** A course, content or content type title in `language`, for endpoints without `?localize=`. */
+export function localizedTitle(
+  item: { title?: string | null; title_i18n?: TextMap } | null | undefined, language: string
+): string | undefined {
+  return item ? localizedText(item.title_i18n, language, item.title) : undefined;
+}
+
 const UNIT_TITLE = /^(?:Week|Woche)\s+(\d+)$/i;
 
 /** "Week N" and "Woche N" follow the reading language; other titles stay. */

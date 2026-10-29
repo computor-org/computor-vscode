@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { beginMarkdownPreviewRequest, showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
 import { webviewPanels } from '../helpers/vscode-stub';
 import {
-  openWorkspaceCourseLaunch, readStudentDescription, showCourseWelcomeGuideOnce, showWorkspaceCourseLanding, studentDescriptionImages
+  openWorkspaceCourseLaunch, readStudentDescription, showWorkspaceCourseUnit, showCourseWelcomeGuideOnce, showWorkspaceCourseLanding, studentDescriptionImages
 } from '../../src/services/WorkspaceCourseLanding';
 import { firstReleasedCourseItem } from '../../src/utils/courseStart';
 import type { ComputorApiService } from '../../src/services/ComputorApiService';
@@ -220,6 +220,14 @@ describe('showWorkspaceCourseLanding', () => {
       expect(webviewPanels[0]!.webview.html).not.to.contain('welcome-row-picture');
       expect(webviewPanels[0]!.webview.html).not.to.contain('welcome-tutorial');
     }
+  });
+
+  it('titles and fills a unit tab from its language maps, also for a row fetched before a switch', async () => {
+    const unit = { id: 'unit', course_id: 'course', path: 'week1', title: 'Woche 1', description: 'Inhalt der Woche',
+      title_i18n: { de: 'Woche 1', en: 'First steps' }, description_i18n: { en: 'This week' }, course_content_kind_id: 'unit' } as unknown as CourseContentStudentList;
+    await showWorkspaceCourseUnit(context, api([], 'en'), unit);
+    expect(webviewPanels.at(-1)!.title).to.equal('First steps');
+    expect(shown()).to.equal('This week');
   });
 
   it('falls back to the authored course description without a synthetic task or guide', async () => {

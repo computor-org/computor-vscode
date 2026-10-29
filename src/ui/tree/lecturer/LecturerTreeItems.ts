@@ -16,6 +16,8 @@ import {
 } from '../../../types/generated';
 import { IconGenerator } from '../../../utils/IconGenerator';
 import { hasExampleAssigned, getExampleVersionId, getReleaseState, ReleaseState } from '../../../utils/deploymentHelpers';
+import { localizedTitle } from '../../../utils/contentLanguage';
+import { uiLanguage } from '../../../utils/uiLanguage';
 
 const ASSIGNMENT_KIND_ID = 'assignment';
 
@@ -103,7 +105,7 @@ export class CourseTreeItem extends vscode.TreeItem {
     public readonly organization: OrganizationList,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
   ) {
-    const courseTitle = course.title || course.path;
+    const courseTitle = localizedTitle(course, uiLanguage()) || course.path;
     const familyTitle = courseFamily.title || courseFamily.path;
     const orgTitle = organization.title || organization.path;
     super(courseTitle, collapsibleState);
@@ -190,8 +192,9 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   public assignmentDirectory?: string;
 
   constructor(options: CourseContentTreeItemOptions) {
+    // Only the labels follow the reading language; edit forms keep the source text.
     super(
-      options.courseContent.title || options.courseContent.path,
+      localizedTitle(options.courseContent, uiLanguage()) || options.courseContent.path,
       options.collapsibleState ?? courseContentCollapsibleState({ hasChildren: options.hasChildren })
     );
 
@@ -218,7 +221,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     this.description = this.getDescription();
     withDescription(
       this,
-      this.courseContent.title || this.courseContent.path,
+      localizedTitle(this.courseContent, uiLanguage()) || this.courseContent.path,
       (this.courseContent as any).description
     );
   }
@@ -305,8 +308,9 @@ export class CourseContentTreeItem extends vscode.TreeItem {
   private getTooltip(): string | vscode.MarkdownString {
     const parts: string[] = [];
     
-    if (this.courseContent.title) {
-      parts.push(this.courseContent.title);
+    const title = localizedTitle(this.courseContent, uiLanguage());
+    if (title) {
+      parts.push(title);
     }
     
     if (hasExampleAssigned(this.courseContent)) {
@@ -484,7 +488,7 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
     public readonly organization: OrganizationList,
     public readonly contentKindTitle?: string
   ) {
-    super(contentType.title || contentType.slug, vscode.TreeItemCollapsibleState.None);
+    super(localizedTitle(contentType, uiLanguage()) || contentType.slug, vscode.TreeItemCollapsibleState.None);
     this.id = `contentType-${contentType.id}`;
     this.contextValue = 'courseContentType';
     
@@ -500,7 +504,7 @@ export class CourseContentTypeTreeItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon('symbol-enum');
     }
     
-    this.tooltip = `${contentType.title || contentType.slug}\nSlug: ${contentType.slug}`;
+    this.tooltip = `${localizedTitle(contentType, uiLanguage()) || contentType.slug}\nSlug: ${contentType.slug}`;
     
     // Show content kind title as description if available
     if (contentKindTitle) {

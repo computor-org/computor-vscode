@@ -29,6 +29,7 @@ import { execAsyncWithTimeout } from '../utils/exec';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
 import { say, uiLanguage } from '../utils/uiLanguage';
+import { localizedTitle } from '../utils/contentLanguage';
 import { notify } from '../utils/notify';
 import { getTreeHandle } from '../ui/treeRegistry';
 import { assignmentForFile, assignmentFromSelection, AssignmentItem, confirmationPrompt, NO_ASSIGNMENT_HINT, submittedMessage } from '../utils/assignmentTarget';
@@ -546,7 +547,8 @@ export class StudentCommands {
       return;
     }
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
-    await showMarkdownTextPreview(this.context, markdown, content.title || content.path, {
+    // The row may predate a language switch; its map still gives the new title.
+    await showMarkdownTextPreview(this.context, markdown, localizedTitle(content, uiLanguage()) || content.path, {
       ...options,
       inlineImages: await studentDescriptionImages(archive)
     });

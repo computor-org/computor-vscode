@@ -3,7 +3,7 @@ import type * as vscode from 'vscode';
 import type { ComputorApiService } from './ComputorApiService';
 import type { CourseContentStudentList, CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
-import { descriptionInLanguage, localizedUnitTitle } from '../utils/contentLanguage';
+import { descriptionInLanguage, localizedText, localizedTitle, localizedUnitTitle } from '../utils/contentLanguage';
 import { accountLanguage, LanguageAccount } from '../utils/uiLanguage';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, MarkdownPreviewRequest, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 import { courseWelcomeItem, hasStartedCourse, nextOpenCourseItem } from '../utils/courseStart';
@@ -180,7 +180,10 @@ export async function showWorkspaceCourseUnit(
   const request = options.request ?? beginMarkdownPreviewRequest();
   const language = await readingLanguage(api);
   if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return false;
-  await showMarkdownTextPreview(context, descriptionInLanguage(content.description ?? '', language), localizedUnitTitle(content.title || content.path, language), {
+  // The row may predate a language switch; its maps still give the new language.
+  const description = localizedText(content.description_i18n, language, content.description) ?? '';
+  const title = localizedTitle(content, language) || content.path;
+  await showMarkdownTextPreview(context, descriptionInLanguage(description, language), localizedUnitTitle(title, language), {
     ...options, request, studentReading: true,
     welcomeContentId: isCourseWelcomeContent(content) ? content.id : undefined
   });

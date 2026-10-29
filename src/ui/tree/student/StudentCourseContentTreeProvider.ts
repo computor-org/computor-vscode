@@ -27,7 +27,8 @@ import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { hasDescription, PREVIEW_STUDENT_DESCRIPTION_COMMAND, withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
-import { say } from '../../../utils/uiLanguage';
+import { say, uiLanguage } from '../../../utils/uiLanguage';
+import { localizedTitle } from '../../../utils/contentLanguage';
 import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
 import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
 import { AssignmentGitBadges, assignmentGitIndicator, assignmentGitTooltipLines, courseGitIndicator, courseGitTooltipLines } from '../gitIndicators';
@@ -1713,8 +1714,10 @@ class CourseContentPathItem extends TreeItem {
             `${say('Unit', 'Einheit')}: ${this.name}`,
             say(`${count} item${count !== 1 ? 's' : ''}`, `${count} ${count !== 1 ? 'Einträge' : 'Eintrag'}`)
         ];
-        if (node.contentType?.title) {
-            tooltipLines.push(`${say('Type', 'Typ')}: ${node.contentType.title}`);
+        // ?localize= resolves only the content's own title, not its embedded type's.
+        const typeTitle = localizedTitle(node.contentType, uiLanguage());
+        if (typeTitle) {
+            tooltipLines.push(`${say('Type', 'Typ')}: ${typeTitle}`);
         }
         const status = (node.courseContent as any)?.status || node.submissionGroup?.status;
         if (status) {
@@ -1725,7 +1728,7 @@ class CourseContentPathItem extends TreeItem {
         }
         // Read by a screen reader instead of the tooltip: name first.
         this.accessibilityInformation = {
-            label: [node.courseContent?.title || this.name, node.contentType?.title || say('unit', 'Einheit'), ...(unread > 0 ? [unreadText] : [])].join(', ')
+            label: [node.courseContent?.title || this.name, typeTitle || say('unit', 'Einheit'), ...(unread > 0 ? [unreadText] : [])].join(', ')
         };
         if (this.gitBadges) {
             tooltipLines.push(...assignmentGitTooltipLines(this.gitBadges));
@@ -2004,7 +2007,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             || (this.courseContent as any)?.course_content_type
             || (this.courseContent as any)?.course_content_types;
         if (tooltipContentType) {
-            lines.push(`${say('Type', 'Typ')}: ${tooltipContentType.title || tooltipContentType.slug}`);
+            lines.push(`${say('Type', 'Typ')}: ${localizedTitle(tooltipContentType, uiLanguage()) || tooltipContentType.slug}`);
         }
 
         if (unreadCount > 0) {
@@ -2059,7 +2062,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
 
         this.tooltip = lines.join('\n');
-        this.setupAccessibility(tooltipContentType?.title || tooltipContentType?.slug, unreadCount);
+        this.setupAccessibility(localizedTitle(tooltipContentType, uiLanguage()) || tooltipContentType?.slug, unreadCount);
     }
 
     /**

@@ -2,11 +2,26 @@ import { expect } from 'chai';
 import {
   descriptionHeading,
   descriptionInLanguage,
+  localizedText,
+  localizedTitle,
   localizedUnitTitle,
   withoutLeadingHeading
 } from '../../src/utils/contentLanguage';
 
 describe('contentLanguage', () => {
+  describe('localizedText', () => {
+    it('takes the entry for the language, else the source text; a blank entry is missing', () => {
+      const map = { de: 'Woche 1', en: '  ' };
+      expect(localizedText(map, 'de', 'Week 1')).to.equal('Woche 1');
+      expect(localizedText(map, 'en', 'Woche 1')).to.equal('Woche 1');
+      expect(localizedText(map, 'fr', 'Woche 1')).to.equal('Woche 1');
+      expect(localizedText(null, 'de', 'Week 1')).to.equal('Week 1');
+      expect(localizedTitle({ title: 'Aufgabe', title_i18n: { en: 'Assignment' } }, 'en')).to.equal('Assignment');
+      expect(localizedTitle(undefined, 'en')).to.equal(undefined);
+    });
+  });
+
+
   describe('descriptionInLanguage', () => {
     const both = 'Gemeinsam\n<!-- lang: de -->\nDeutsch **du**\n\n<!-- LANG: en -->\nEnglish\n';
 
