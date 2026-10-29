@@ -756,8 +756,8 @@ class UnifiedController {
     }
     this.disposables.push(onDidChangeUiLanguage(() => {
       IssueReportStatusBarService.refreshLanguage();
-      void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
       this.messagesInputPanel?.refreshLanguage();
+      this.commentsInputPanel?.refreshLanguage();
       this.artifactsPanel?.refreshLanguage();
     }));
 

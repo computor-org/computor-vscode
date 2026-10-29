@@ -4,7 +4,7 @@ import * as path from 'path';
 import { runInNewContext } from 'vm';
 import * as vscode from 'vscode';
 import { renderWebviewPage } from '../../src/ui/webviews/shared/webviewPage';
-import { setUiCourseLanguage, setUiProfileLanguage } from '../../src/utils/uiLanguage';
+import { setUiProfileLanguage } from '../../src/utils/uiLanguage';
 
 const root = path.resolve(__dirname, '../..');
 const read = (file: string) => fs.readFileSync(path.join(root, 'webview-ui', file), 'utf8');
@@ -25,11 +25,13 @@ function page(lang: string) {
     createTextNode: (text: string) => ({ textContent: text }),
     addEventListener() {}
   };
+  const listeners: Array<(event: { data: unknown }) => void> = [];
   const window: any = { acquireVsCodeApi: () => ({ postMessage() {}, getState() {}, setState() {} }),
-    addEventListener() {} };
+    addEventListener(type: string, listener: (event: { data: unknown }) => void) { if (type === 'message') listeners.push(listener); } };
   const context = { window, document, acquireVsCodeApi: window.acquireVsCodeApi, console };
   runInNewContext(read('shared/base.js'), context);
-  return { context, mount };
+  const deliver = (data: unknown) => listeners.forEach(listener => listener({ data }));
+  return { context, mount, deliver };
 }
 
 function texts(node: any): string[] {
@@ -37,7 +39,7 @@ function texts(node: any): string[] {
 }
 
 describe('webview language', () => {
-  afterEach(() => { setUiProfileLanguage(undefined); setUiCourseLanguage(undefined); });
+  afterEach(() => { setUiProfileLanguage(undefined); });
 
   it('writes the reading language into the page', () => {
     const webview = { cspSource: 'vscode-resource:', asWebviewUri: (uri: vscode.Uri) => uri } as any;
@@ -58,5 +60,15 @@ describe('webview language', () => {
       runInNewContext(read('messaging/comments-input.js'), context);
       expect(texts(mount)).to.include(expected);
     }
+  });
+
+  it('switches an open page to a new language without reloading it', () => {
+    const { context, mount, deliver } = page('en');
+    runInNewContext(read('messaging/comments-input.js'), context);
+    deliver({ command: 'setLanguage', data: 'de' });
+    expect(context.window.ComputorWebview.say('Cancel', 'Abbrechen')).to.equal('Abbrechen');
+    expect(context.window.ComputorWebview.language).to.equal('de');
+    deliver({ command: 'updateState', data: { courseMemberId: '', title: '', editingComment: null, loading: false } });
+    expect(texts(mount)).to.include('Öffne die Kommentare zu einem Kursmitglied, um hier einen Kommentar zu schreiben oder zu bearbeiten.');
   });
 });

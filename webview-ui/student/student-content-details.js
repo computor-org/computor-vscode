@@ -5,7 +5,7 @@
     ...(window.__INITIAL_STATE__ || {})
   };
 
-  const { escapeHtml, formatDateTime: formatDate, say, language } = window.ComputorWebview;
+  const { escapeHtml, formatDateTime: formatDate, say } = window.ComputorWebview;
 
   // Grading statuses as the course tree names them.
   const germanStatus = {
@@ -40,7 +40,7 @@
       return '-';
     }
     const german = germanStatus[String(value).trim().toLowerCase()];
-    if (german && language === 'de') {
+    if (german && window.ComputorWebview.language === 'de') {
       return german;
     }
     return String(value)

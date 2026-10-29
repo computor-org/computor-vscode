@@ -82,6 +82,11 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
     await this.open({ preserveFocus: true });
   }
 
+  /** The page's language lives in its model, so build the model again. */
+  override async refreshLanguage(): Promise<void> {
+    await this.refresh().catch(error => console.warn('Welcome page could not be refreshed:', error));
+  }
+
   /**
    * Re-render an open page in place, without bringing it to the front: a
    * course launched into a running workspace changes what the page says.

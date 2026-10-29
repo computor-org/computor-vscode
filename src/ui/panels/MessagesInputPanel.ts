@@ -6,7 +6,7 @@ import { WebSocketService } from '../../services/WebSocketService';
 import { UiStateService } from '../../services/UiStateService';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
-import { say } from '../../utils/uiLanguage';
+import { say, uiLanguage } from '../../utils/uiLanguage';
 import { deriveScopeFromCreatePayload, scopeHasSubject } from '../../services/MessagePermissions';
 import { MESSAGE_TARGET_FIELDS } from '../../types/generated/constants';
 import { resolveTutorAgent, TutorAgentInfo } from '../../services/TutorAgentInfo';
@@ -383,8 +383,9 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     );
   }
 
-  /** The placeholders and notices travel with the state; the draft stays. */
+  /** The page's labels follow its language, the placeholders and notices travel with the state; the draft stays. */
   public refreshLanguage(): void {
+    void this.view?.webview.postMessage({ command: 'setLanguage', data: uiLanguage() });
     this.postState();
   }
 

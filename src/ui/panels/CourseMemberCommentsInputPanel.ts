@@ -4,6 +4,7 @@ import { UiStateService } from '../../services/UiStateService';
 import { CourseMemberCommentList } from '../../types/generated';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
+import { uiLanguage } from '../../utils/uiLanguage';
 
 interface InputPanelState {
   courseMemberId?: string;
@@ -106,6 +107,12 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
       // otherwise leave the view hidden until the user opens it themselves.
       await vscode.commands.executeCommand('computor.courseMemberCommentsInputPanel.focus');
     }
+  }
+
+  /** The page's labels follow its language; the draft stays. */
+  public refreshLanguage(): void {
+    void this.view?.webview.postMessage({ command: 'setLanguage', data: uiLanguage() });
+    this.postState();
   }
 
   private postState(): void {

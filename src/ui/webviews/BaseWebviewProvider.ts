@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { renderWebviewPage, getNonce, WebviewPageOptions } from './shared/webviewPage';
 import { AUX_COLUMN, ensureAuxColumn } from '../editorLayout';
+import { onDidChangeUiLanguage } from '../../utils/uiLanguage';
 
 export abstract class BaseWebviewProvider {
   protected readonly context: vscode.ExtensionContext;
@@ -18,6 +19,18 @@ export abstract class BaseWebviewProvider {
       vscode.Uri.file(path.join(this.context.extensionPath, 'webview-ui')),
       ...extraResourceRoots
     ];
+    // An open page is written in the reading language; render it again when that changes.
+    context.subscriptions?.push(onDidChangeUiLanguage(() => { void this.refreshLanguage(); }));
+  }
+
+  /** Render the open panel again from its current data, so its labels follow the reading language. */
+  public async refreshLanguage(): Promise<void> {
+    if (!this.panel || this.currentData === undefined) return;
+    try {
+      this.panel.webview.html = await this.getWebviewContent(this.currentData);
+    } catch (error) {
+      console.warn(`[${this.viewType}] Could not render the page in the new language:`, error);
+    }
   }
 
   /**

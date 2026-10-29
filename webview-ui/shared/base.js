@@ -33,6 +33,11 @@
     if (!message || typeof message.command !== 'string') {
       return;
     }
+    // A live language change; the extension re-sends the page state after it.
+    if (message.command === 'setLanguage') {
+      document.documentElement.lang = message.data === 'de' ? 'de' : 'en';
+      return;
+    }
     const handler = commandHandlers.get(message.command);
     if (handler) {
       handler(message.data, message);
@@ -283,12 +288,14 @@
     };
   }
 
-  // The extension writes the reading language into <html lang>.
-  const pageLanguage = document.documentElement.lang === 'de' ? 'de' : 'en';
+  // The extension writes the reading language into <html lang> and may change it later.
+  function pageLanguage() {
+    return document.documentElement.lang === 'de' ? 'de' : 'en';
+  }
 
   /** The English or the German text, by the page language. */
   function say(en, de) {
-    return pageLanguage === 'de' ? de : en;
+    return pageLanguage() === 'de' ? de : en;
   }
 
   window.ComputorWebview = {
@@ -306,7 +313,7 @@
     setLoading: setLoading,
     initTabs: initTabs,
     debounce: debounce,
-    language: pageLanguage,
+    get language() { return pageLanguage(); },
     say: say
   };
 })();
