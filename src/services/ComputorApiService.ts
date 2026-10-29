@@ -3906,10 +3906,10 @@ export class ComputorApiService {
    * Get the current maintenance mode status.
    * @returns Maintenance status with active state, message, and schedule info
    */
-  async getMaintenanceStatus(): Promise<{ active: boolean; message: string; scheduled_at: string | null } | undefined> {
+  async getMaintenanceStatus(): Promise<{ active: boolean; message: string; message_i18n?: Record<string, string> | null; scheduled_at: string | null } | undefined> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<{ active: boolean; message: string; activated_at: string | null; activated_by: string | null; scheduled_at: string | null; scheduled_by: string | null }>(
+      const response = await client.get<{ active: boolean; message: string; message_i18n?: Record<string, string> | null; activated_at: string | null; activated_by: string | null; scheduled_at: string | null; scheduled_by: string | null }>(
         '/system/maintenance/status'
       );
       return response.data;
