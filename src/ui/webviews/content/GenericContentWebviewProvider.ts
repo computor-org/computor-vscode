@@ -3,6 +3,7 @@ import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './Ba
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, detailGrid } from '../shared/webviewHelpers';
+import { say } from '../../../utils/uiLanguage';
 
 export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvider {
   constructor(
@@ -15,28 +16,28 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
 
   protected async getWebviewContent(data?: CourseContentWebviewData): Promise<string> {
     if (!data?.courseContent) {
-      return this.getBaseHtml('Content', '<p>No content data available</p>');
+      return this.getBaseHtml(say('Content', 'Inhalt'), say('<p>No content data available</p>', '<p>Keine Daten zum Inhalt verfügbar</p>'));
     }
 
     const { courseContent, course, contentType } = data;
 
     const headerHtml = `
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
-      <p>Content in ${escapeHtml(course?.title || course?.path)}</p>`;
+      <p>${say('Content in', 'Inhalt in')} ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const detailsHtml = section('Content', `
+    const detailsHtml = section(say('Content', 'Inhalt'), `
       ${detailGrid(`
       ${infoRowCode('ID', courseContent.id)}
-      ${infoRowCode('Path', courseContent.path)}
-      ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
+      ${infoRowCode(say('Path', 'Pfad'), courseContent.path)}
+      ${infoRowText(say('Type', 'Typ'), contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
     `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Content title' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', courseContent.title, { placeholder: say('Content title', 'Titel des Inhalts') }))}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
-          <button type="button" class="btn-secondary" data-action="editDescription">Edit Description...</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
+          <button type="button" class="btn-secondary" data-action="editDescription">${say('Edit Description...', 'Beschreibung bearbeiten …')}</button>
         </div>
       </form>
     `);
@@ -72,6 +73,6 @@ export class GenericContentWebviewProvider extends BaseCourseContentWebviewProvi
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Content', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Content', 'Inhalt'), headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 }

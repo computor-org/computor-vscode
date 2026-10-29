@@ -11,6 +11,7 @@ import type { ExampleList, ExampleRepositoryList, ExampleVersionList } from '../
 import type { BumpPart } from '../../utils/versionHelpers';
 import * as fs from 'fs';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 interface ExampleDetailData {
   example: ExampleList;
@@ -36,7 +37,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
 
   protected async getWebviewContent(data?: ExampleDetailData): Promise<string> {
     if (!this.panel || !data) {
-      return this.getBaseHtml('Example', '<p>Loading...</p>');
+      return this.getBaseHtml(say('Example', 'Beispiel'), say('<p>Loading...</p>', '<p>Wird geladen …</p>'));
     }
 
     const versions = await this.apiService.getExampleVersions(data.example.id);
@@ -48,7 +49,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
     }
 
     return this.renderPage({
-      title: `Example: ${data.example.title}`,
+      title: say(`Example: ${data.example.title}`, `Beispiel: ${data.example.title}`),
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['content/example-details.css'],
       scriptFiles: ['content/example-details.js'],
@@ -107,7 +108,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
 
     const examplesPath = this.getExamplesPath();
     if (!examplesPath) {
-      notify.error('No workspace folder open.');
+      notify.error(say('No workspace folder open.', 'Es ist kein Arbeitsbereichsordner geöffnet.'));
       return;
     }
 
@@ -117,7 +118,7 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
         : await this.apiService.downloadExample(data.example.id, false);
 
       if (!exampleData) {
-        notify.error('Failed to download example');
+        notify.error(say('Failed to download example', 'Das Beispiel konnte nicht heruntergeladen werden.'));
         return;
       }
 
@@ -145,8 +146,8 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       const willOverwrite = fs.existsSync(workingDir) || (versionDir ? fs.existsSync(versionDir) : false);
       if (willOverwrite) {
         const overwrite = await notify.confirm(
-          `A local copy of '${data.example.directory}' already exists and will be replaced.`,
-          'Overwrite'
+          say(`A local copy of '${data.example.directory}' already exists and will be replaced.`, `Eine lokale Kopie von „${data.example.directory}“ existiert bereits und wird ersetzt.`),
+          say('Overwrite', 'Überschreiben')
         );
         if (!overwrite) { return; }
       }
@@ -173,24 +174,24 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       data.currentVersion = resolvedTag;
 
       this.treeProvider.refresh();
-      notify.info(`Checked out '${data.example.title}' [${resolvedTag}]`);
+      notify.info(say(`Checked out '${data.example.title}' [${resolvedTag}]`, `„${data.example.title}“ [${resolvedTag}] ausgecheckt.`));
       await this.refreshData();
     } catch (error) {
-      notify.error(`Checkout failed: ${error}`);
+      notify.error(say(`Checkout failed: ${error}`, `Auschecken fehlgeschlagen: ${error}`));
     }
   }
 
   private async handleBumpVersion(part: BumpPart): Promise<void> {
     const data = this.currentData as ExampleDetailData | undefined;
     if (!data?.downloadPath || !fs.existsSync(data.downloadPath)) {
-      notify.error('Example not checked out locally');
+      notify.error(say('Example not checked out locally', 'Das Beispiel ist lokal nicht ausgecheckt.'));
       return;
     }
 
     try {
       const currentVersion = readMetaYamlVersion(data.downloadPath);
       if (!currentVersion) {
-        notify.error('No version field found in meta.yaml');
+        notify.error(say('No version field found in meta.yaml', 'In meta.yaml gibt es kein Feld „version“.'));
         return;
       }
 
@@ -198,23 +199,23 @@ export class ExampleDetailWebviewProvider extends BaseWebviewProvider {
       updateMetaYamlVersion(data.downloadPath, newVersion);
 
       this.treeProvider.refresh();
-      notify.info(`Version bumped: ${normalizeSemVer(currentVersion)} -> ${newVersion}`);
+      notify.info(say(`Version bumped: ${normalizeSemVer(currentVersion)} -> ${newVersion}`, `Version erhöht: ${normalizeSemVer(currentVersion)} -> ${newVersion}`));
       await this.refreshData();
     } catch (error) {
-      notify.error(`Version bump failed: ${error}`);
+      notify.error(say(`Version bump failed: ${error}`, `Version konnte nicht erhöht werden: ${error}`));
     }
   }
 
   private async handleUpload(): Promise<void> {
     const data = this.currentData as ExampleDetailData | undefined;
     if (!data?.downloadPath || !fs.existsSync(data.downloadPath)) {
-      notify.error('Example not checked out locally');
+      notify.error(say('Example not checked out locally', 'Das Beispiel ist lokal nicht ausgecheckt.'));
       return;
     }
 
     const confirm = await notify.confirm(
-      `Upload example "${data.example.title}" from local directory?`,
-      'Upload'
+      say(`Upload example "${data.example.title}" from local directory?`, `Beispiel „${data.example.title}“ aus dem lokalen Verzeichnis hochladen?`),
+      say('Upload', 'Hochladen')
     );
     if (!confirm) { return; }
 

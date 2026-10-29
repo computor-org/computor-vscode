@@ -3,6 +3,7 @@ import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './Ba
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
 import { escapeHtml, infoRowText, infoRowCode, section, formGroup, textInput, detailGrid } from '../shared/webviewHelpers';
+import { say } from '../../../utils/uiLanguage';
 import { notify } from '../../../utils/notify';
 
 export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider {
@@ -16,7 +17,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
 
   protected async getWebviewContent(data?: CourseContentWebviewData): Promise<string> {
     if (!data?.courseContent) {
-      return this.getBaseHtml('Unit', '<p>No unit data available</p>');
+      return this.getBaseHtml(say('Unit', 'Einheit'), say('<p>No unit data available</p>', '<p>Keine Daten zur Einheit verfügbar</p>'));
     }
 
     const { courseContent, course, contentType } = data;
@@ -34,22 +35,22 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
 
     const headerHtml = `
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
-      <p>Unit in ${escapeHtml(course?.title || course?.path)}</p>`;
+      <p>${say('Unit in', 'Einheit in')} ${escapeHtml(course?.title || course?.path)}</p>`;
 
-    const detailsHtml = section('Unit', `
+    const detailsHtml = section(say('Unit', 'Einheit'), `
       ${detailGrid(`
       ${infoRowCode('ID', courseContent.id)}
-      ${infoRowCode('Path', courseContent.path)}
-      ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
+      ${infoRowCode(say('Path', 'Pfad'), courseContent.path)}
+      ${infoRowText(say('Type', 'Typ'), contentType?.title || courseContent.course_content_type_id)}
       ${infoRowText('Position', String(courseContent.position ?? ''))}
-      ${infoRowText('Children', String(childCount))}
+      ${infoRowText(say('Children', 'Untereinträge'), String(childCount))}
     `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Unit title' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', courseContent.title, { placeholder: say('Unit title', 'Titel der Einheit') }))}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
-          <button type="button" class="btn-secondary" data-action="editDescription">Edit Description...</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
+          <button type="button" class="btn-secondary" data-action="editDescription">${say('Edit Description...', 'Beschreibung bearbeiten …')}</button>
         </div>
       </form>
     `);
@@ -85,7 +86,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Unit', headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Unit', 'Einheit'), headerHtml, bodyHtml: detailsHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
@@ -112,7 +113,7 @@ export class UnitContentWebviewProvider extends BaseCourseContentWebviewProvider
         this.panel.webview.postMessage({ command: 'childrenLoaded', data: { children } });
       }
     } catch (error) {
-      notify.error(`Failed to load children: ${error}`);
+      notify.error(say(`Failed to load children: ${error}`, `Die Untereinträge konnten nicht geladen werden: ${error}`));
     }
   }
 }

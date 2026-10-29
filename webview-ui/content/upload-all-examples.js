@@ -1,6 +1,6 @@
 (function () {
   const vscode = window.vscodeApi || acquireVsCodeApi();
-  const { escapeHtml } = window.ComputorWebview;
+  const { escapeHtml, say } = window.ComputorWebview;
   let examples = window.__INITIAL_STATE__ || [];
   let isUploading = false;
   // Selection lives here rather than in the DOM so it survives re-renders
@@ -17,7 +17,7 @@
     const listEl = document.getElementById('exampleList');
 
     if (examples.length === 0) {
-      listEl.innerHTML = '<div class="empty-state">No local working examples found.</div>';
+      listEl.innerHTML = '<div class="empty-state">' + say('No local working examples found.', 'Keine lokalen Arbeitskopien von Beispielen gefunden.') + '</div>';
       updateControls();
       return;
     }
@@ -30,8 +30,8 @@
       const statusClass = ex._status || (ex.hasChanges ? '' : 'unchanged');
       const statusIcon = getStatusIcon(ex._status);
       const changeIndicator = ex.hasChanges
-        ? '<span class="change-badge changed">modified</span>'
-        : '<span class="change-badge unchanged">unchanged</span>';
+        ? '<span class="change-badge changed">' + say('modified', 'geändert') + '</span>'
+        : '<span class="change-badge unchanged">' + say('unchanged', 'unverändert') + '</span>';
       const isChecked = selected.has(ex.directory);
 
       return '<div class="example-item ' + statusClass + '" data-directory="' + escapeHtml(ex.directory) + '">'
@@ -44,12 +44,12 @@
         + '<div class="example-directory">' + escapeHtml(ex.directory) + '</div>'
         + '</div>'
         + '<div class="example-versions">'
-        + '<span class="version-label">Local:</span>'
+        + '<span class="version-label">' + say('Local:', 'Lokal:') + '</span>'
         + '<span class="version-value">' + escapeHtml(ex.localVersion) + '</span>'
         + (ex.remoteVersion
-          ? '<span class="version-label">Remote:</span><span class="version-value">' + escapeHtml(ex.remoteVersion) + '</span>'
-          : '<span class="version-label">Remote:</span><span class="version-value new-badge">new</span>')
-        + '<span class="version-label">Upload as:</span>'
+          ? '<span class="version-label">' + say('Remote:', 'Server:') + '</span><span class="version-value">' + escapeHtml(ex.remoteVersion) + '</span>'
+          : '<span class="version-label">' + say('Remote:', 'Server:') + '</span><span class="version-value new-badge">' + say('new', 'neu') + '</span>')
+        + '<span class="version-label">' + say('Upload as:', 'Hochladen als:') + '</span>'
         + '<span class="version-value proposed">' + escapeHtml(proposedVersion) + '</span>'
         + '</div>'
         + '<div class="example-status">' + statusIcon + '</div>'
@@ -76,15 +76,15 @@
     toggleEl.checked = hasExamples && selectedCount === examples.length;
     toggleEl.indeterminate = selectedCount > 0 && selectedCount < examples.length;
     document.getElementById('selectionSummary').textContent = selectedCount === 0
-      ? 'Select all'
-      : selectedCount + ' of ' + examples.length + ' selected';
+      ? say('Select all', 'Alle auswählen')
+      : say(selectedCount + ' of ' + examples.length + ' selected', selectedCount + ' von ' + examples.length + ' ausgewählt');
 
     const uploadBtn = document.getElementById('uploadBtn');
-    uploadBtn.textContent = changedCount > 0 ? 'Upload Changed (' + changedCount + ')' : 'Upload Changed';
+    uploadBtn.textContent = changedCount > 0 ? say('Upload Changed', 'Geänderte hochladen') + ' (' + changedCount + ')' : say('Upload Changed', 'Geänderte hochladen');
     uploadBtn.disabled = isUploading || changedCount === 0;
 
     const uploadSelectedBtn = document.getElementById('uploadSelectedBtn');
-    uploadSelectedBtn.textContent = selectedCount > 0 ? 'Upload Selected (' + selectedCount + ')' : 'Upload Selected';
+    uploadSelectedBtn.textContent = selectedCount > 0 ? say('Upload Selected', 'Ausgewählte hochladen') + ' (' + selectedCount + ')' : say('Upload Selected', 'Ausgewählte hochladen');
     uploadSelectedBtn.disabled = isUploading || selectedCount === 0;
 
     document.querySelectorAll('input[name="bumpPolicy"]').forEach(function (r) { r.disabled = isUploading; });
@@ -108,11 +108,11 @@
   function getStatusIcon(status) {
     if (!status) { return ''; }
     switch (status) {
-      case 'pending': return '<span class="status-icon pending" role="img" aria-label="Pending">&#x23F3;</span>';
-      case 'uploading': return '<span class="status-icon uploading" role="img" aria-label="Uploading">&#x21BB;</span>';
-      case 'success': return '<span class="status-icon success" role="img" aria-label="Uploaded">&#x2714;</span>';
-      case 'error': return '<span class="status-icon error" role="img" aria-label="Failed">&#x2716;</span>';
-      case 'skipped': return '<span class="status-icon skipped" role="img" aria-label="Skipped">&#x2014;</span>';
+      case 'pending': return '<span class="status-icon pending" role="img" aria-label="' + say('Pending', 'Ausstehend') + '">&#x23F3;</span>';
+      case 'uploading': return '<span class="status-icon uploading" role="img" aria-label="' + say('Uploading', 'Wird hochgeladen') + '">&#x21BB;</span>';
+      case 'success': return '<span class="status-icon success" role="img" aria-label="' + say('Uploaded', 'Hochgeladen') + '">&#x2714;</span>';
+      case 'error': return '<span class="status-icon error" role="img" aria-label="' + say('Failed', 'Fehlgeschlagen') + '">&#x2716;</span>';
+      case 'skipped': return '<span class="status-icon skipped" role="img" aria-label="' + say('Skipped', 'Übersprungen') + '">&#x2014;</span>';
       default: return '';
     }
   }
@@ -226,9 +226,9 @@
 
     summaryEl.style.display = 'block';
     summaryEl.className = 'summary ' + (errors > 0 ? 'has-errors' : 'all-success');
-    summaryEl.innerHTML = '<h3>Upload Complete</h3>'
-      + '<p>' + success + ' of ' + total + ' examples uploaded successfully.'
-      + (errors > 0 ? ' ' + errors + ' failed.' : '')
+    summaryEl.innerHTML = '<h3>' + say('Upload Complete', 'Hochladen abgeschlossen') + '</h3>'
+      + '<p>' + say(success + ' of ' + total + ' examples uploaded successfully.', success + ' von ' + total + ' Beispielen hochgeladen.')
+      + (errors > 0 ? ' ' + say(errors + ' failed.', errors + ' fehlgeschlagen.') : '')
       + '</p>';
   }
 
