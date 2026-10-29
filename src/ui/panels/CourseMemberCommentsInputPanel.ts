@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
+import { UiStateService } from '../../services/UiStateService';
 import { CourseMemberCommentList } from '../../types/generated';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
@@ -24,18 +25,22 @@ export class CourseMemberCommentsInputPanelProvider implements vscode.WebviewVie
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    const uiState = UiStateService.getInstanceOrUndefined();
+    uiState?.setViewVisible(CourseMemberCommentsInputPanelProvider.viewType, webviewView.visible);
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.extensionUri]
     };
 
     webviewView.onDidChangeVisibility(() => {
+      uiState?.setViewVisible(CourseMemberCommentsInputPanelProvider.viewType, webviewView.visible);
       if (webviewView.visible) {
         this.postState();
       }
     });
 
     webviewView.onDidDispose(() => {
+      uiState?.setViewVisible(CourseMemberCommentsInputPanelProvider.viewType, false);
       this.view = undefined;
     });
 

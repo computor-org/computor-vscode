@@ -54,6 +54,9 @@ export class UiStateService {
   private state: UiState;
   private timer: NodeJS.Timeout | undefined;
   private writing: Promise<void> = Promise.resolve();
+  private readonly visibleViews = new Set<string>();
+  private readonly visibilityEmitter = new vscode.EventEmitter<boolean>();
+  readonly onDidChangeVisibility = this.visibilityEmitter.event;
 
   private constructor(private readonly context: vscode.ExtensionContext) {
     this.state = context.globalState.get<UiState>(STATE_KEY) ?? {};
@@ -118,6 +121,24 @@ export class UiStateService {
     }
     this.state.activeContainer = containerId;
     this.schedule();
+  }
+
+  /** Live visibility is separate from the container remembered across reloads. */
+  hasVisibleViews(): boolean {
+    return this.visibleViews.size > 0;
+  }
+
+  setViewVisible(viewId: string, visible: boolean): void {
+    const wasVisible = this.hasVisibleViews();
+    if (visible) {
+      this.visibleViews.add(viewId);
+    } else {
+      this.visibleViews.delete(viewId);
+    }
+    const isVisible = this.hasVisibleViews();
+    if (isVisible !== wasVisible) {
+      this.visibilityEmitter.fire(isVisible);
+    }
   }
 
   isExpanded(scope: TreeScope, nodeId: string): boolean {
