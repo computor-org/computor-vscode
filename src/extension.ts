@@ -1585,6 +1585,11 @@ class UnifiedController {
       );
     });
 
+    // Lena drafts of a unit description, opened in that same editor unsaved
+    // (computor-org/issues#559).
+    const { LenaDescriptionDraftCommands } = await import('./commands/LenaDescriptionDraftCommands');
+    new LenaDescriptionDraftCommands(this.context, api).register();
+
     // Register example-related commands (search, upload from ZIP, etc.)
     new LecturerExampleCommands(this.context, api, exampleTree);
 

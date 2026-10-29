@@ -43,5 +43,7 @@
   "view.testResults": "Testergebnisse",
   "category.testResults": "Computor-Testergebnisse",
   "command.changeRealmUrl": "Backend-URL ändern",
-  "command.login": "Anmelden"
+  "command.login": "Anmelden",
+  "command.lecturer.draftDescriptionWithLena": "Beschreibung von Lena entwerfen...",
+  "command.lecturer.draftUnitDescriptionsWithLena": "Einheitenbeschreibungen von Lena entwerfen..."
 }

@@ -24,7 +24,7 @@ import { showMarkdownTextPreview } from './webviews/markdownPreview';
 
 export const EDIT_DESCRIPTION_COMMAND = 'computor.lecturer.editContentDescription';
 
-type DescriptionTarget =
+export type DescriptionTarget =
   | { kind: 'course'; courseId: string; label: string }
   | { kind: 'content'; courseId: string; contentId: string; label: string };
 
@@ -43,7 +43,7 @@ const PREVIEW_DEBOUNCE_MS = 400;
  * Duck-typed on purpose: student, tutor and lecturer trees build their own item
  * classes, and importing them here would tie this module to all three.
  */
-function targetFromTreeItem(item: any): DescriptionTarget | undefined {
+export function targetFromTreeItem(item: any): DescriptionTarget | undefined {
   const content = item?.courseContent;
   if (content?.id) {
     const courseId = content.course_id ?? item?.course?.id;
@@ -128,7 +128,7 @@ function scratchPathFor(target: DescriptionTarget, context: vscode.ExtensionCont
 
   const filename = `${sanitizeFilename(target.label)}.md`;
   for (const stale of fs.readdirSync(dir)) {
-    if (stale !== filename) {
+    if (stale !== filename && stale !== 'drafts') {
       try {
         fs.unlinkSync(path.join(dir, stale));
         openDescriptions.delete(path.join(dir, stale));
@@ -179,6 +179,21 @@ async function editDescription(
     return;
   }
 
+  const opened = await openDescriptionDocument(context, apiService, target);
+  if (opened && opened.description.trim().length === 0) {
+    notify.info(`No description yet — what you write here becomes the description of “${target.label}”. Ctrl+S/Cmd+S publishes it.`);
+  }
+}
+
+/**
+ * Open the description editor (and its preview) on a target's description as
+ * the server has it, unless an editor on it already holds unsaved edits.
+ */
+async function openDescriptionDocument(
+  context: vscode.ExtensionContext,
+  apiService: ComputorApiService,
+  target: DescriptionTarget
+): Promise<{ document: vscode.TextDocument; description: string } | undefined> {
   let description: string;
   try {
     description = await fetchDescription(target, apiService);
@@ -186,7 +201,7 @@ async function editDescription(
     notify.error(
       `Could not load the description: ${error instanceof Error ? error.message : String(error)}`
     );
-    return;
+    return undefined;
   }
 
   const filePath = scratchPathFor(target, context);
@@ -205,10 +220,57 @@ async function editDescription(
   await vscode.languages.setTextDocumentLanguage(document, 'markdown');
   await vscode.window.showTextDocument(document, { viewColumn: SOURCE_COLUMN, preview: false });
   await renderPreview(context, document, target);
+  return { document, description };
+}
 
-  if (description.trim().length === 0) {
-    notify.info(`No description yet — what you write here becomes the description of “${target.label}”. Ctrl+S/Cmd+S publishes it.`);
+/**
+ * Put a draft (from Lena, computor-org/issues#559) in front of the lecturer
+ * without publishing anything.
+ *
+ * `replace` opens the description editor with the draft as unsaved text:
+ * Ctrl+S/Cmd+S publishes it as usual, closing without saving discards it.
+ * `compare` opens the draft beside the current description in a diff, so
+ * parts can be carried over into the description, which stays editable.
+ */
+export async function openDescriptionDraft(
+  context: vscode.ExtensionContext,
+  apiService: ComputorApiService,
+  target: DescriptionTarget,
+  draft: string,
+  mode: 'replace' | 'compare',
+  draftLabel = 'Lena draft'
+): Promise<boolean> {
+  const opened = await openDescriptionDocument(context, apiService, target);
+  if (!opened) {
+    return false;
   }
+  const { document } = opened;
+
+  // Unsaved edits of the lecturer's own are never overwritten by a draft.
+  if (mode === 'replace' && !document.isDirty) {
+    const edit = new vscode.WorkspaceEdit();
+    const whole = new vscode.Range(
+      document.positionAt(0),
+      document.positionAt(document.getText().length)
+    );
+    edit.replace(document.uri, whole, draft);
+    return vscode.workspace.applyEdit(edit);
+  }
+
+  // The draft lives beside the scratch document but is not registered as a
+  // description, so saving it publishes nothing.
+  const draftDir = path.join(path.dirname(document.uri.fsPath), 'drafts');
+  fs.mkdirSync(draftDir, { recursive: true });
+  const draftPath = path.join(draftDir, `${sanitizeFilename(`${target.label} (${draftLabel})`)}.md`);
+  fs.writeFileSync(draftPath, draft, 'utf8');
+  await vscode.commands.executeCommand(
+    'vscode.diff',
+    vscode.Uri.file(draftPath),
+    document.uri,
+    `${draftLabel} ↔ ${target.label}`,
+    { viewColumn: SOURCE_COLUMN, preview: false }
+  );
+  return true;
 }
 
 export function registerDescriptionEditor(

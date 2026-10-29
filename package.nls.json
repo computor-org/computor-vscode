@@ -43,5 +43,7 @@
   "view.testResults": "Test Results",
   "category.testResults": "Computor Test Results",
   "command.changeRealmUrl": "Change Backend URL",
-  "command.login": "Login"
+  "command.login": "Login",
+  "command.lecturer.draftDescriptionWithLena": "Draft Description with Lena...",
+  "command.lecturer.draftUnitDescriptionsWithLena": "Draft Unit Descriptions with Lena..."
 }
