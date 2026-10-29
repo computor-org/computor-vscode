@@ -37,6 +37,18 @@ updates:
       # chai 5+ is ESM-only; under the CommonJS ts-node mocha setup it fails to load on Node 22 (require(esm) race).
       - dependency-name: chai
         update-types: ["version-update:semver-major"]
+      # Node type definitions follow the oldest supported runtime (VS Code 1.74 runs Node 16); newer ones fail to parse under TypeScript 4.9.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 7 removes moduleResolution=node10 (our tsconfig) and the JavaScript compiler API that ts-loader uses.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # js-yaml 5 changes load()/dump() (YAML 1.2 core schema, removed dump options) used by the example commands; move it with a code change.
+      - dependency-name: js-yaml
+        update-types: ["version-update:semver-major"]
+      # vsce 4 requires Node >= 22, while CI and the release workflow package on Node 20.
+      - dependency-name: "@vscode/vsce"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
