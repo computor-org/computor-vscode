@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { ComputorApiService } from '../services/ComputorApiService';
 import type { DocumentsTreeProvider } from '../ui/tree/lecturer-documents/DocumentsTreeProvider';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import { revealUri } from '../utils/reveal';
 import {
   DocumentsFileItem,
@@ -247,7 +248,7 @@ export class DocumentsCommands {
 
       const destination = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(payload.name),
-        saveLabel: 'Save'
+        saveLabel: say('Save', 'Speichern')
       });
       if (!destination) { return; }
       await fs.promises.writeFile(destination.fsPath, payload.contents);
@@ -420,7 +421,7 @@ export class DocumentsCommands {
       canSelectFiles: !folder,
       canSelectFolders: folder,
       canSelectMany: !folder,
-      openLabel: folder ? 'Upload folder' : 'Upload'
+      openLabel: folder ? say('Upload folder', 'Ordner hochladen') : say('Upload', 'Hochladen')
     });
     if (!chosen || chosen.length === 0) { return []; }
 

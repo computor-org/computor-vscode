@@ -551,6 +551,14 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         this.postDetails();
     }
 
+    /**
+     * The view name from package.nls follows only the VS Code display
+     * language; the title set here follows the reading language.
+     */
+    public refreshTitle(): void {
+        if (this.view) this.view.title = say('Result Details', 'Ergebnisdetails');
+    }
+
     private postDetails(): void {
         // No-op while the view is hidden; the webview asks for the current
         // details again as soon as it is (re-)created, see getHtmlContent().
@@ -598,7 +606,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         }
 
         if (parts.length === 0) {
-            parts.push('<span class="no-results">No further details for this entry.</span>');
+            parts.push(`<span class="no-results">${say('No further details for this entry.', 'Zu diesem Eintrag gibt es keine weiteren Details.')}</span>`);
         }
 
         return { label, body: parts.join('') };
@@ -610,6 +618,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         token: vscode.CancellationToken
     ): void {
         this.view = webviewView;
+        this.refreshTitle();
         const uiState = UiStateService.getInstanceOrUndefined();
         uiState?.setViewVisible(TestResultsPanelProvider.viewType, webviewView.visible);
         webviewView.onDidChangeVisibility(() => {

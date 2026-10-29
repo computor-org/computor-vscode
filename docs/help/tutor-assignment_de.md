@@ -11,11 +11,11 @@ Klicke auf die Zeile der Aufgabe (oder Rechtsklick → *Auschecken*), und
 Computor lädt herunter, was du brauchst. Klappst du die Zeile danach auf,
 siehst du:
 
-- **Submissions**: die Dateien der neuesten Abgabe der Person. Das ist es, was
+- **Abgaben**: die Dateien der neuesten Abgabe der Person. Das ist es, was
   du bewertest.
-- **References**: die Musterlösung zur bereitgestellten Version der Aufgabe,
+- **Musterlösung**: die Lösung zur bereitgestellten Version der Aufgabe,
   damit du sehen kannst, was erwartet war.
-- **History**: frühere Abgaben, sofern es mehr als eine gibt. Jeder Eintrag
+- **Verlauf**: frühere Abgaben, sofern es mehr als eine gibt. Jeder Eintrag
   lässt sich wie die neueste Abgabe aufklappen, testen und herunterladen.
 
 *Auschecken* im Kontextmenü fragt nach, bevor es Dateien, die du bereits hast,
@@ -27,7 +27,7 @@ erneut herunterlädt; ein Klick auf die Zeile holt nur, was noch fehlt.
 *Anleitung anzeigen*) öffnet die Aufgabenbeschreibung, nach der die Person
 gearbeitet hat.
 
-**Öffne die Dateien.** Klappe *Submissions* auf und klicke auf eine Datei, um
+**Öffne die Dateien.** Klappe *Abgaben* auf und klicke auf eine Datei, um
 sie zu lesen. Um zu sehen, wie sie von der Musterlösung abweicht, klicke mit
 der rechten Maustaste auf eine Datei der Abgabe → *Mit Musterlösung
 vergleichen*; dann öffnet sich ein Vergleich mit derselben Datei in der
@@ -35,12 +35,12 @@ Musterlösung.
 
 **Sieh dir das Testergebnis der Person an.** Ein Klick auf die Zeile öffnet den
 letzten eigenen Testlauf der Person im Bereich Testergebnisse. Einträge
-unter *History* bieten *Testergebnisse anzeigen* für genau diese Abgabe.
+unter *Verlauf* bieten *Testergebnisse anzeigen* für genau diese Abgabe.
 
 **Führe deinen eigenen Test aus.** *Test ausführen* auf der Aufgabe oder einer
 Abgabe verpackt die heruntergeladenen Dateien und lässt die Tests des Kurses
 darüber laufen. Das ist dein Testlauf, nicht der der Person, und er verbraucht
-nichts von ihrem Kontingent. Auf *References* prüft derselbe Befehl, ob die
+nichts von ihrem Kontingent. Auf *Musterlösung* prüft derselbe Befehl, ob die
 Musterlösung selbst die Tests noch besteht.
 
 ## Die Bewertung festlegen

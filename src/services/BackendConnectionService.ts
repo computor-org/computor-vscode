@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { say } from '../utils/uiLanguage';
+import { say, sayFailed } from '../utils/uiLanguage';
 import fetch from 'node-fetch';
 import { notify } from '../utils/notify';
 
@@ -68,28 +68,31 @@ export class BackendConnectionService {
     } catch (error: any) {
       const elapsedTime = Date.now() - startTime;
       let errorType: BackendStatus['error'] = 'UNKNOWN';
-      let message = 'Unknown error occurred';
+      let message = say('Unknown error occurred', 'Unbekannter Fehler.');
       
       if (error.name === 'AbortError' || elapsedTime >= 5000) {
         // Timeout - likely backend not running or very slow network
         errorType = 'TIMEOUT';
-        message = 'Connection timeout - backend may not be running or network is very slow';
+        message = say('Connection timeout - backend may not be running or network is very slow',
+          'Zeitüberschreitung: Der Server läuft vielleicht nicht, oder das Netzwerk ist sehr langsam.');
       } else if (error.code === 'ECONNREFUSED') {
         // Connection refused - backend not running
         errorType = 'NOT_RUNNING';
-        message = 'Cannot connect to Computor.';
+        message = say('Cannot connect to Computor.', 'Keine Verbindung zu Computor.');
       } else if (error.code === 'ENOTFOUND' || error.code === 'ENETUNREACH') {
         // Network unreachable - possible VPN issue
         errorType = 'VPN_REQUIRED';
-        message = 'Cannot reach backend. Check your network connection or VPN settings.';
+        message = say('Cannot reach backend. Check your network connection or VPN settings.',
+          'Der Server ist nicht erreichbar. Prüfe deine Netzwerkverbindung oder die VPN-Einstellungen.');
       } else if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
         // Network timeout - slow or blocked connection
         errorType = 'NETWORK_ERROR';
-        message = 'Network timeout. Check your internet connection or firewall settings.';
+        message = say('Network timeout. Check your internet connection or firewall settings.',
+          'Zeitüberschreitung im Netzwerk. Prüfe deine Internetverbindung oder die Firewall-Einstellungen.');
       } else if (error.message?.includes('fetch')) {
         // General network error
         errorType = 'NETWORK_ERROR';
-        message = `Network error: ${error.message}`;
+        message = sayFailed('Network error', 'Netzwerkfehler', error.message);
       }
       
       this.retryCount++;
@@ -162,13 +165,13 @@ export class BackendConnectionService {
         this.statusBarItem.text = `$(x) ${say('Backend Disconnected', 'Server nicht erreichbar')}`;
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         this.statusBarItem.tooltip = errorHint
-          ? `Backend is not reachable: ${errorHint}`
-          : 'Backend is not reachable';
+          ? `${say('Backend is not reachable', 'Der Server ist nicht erreichbar')}: ${errorHint}`
+          : say('Backend is not reachable', 'Der Server ist nicht erreichbar');
         break;
       case 'error':
         this.statusBarItem.text = `$(warning) ${say('Backend Error', 'Serverfehler')}`;
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        this.statusBarItem.tooltip = 'Backend returned an error response';
+        this.statusBarItem.tooltip = say('Backend returned an error response', 'Der Server hat mit einem Fehler geantwortet');
         break;
     }
     
@@ -177,11 +180,11 @@ export class BackendConnectionService {
   
   private errorHintFor(errorType: BackendStatus['error']): string {
     switch (errorType) {
-      case 'NOT_RUNNING': return 'server not running';
-      case 'TIMEOUT': return 'connection timed out';
-      case 'VPN_REQUIRED': return 'network unreachable';
-      case 'NETWORK_ERROR': return 'network error';
-      default: return 'unknown error';
+      case 'NOT_RUNNING': return say('server not running', 'Server läuft nicht');
+      case 'TIMEOUT': return say('connection timed out', 'Zeitüberschreitung');
+      case 'VPN_REQUIRED': return say('network unreachable', 'Netzwerk nicht erreichbar');
+      case 'NETWORK_ERROR': return say('network error', 'Netzwerkfehler');
+      default: return say('unknown error', 'unbekannter Fehler');
     }
   }
 
@@ -196,58 +199,81 @@ export class BackendConnectionService {
    * Show detailed error message based on backend status
    */
   async showConnectionError(status: BackendStatus): Promise<void> {
-    let message = status.message || 'Backend connection failed';
+    let message = status.message || say('Backend connection failed', 'Die Verbindung zum Server ist fehlgeschlagen.');
     let detail = '';
-    const actions: string[] = ['Retry'];
+    const retry = say('Retry', 'Erneut versuchen');
+    const checkSettings = say('Check Settings', 'Einstellungen prüfen');
+    const actions: string[] = [retry];
     
     switch (status.error) {
       case 'NOT_RUNNING':
-        detail = 'Unable to reach the backend server.\n\n' +
+        detail = say('Unable to reach the backend server.\n\n' +
                 'Possible causes:\n' +
                 '• Backend is temporarily unavailable\n' +
                 '• Network or VPN connection issues\n' +
-                '• Incorrect backend URL configuration';
-        actions.push('Check Settings');
+                '• Incorrect backend URL configuration',
+          'Der Server ist nicht erreichbar.\n\n' +
+                'Mögliche Ursachen:\n' +
+                '• Der Server ist vorübergehend nicht verfügbar\n' +
+                '• Probleme mit dem Netzwerk oder dem VPN\n' +
+                '• Eine falsch eingestellte Server-URL');
+        actions.push(checkSettings);
         break;
         
       case 'VPN_REQUIRED':
-        detail = 'Cannot reach the backend server.\n\n' +
+        detail = say('Cannot reach the backend server.\n\n' +
                 'Possible causes:\n' +
                 '• VPN connection required but not connected\n' +
                 '• Network firewall blocking the connection\n' +
-                '• Incorrect backend URL configuration';
-        actions.push('Check Settings');
+                '• Incorrect backend URL configuration',
+          'Der Server ist nicht erreichbar.\n\n' +
+                'Mögliche Ursachen:\n' +
+                '• Ein VPN ist nötig, aber nicht verbunden\n' +
+                '• Eine Firewall blockiert die Verbindung\n' +
+                '• Eine falsch eingestellte Server-URL');
+        actions.push(checkSettings);
         break;
         
       case 'TIMEOUT':
-        detail = 'Connection to backend timed out.\n\n' +
+        detail = say('Connection to backend timed out.\n\n' +
                 'This usually means:\n' +
                 '• Backend is starting up (please wait)\n' +
                 '• Backend is not running\n' +
-                '• Network is very slow or unstable';
+                '• Network is very slow or unstable',
+          'Die Verbindung zum Server hat zu lange gedauert.\n\n' +
+                'Meist bedeutet das:\n' +
+                '• Der Server startet gerade (bitte warte kurz)\n' +
+                '• Der Server läuft nicht\n' +
+                '• Das Netzwerk ist sehr langsam oder instabil');
         break;
         
       case 'NETWORK_ERROR':
-        detail = 'Network error while connecting to backend.\n\n' +
+        detail = say('Network error while connecting to backend.\n\n' +
                 'Please check:\n' +
                 '• Your internet connection\n' +
                 '• Firewall or proxy settings\n' +
-                '• Backend URL configuration';
-        actions.push('Check Settings');
+                '• Backend URL configuration',
+          'Netzwerkfehler beim Verbinden mit dem Server.\n\n' +
+                'Prüfe bitte:\n' +
+                '• deine Internetverbindung\n' +
+                '• die Firewall- oder Proxy-Einstellungen\n' +
+                '• die eingestellte Server-URL');
+        actions.push(checkSettings);
         break;
     }
     
     if (this.retryCount >= this.maxRetries) {
-      detail += '\n\nMaximum retry attempts reached. Please resolve the issue and try again.';
+      detail += say('\n\nMaximum retry attempts reached. Please resolve the issue and try again.',
+        '\n\nDie Höchstzahl an Versuchen ist erreicht. Behebe bitte das Problem und versuche es dann noch einmal.');
     }
     
     const selection = await notify.modal('error', message, { detail, actions });
     
-    if (selection === 'Retry') {
+    if (selection === retry) {
       await this.checkBackendConnection(this.currentBaseUrl);
     } else if (selection === 'Open Terminal') {
       vscode.commands.executeCommand('workbench.action.terminal.new');
-    } else if (selection === 'Check Settings') {
+    } else if (selection === checkSettings) {
       vscode.commands.executeCommand('workbench.action.openSettings', 'computor.backend');
     }
   }

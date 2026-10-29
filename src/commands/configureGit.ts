@@ -3,7 +3,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GitEnvironmentService } from '../services/GitEnvironmentService';
 import { notify } from '../utils/notify';
-import { say } from '../utils/uiLanguage';
+import { say, sayFailed } from '../utils/uiLanguage';
 
 const execFileAsync = promisify(execFile);
 
@@ -77,7 +77,7 @@ export async function configureGit(): Promise<void> {
 
     void notify.info(say('Git configuration updated successfully!', 'Git ist jetzt eingerichtet.'));
   } catch (error: any) {
-    void notify.error(say(`Failed to configure git: ${error.message}`, `Git konnte nicht eingerichtet werden: ${error.message}`));
+    void notify.error(sayFailed(`Failed to configure git`, `Git konnte nicht eingerichtet werden`, error.message));
   }
 }
 

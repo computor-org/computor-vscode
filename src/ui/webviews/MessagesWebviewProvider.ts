@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { resolveTutorAgent } from '../../services/TutorAgentInfo';
-import { say } from '../../utils/uiLanguage';
+import { onDidChangeUiLanguage, say, sayFailed } from '../../utils/uiLanguage';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { canReplyInScope, deriveScopeFromCreatePayload, kindForScope } from '../../services/MessagePermissions';
@@ -104,6 +104,10 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     super(context, 'computor.messagesView');
     this.apiService = apiService;
     this.wsHandlerId = `messages-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // Relabelled in place; a new page would lose the scroll and read state.
+    context.subscriptions?.push(onDidChangeUiLanguage(language => {
+      void this.panel?.webview.postMessage({ command: 'setLanguage', data: { language } });
+    }));
   }
 
   public setInputPanel(inputPanel: MessagesInputPanelProvider): void {
@@ -829,7 +833,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       await this.refreshMessages({ skipIndicatorUpdate: true });
       notify.info(say('Message deleted.', 'Die Nachricht wurde gelöscht.'));
     } catch (error: any) {
-      notify.error(say(`Failed to delete message: ${error?.message || error}`, `Die Nachricht konnte nicht gelöscht werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to delete message`, `Die Nachricht konnte nicht gelöscht werden`, error?.message || error));
       this.postLoadingState(false);
     }
   }
@@ -869,7 +873,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         this.inputPanel.updateMessages(rawMessages);
       }
     } catch (error: any) {
-      notify.error(say(`Failed to refresh messages: ${error?.message || error}`, `Die Nachrichten konnten nicht aktualisiert werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to refresh messages`, `Die Nachrichten konnten nicht aktualisiert werden`, error?.message || error));
       this.postLoadingState(false);
     }
   }

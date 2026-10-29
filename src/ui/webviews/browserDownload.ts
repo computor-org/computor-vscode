@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { renderWebviewPage } from './shared/webviewPage';
 import { escapeHtml } from './shared/webviewHelpers';
+import { say } from '../../utils/uiLanguage';
 
 /**
  * Handing a file to the student's own computer from code-server.
@@ -71,7 +72,7 @@ export async function downloadBytesInBrowser(
 
   const panel = vscode.window.createWebviewPanel(
     'computor.browserDownload',
-    `Download ${name}`,
+    say(`Download ${name}`, `${name} herunterladen`),
     { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
     { enableScripts: true }
   );
@@ -79,20 +80,26 @@ export async function downloadBytesInBrowser(
   // The panel deliberately stays open: browsers sometimes refuse a download
   // that no click initiated, and then the button on the page is the way out.
   panel.webview.html = renderWebviewPage(panel.webview, extensionUri, {
-    title: `Download ${name}`,
+    title: say(`Download ${name}`, `${name} herunterladen`),
     container: true,
     bodyHtml: `
-      <h1>Download ${escapeHtml(name)}</h1>
-      <p id="status">Preparing your download…</p>
+      <h1>${escapeHtml(say(`Download ${name}`, `${name} herunterladen`))}</h1>
+      <p id="status">${say('Preparing your download…', 'Der Download wird vorbereitet …')}</p>
       <p>
-        <button id="again" class="btn" hidden>Download again</button>
+        <button id="again" class="btn" hidden>${say('Download again', 'Erneut herunterladen')}</button>
       </p>
       <p class="text-muted">
-        If nothing happened, your browser may have blocked the download. Use the
-        button above, and allow downloads from this site if prompted.
+        ${say(`If nothing happened, your browser may have blocked the download. Use the
+        button above, and allow downloads from this site if prompted.`,
+        `Wenn nichts passiert ist, hat dein Browser den Download vielleicht blockiert. Verwende dann die
+        Schaltfläche oben und erlaube Downloads von dieser Seite, falls der Browser danach fragt.`)}
       </p>
     `,
-    inlineScript: DOWNLOAD_SCRIPT
+    inlineScript: downloadScript({
+      receiving: say('Receiving', 'Empfange'),
+      started: say('Your download of {name} has started.', 'Der Download von {name} hat begonnen.'),
+      failed: say('The download could not be prepared.', 'Der Download konnte nicht vorbereitet werden.')
+    })
   });
 
   const started = new Promise<boolean>((resolve) => {
@@ -127,7 +134,9 @@ export async function downloadBytesInBrowser(
   return started;
 }
 
-const DOWNLOAD_SCRIPT = `
+function downloadScript(text: { receiving: string; started: string; failed: string }): string {
+  return `
+  const TEXT = ${JSON.stringify(text).replace(/</g, '\\u003c')};
   let pending;
   let incoming;
 
@@ -170,18 +179,18 @@ const DOWNLOAD_SCRIPT = `
       incoming.received += 1;
       if (incoming.received < incoming.totalChunks) {
         document.getElementById('status').textContent =
-          'Receiving ' + incoming.name + '… (' + incoming.received + '/' + incoming.totalChunks + ')';
+          TEXT.receiving + ' ' + incoming.name + '… (' + incoming.received + '/' + incoming.totalChunks + ')';
         return;
       }
       pending = incoming;
       incoming = undefined;
       start(pending);
       document.getElementById('status').textContent =
-        'Your download of ' + pending.name + ' has started.';
+        TEXT.started.replace('{name}', pending.name);
       document.getElementById('again').hidden = false;
       vscode.postMessage({ command: 'downloaded' });
     } catch (error) {
-      document.getElementById('status').textContent = 'The download could not be prepared.';
+      document.getElementById('status').textContent = TEXT.failed;
       vscode.postMessage({ command: 'failed', data: { message: String(error) } });
     }
   });
@@ -190,3 +199,4 @@ const DOWNLOAD_SCRIPT = `
     if (pending) { start(pending); }
   });
 `;
+}

@@ -16,6 +16,7 @@ import {
   compareMembersByName
 } from './tutor-filter-tree-items';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
+import { say } from '../../../utils/uiLanguage';
 import type { WebSocketService } from '../../../services/WebSocketService';
 
 const NO_ORG_KEY = '__no_org__';
@@ -342,7 +343,7 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
     const options: TutorGroupOptionItem[] = [];
 
     options.push(new TutorGroupOptionItem(
-      courseId, null, 'All Groups', !currentGroupId, false
+      courseId, null, say('All Groups', 'Alle Gruppen'), !currentGroupId, false
     ));
 
     for (const group of groups) {
@@ -353,7 +354,7 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
     }
 
     options.push(new TutorGroupOptionItem(
-      courseId, null, 'No Group', currentGroupId === NO_GROUP_SENTINEL, true
+      courseId, null, say('No Group', 'Ohne Gruppe'), currentGroupId === NO_GROUP_SENTINEL, true
     ));
 
     return options;
@@ -370,10 +371,10 @@ export class TutorFilterTreeProvider extends BaseTreeDataProvider<FilterTreeItem
 
   resolveGroupLabel(courseId: string, groupId: string | null): string {
     if (!groupId) {
-      return 'All';
+      return say('All', 'Alle');
     }
     if (groupId === NO_GROUP_SENTINEL) {
-      return 'No Group';
+      return say('No Group', 'Ohne Gruppe');
     }
     const groups = this.groupsCache.get(courseId) || [];
     const group = groups.find(g => g.id === groupId);

@@ -15,6 +15,7 @@ import { URL } from 'url';
 import { studentRepoFolderFromRef } from '../utils/repositoryNaming';
 import { CTGit } from '../git/CTGit';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import type { CourseGitDescriptor, CourseMemberRepositoryGet } from '../types/courseGit';
 
 export interface SetUpOptions {
@@ -256,11 +257,12 @@ export class StudentRepositoryProvisioningService {
     // The student supplies an EMPTY repo they created on any provider; we seed it
     // from the course template and link the template as `upstream` for later syncs.
     const entered = await vscode.window.showInputBox({
-      title: 'Link your repository',
-      prompt: 'URL of an EMPTY git repository you created (any provider) to seed from the course template',
+      title: say('Link your repository', 'Dein Repository verknüpfen'),
+      prompt: say('URL of an EMPTY git repository you created (any provider) to seed from the course template',
+        'URL eines LEEREN Git-Repositorys, das du bei einem beliebigen Anbieter angelegt hast; es wird mit der Kursvorlage befüllt'),
       placeHolder: 'https://github.com/me/my-course.git',
       ignoreFocusOut: true,
-      validateInput: (v) => (v && /^https?:\/\/.+/.test(v.trim())) ? undefined : 'Enter an http(s) git repository URL'
+      validateInput: (v) => (v && /^https?:\/\/.+/.test(v.trim())) ? undefined : say('Enter an http(s) git repository URL', 'Gib die http(s)-URL eines Git-Repositorys ein')
     });
     if (!entered) { return { status: 'cancelled' }; }
     const url = entered.trim();
@@ -355,11 +357,12 @@ export class StudentRepositoryProvisioningService {
     let token = await this.context.secrets.get(key);
     if (!token) {
       token = await vscode.window.showInputBox({
-        title: `Access token for ${host}`,
-        prompt: `Enter a git access token for ${host} with write access (stored securely on this machine)`,
+        title: say(`Access token for ${host}`, `Zugriffstoken für ${host}`),
+        prompt: say(`Enter a git access token for ${host} with write access (stored securely on this machine)`,
+          `Gib ein Git-Zugriffstoken für ${host} mit Schreibrecht ein (es wird sicher auf diesem Rechner gespeichert)`),
         password: true,
         ignoreFocusOut: true,
-        validateInput: (v) => (v && v.trim()) ? undefined : 'A token is required'
+        validateInput: (v) => (v && v.trim()) ? undefined : say('A token is required', 'Das Token fehlt')
       });
       if (!token) { return undefined; }
       await this.context.secrets.store(key, token.trim());

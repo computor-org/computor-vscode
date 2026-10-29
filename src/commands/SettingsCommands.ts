@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { SettingsFocus, SettingsWebviewProvider } from '../ui/webviews/SettingsWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { sayFailed } from '../utils/uiLanguage';
 
 export class SettingsCommands {
   private settingsWebviewProvider: SettingsWebviewProvider;
@@ -23,7 +24,7 @@ export class SettingsCommands {
     try {
       await this.settingsWebviewProvider.open(focus);
     } catch (error: any) {
-      notify.error(`Settings failed: ${error?.message || error}`);
+      notify.error(sayFailed('Settings failed', 'Die Einstellungen konnten nicht geöffnet werden', error?.message || error));
       console.error('[SettingsCommands] Settings error:', error);
     }
   }

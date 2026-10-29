@@ -809,6 +809,25 @@
         state.typingUsers = [];
         setState(message.data || {});
         break;
+      case 'setLanguage': {
+        // Relabel without the reset of updateState: the draft and the subject
+        // live in the DOM until they are sent.
+        syncEditorContent();
+        const subjectInput = document.getElementById('message-title');
+        const subject = subjectInput ? subjectInput.value : undefined;
+        const editor = document.getElementById('message-body');
+        const focused = Boolean(editor) && document.activeElement === editor;
+        window.ComputorWebview.setLanguage(message.data?.language);
+        setState({
+          editorPlaceholders: message.data?.editorPlaceholders || state.editorPlaceholders,
+          tutorRoutingNotice: message.data?.tutorRoutingNotice ?? null
+        });
+        const newSubjectInput = document.getElementById('message-title');
+        if (newSubjectInput && subject !== undefined) { newSubjectInput.value = subject; }
+        const newEditor = document.getElementById('message-body');
+        if (focused && newEditor) { newEditor.focus(); }
+        break;
+      }
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
         break;

@@ -4,6 +4,7 @@ import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberCommentList } from '../../types/generated';
 import { CourseMemberCommentsInputPanelProvider } from '../panels/CourseMemberCommentsInputPanel';
 import { notify } from '../../utils/notify';
+import { onDidChangeUiLanguage, say, sayFailed } from '../../utils/uiLanguage';
 import { AUX_COLUMN } from '../editorLayout';
 
 interface CommentsWebviewData {
@@ -22,6 +23,9 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.courseMemberComments');
     this.apiService = apiService;
+    context.subscriptions?.push(onDidChangeUiLanguage(language => {
+      void this.panel?.webview.postMessage({ command: 'setLanguage', data: { language } });
+    }));
   }
 
   public setInputPanel(inputPanel: CourseMemberCommentsInputPanelProvider): void {
@@ -66,11 +70,11 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     }
 
     return this.renderPage({
-      title: 'Course Member Comments',
+      title: say('Course Member Comments', 'Kommentare zum Kursmitglied'),
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['shared/chat-shared.css', 'messaging/comments.css'],
       scriptFiles: ['vendor/marked.min.js', 'messaging/comments.js'],
-      initialState: data ?? { courseMemberId: '', title: 'Comments', comments: [] }
+      initialState: data ?? { courseMemberId: '', title: say('Comments', 'Kommentare'), comments: [] }
     });
   }
 
@@ -139,7 +143,7 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
     const comment = current?.comments.find(c => c.id === data.commentId);
     if (!comment) { return; }
     if (!this.inputPanel) {
-      notify.warning('Comment input panel is not available.');
+      notify.warning(say('Comment input panel is not available.', 'Das Eingabefeld für Kommentare ist nicht verfügbar.'));
       return;
     }
     this.inputPanel.setEditingComment(comment);
@@ -176,9 +180,9 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       this.postLoadingState(false);
       // If the input panel was editing this comment, clear that state.
       this.inputPanel?.clearEditing();
-      notify.info('Comment deleted.');
+      notify.info(say('Comment deleted.', 'Kommentar gelöscht.'));
     } catch (error: any) {
-      notify.error(`Failed to delete comment: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to delete comment', 'Der Kommentar konnte nicht gelöscht werden', error?.message || error));
       this.postLoadingState(false);
     }
   }
@@ -196,7 +200,7 @@ export class CourseMemberCommentsWebviewProvider extends BaseWebviewProvider {
       this.postComments(comments);
       this.postLoadingState(false);
     } catch (error: any) {
-      notify.error(`Failed to refresh comments: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to refresh comments', 'Die Kommentare konnten nicht aktualisiert werden', error?.message || error));
       this.postLoadingState(false);
     }
   }

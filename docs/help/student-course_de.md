@@ -117,7 +117,7 @@ Repository erlischt. Den Aufbau des Archivs wählst du selbst:
 
 Im Browser wird das Archiv in deinem Arbeitsbereich unter `exports/` gespeichert
 und anschließend auf deinen Computer heruntergeladen. Blockiert dein Browser den
-Download, verwende die Schaltfläche *Download again* auf der Seite, die sich
+Download, verwende die Schaltfläche *Erneut herunterladen* auf der Seite, die sich
 öffnet, oder klicke die Datei im Explorer mit der rechten Maustaste an und wähle
 *Herunterladen…* (in englischem VS Code *Download…*). In der Desktop-Version von VS Code wirst du gefragt, wo die Datei
 gespeichert werden soll.

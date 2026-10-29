@@ -23,6 +23,7 @@ import type { ReplaceOptions, ReplaceTarget } from '../utils/exampleTextReplace'
 import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 
 /**
  * Simplified example commands for the lecturer view
@@ -1610,9 +1611,9 @@ export class LecturerExampleCommands {
         canSelectFolders: false,
         canSelectMany: false,
         filters: {
-          'ZIP Archives': ['zip']
+          [say('ZIP Archives', 'ZIP-Archive')]: ['zip']
         },
-        title: 'Select ZIP file containing examples'
+        title: say('Select ZIP file containing examples', 'ZIP-Datei mit Beispielen auswählen')
       });
 
       if (!zipFileUri || zipFileUri.length === 0) {
@@ -2804,7 +2805,7 @@ export class LecturerExampleCommands {
       canSelectFiles: false,
       canSelectFolders: true,
       canSelectMany: false,
-      openLabel: 'Import Examples'
+      openLabel: say('Import Examples', 'Beispiele importieren')
     });
     if (!uris || uris.length === 0) { return; }
 

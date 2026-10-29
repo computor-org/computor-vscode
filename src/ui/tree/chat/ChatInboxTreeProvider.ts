@@ -8,6 +8,7 @@ import { WebSocketService } from '../../../services/WebSocketService';
 import { MessagesWebviewProvider, MessageTargetContext } from '../../webviews/MessagesWebviewProvider';
 import type { MessageCountsGet, MessageList } from '../../../types/generated';
 import { notify } from '../../../utils/notify';
+import { say, sayFailed } from '../../../utils/uiLanguage';
 
 const GLOBAL_CHANNEL = 'global';
 import {
@@ -217,6 +218,11 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
   override refresh(): void {
     void this.requestReload();
+  }
+
+  /** Redraws the loaded rows without a reload, e.g. in a new reading language. */
+  redraw(): void {
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
   private requestReload(): Promise<void> {
@@ -441,7 +447,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
     const choices = await this.targetChoices(scope, courseId);
     if (choices.length === 0) {
-      notify.info(`No ${scopeLabel(scope).toLowerCase()} you can open here yet.`);
+      notify.info(say(`No ${scopeLabel(scope).toLowerCase()} you can open here yet.`, `Hier gibt es noch nichts aus „${scopeLabel(scope)}“, das du öffnen kannst.`));
       return;
     }
     if (choices.length === 1) {
@@ -455,7 +461,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         description: c.description,
         targetId: c.targetId
       })),
-      { title: `Open ${scopeLabel(scope)}`, placeHolder: 'Pick a destination' }
+      { title: say(`Open ${scopeLabel(scope)}`, `${scopeLabel(scope)} öffnen`), placeHolder: say('Pick a destination', 'Wähle ein Ziel') }
     );
     if (!picked) { return; }
     await this.openScopeTarget(scope, picked.targetId);
@@ -495,7 +501,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       });
       messages = page.items;
     } catch (err: any) {
-      notify.error(`Failed to load ${scopeLabel(scope).toLowerCase()}: ${err?.message || err}`);
+      notify.error(sayFailed(`Failed to load ${scopeLabel(scope).toLowerCase()}`, `„${scopeLabel(scope)}“ konnte nicht geladen werden`, err?.message || err));
       return [];
     }
 
@@ -529,7 +535,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       currentUserId: this.currentUserId
     });
     if (!ctx) {
-      notify.warning('Cannot open this view: target context unavailable.');
+      notify.warning(say('Cannot open this view: target context unavailable.', 'Diese Ansicht lässt sich nicht öffnen, weil ihr Ziel fehlt.'));
       return;
     }
     await this.messagesProvider.showMessages(ctx);
@@ -538,7 +544,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
   async openThread(threadItem: ChatThreadItem): Promise<void> {
     const ctx = await this.buildTargetContext(threadItem.thread);
     if (!ctx) {
-      notify.warning('Cannot open this conversation: target context unavailable.');
+      notify.warning(say('Cannot open this conversation: target context unavailable.', 'Diese Unterhaltung lässt sich nicht öffnen, weil ihr Ziel fehlt.'));
       return;
     }
 
@@ -615,7 +621,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       .reverse()
       .find(m => m.author_id !== this.currentUserId && m.is_read);
     if (!candidate) {
-      notify.info('Nothing here to mark as unread.');
+      notify.info(say('Nothing here to mark as unread.', 'Hier gibt es nichts, was sich als ungelesen markieren ließe.'));
       return;
     }
     this.markUnreadLocally([candidate]);
@@ -626,7 +632,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
     try {
       await this.api.markMessageUnread(candidate.id);
     } catch (err: any) {
-      notify.error(`Failed to mark as unread: ${err?.message || err}`);
+      notify.error(sayFailed('Failed to mark as unread', 'Als ungelesen markieren ist fehlgeschlagen', err?.message || err));
     } finally {
       this.suppressWsReloadUntil = Date.now() + ChatInboxTreeProvider.MARK_READ_WS_SUPPRESS_MS;
     }
@@ -754,7 +760,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       state.total = Math.max(state.total, next.total);
       await this.rebuildAssembled();
     } catch (err: any) {
-      notify.error(`Failed to load more messages: ${err?.message || err}`);
+      notify.error(sayFailed('Failed to load more messages', 'Weitere Nachrichten konnten nicht geladen werden', err?.message || err));
     } finally {
       this.scopeLoadingMore.delete(scope);
       this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -790,7 +796,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       state.total = Math.max(state.total, next.total);
       await this.rebuildAssembled();
     } catch (err: any) {
-      notify.error(`Failed to load more messages: ${err?.message || err}`);
+      notify.error(sayFailed('Failed to load more messages', 'Weitere Nachrichten konnten nicht geladen werden', err?.message || err));
     } finally {
       this.courseScopeLoadingMore.delete(key);
       this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -841,7 +847,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
       if (this.loading) { return [new ChatLoadingItem()]; }
       if (this.loadError) { return [new ChatErrorItem(this.loadError)]; }
       if (this.rootItems.length === 0) {
-        return [new ChatEmptyItem(this.unreadOnly ? 'No unread messages.' : 'No messages.')];
+        return [new ChatEmptyItem(this.unreadOnly ? say('No unread messages.', 'Keine ungelesenen Nachrichten.') : say('No messages.', 'Keine Nachrichten.'))];
       }
       return [...this.rootItems];
     }
@@ -855,7 +861,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         }
       }
       if (items.length === 0) {
-        items.push(new ChatEmptyItem('No announcements.'));
+        items.push(new ChatEmptyItem(say('No announcements.', 'Keine Ankündigungen.')));
       }
       return items;
     }
@@ -1052,7 +1058,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
           this._onDidChangeUnread.fire(this.getTotalUnread());
         });
       } catch (err: any) {
-        return [new ChatErrorItem(`Failed to load messages: ${err?.message || err}`)];
+        return [new ChatErrorItem(sayFailed('Failed to load messages', 'Die Nachrichten konnten nicht geladen werden', err?.message || err))];
       }
     }
 
@@ -1103,8 +1109,8 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
         && scopes.some(scope => (this.courseScopeStates.get(scope)?.get(courseId)?.messages.length ?? 0) > 0);
       items.push(new ChatEmptyItem(
         hasHiddenRead
-          ? 'No unread conversations. Read ones stay reachable from the Tutor view.'
-          : 'No messages.'
+          ? say('No unread conversations. Read ones stay reachable from the Tutor view.', 'Keine ungelesenen Unterhaltungen. Gelesene erreichst du weiterhin über die Tutoransicht.')
+          : say('No messages.', 'Keine Nachrichten.')
       ));
     }
     return items;
@@ -1240,7 +1246,7 @@ export class ChatInboxTreeProvider extends BaseTreeDataProvider<AnyTreeItem> {
 
       await this.rebuildAssembled();
     } catch (error: any) {
-      this.loadError = `Failed to load messages: ${error?.message || error}`;
+      this.loadError = sayFailed('Failed to load messages', 'Die Nachrichten konnten nicht geladen werden', error?.message || error);
       this.rootItems = [];
       this.cachedMessages = [];
       this.scopeFetchStates.clear();

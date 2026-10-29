@@ -3,7 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberGradingsGet } from '../../types/generated';
 import { notify } from '../../utils/notify';
-import { say } from '../../utils/uiLanguage';
+import { say, sayFailed } from '../../utils/uiLanguage';
 
 interface CourseMemberProgressData {
   memberGradings: CourseMemberGradingsGet;
@@ -65,7 +65,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
             await vscode.env.clipboard.writeText(message.data.text);
             this.panel?.webview.postMessage({ command: 'copySuccess', data: { btnId: message.data.btnId } });
           } catch (err) {
-            notify.error(say(`Failed to copy: ${err}`, `Kopieren fehlgeschlagen: ${err}`));
+            notify.error(sayFailed(`Failed to copy`, `Kopieren fehlgeschlagen`, err));
           }
         }
         break;
@@ -90,7 +90,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
         this.panel.webview.postMessage({ command: 'updateData', data: { memberGradings } });
       }
     } catch (error: any) {
-      notify.error(say(`Failed to refresh progress data: ${error?.message || error}`, `Die Fortschrittsdaten konnten nicht aktualisiert werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to refresh progress data`, `Die Fortschrittsdaten konnten nicht aktualisiert werden`, error?.message || error));
     } finally {
       this.postLoadingState(false);
     }

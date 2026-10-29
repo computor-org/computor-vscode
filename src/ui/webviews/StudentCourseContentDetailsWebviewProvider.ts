@@ -6,7 +6,7 @@ import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeLis
 import { copyToClipboard } from '../../utils/clipboard';
 import { notify } from '../../utils/notify';
 import { revealUri } from '../../utils/reveal';
-import { onDidChangeUiLanguage, say } from '../../utils/uiLanguage';
+import { onDidChangeUiLanguage, say, sayFailed } from '../../utils/uiLanguage';
 
 export interface StudentContentDetailsViewState {
   course?: {
@@ -165,7 +165,7 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       const targetUri = vscode.Uri.file(stat.isDirectory() ? folderPath : path.dirname(folderPath));
       await revealUri(targetUri);
     } catch (error: any) {
-      notify.error(`Failed to open folder: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to open folder', 'Der Ordner konnte nicht geöffnet werden', error?.message || error));
     }
   }
 
@@ -178,7 +178,7 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
     try {
       await vscode.env.openExternal(vscode.Uri.parse(url));
     } catch (error: any) {
-      notify.error(`Failed to open repository: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to open repository', 'Das Repository konnte nicht geöffnet werden', error?.message || error));
     }
   }
 

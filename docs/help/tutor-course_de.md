@@ -18,8 +18,8 @@ dich wartet. Wie du eine einzelne Aufgabe bearbeitest, beschreibt
 **Kurse und Teilnehmende** führt deine Kurse unter ihrer Organisation und
 Kursfamilie auf. Klicke auf einen Kurs, um ihn auszuwählen. Danach gilt:
 
-- **Course Groups** schränkt die Liste der Teilnehmenden auf eine Gruppe ein.
-  Mit *All groups* siehst du alle, mit *No Group* jene, die keiner Gruppe
+- **Kursgruppen** schränkt die Liste der Teilnehmenden auf eine Gruppe ein.
+  Mit *Alle Gruppen* siehst du alle, mit *Ohne Gruppe* jene, die keiner Gruppe
   angehören.
 - Ein Klick auf eine Person lädt ihre Inhalte in die Ansicht **Kurse**.
 

@@ -23,7 +23,7 @@ import { pickLatestSubmissionArtifactId, sortSubmissionArtifactsByRecency } from
 import { tutorTestTargetFor } from '../ui/tree/tutor/tutorTestTarget';
 import { tutorHelpPageFor } from '../utils/tutorHelpPages';
 import { helpPagePath } from '../utils/studentHelpPages';
-import { say } from '../utils/uiLanguage';
+import { say, sayFailed } from '../utils/uiLanguage';
 interface TutorFilterRefreshable {
   refreshFilters(): void;
 }
@@ -279,7 +279,7 @@ export class TutorCommands {
         }
         // Directory is already inside the current workspace; no need to add a new folder
       } catch (e: any) {
-        notify.error(say(`Failed to clone student repository: ${e?.message || e}`, `Das Repository der Person konnte nicht geklont werden: ${e?.message || e}`));
+        notify.error(sayFailed(`Failed to clone student repository`, `Das Repository der Person konnte nicht geklont werden`, e?.message || e));
       }
     });
 
@@ -345,7 +345,7 @@ export class TutorCommands {
         notify.info(say('Repository updated successfully.', 'Das Repository ist aktualisiert.'));
         this.treeDataProvider.refresh();
       } catch (e: any) {
-        notify.error(say(`Failed to update repository: ${e?.message || e}`, `Das Repository konnte nicht aktualisiert werden: ${e?.message || e}`));
+        notify.error(sayFailed(`Failed to update repository`, `Das Repository konnte nicht aktualisiert werden`, e?.message || e));
       }
     });
 
@@ -438,7 +438,7 @@ export class TutorCommands {
           await this.showMessages(item);
         }
       } catch (e: any) {
-        notify.error(say(`Failed to update grading: ${e?.message || e}`, `Die Bewertung konnte nicht gespeichert werden: ${e?.message || e}`));
+        notify.error(sayFailed(`Failed to update grading`, `Die Bewertung konnte nicht gespeichert werden`, e?.message || e));
       }
     });
 
@@ -593,7 +593,7 @@ export class TutorCommands {
           : say(`${label} for ${who}: ${resolved}`, `${label} für ${who}: ${resolved}`)
       );
     } catch (error: any) {
-      notify.error(say(`Failed to set ${label}: ${error?.message || error}`, `${label} konnte nicht gespeichert werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to set ${label}`, `${label} konnte nicht gespeichert werden`, error?.message || error));
     }
   }
 
@@ -652,7 +652,7 @@ export class TutorCommands {
       const title = segments.length > 0 ? segments.join(' — ') : memberId;
       await this.commentsWebviewProvider.showComments(memberId, title, opts);
     } catch (error: any) {
-      notify.error(say(`Failed to open comments: ${error?.message || error}`, `Die Kommentare konnten nicht geöffnet werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to open comments`, `Die Kommentare konnten nicht geöffnet werden`, error?.message || error));
     }
   }
 
@@ -772,7 +772,7 @@ export class TutorCommands {
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      notify.error(say(`Failed to open messages: ${error?.message || error}`, `Die Nachrichten konnten nicht geöffnet werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to open messages`, `Die Nachrichten konnten nicht geöffnet werden`, error?.message || error));
     }
   }
 
@@ -842,7 +842,7 @@ export class TutorCommands {
       notify.info(say(`Reference downloaded to ${referencePath}`, `Musterlösung heruntergeladen nach ${referencePath}`));
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(say(`Failed to download reference: ${error?.message || error}`, `Die Musterlösung konnte nicht heruntergeladen werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to download reference`, `Die Musterlösung konnte nicht heruntergeladen werden`, error?.message || error));
     }
   }
 
@@ -922,7 +922,7 @@ export class TutorCommands {
       notify.info(say(`Submission artifact downloaded to ${submissionPath}`, `Abgabe heruntergeladen nach ${submissionPath}`));
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(say(`Failed to download submission artifact: ${error?.message || error}`, `Die Abgabe konnte nicht heruntergeladen werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to download submission artifact`, `Die Abgabe konnte nicht heruntergeladen werden`, error?.message || error));
     }
   }
 
@@ -985,7 +985,7 @@ export class TutorCommands {
 
       await vscode.commands.executeCommand('vscode.diff', referenceUri, submissionUri, title);
     } catch (error: any) {
-      notify.error(say(`Failed to compare with reference: ${error?.message || error}`, `Der Vergleich mit der Musterlösung ist fehlgeschlagen: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to compare with reference`, `Der Vergleich mit der Musterlösung ist fehlgeschlagen`, error?.message || error));
     }
   }
 
@@ -1034,7 +1034,7 @@ export class TutorCommands {
 
     } catch (error: any) {
       console.error('[TutorCommands] Error in showSubmissionTestResults:', error);
-      notify.error(say(`Failed to show test results: ${error?.message || error}`, `Die Testergebnisse konnten nicht angezeigt werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to show test results`, `Die Testergebnisse konnten nicht angezeigt werden`, error?.message || error));
     }
   }
 
@@ -1178,7 +1178,7 @@ export class TutorCommands {
       this.treeDataProvider.markForVirtualFolderExpansion(content.id);
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(say(`Failed to checkout: ${error?.message || error}`, `Das Auschecken ist fehlgeschlagen: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to checkout`, `Das Auschecken ist fehlgeschlagen`, error?.message || error));
     }
   }
 
@@ -1235,7 +1235,7 @@ export class TutorCommands {
       // Find and open README file
       await this.openReadmeFromDirectory(descriptionPath, content.course_id);
     } catch (error: any) {
-      notify.error(say(`Failed to show README: ${error?.message || error}`, `Die Anleitung konnte nicht angezeigt werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to show README`, `Die Anleitung konnte nicht angezeigt werden`, error?.message || error));
     }
   }
 
@@ -1336,7 +1336,7 @@ export class TutorCommands {
       await this.runTutorTestAndOpenResults(courseContentId, submissionPath, assignmentTitle);
     } catch (error: any) {
       console.error('[TutorCommands] Error running test:', error);
-      notify.error(say(`Failed to run test: ${error?.message || error}`, `Der Test konnte nicht ausgeführt werden: ${error?.message || error}`));
+      notify.error(sayFailed(`Failed to run test`, `Der Test konnte nicht ausgeführt werden`, error?.message || error));
     }
   }
 

@@ -58,6 +58,7 @@ import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import { revealUri } from '../utils/reveal';
 import {
   computeInsertPosition,
@@ -709,7 +710,7 @@ export class LecturerCommands {
       filters: {
         'YAML': ['yaml', 'yml']
       },
-      title: 'Select course_deployment.yaml to deploy'
+      title: say('Select course_deployment.yaml to deploy', 'Bereitzustellende course_deployment.yaml auswählen')
     });
     if (!fileUri || fileUri.length === 0) { return; }
     const firstFile = fileUri[0];

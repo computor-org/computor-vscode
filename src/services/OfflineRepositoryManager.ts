@@ -5,6 +5,7 @@ import { execAsync } from '../utils/exec';
 import { execGitClone } from '../git/gitCloneHelpers';
 import { addTokenToGitUrl, extractOriginFromGitUrl } from '../utils/gitUrlHelpers';
 import { notify } from '../utils/notify';
+import { say, sayFailed } from '../utils/uiLanguage';
 
 /**
  * Repository configuration for offline mode
@@ -48,7 +49,7 @@ export class OfflineRepositoryManager {
       // Extract GitLab origin from repository URL
       const gitlabOrigin = extractOriginFromGitUrl(repositoryUrl);
       if (!gitlabOrigin) {
-        notify.error('Invalid repository URL. Must be a valid HTTPS GitLab URL.');
+        notify.error(say('Invalid repository URL. Must be a valid HTTPS GitLab URL.', 'Ungültige Repository-URL. Gib eine gültige HTTPS-URL von GitLab an.'));
         return;
       }
 
@@ -68,10 +69,10 @@ export class OfflineRepositoryManager {
       // Clone the repository
       await this.cloneRepository(config);
 
-      notify.info('✓ Course repository added successfully');
+      notify.info(say('✓ Course repository added successfully', '✓ Das Kurs-Repository wurde hinzugefügt.'));
     } catch (error: any) {
       console.error('[OfflineRepositoryManager] Failed to add course:', error);
-      notify.error(`Failed to add course: ${error.message}`);
+      notify.error(sayFailed('Failed to add course', 'Der Kurs konnte nicht hinzugefügt werden', error.message));
     }
   }
 
@@ -80,13 +81,13 @@ export class OfflineRepositoryManager {
    */
   private async promptRepositoryUrl(): Promise<string | undefined> {
     const url = await vscode.window.showInputBox({
-      title: 'Add Course - Repository URL',
-      prompt: 'Enter the HTTPS or git@ URL of your student repository',
-      placeHolder: 'https://gitlab.com/user/repo.git or git@gitlab.com:user/repo.git',
+      title: say('Add Course - Repository URL', 'Kurs hinzufügen – Repository-URL'),
+      prompt: say('Enter the HTTPS or git@ URL of your student repository', 'Gib die HTTPS- oder git@-URL deines Repositorys ein'),
+      placeHolder: say('https://gitlab.com/user/repo.git or git@gitlab.com:user/repo.git', 'https://gitlab.com/user/repo.git oder git@gitlab.com:user/repo.git'),
       ignoreFocusOut: true,
       validateInput: (value) => {
         if (!value) {
-          return 'Repository URL is required';
+          return say('Repository URL is required', 'Die Repository-URL fehlt');
         }
 
         // Normalize git@ URLs to https://
@@ -95,7 +96,7 @@ export class OfflineRepositoryManager {
           // Convert git@gitlab.com:user/repo.git to https://gitlab.com/user/repo.git
           const match = normalizedUrl.match(/^git@([^:]+):(.+)$/);
           if (!match) {
-            return 'Invalid git@ URL format';
+            return say('Invalid git@ URL format', 'Ungültiges Format der git@-URL');
           }
           normalizedUrl = `https://${match[1]}/${match[2]}`;
         }
@@ -104,10 +105,10 @@ export class OfflineRepositoryManager {
         try {
           const urlObj = new URL(normalizedUrl);
           if (!['http:', 'https:'].includes(urlObj.protocol)) {
-            return 'Only HTTP/HTTPS URLs are supported';
+            return say('Only HTTP/HTTPS URLs are supported', 'Nur HTTP- und HTTPS-URLs werden unterstützt');
           }
         } catch {
-          return 'Enter a valid repository URL';
+          return say('Enter a valid repository URL', 'Gib eine gültige Repository-URL ein');
         }
 
         return undefined;
@@ -140,13 +141,13 @@ export class OfflineRepositoryManager {
    */
   private async promptTemplateUrl(): Promise<string | undefined> {
     const url = await vscode.window.showInputBox({
-      title: 'Add Course - Template Repository URL',
-      prompt: 'Enter the HTTPS URL of the student-template repository (fork origin)',
+      title: say('Add Course - Template Repository URL', 'Kurs hinzufügen – URL des Vorlagen-Repositorys'),
+      prompt: say('Enter the HTTPS URL of the student-template repository (fork origin)', 'Gib die HTTPS-URL des Vorlagen-Repositorys ein, von dem dein Repository abgeleitet ist'),
       placeHolder: 'https://gitlab.com/course/student-template.git',
       ignoreFocusOut: true,
       validateInput: (value) => {
         if (!value) {
-          return 'Template URL is required';
+          return say('Template URL is required', 'Die URL der Vorlage fehlt');
         }
 
         // Normalize git@ URLs to https://
@@ -154,7 +155,7 @@ export class OfflineRepositoryManager {
         if (normalizedUrl.startsWith('git@')) {
           const match = normalizedUrl.match(/^git@([^:]+):(.+)$/);
           if (!match) {
-            return 'Invalid git@ URL format';
+            return say('Invalid git@ URL format', 'Ungültiges Format der git@-URL');
           }
           normalizedUrl = `https://${match[1]}/${match[2]}`;
         }
@@ -163,10 +164,10 @@ export class OfflineRepositoryManager {
         try {
           const urlObj = new URL(normalizedUrl);
           if (!['http:', 'https:'].includes(urlObj.protocol)) {
-            return 'Only HTTP/HTTPS URLs are supported';
+            return say('Only HTTP/HTTPS URLs are supported', 'Nur HTTP- und HTTPS-URLs werden unterstützt');
           }
         } catch {
-          return 'Enter a valid template URL';
+          return say('Enter a valid template URL', 'Gib eine gültige URL der Vorlage ein');
         }
 
         return undefined;
@@ -199,17 +200,17 @@ export class OfflineRepositoryManager {
    */
   private async promptGitLabToken(gitlabOrigin: string): Promise<string | undefined> {
     const token = await vscode.window.showInputBox({
-      title: `Add Course - GitLab Token for ${gitlabOrigin}`,
-      prompt: `Enter your GitLab Personal Access Token for ${gitlabOrigin}`,
+      title: say(`Add Course - GitLab Token for ${gitlabOrigin}`, `Kurs hinzufügen – GitLab-Token für ${gitlabOrigin}`),
+      prompt: say(`Enter your GitLab Personal Access Token for ${gitlabOrigin}`, `Gib dein persönliches GitLab-Zugriffstoken für ${gitlabOrigin} ein`),
       placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
       password: true,
       ignoreFocusOut: true,
       validateInput: (value) => {
         if (!value) {
-          return 'GitLab token is required';
+          return say('GitLab token is required', 'Das GitLab-Token fehlt');
         }
         if (value.length < 10) {
-          return 'Token seems too short';
+          return say('Token seems too short', 'Das Token scheint zu kurz zu sein');
         }
         return undefined;
       }
@@ -224,7 +225,7 @@ export class OfflineRepositoryManager {
   private async cloneRepository(config: OfflineRepositoryConfig): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
     if (!workspaceRoot) {
-      throw new Error('No workspace folder open');
+      throw new Error(say('No workspace folder open', 'Kein Arbeitsbereichsordner geöffnet'));
     }
 
     // Ensure student/ directory exists
@@ -239,13 +240,14 @@ export class OfflineRepositoryManager {
 
     // Check if directory already exists
     if (fs.existsSync(targetPath)) {
+      const overwrite = say('Overwrite', 'Überschreiben');
       const action = await notify.warning(
-        `Directory "${repoName}" already exists. Do you want to overwrite it?`,
-        'Overwrite',
-        'Cancel'
+        say(`Directory "${repoName}" already exists. Do you want to overwrite it?`, `Den Ordner „${repoName}“ gibt es schon. Möchtest du ihn überschreiben?`),
+        overwrite,
+        say('Cancel', 'Abbrechen')
       );
 
-      if (action !== 'Overwrite') {
+      if (action !== overwrite) {
         return;
       }
 
@@ -256,21 +258,21 @@ export class OfflineRepositoryManager {
     // Clone with progress
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: `Cloning ${repoName}...`,
+      title: say(`Cloning ${repoName}…`, `${repoName} wird geklont …`),
       cancellable: true
     }, async (progress) => {
-      progress.report({ increment: 0, message: 'Preparing...' });
+      progress.report({ increment: 0, message: say('Preparing…', 'Vorbereitung …') });
 
       // Add token to URL for authentication
       const authenticatedUrl = addTokenToGitUrl(config.repositoryUrl, config.gitlabToken);
 
-      progress.report({ increment: 30, message: 'Cloning repository...' });
+      progress.report({ increment: 30, message: say('Cloning repository…', 'Repository wird geklont …') });
 
       try {
         // Clone the repository
         await execGitClone(authenticatedUrl, repoName, { cwd: studentDir });
 
-        progress.report({ increment: 60, message: 'Setting up remote...' });
+        progress.report({ increment: 60, message: say('Setting up remote…', 'Remote wird eingerichtet …') });
 
         // Add upstream remote (template repository) with authentication
         const authenticatedTemplateUrl = addTokenToGitUrl(config.templateUrl, config.gitlabToken);
@@ -278,7 +280,7 @@ export class OfflineRepositoryManager {
           cwd: targetPath
         });
 
-        progress.report({ increment: 100, message: 'Done!' });
+        progress.report({ increment: 100, message: say('Done!', 'Fertig.') });
 
         // Deliberately NOT setting `credential.helper store`: that writes every
         // credential git subsequently handles into plaintext ~/.git-credentials,
@@ -286,8 +288,10 @@ export class OfflineRepositoryManager {
         // The token is already embedded in the remotes this flow configured, so
         // it is not needed for the clone to keep working.
         void notify.warning(
-          'This repository was set up in offline mode, so your access token is stored ' +
-          'in its .git/config in plain text. Remove the folder when you are done with it.'
+          say('This repository was set up in offline mode, so your access token is stored ' +
+            'in its .git/config in plain text. Remove the folder when you are done with it.',
+          'Dieses Repository wurde im Offline-Modus eingerichtet, daher steht dein Zugriffstoken ' +
+            'im Klartext in seiner .git/config. Lösche den Ordner, sobald du ihn nicht mehr brauchst.')
         );
       } catch (error: any) {
         // Clean up on failure

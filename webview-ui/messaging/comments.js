@@ -196,6 +196,9 @@
     }
   });
 
+  // The list redraws from state, so a new language keeps what is loaded.
+  window.ComputorWebview.onLanguageChange(() => render());
+
   document.addEventListener('DOMContentLoaded', () => {
     render();
   });

@@ -112,6 +112,18 @@ export function say(en: string, de: string): string {
 }
 
 /**
+ * A failure message whose raw cause (often an English server or Git text) is
+ * kept apart: "Failed to save: <cause>" in English, "<German lead>. Details:
+ * <cause>" in German, so the German reader gets a whole sentence first.
+ * Both leads are given without a closing full stop.
+ */
+export function sayFailed(en: string, de: string, cause: unknown): string {
+  const detail = cause instanceof Error ? cause.message : cause === null || cause === undefined ? '' : String(cause);
+  if (!detail.trim()) return say(`${en}.`, `${de}.`);
+  return say(`${en}: ${detail}`, `${de}. Details: ${detail}`);
+}
+
+/**
  * The locale for dates and numbers in the extension's own text: the VS Code
  * display locale when it is in the UI language (so "en-GB" keeps its order),
  * otherwise the UI language itself. `toLocaleString()` without a locale used

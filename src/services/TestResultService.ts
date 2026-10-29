@@ -66,7 +66,7 @@ export class TestResultService {
     options?: { progress?: vscode.Progress<{ message?: string; increment?: number }>; token?: vscode.CancellationToken; showProgress?: boolean; courseContentId?: string }
   ): Promise<{ status: 'SUCCESS' | 'FAILED' | 'ERROR' | 'CANCELLED' | 'TIMEOUT'; result?: number } | undefined> {
     if (!this.apiService) {
-      notify.error('Test service not properly initialized');
+      notify.error(say('Test service not properly initialized', 'Der Testdienst ist nicht richtig gestartet.'));
       return;
     }
 
@@ -265,7 +265,7 @@ export class TestResultService {
 
       // Start polling if we have a result ID
       if (!testResult || !testResult.id) {
-        notify.error('Test submitted but no result ID received');
+        notify.error(say('Test submitted but no result ID received', 'Der Test wurde gestartet, aber es kam keine Ergebnis-ID zurück.'));
         return { status: 'ERROR' };
       }
 
