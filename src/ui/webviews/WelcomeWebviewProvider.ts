@@ -6,14 +6,13 @@ import { showMarkdownPreview } from './markdownPreview';
 import { focusViewContainer } from '../focusViewContainer';
 import { containerById } from '../viewContainers';
 import { notify } from '../../utils/notify';
-import { say } from '../../utils/uiLanguage';
+import { say, uiLanguage } from '../../utils/uiLanguage';
 import { helpPagePath } from '../../utils/studentHelpPages';
 import {
   collectWelcomeFacts,
   renderWelcomeBody,
   resolveWelcomeMessage,
   welcomeRoleContainers,
-  welcomeLanguage,
   welcomeTitle,
   WelcomeApi,
   WelcomeIntent,
@@ -99,9 +98,8 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
     const facts = await collectWelcomeFacts(this.sources.api(), this.sources.launchedCourseId?.());
     return {
       ...facts,
-      // Before sign-in there is no profile to ask, so the page follows the
-      // display language VS Code itself uses (computor-org/issues#366).
-      language: facts.language ?? welcomeLanguage(vscode.env.language),
+      // Before sign-in there is no account to ask (computor-org/issues#366).
+      language: facts.language ?? uiLanguage(),
       inBrowser: vscode.env.uiKind === vscode.UIKind.Web,
       workbenchLanguage: vscode.env.language?.toLowerCase().startsWith('de') ? 'de' : 'en',
       backendUrl: await this.sources.backendUrl().catch(() => undefined),

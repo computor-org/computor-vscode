@@ -3,7 +3,8 @@ import type * as vscode from 'vscode';
 import type { ComputorApiService } from './ComputorApiService';
 import type { CourseContentStudentList, CourseStudentList } from '../types/generated';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
-import { descriptionInLanguage, localizedUnitTitle, resolveContentLanguage } from '../utils/contentLanguage';
+import { descriptionInLanguage, localizedUnitTitle } from '../utils/contentLanguage';
+import { accountLanguage, LanguageAccount } from '../utils/uiLanguage';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, MarkdownPreviewRequest, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
 import { courseWelcomeItem, hasStartedCourse, nextOpenCourseItem } from '../utils/courseStart';
 
@@ -67,7 +68,7 @@ export async function showWorkspaceCourseLanding(
   if (welcome) {
     await showWorkspaceCourseUnit(context, api, welcome, { request });
   } else {
-    const language = await readingLanguage(api, course.id);
+    const language = await readingLanguage(api);
     if (!request.isCurrent()) return undefined;
     await showMarkdownTextPreview(context, descriptionInLanguage(course.description ?? '', language), course.title || course.path, {
       request, studentReading: true
@@ -177,7 +178,7 @@ export async function showWorkspaceCourseUnit(
   options: MarkdownPreviewOptions = {}
 ): Promise<boolean> {
   const request = options.request ?? beginMarkdownPreviewRequest();
-  const language = await readingLanguage(api, content.course_id);
+  const language = await readingLanguage(api);
   if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return false;
   await showMarkdownTextPreview(context, descriptionInLanguage(content.description ?? '', language), localizedUnitTitle(content.title || content.path, language), {
     ...options, request, studentReading: true,
@@ -186,15 +187,12 @@ export async function showWorkspaceCourseUnit(
   return request.isCurrent() && (options.isCurrent?.() ?? true);
 }
 
-/** The learner's profile language, else the course's, else English. */
-export async function readingLanguage(api: ComputorApiService, courseId: string): Promise<string> {
-  let userLanguage: string | null | undefined;
-  let courseLanguage: string | null | undefined;
+/** The reading language (uiLanguage) for the account as the backend reports it now. */
+export async function readingLanguage(api: { getUserAccount(): Promise<LanguageAccount | undefined> }): Promise<string> {
   try {
-    userLanguage = (await api.getUserAccount())?.profile?.language_code;
-    if (!userLanguage && courseId) courseLanguage = (await api.getCourse(courseId))?.language_code;
+    return accountLanguage(await api.getUserAccount());
   } catch (error) {
     console.warn('[WorkspaceCourseLanding] Could not load the language preference:', error);
+    return accountLanguage(undefined);
   }
-  return resolveContentLanguage(userLanguage, courseLanguage);
 }

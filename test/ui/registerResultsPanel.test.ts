@@ -57,11 +57,30 @@ describe('registerResultsPanel', () => {
     expect(registered).to.include('computor.showTestResults');
   });
 
+  it('redraws the result details in a new reading language without reopening them', () => {
+    const originalProvider = vscode.window.registerWebviewViewProvider;
+    let panel: any;
+    (vscode.window as any).registerWebviewViewProvider = (_id: string, provider: any) => { panel = provider; return { dispose() {} }; };
+    const posted: any[] = [];
+    const disposables = registerResultsPanel(context, api, async () => {});
+    try {
+      panel.view = { webview: { postMessage: (message: any) => { posted.push(message); return Promise.resolve(true); } } };
+      setUiProfileLanguage('en');
+      panel.clearDetails(false);
+      setUiProfileLanguage('de');
+      expect(posted.map(message => message.data.label)).to.deep.equal(['Result Details', 'Ergebnisdetails']);
+    } finally {
+      for (const disposable of disposables) disposable.dispose();
+      (vscode.window as any).registerWebviewViewProvider = originalProvider;
+      setUiProfileLanguage(undefined);
+    }
+  });
+
   it('returns disposables for everything it registered', () => {
     const disposables = registerResultsPanel(context, api, async () => {});
 
-    // one webview provider + one tree provider + the commands
-    expect(disposables.length).to.equal(REQUIRED_COMMANDS.length + 2);
+    // one webview provider + one tree provider + the language listener + the commands
+    expect(disposables.length).to.equal(REQUIRED_COMMANDS.length + 3);
     for (const disposable of disposables) {
       expect(disposable.dispose).to.be.a('function');
     }

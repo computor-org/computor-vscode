@@ -118,6 +118,11 @@ describe('WebSocketService status and channel ownership (#259)', () => {
     socket.receive({ type: 'permissions:updated', channel: 'user:1', data: { user_id: '1' } });
     socket.receive({ type: 'maintenance:activated', active: true, message: 'Maintenance', activated_at: 'now' });
     expect(permissions).to.equal(1);
+
+    const profiles: unknown[] = [];
+    service.subscribe([], 'profile', { onUserProfileUpdated: event => { profiles.push(event.data); } });
+    socket.receive({ type: 'user:profile_updated', channel: 'user:1', data: { user_id: '1', language_code: 'de' } });
+    expect(profiles).to.deep.equal([{ user_id: '1', language_code: 'de' }]);
     expect(statuses[1]!.visible, 'session maintenance notices remain available').to.equal(true);
     expect(service.isConnected()).to.equal(true);
 

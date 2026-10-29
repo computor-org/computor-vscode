@@ -557,8 +557,11 @@ describe('collectWelcomeFacts', () => {
     expect(facts.language).to.equal('en');
   });
 
-  it('describes the launched course in its language, with where to start', async () => {
-    const facts = await collectWelcomeFacts(api(), 'c1');
+  it('describes the launched course in the reading language, not the course\'s, with where to start', async () => {
+    expect((await collectWelcomeFacts(api(), 'c1')).language).to.equal('en');
+    const facts = await collectWelcomeFacts(api({
+      getUserAccount: async () => ({ given_name: 'Ada', effective_language: 'de' })
+    }), 'c1');
 
     expect(facts.language).to.equal('de');
     expect(facts.launch).to.deep.equal({
@@ -568,16 +571,38 @@ describe('collectWelcomeFacts', () => {
     });
   });
 
-  it('keeps course help neutral for self-enrolment, staffed and unknown course metadata', async () => {
-    for (const publicCourse of [true, false, undefined]) {
+  it('keeps course help neutral unless the learner enrolled themselves', async () => {
+    for (const [publicCourse, enrollment] of [
+      [true, async () => ({ self_registered: false })],
+      [false, async () => undefined],
+      [undefined, async () => { throw new Error('404'); }]
+    ] as const) {
       const facts = await collectWelcomeFacts(api({
-        getCourse: async () => ({ title: 'Grundlagen', language_code: 'en', public: publicCourse })
+        getCourse: async () => ({ title: 'Grundlagen', language_code: 'en', public: publicCourse }),
+        getOwnSelfEnrollment: enrollment
       }), 'c1');
       const html = renderWelcomeBody(model(facts));
       expect(html).to.contain('to ask for help in this course.');
       expect(html).to.not.contain('@lena');
       expect(html).to.not.contain('human tutors');
     }
+  });
+
+  it('names Lena, not lecturers and tutors, for a self-enrolled course, in German for a German reader', async () => {
+    const enrolled = api({ getOwnSelfEnrollment: async () => ({ self_registered: true }) });
+    const english = renderWelcomeBody(model(await collectWelcomeFacts(enrolled, 'c1')));
+    expect(english).to.contain('Ask Lena, the AI tutor');
+    expect(english).to.contain('<code>@lena</code>');
+    expect(english).to.not.contain('ask for help in this course');
+
+    const german = renderWelcomeBody(model(await collectWelcomeFacts(api({
+      getUserAccount: async () => ({ profile: { language_code: 'de' } }),
+      getOwnSelfEnrollment: async () => ({ self_registered: true })
+    }), 'c1')));
+    expect(german).to.contain('Frag Lena, die KI-Tutorin');
+    expect(german).to.contain('<code>@lena</code>');
+    expect(german).to.contain('Dein Kurs ist schon geöffnet.');
+    expect(german).to.not.contain('Stuck?');
   });
 
   it('lets the learner\'s own language win over the course language', async () => {
@@ -736,14 +761,14 @@ describe('WelcomeWebviewProvider', () => {
     expect(latestHtml()).to.contain('id="welcome-browser"');
   });
 
-  it('before sign-in, follows the display language of VS Code', async () => {
+  it('before sign-in, follows the display language of VS Code, and after it the account', async () => {
     env.language = 'de-AT';
     await new WelcomeWebviewProvider(context, { api: () => undefined, backendUrl: async () => undefined }).open();
     expect(latestHtml()).to.contain('Backend-URL festlegen');
     expect(webviewPanels[webviewPanels.length - 1]!.title).to.equal('Willkommen bei Computor');
 
     webviewPanels.length = 0;
-    await provider().open();
+    await provider({ ...fakeApi, getUserAccount: async () => ({ given_name: 'Ada', effective_language: 'en' }) }).open();
     expect(latestHtml()).to.contain('Welcome to Computor, Ada!');
   });
 
@@ -782,10 +807,12 @@ describe('WelcomeWebviewProvider', () => {
     expect(latestHtml()).to.contain('Programming in Physics');
   });
 
-  it('speaks to a course launched into the open page, in place and in its language', async () => {
+  it('speaks to a course launched into the open page, in place and in the reading language', async () => {
     let launched: string | undefined;
+    let language: string | undefined;
     const page = new WelcomeWebviewProvider(context, {
-      api: () => fakeApi, backendUrl: async () => undefined, launchedCourseId: () => launched
+      api: () => ({ ...fakeApi, getUserAccount: async () => ({ given_name: 'Ada', profile: { language_code: language } }) }),
+      backendUrl: async () => undefined, launchedCourseId: () => launched
     });
     await page.open();
     expect(latestHtml()).to.contain('Welcome to Computor, Ada!');
@@ -793,6 +820,11 @@ describe('WelcomeWebviewProvider', () => {
     launched = 'c1';
     await page.refresh();
     expect(webviewPanels).to.have.length(1);
+    expect(webviewPanels[0]!.title).to.equal('Welcome to Computor', 'the German course alone does not switch the page');
+    expect(latestHtml()).to.contain('<strong>Your course is already open.</strong>');
+
+    language = 'de';
+    await page.refresh();
     expect(webviewPanels[0]!.title).to.equal('Willkommen bei Computor');
     expect(latestHtml()).to.contain('<strong>Dein Kurs ist schon geöffnet.</strong>');
   });

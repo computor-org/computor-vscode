@@ -4,7 +4,9 @@ import * as path from 'path';
 import { runInNewContext } from 'vm';
 import * as vscode from 'vscode';
 import { renderWebviewPage } from '../../src/ui/webviews/shared/webviewPage';
-import { setUiCourseLanguage, setUiProfileLanguage } from '../../src/utils/uiLanguage';
+import { webviewPanels } from '../helpers/vscode-stub';
+import { setUiProfileLanguage } from '../../src/utils/uiLanguage';
+import { StudentCourseContentDetailsWebviewProvider } from '../../src/ui/webviews/StudentCourseContentDetailsWebviewProvider';
 
 const root = path.resolve(__dirname, '../..');
 const read = (file: string) => fs.readFileSync(path.join(root, 'webview-ui', file), 'utf8');
@@ -37,7 +39,7 @@ function texts(node: any): string[] {
 }
 
 describe('webview language', () => {
-  afterEach(() => { setUiProfileLanguage(undefined); setUiCourseLanguage(undefined); });
+  afterEach(() => { setUiProfileLanguage(undefined); });
 
   it('writes the reading language into the page', () => {
     const webview = { cspSource: 'vscode-resource:', asWebviewUri: (uri: vscode.Uri) => uri } as any;
@@ -57,6 +59,25 @@ describe('webview language', () => {
       expect(context.window.ComputorWebview.say('Cancel', 'Abbrechen')).to.equal(lang === 'de' ? 'Abbrechen' : 'Cancel');
       runInNewContext(read('messaging/comments-input.js'), context);
       expect(texts(mount)).to.include(expected);
+    }
+  });
+
+  it('redraws open content details in a new reading language, in place', async () => {
+    const subscriptions: { dispose(): void }[] = [];
+    const context = { extensionPath: root, extensionUri: vscode.Uri.file(root), subscriptions } as any;
+    const details = new StudentCourseContentDetailsWebviewProvider(context);
+    try {
+      setUiProfileLanguage('en');
+      await details.showDetails({ content: { id: 'a1', path: 'woche_1.konstanten', title: 'Konstanten' } } as any);
+      const panel = webviewPanels[webviewPanels.length - 1]!;
+      expect(panel.webview.html).to.contain('<html lang="en">');
+      setUiProfileLanguage('de');
+      await new Promise(resolve => setImmediate(resolve));
+      expect(webviewPanels[webviewPanels.length - 1]).to.equal(panel);
+      expect(panel.title).to.equal('Details: Konstanten');
+      expect(panel.webview.html).to.contain('<html lang="de">');
+    } finally {
+      for (const subscription of subscriptions) subscription.dispose();
     }
   });
 });

@@ -46,6 +46,12 @@ export function revealMarkdownPreview(preserveFocus = true): void {
   previews.get('current')?.panel?.reveal(undefined, preserveFocus);
 }
 
+/** Which render the visible task reading tab shows, or undefined when none is visible. */
+export function readingPreviewGeneration(): number | undefined {
+  const current = previews.get('current');
+  return current?.panel?.visible ? current.generation : undefined;
+}
+
 /** Reserve priority before any asynchronous description work. */
 export function beginMarkdownPreviewRequest(): MarkdownPreviewRequest {
   const request = ++renderRequest;
