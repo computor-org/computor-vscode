@@ -1,23 +1,12 @@
 import * as vscode from 'vscode';
 import { AuthenticationError, HttpError } from '../exceptions/errors/HttpError';
-import { say, uiLanguage } from './uiLanguage';
+import { say } from './uiLanguage';
 import { isConsentRequiredError, handleConsentError } from './consentGate';
 
 /** Session failures must remain actionable even after the HTTP client trips its breaker. */
 export function isSessionError(error: unknown): boolean {
   return error instanceof AuthenticationError || (error instanceof HttpError && error.status === 401);
 }
-
-// These codes describe learner actions precisely. Unknown codes retain the
-// server's detail below, rather than guessing what failed from arbitrary text.
-const germanSubmissionErrors: Record<string, string> = {
-  SUBMIT_003: 'Ein Test läuft bereits. Warte, bis er abgeschlossen ist.',
-  SUBMIT_004: 'Du hast alle Testläufe für diese Aufgabe aufgebraucht.',
-  SUBMIT_008: 'Diese Version wurde bereits getestet. Ein erneuter Test ist nur möglich, wenn der vorige Test abgestürzt ist oder abgebrochen wurde.',
-  SUBMIT_009: 'Du hast alle Abgaben für diese Aufgabe aufgebraucht.',
-  SUBMIT_010: 'Du hast für diese Aufgabe keine Testläufe und keine Abgaben mehr übrig.',
-  SUBMIT_014: 'Es gibt noch nichts abzugeben. Schreibe zuerst deine Lösung und gib sie dann ab.'
-};
 
 /**
  * Display an error message with appropriate severity level
@@ -49,7 +38,9 @@ export function showErrorWithSeverity(error: Error | HttpError, fallbackMessage?
 
     const backendError = error.backendError;
     if (backendError) {
-      const title = backendError.title;
+      // The server writes title and detail in the reader's language; the
+      // vendored catalog is English and only a fallback for old servers.
+      const title = error.serverTitle || backendError.title;
       // The server's reason for THIS request first; the catalog's per-code text
       // only when it sent none. The catalog text describes the *code*, not the
       // failure, so it is wrong whenever a call site carries a coarse or plain
@@ -58,9 +49,7 @@ export function showErrorWithSeverity(error: Error | HttpError, fallbackMessage?
       // The requested course content was not found." and threw the real
       // reason away. Use plain, not markdown: markdown repeats the title.
       const body = error.serverDetail || backendError.message.plain;
-      message = uiLanguage() === 'de' && error.errorCode && germanSubmissionErrors[error.errorCode]
-        ? germanSubmissionErrors[error.errorCode]!
-        : `${title}: ${body}`;
+      message = `${title}: ${body}`;
     }
   }
 
