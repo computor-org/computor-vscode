@@ -4,8 +4,8 @@
 # apply to *security* updates, which open as soon as an advisory is published
 # (GitHub docs: dependabot-options-reference#cooldown).
 #
-# Day-to-day work targets the release branch; update every `target-branch`
-# when it rolls over. Security PRs always target the default branch.
+# Development happens on `main`, so no entry sets `target-branch`: version and
+# security PRs both target `main`.
 
 version: 2
 updates:
@@ -14,7 +14,6 @@ updates:
     directories:
       - /
       - /webview-dev
-    target-branch: release/2026.10
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -55,7 +54,6 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
-    target-branch: release/2026.10
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
