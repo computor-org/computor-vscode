@@ -78,11 +78,12 @@ function setupProblemText(): string {
 }
 
 /** A grading status in the learner's language ("correction_necessary" -> "Correction Necessary"). */
-function statusLabel(status: string): string {
+export function statusLabel(status: string): string {
     const german: Record<string, string> = {
         not_reviewed: 'Nicht bewertet',
         corrected: 'Bewertet',
         correction_necessary: 'Korrektur nötig',
+        correction_possible: 'Verbesserung möglich',
         improvement_possible: 'Verbesserung möglich'
     };
     const english = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
