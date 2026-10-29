@@ -75,7 +75,14 @@ export const workbenchNames = {
   'computor.student.courses': ['Courses', 'Kurse'],
   'computor.welcome': ['Welcome and Help', 'Willkommen und Hilfe'],
   'computor.changeRealmUrl': ['Change Backend URL', 'Backend-URL ändern'],
-  'computor.login': ['Login', 'Anmelden']
+  'computor.login': ['Login', 'Anmelden'],
+  'computor-student': ['Computor Student', 'Computor Studierende'],
+  'computor-tutor': ['Computor Tutor', 'Computor Tutor'],
+  'computor-lecturer': ['Computor Lecturer', 'Computor Lehrende'],
+  'computor.tutor.filters': ['Courses & Members', 'Kurse und Teilnehmende'],
+  'computor.tutor.courses': ['Courses', 'Kurse'],
+  'computor.lecturer.courses': ['Courses', 'Kurse'],
+  'computor.lecturer.examples': ['Examples', 'Beispiele']
 } as const;
 
 export type WorkbenchName = keyof typeof workbenchNames;
@@ -548,8 +555,8 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
   openCourse[1] += description;
   const steps: Array<[string, string]> = [
     [say('Open the Student view.', 'Öffne die Student-Ansicht.'),
-      say(`Click the book ${codicon('book')} <strong>Computor Student</strong> in the Activity Bar on the far left. In a workspace started for a course, it is already open.`,
-        `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>Computor Student</strong>. In einer Arbeitsumgebung, die für einen Kurs gestartet wurde, ist sie schon offen.`)],
+      say(`Click the book ${codicon('book')} <strong>${n('computor-student')}</strong> in the Activity Bar on the far left. In a workspace started for a course, it is already open.`,
+        `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>${n('computor-student')}</strong>. In einer Arbeitsumgebung, die für einen Kurs gestartet wurde, ist sie schon offen.`)],
     openCourse,
     [say('Read the task.', 'Lies die Aufgabe.'),
       say(`Click an assignment's title to open its instructions and Python source: code on the left and instructions on the right on a desktop, or tabs on a narrow screen. On first use, Computor may prepare your personal course repository, which takes a moment. For the instructions alone, choose ${action('open-preview', n('computor.student.showPreview'))}.`,
@@ -776,11 +783,14 @@ function renderStaff(model: WelcomeModel, say: Say): string {
   const isTutor = model.roles.includes('tutor');
   const isLecturer = model.roles.includes('lecturer');
   if (!isTutor && !isLecturer) return '';
+  const n = namer(model);
+  const tutorView = n('computor-tutor');
+  const lecturerView = n('computor-lecturer');
 
   const icons = [
-    isTutor ? say('<strong>Computor Tutor</strong> for reviewing and grading', '<strong>Computor Tutor</strong> zum Durchsehen und Bewerten') : '',
-    isLecturer ? say('<strong>Computor Lecturer</strong> for building and releasing course content',
-      '<strong>Computor Lecturer</strong> zum Erstellen und Freigeben von Kursinhalten') : ''
+    isTutor ? say(`<strong>${tutorView}</strong> for reviewing and grading`, `<strong>${tutorView}</strong> zum Durchsehen und Bewerten`) : '',
+    isLecturer ? say(`<strong>${lecturerView}</strong> for building and releasing course content`,
+      `<strong>${lecturerView}</strong> zum Erstellen und Freigeben von Kursinhalten`) : ''
   ].filter(Boolean).join(say(', and ', ' und '));
 
   const rows: Array<[string, string]> = [
@@ -802,23 +812,22 @@ function renderStaff(model: WelcomeModel, say: Say): string {
     );
   }
 
-  // The tutor and lecturer views are not translated, so their names stay English.
   const steps: Array<[string, string]> = [
     ...(isTutor ? [
       [say('Open the Tutor view.', 'Öffne die Tutor-Ansicht.'),
-        say('Click <strong>Computor Tutor</strong> in the Activity Bar on the far left.',
-          'Klicke in der Aktivitätsleiste ganz links auf <strong>Computor Tutor</strong>.')],
+        say(`Click <strong>${tutorView}</strong> in the Activity Bar on the far left.`,
+          `Klicke in der Aktivitätsleiste ganz links auf <strong>${tutorView}</strong>.`)],
       [say('Pick a student.', 'Wähle eine Person aus.'),
-        say('Under <strong>Courses &amp; Members</strong>, click a course and then a member; their work appears under <strong>Courses</strong>. A 📝 behind a name counts submissions you have not reviewed yet, a 🔔 unread messages.',
-          'Klicke unter <strong>Courses &amp; Members</strong> auf einen Kurs und dann auf eine Person, deren Arbeit darauf unter <strong>Courses</strong> erscheint. Ein 📝 hinter einem Namen zählt die Abgaben, die du noch nicht durchgesehen hast, ein 🔔 die ungelesenen Nachrichten.')],
+        say(`Under <strong>${escapeHtml(n('computor.tutor.filters'))}</strong>, click a course and then a member; their work appears under <strong>${n('computor.tutor.courses')}</strong>. A 📝 behind a name counts submissions you have not reviewed yet, a 🔔 unread messages.`,
+          `Klicke unter <strong>${escapeHtml(n('computor.tutor.filters'))}</strong> auf einen Kurs und dann auf eine Person, deren Arbeit darauf unter <strong>${n('computor.tutor.courses')}</strong> erscheint. Ein 📝 hinter einem Namen zählt die Abgaben, die du noch nicht durchgesehen hast, ein 🔔 die ungelesenen Nachrichten.`)],
       [say('Review and grade.', 'Prüfe und bewerte.'),
         say('Click an assignment to download the latest submission and the reference solution. Test it, set the grade with the grading icon on its row, and say in the assignment\'s messages what to change.',
           'Klicke auf eine Aufgabe, um die letzte Abgabe und die Musterlösung herunterzuladen. Teste die Abgabe, vergib mit dem Bewertungssymbol in ihrer Zeile die Bewertung und schreib in den Nachrichten zur Aufgabe, was noch zu ändern ist.')]
     ] as Array<[string, string]> : []),
     ...(isLecturer ? [
       [say('Build the course.', 'Baue den Kurs auf.'),
-        say('In <strong>Computor Lecturer</strong>, <strong>Courses</strong> holds your courses with their content, content types and groups, and <strong>Examples</strong> the library of reusable assignments.',
-          'In <strong>Computor Lecturer</strong> findest du unter <strong>Courses</strong> deine Kurse mit ihren Inhalten, Inhaltstypen und Gruppen und unter <strong>Examples</strong> die Bibliothek wiederverwendbarer Aufgaben.')]
+        say(`In <strong>${lecturerView}</strong>, <strong>${n('computor.lecturer.courses')}</strong> holds your courses with their content, content types and groups, and <strong>${n('computor.lecturer.examples')}</strong> the library of reusable assignments.`,
+          `In <strong>${lecturerView}</strong> findest du unter <strong>${n('computor.lecturer.courses')}</strong> deine Kurse mit ihren Inhalten, Inhaltstypen und Gruppen und unter <strong>${n('computor.lecturer.examples')}</strong> die Bibliothek wiederverwendbarer Aufgaben.`)]
     ] as Array<[string, string]> : [])
   ];
   const students = model.roles.includes('student')

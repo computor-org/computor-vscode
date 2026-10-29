@@ -65,7 +65,7 @@ describe('student filesystem contributions', () => {
   it('files every filesystem command under the student category', () => {
     for (const command of FS_COMMANDS) {
       const declaration = pkg.contributes.commands.find((c: any) => c.command === command);
-      expect(declaration.category).to.equal('Computor Student');
+      expect(declaration.category).to.equal('%category.student%');
     }
   });
 

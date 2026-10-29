@@ -350,6 +350,15 @@ describe('welcome page content', () => {
       expect(html.indexOf('id="welcome-staff"')).to.be.lessThan(html.indexOf('id="welcome-more"'));
     });
 
+    it('names the teaching views as a German VS Code shows them', () => {
+      const html = renderWelcomeBody(model({ roles: ['tutor', 'lecturer'], language: 'de', workbenchLanguage: 'de' }));
+
+      expect(html).to.contain('<strong>Kurse und Teilnehmende</strong>');
+      expect(html).to.contain('<strong>Computor Lehrende</strong>');
+      expect(html).to.not.contain('Courses &amp; Members');
+      expect(html).to.not.contain('Computor Lecturer');
+    });
+
     it('adds the lecturer guides for a lecturer', () => {
       const html = renderWelcomeBody(model({ roles: ['tutor', 'lecturer'] }));
 
@@ -816,10 +825,10 @@ describe('welcome page contributions', () => {
 
   it('contributes the command under the Computor category', () => {
     const command = pkg.contributes.commands.find((c: { command: string }) => c.command === 'computor.welcome');
-    expect(command?.category).to.equal('Computor');
     const key = command.title.replace(/^%|%$/g, '');
     const en = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
     const de = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.de.json'), 'utf8'));
+    expect(en[command?.category.replace(/^%|%$/g, '')]).to.equal('Computor');
     expect(en[key]).to.equal('Welcome and Help');
     expect(de[key]).to.equal('Willkommen und Hilfe');
   });
