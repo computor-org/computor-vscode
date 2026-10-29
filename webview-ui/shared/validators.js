@@ -12,6 +12,12 @@
 (function () {
   'use strict';
 
+  // Messages follow the page language (base.js loads first).
+  function say(en, de) {
+    var cw = window.ComputorWebview;
+    return cw && cw.say ? cw.say(en, de) : en;
+  }
+
   // ── Pure validators ────────────────────────────────────────────────
   // Each returns an error message string, or null when valid.
 
@@ -28,7 +34,7 @@
     var label = (opts && opts.label) || 'URL';
 
     if (!value || !value.trim()) {
-      return required ? label + ' is required' : null;
+      return required ? say(label + ' is required', label + ': Angabe fehlt') : null;
     }
 
     var trimmed = value.trim();
@@ -40,14 +46,14 @@
     try {
       var parsed = new URL(trimmed);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return label + ' must use http:// or https://';
+        return say(label + ' must use http:// or https://', label + ' muss mit http:// oder https:// beginnen');
       }
       if (!parsed.hostname || parsed.hostname.indexOf('.') === -1 && !/^\d+\.\d+\.\d+\.\d+$/.test(parsed.hostname) && parsed.hostname !== 'localhost') {
-        return 'Enter a valid ' + label;
+        return say('Enter a valid ' + label, label + ': ungültige Angabe');
       }
       return null;
     } catch (e) {
-      return 'Enter a valid ' + label;
+      return say('Enter a valid ' + label, label + ': ungültige Angabe');
     }
   }
 
@@ -62,11 +68,11 @@
     var required = !(opts && opts.required === false);
 
     if (!value || !value.trim()) {
-      return required ? 'Email is required' : null;
+      return required ? say('Email is required', 'E-Mail-Adresse: Angabe fehlt') : null;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
-      return 'Enter a valid email address';
+      return say('Enter a valid email address', 'Gib eine gültige E-Mail-Adresse ein');
     }
     return null;
   }
@@ -85,11 +91,11 @@
     var label = (opts && opts.label) || 'Value';
 
     if (!value || !value.trim()) {
-      return required ? label + ' is required' : null;
+      return required ? say(label + ' is required', label + ': Angabe fehlt') : null;
     }
 
     if (value.trim().length < min) {
-      return label + ' must be at least ' + min + ' characters';
+      return say(label + ' must be at least ' + min + ' characters', label + ' muss mindestens ' + min + ' Zeichen lang sein');
     }
     return null;
   }
@@ -103,7 +109,7 @@
    * @returns {string|null}
    */
   function matches(value, other, opts) {
-    var message = (opts && opts.message) || 'Values do not match';
+    var message = (opts && opts.message) || say('Values do not match', 'Die Werte stimmen nicht überein');
     if (value !== other) {
       return message;
     }
@@ -120,7 +126,7 @@
   function required(value, opts) {
     var label = (opts && opts.label) || 'Value';
     if (!value || !value.trim()) {
-      return label + ' is required';
+      return say(label + ' is required', label + ': Angabe fehlt');
     }
     return null;
   }
@@ -221,7 +227,7 @@
    * @param {string}  [opts.type='success'] 'success' | 'error'
    */
   function showSaveIndicator(anchorEl, opts) {
-    var message = (opts && opts.message) || 'Saved';
+    var message = (opts && opts.message) || say('Saved', 'Gespeichert');
     var duration = (opts && opts.duration) || 2500;
     var type = (opts && opts.type) || 'success';
 

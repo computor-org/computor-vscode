@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { AUX_COLUMN, learnerReadingColumn, ensureAuxColumn, updateLearnerReadingWidth, trackLearnerReadingPanel, setStudentNavigationInvalidator } from '../editorLayout';
 import { renderWebviewPage } from './shared/webviewPage';
+import { say } from '../../utils/uiLanguage';
 
 export interface MarkdownPreviewOptions {
   /** Learner instructions use the right desktop group and share native tabs on narrow screens. */
@@ -241,7 +242,7 @@ async function renderMarkdownPreview(
         preview.context.extensionUri.fsPath
       );
       if (!target) {
-        void vscode.window.showWarningMessage(`Cannot open '${message.href}' — no such document.`);
+        void vscode.window.showWarningMessage(say(`Cannot open '${message.href}' — no such document.`, `„${message.href}“ lässt sich nicht öffnen, weil es dieses Dokument nicht gibt.`));
         return;
       }
       const hash = message.href.indexOf('#');

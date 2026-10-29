@@ -5,6 +5,7 @@ import * as os from 'os';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 
 /**
  * Commands for logging out and clearing credentials
@@ -37,9 +38,13 @@ export class LogoutCommands {
   private async handleLogout(): Promise<void> {
     try {
       const confirmation = await notify.confirm(
-        'Sign out of Computor? This clears your stored session on this machine. ' +
-        'You will sign in again through your browser (SSO).',
-        'Sign Out'
+        say(
+          'Sign out of Computor? This clears your stored session on this machine. ' +
+          'You will sign in again through your browser (SSO).',
+          'Von Computor abmelden? Dabei wird deine gespeicherte Sitzung auf diesem Rechner gelöscht. ' +
+          'Du meldest dich danach wieder über deinen Browser an (SSO).'
+        ),
+        say('Sign Out', 'Abmelden')
       );
 
       if (!confirmation) {
@@ -48,32 +53,37 @@ export class LogoutCommands {
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Signing out...',
+        title: say('Signing out…', 'Abmeldung läuft …'),
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Clearing stored session...' });
+        progress.report({ message: say('Clearing stored session…', 'Gespeicherte Sitzung wird gelöscht …') });
         await this.clearSessionTokens();
 
-        progress.report({ message: 'Clearing session state...' });
+        progress.report({ message: say('Clearing session state…', 'Sitzungsdaten werden gelöscht …') });
         await this.clearAuthenticationState();
 
-        progress.report({ message: 'Sign-out complete.' });
+        progress.report({ message: say('Sign-out complete.', 'Abmeldung abgeschlossen.') });
       });
 
+      const reload = say('Reload Window', 'Fenster neu laden');
+      const endSession = say('End Browser Session', 'Browser-Sitzung beenden');
       const choice = await notify.info(
-        'Signed out. Reload the window to finish, or also end your browser SSO session.',
-        'Reload Window',
-        'End Browser Session'
+        say(
+          'Signed out. Reload the window to finish, or also end your browser SSO session.',
+          'Du bist abgemeldet. Lade das Fenster neu, um abzuschließen, oder beende auch deine SSO-Sitzung im Browser.'
+        ),
+        reload,
+        endSession
       );
-      if (choice === 'Reload Window') {
+      if (choice === reload) {
         vscode.commands.executeCommand('workbench.action.reloadWindow');
-      } else if (choice === 'End Browser Session') {
+      } else if (choice === endSession) {
         await this.endKeycloakSession();
         vscode.commands.executeCommand('workbench.action.reloadWindow');
       }
     } catch (error: any) {
       console.error('Logout failed:', error);
-      notify.error(`Failed to sign out: ${error.message || error}`);
+      notify.error(say(`Failed to sign out: ${error.message || error}`, `Die Abmeldung ist fehlgeschlagen: ${error.message || error}`));
     }
   }
 
@@ -95,13 +105,21 @@ export class LogoutCommands {
   private async handleClearAllData(): Promise<void> {
     try {
       const confirmation = await notify.confirm(
-        'Are you sure you want to clear ALL Computor data? This will remove:\n' +
-        '• Authentication credentials\n' +
-        '• All settings and preferences\n' +
-        '• GitLab tokens\n' +
-        '• Cached data\n\n' +
-        'This action cannot be undone.',
-        'Clear All Data'
+        say(
+          'Are you sure you want to clear ALL Computor data? This will remove:\n' +
+          '• Authentication credentials\n' +
+          '• All settings and preferences\n' +
+          '• GitLab tokens\n' +
+          '• Cached data\n\n' +
+          'This action cannot be undone.',
+          'Willst du wirklich ALLE Computor-Daten löschen? Dabei werden entfernt:\n' +
+          '• Anmeldedaten\n' +
+          '• alle Einstellungen\n' +
+          '• GitLab-Tokens\n' +
+          '• zwischengespeicherte Daten\n\n' +
+          'Das lässt sich nicht rückgängig machen.'
+        ),
+        say('Clear All Data', 'Alle Daten löschen')
       );
 
       if (!confirmation) {
@@ -110,43 +128,47 @@ export class LogoutCommands {
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Clearing all Computor data...',
+        title: say('Clearing all Computor data…', 'Alle Computor-Daten werden gelöscht …'),
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Clearing authentication credentials...' });
+        progress.report({ message: say('Clearing authentication credentials…', 'Anmeldedaten werden gelöscht …') });
 
         // Clear authentication secrets
         await this.clearAuthenticationSecrets();
 
-        progress.report({ message: 'Clearing GitLab tokens...' });
+        progress.report({ message: say('Clearing GitLab tokens…', 'GitLab-Tokens werden gelöscht …') });
 
         // Clear GitLab tokens
         await this.clearGitLabTokens();
 
-        progress.report({ message: 'Clearing settings...' });
+        progress.report({ message: say('Clearing settings…', 'Einstellungen werden gelöscht …') });
 
         // Clear settings file
         await this.clearSettingsFile();
 
-        progress.report({ message: 'Clearing global state...' });
+        progress.report({ message: say('Clearing global state…', 'Gespeicherter Zustand wird gelöscht …') });
 
         // Clear all global state
         await this.clearAllGlobalState();
 
-        progress.report({ message: 'All data cleared.' });
+        progress.report({ message: say('All data cleared.', 'Alle Daten gelöscht.') });
       });
 
+      const reload = say('Reload Window', 'Fenster neu laden');
       notify.info(
-        'All Computor data has been cleared successfully. Restart VS Code to start fresh.',
-        'Reload Window'
+        say(
+          'All Computor data has been cleared successfully. Restart VS Code to start fresh.',
+          'Alle Computor-Daten wurden gelöscht. Starte VS Code neu, um von vorn zu beginnen.'
+        ),
+        reload
       ).then(choice => {
-        if (choice === 'Reload Window') {
+        if (choice === reload) {
           vscode.commands.executeCommand('workbench.action.reloadWindow');
         }
       });
     } catch (error: any) {
       console.error('Clear all data failed:', error);
-      notify.error(`Failed to clear data: ${error.message || error}`);
+      notify.error(say(`Failed to clear data: ${error.message || error}`, `Die Daten konnten nicht gelöscht werden: ${error.message || error}`));
     }
   }
 

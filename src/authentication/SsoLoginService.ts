@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import { AddressInfo } from 'net';
-import { uiLanguage } from '../utils/uiLanguage';
+import { say, uiLanguage } from '../utils/uiLanguage';
 
 /**
  * Tokens returned by the Keycloak SSO browser flow.
@@ -35,37 +35,39 @@ export function ssoLoginUrl(backendUrl: string, redirectUri: string, language: s
   return `${backendUrl.replace(/\/$/, '')}/auth/keycloak/login?${query.toString()}`;
 }
 
-const SUCCESS_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>Computor</title>
-<style>
+const resultPageStyle = `
   body { font-family: system-ui, -apple-system, sans-serif; background:#1e1e1e; color:#e0e0e0;
          display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
   .card { text-align:center; max-width:420px; padding:2rem; }
   .check { font-size:3rem; color:#4caf50; }
-  h1 { font-size:1.25rem; font-weight:600; margin:.5rem 0; }
-  p { color:#a0a0a0; line-height:1.5; }
-</style></head>
-<body><div class="card">
-  <div class="check">&#10003;</div>
-  <h1>Signed in to Computor</h1>
-  <p>You can close this tab and return to VS Code.</p>
-</div></body></html>`;
-
-const ERROR_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>Computor</title>
-<style>
-  body { font-family: system-ui, -apple-system, sans-serif; background:#1e1e1e; color:#e0e0e0;
-         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
-  .card { text-align:center; max-width:420px; padding:2rem; }
   .x { font-size:3rem; color:#f44336; }
   h1 { font-size:1.25rem; font-weight:600; margin:.5rem 0; }
   p { color:#a0a0a0; line-height:1.5; }
-</style></head>
+`;
+
+/**
+ * The page the browser shows after the sign-in, in the language the
+ * Keycloak pages were requested in (`ui_locales`), so the round-trip does
+ * not end in English after German login pages.
+ */
+export function ssoResultPage(ok: boolean, language: string): string {
+  const de = language === 'de';
+  const [mark, glyph, heading, text] = ok
+    ? ['check', '&#10003;',
+      de ? 'Bei Computor angemeldet' : 'Signed in to Computor',
+      de ? 'Du kannst diesen Tab schließen und zu VS Code zurückkehren.' : 'You can close this tab and return to VS Code.']
+    : ['x', '&#10007;',
+      de ? 'Anmeldung fehlgeschlagen' : 'Sign-in failed',
+      de ? 'Kehre zu VS Code zurück und versuche es noch einmal.' : 'Return to VS Code and try again.'];
+  return `<!DOCTYPE html>
+<html lang="${de ? 'de' : 'en'}"><head><meta charset="utf-8"><title>Computor</title>
+<style>${resultPageStyle}</style></head>
 <body><div class="card">
-  <div class="x">&#10007;</div>
-  <h1>Sign-in failed</h1>
-  <p>Return to VS Code and try again.</p>
+  <div class="${mark}">${glyph}</div>
+  <h1>${heading}</h1>
+  <p>${text}</p>
 </div></body></html>`;
+}
 
 /**
  * Whether the browser sign-in below can complete in this window.
@@ -82,9 +84,14 @@ export function browserSignInAvailable(): boolean {
 }
 
 /** What to do instead where {@link browserSignInAvailable} is false. */
-export const browserSignInUnavailableHint =
-  'Signing in through the browser does not work in a hosted or remote workspace. ' +
-  'Restart this workspace from the Computor web app to renew its sign-in, or use an API token.';
+export function browserSignInUnavailableHint(): string {
+  return say(
+    'Signing in through the browser does not work in a hosted or remote workspace. ' +
+    'Restart this workspace from the Computor web app to renew its sign-in, or use an API token.',
+    'In einem gehosteten oder entfernten Arbeitsbereich funktioniert die Anmeldung über den Browser nicht. ' +
+    'Starte den Arbeitsbereich aus der Computor-Web-App neu, um die Anmeldung zu erneuern, oder melde dich mit einem API-Token an.'
+  );
+}
 
 /**
  * Run the Keycloak SSO login in the system browser using a temporary loopback
@@ -109,6 +116,7 @@ export function ssoBrowserLogin(backendUrl: string, options?: SsoLoginOptions): 
   // It lives in the path (not the query) because the backend appends its params
   // with a literal `?`, which would collide with a pre-existing query string.
   const nonce = crypto.randomBytes(16).toString('hex');
+  const language = uiLanguage();
 
   return new Promise<SsoLoginResult>((resolve, reject) => {
     let settled = false;
@@ -144,16 +152,16 @@ export function ssoBrowserLogin(backendUrl: string, options?: SsoLoginOptions): 
       const errorParam = requestUrl.searchParams.get('error');
 
       if (!token) {
-        res.writeHead(400, { 'Content-Type': 'text/html' });
-        res.end(ERROR_HTML);
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(ssoResultPage(false, language));
         settle(() => reject(new Error(errorParam
           ? `SSO login failed: ${errorParam}`
           : 'SSO callback did not include a session token.')));
         return;
       }
 
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(SUCCESS_HTML);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(ssoResultPage(true, language));
       settle(() => resolve({
         token,
         refreshToken: requestUrl.searchParams.get('refresh_token') ?? undefined,
@@ -170,7 +178,7 @@ export function ssoBrowserLogin(backendUrl: string, options?: SsoLoginOptions): 
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as AddressInfo).port;
       const redirectUri = `http://127.0.0.1:${port}/${nonce}`;
-      const loginUrl = ssoLoginUrl(backendUrl, redirectUri, uiLanguage());
+      const loginUrl = ssoLoginUrl(backendUrl, redirectUri, language);
 
       timeoutHandle = setTimeout(() => {
         settle(() => reject(new Error('SSO login timed out. Please try again.')));

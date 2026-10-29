@@ -652,15 +652,17 @@ async function handleComputorWorkspaceDetected(
     await explainBrowserSignInUnavailable(context);
     return;
   }
+  const signIn = say('Sign in', 'Anmelden');
+  const useToken = say('Use API Token', 'API-Token verwenden');
   const action = await notify.info(
-    'Computor workspace detected. Sign in to continue.',
-    'Sign in',
-    'Use API Token',
-    'Not Now'
+    say('Computor workspace detected. Sign in to continue.', 'Computor-Arbeitsbereich erkannt. Melde dich an, um weiterzumachen.'),
+    signIn,
+    useToken,
+    say('Not Now', 'Nicht jetzt')
   );
-  if (action === 'Sign in') {
+  if (action === signIn) {
     await unifiedLoginFlow(context);
-  } else if (action === 'Use API Token') {
+  } else if (action === useToken) {
     await apiTokenLoginFlow(context);
   }
 }
@@ -1969,7 +1971,7 @@ class UnifiedController {
         notify.warning(say(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`, `Wartungsmodus aktiv: ${status.message || 'Das System wird gerade gewartet.'}`));
       } else if (status.scheduled_at) {
         this.wsService.updateMaintenanceStatusBar('scheduled', status.message, status.scheduled_at);
-        notify.info(say(`Maintenance Scheduled for ${new Date(status.scheduled_at).toLocaleString()}: ${status.message || 'Scheduled maintenance is planned'}`, `Wartung geplant für ${formatUiDateTime(new Date(status.scheduled_at))}: ${status.message || 'Eine Wartung ist geplant.'}`));
+        notify.info(say(`Maintenance Scheduled for ${formatUiDateTime(new Date(status.scheduled_at))}: ${status.message || 'Scheduled maintenance is planned'}`, `Wartung geplant für ${formatUiDateTime(new Date(status.scheduled_at))}: ${status.message || 'Eine Wartung ist geplant.'}`));
       }
     } catch (error) {
       // Non-critical — don't block startup
@@ -2072,8 +2074,9 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
 
 /** Browser sign-in cannot complete in this window; say what works instead. */
 async function explainBrowserSignInUnavailable(context: vscode.ExtensionContext): Promise<void> {
-  const action = await notify.warning(browserSignInUnavailableHint, 'Use API Token', 'Not Now');
-  if (action === 'Use API Token') {
+  const useToken = say('Use API Token', 'API-Token verwenden');
+  const action = await notify.warning(browserSignInUnavailableHint(), useToken, say('Not Now', 'Nicht jetzt'));
+  if (action === useToken) {
     await apiTokenLoginFlow(context);
   }
 }

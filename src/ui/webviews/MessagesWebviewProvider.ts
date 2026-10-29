@@ -195,7 +195,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
     void this.markMessagesOnOpen(rawMessages, target, currentUserId);
     const messages = this.enrichMessages(normalizedMessages, identity);
     const payload: MessagesWebviewData = { target, messages, identity };
-    await this.show(`Messages: ${target.title}`, payload);
+    await this.show(`${say('Messages', 'Nachrichten')}: ${target.title}`, payload);
     void this.postTutorAgent(target);
 
     // Subscribe to WebSocket channel for real-time updates
@@ -497,11 +497,11 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
 
   protected async getWebviewContent(data?: MessagesWebviewData): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Messages', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Messages', 'Nachrichten'), `<p>${say('Loading…', 'Wird geladen …')}</p>`);
     }
 
     return this.renderPage({
-      title: 'Messages',
+      title: say('Messages', 'Nachrichten'),
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['shared/chat-shared.css', 'messaging/messages.css'],
       // messageThreads.js must precede messages.js — it registers the thread
@@ -805,10 +805,11 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       return;
     }
 
-    const title = data.title || 'this message';
     const confirmed = await notify.confirm(
-      `Delete "${title}"?`,
-      'Delete'
+      data.title
+        ? say(`Delete "${data.title}"?`, `„${data.title}“ löschen?`)
+        : say('Delete this message?', 'Diese Nachricht löschen?'),
+      say('Delete', 'Löschen')
     );
 
     if (confirmed) {
@@ -826,9 +827,9 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
       await this.apiService.deleteMessage(data.messageId);
       // Skip indicator update - deleting a message doesn't change unread state
       await this.refreshMessages({ skipIndicatorUpdate: true });
-      notify.info('Message deleted.');
+      notify.info(say('Message deleted.', 'Die Nachricht wurde gelöscht.'));
     } catch (error: any) {
-      notify.error(`Failed to delete message: ${error?.message || error}`);
+      notify.error(say(`Failed to delete message: ${error?.message || error}`, `Die Nachricht konnte nicht gelöscht werden: ${error?.message || error}`));
       this.postLoadingState(false);
     }
   }
@@ -868,7 +869,7 @@ export class MessagesWebviewProvider extends BaseWebviewProvider {
         this.inputPanel.updateMessages(rawMessages);
       }
     } catch (error: any) {
-      notify.error(`Failed to refresh messages: ${error?.message || error}`);
+      notify.error(say(`Failed to refresh messages: ${error?.message || error}`, `Die Nachrichten konnten nicht aktualisiert werden: ${error?.message || error}`));
       this.postLoadingState(false);
     }
   }

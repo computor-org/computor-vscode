@@ -5,7 +5,7 @@ import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnass
 import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { UiStateService } from './UiStateService';
 import { notify } from '../utils/notify';
-import { say } from '../utils/uiLanguage';
+import { formatUiDateTime, say } from '../utils/uiLanguage';
 
 // WebSocket message types from server
 export interface WsMessageNew {
@@ -690,7 +690,7 @@ export class WebSocketService {
           console.log('[WebSocket] Maintenance activated:', activatedData.message);
           this.httpClient?.setMaintenanceMode(true, activatedData.message);
           this.updateMaintenanceStatusBar('active', activatedData.message);
-          notify.warning(`Maintenance Mode Active: ${activatedData.message}`);
+          notify.warning(`${say('Maintenance Mode Active', 'Wartungsmodus aktiv')}: ${activatedData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceActivated?.(activatedData.message, activatedData.activated_at);
           });
@@ -702,7 +702,7 @@ export class WebSocketService {
           console.log('[WebSocket] Maintenance deactivated');
           this.httpClient?.setMaintenanceMode(false);
           this.updateMaintenanceStatusBar('inactive');
-          notify.info(`Maintenance Complete: ${deactivatedData.message}`);
+          notify.info(`${say('Maintenance Complete', 'Wartung abgeschlossen')}: ${deactivatedData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceDeactivated?.(deactivatedData.message);
           });
@@ -713,7 +713,8 @@ export class WebSocketService {
           const scheduledData = (message as any).data || message;
           console.log('[WebSocket] Maintenance scheduled:', scheduledData.scheduled_at);
           this.updateMaintenanceStatusBar('scheduled', scheduledData.message, scheduledData.scheduled_at);
-          notify.info(`Maintenance Scheduled for ${new Date(scheduledData.scheduled_at).toLocaleString()}: ${scheduledData.message}`);
+          const when = formatUiDateTime(new Date(scheduledData.scheduled_at));
+          notify.info(`${say(`Maintenance Scheduled for ${when}`, `Wartung geplant für ${when}`)}: ${scheduledData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceScheduled?.(scheduledData.scheduled_at, scheduledData.message);
           });
@@ -724,7 +725,7 @@ export class WebSocketService {
           const cancelledData = (message as any).data || message;
           console.log('[WebSocket] Maintenance cancelled');
           this.updateMaintenanceStatusBar('inactive');
-          notify.info('Scheduled maintenance has been cancelled.');
+          notify.info(say('Scheduled maintenance has been cancelled.', 'Die geplante Wartung wurde abgesagt.'));
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceCancelled?.(cancelledData.message);
           });
@@ -734,7 +735,7 @@ export class WebSocketService {
         case 'maintenance:reminder': {
           const reminderData = (message as any).data || message;
           const minutesRemaining: number = reminderData.minutes_remaining;
-          const reminderMessage: string = reminderData.message || 'Maintenance is approaching';
+          const reminderMessage: string = reminderData.message || say('Maintenance is approaching', 'Die Wartung steht bevor');
 
           console.log(`[WebSocket] Maintenance reminder: ${minutesRemaining}min remaining`);
 
@@ -745,13 +746,13 @@ export class WebSocketService {
           // Escalate notification urgency based on time remaining
           if (minutesRemaining <= 5) {
             this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-            notify.error(`Maintenance in ${minutesRemaining} minute(s): ${reminderMessage}`);
+            notify.error(`${say(`Maintenance in ${minutesRemaining} minute(s)`, `Wartung in ${minutesRemaining} Minute(n)`)}: ${reminderMessage}`);
           } else if (minutesRemaining <= 10) {
             this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-            notify.warning(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+            notify.warning(`${say(`Maintenance in ${minutesRemaining} minutes`, `Wartung in ${minutesRemaining} Minuten`)}: ${reminderMessage}`);
           } else {
             this.maintenanceStatusBarItem.backgroundColor = undefined;
-            notify.info(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+            notify.info(`${say(`Maintenance in ${minutesRemaining} minutes`, `Wartung in ${minutesRemaining} Minuten`)}: ${reminderMessage}`);
           }
 
           this.maintenanceStatusBarItem.show();
@@ -1062,7 +1063,7 @@ export class WebSocketService {
         this.maintenanceStatusBarItem.text = `$(clock) ${say('Maintenance scheduled', 'Wartung geplant')}`;
         this.maintenanceStatusBarItem.backgroundColor = undefined;
         this.maintenanceStatusBarItem.tooltip = scheduledAt
-          ? `${say('Maintenance scheduled', 'Wartung geplant')}: ${new Date(scheduledAt).toLocaleString()}${message ? ' — ' + message : ''}`
+          ? `${say('Maintenance scheduled', 'Wartung geplant')}: ${formatUiDateTime(new Date(scheduledAt))}${message ? ' — ' + message : ''}`
           : message || say('Maintenance scheduled', 'Wartung geplant');
         this.maintenanceStatusBarItem.show();
         break;

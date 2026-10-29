@@ -157,7 +157,7 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
           await showMarkdownPreview(this.context, helpPath, { title: say('Computor Help', 'Computor-Hilfe') });
         } catch (error) {
           console.error('[Welcome] Failed to open help page:', error);
-          notify.error('Failed to open help documentation');
+          notify.error(say('Failed to open help documentation', 'Die Hilfe konnte nicht geöffnet werden.'));
         }
         return;
       }
@@ -167,7 +167,8 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
       case 'view': {
         const container = containerById(welcomeRoleContainers[intent.role]);
         if (!container || !await focusViewContainer(container)) {
-          notify.warning(`The ${intent.role} view is not available yet.`);
+          const germanView = { student: 'Studierende', tutor: 'Tutor', lecturer: 'Lehrende' }[intent.role] ?? intent.role;
+          notify.warning(say(`The ${intent.role} view is not available yet.`, `Die Ansicht „Computor ${germanView}“ ist noch nicht verfügbar.`));
         }
         return;
       }

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { HttpError } from '../exceptions/errors/HttpError';
+import { say } from './uiLanguage';
 
 /**
  * GDPR consent gate handling.
@@ -56,9 +57,10 @@ export async function openConsentPage(): Promise<void> {
     await vscode.env.openExternal(vscode.Uri.parse(consentUrl));
     return;
   }
-  await vscode.window.showInformationMessage(
-    'Open the Computor web app and accept the current privacy policy to continue.'
-  );
+  await vscode.window.showInformationMessage(say(
+    'Open the Computor web app and accept the current privacy policy to continue.',
+    'Öffne die Computor-Web-App und stimme der aktuellen Datenschutzerklärung zu, um weiterzumachen.'
+  ));
 }
 
 // The gate 403s every gated call, so many providers/commands can trip it almost
@@ -84,9 +86,10 @@ export async function handleConsentError(error: unknown): Promise<boolean> {
 
   const detail =
     (error.response as any)?.message ||
-    'You must accept the current privacy policy before you can continue.';
+    say('You must accept the current privacy policy before you can continue.',
+      'Du musst der aktuellen Datenschutzerklärung zustimmen, bevor du weitermachen kannst.');
 
-  const OPEN = 'Open Web App';
+  const OPEN = say('Open Web App', 'Web-App öffnen');
   const choice = await vscode.window.showWarningMessage(`Computor: ${detail}`, OPEN);
   if (choice === OPEN) {
     await openConsentPage();
