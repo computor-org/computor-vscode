@@ -7,7 +7,7 @@
   'use strict';
 
   const vscode = window.vscodeApi || acquireVsCodeApi();
-  const { escapeHtml, setLoading } = window.ComputorWebview;
+  const { escapeHtml, setLoading, say } = window.ComputorWebview;
   const state = window.__INITIAL_STATE__ || { memberGradings: null };
 
   let donutChart = null;
@@ -80,7 +80,7 @@
     const gradings = state.memberGradings;
 
     if (!gradings) {
-      app.innerHTML = renderEmptyState('No Data', 'Student progress data not available.');
+      app.innerHTML = renderEmptyState(say('No Data', 'Keine Daten'), say('Student progress data not available.', 'Für diese Person liegen keine Fortschrittsdaten vor.'));
       return;
     }
 
@@ -120,7 +120,7 @@
     const displayName = getStudentDisplayName(gradings, fallbackName);
     const lastActive = gradings.latest_submission_at
       ? ComputorCharts.formatRelativeDate(gradings.latest_submission_at)
-      : 'Never';
+      : say('Never', 'Nie');
     const studentId = gradings.student_id;
 
     return `
@@ -129,10 +129,10 @@
           <h1 class="member-progress-header__title">${escapeHtml(displayName)}</h1>
           <div class="member-progress-header__meta">
             ${studentId ? renderCopyableId(studentId, 'Matr.') : ''}
-            <span class="member-progress-header__last-active">Last active: ${escapeHtml(lastActive)}</span>
+            <span class="member-progress-header__last-active">${say('Last active', 'Zuletzt aktiv')}: ${escapeHtml(lastActive)}</span>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="refreshBtn" title="Refresh data">Refresh</button>
+        <button type="button" class="btn btn-secondary" id="refreshBtn" title="${say('Refresh data', 'Daten aktualisieren')}">${say('Refresh', 'Aktualisieren')}</button>
       </header>
     `;
   }
@@ -172,7 +172,7 @@
     return `
       <div class="overall-progress-card">
         <div class="overall-progress-card__header">
-          <h2 class="overall-progress-card__title">Grade</h2>
+          <h2 class="overall-progress-card__title">${say('Grade', 'Bewertung')}</h2>
           <div class="overall-progress-card__percentage">${avgGradingDisplay}</div>
         </div>
         <div class="overall-progress-card__bar">
@@ -180,7 +180,7 @@
         </div>
 
         <div class="overall-progress-card__header" style="margin-top: 16px;">
-          <h2 class="overall-progress-card__title">Overall Progress</h2>
+          <h2 class="overall-progress-card__title">${say('Overall Progress', 'Gesamtfortschritt')}</h2>
           <div class="overall-progress-card__percentage">${percentageRounded}%</div>
         </div>
         <div class="overall-progress-card__bar">
@@ -188,11 +188,11 @@
         </div>
         <div class="overall-progress-card__stats">
           <div class="overall-progress-card__stat">
-            <span>Submitted:</span>
+            <span>${say('Submitted:', 'Abgegeben:')}</span>
             <span class="overall-progress-card__stat-value">${submitted} / ${total}</span>
           </div>
           <div class="overall-progress-card__stat">
-            <span>Remaining:</span>
+            <span>${say('Remaining:', 'Offen:')}</span>
             <span class="overall-progress-card__stat-value">${remaining}</span>
           </div>
         </div>
@@ -206,13 +206,13 @@
     return `
       <div class="member-charts-row">
         <div class="chart-card">
-          <h3 class="chart-card__title">Submissions by Type</h3>
+          <h3 class="chart-card__title">${say('Submissions by Type', 'Abgaben nach Typ')}</h3>
           <div class="chart-card__canvas">
             <canvas id="donutChart"></canvas>
           </div>
         </div>
         <div class="chart-card">
-          <h3 class="chart-card__title">Content Type Breakdown</h3>
+          <h3 class="chart-card__title">${say('Content Type Breakdown', 'Aufteilung nach Inhaltstyp')}</h3>
           <div class="content-type-breakdown">
             ${renderContentTypeBreakdown(contentTypes)}
           </div>
@@ -223,7 +223,7 @@
 
   function renderContentTypeBreakdown(contentTypes) {
     if (!contentTypes || contentTypes.length === 0) {
-      return '<p style="color: var(--vscode-descriptionForeground); font-size: 13px;">No content types available.</p>';
+      return `<p style="color: var(--vscode-descriptionForeground); font-size: 13px;">${say('No content types available.', 'Keine Inhaltstypen vorhanden.')}</p>`;
     }
 
     return contentTypes.map(ct => {
@@ -242,7 +242,7 @@
               <span class="content-type-item__dot" style="background-color: ${color}"></span>
               ${escapeHtml(label)}
             </span>
-            <span class="content-type-item__stats">${submitted} / ${total} (${percentage}%) | Grade: ${avgGradingDisplay}</span>
+            <span class="content-type-item__stats">${submitted} / ${total} (${percentage}%) | ${say('Grade', 'Bewertung')}: ${avgGradingDisplay}</span>
           </div>
           <div class="content-type-item__bar">
             <div class="content-type-item__fill" style="width: ${percentage}%;"></div>
@@ -274,19 +274,19 @@
     return `
       <section class="content-tree-section">
         <div class="content-tree-section__header">
-          <h2 class="content-tree-section__title">Course Content Progress</h2>
+          <h2 class="content-tree-section__title">${say('Course Content Progress', 'Fortschritt nach Kursinhalt')}</h2>
         </div>
         <div class="content-tree">
           <div class="content-tree-header">
             <span class="content-tree-header__spacer"></span>
             <div class="content-tree-header__columns">
-              <span class="content-tree-header__column content-tree-header__column--tests" title="Test attempts / max allowed tests">Tests</span>
-              <span class="content-tree-header__column content-tree-header__column--subs" title="Submission count / max allowed submissions">Subs</span>
-              <span class="content-tree-header__column content-tree-header__column--correction" title="Correction status">●</span>
-              <span class="content-tree-header__column content-tree-header__column--progress" title="Submission progress (units only)">Progress</span>
-              <span class="content-tree-header__column content-tree-header__column--result" title="Latest test result">Result</span>
-              <span class="content-tree-header__column content-tree-header__column--grade" title="Tutor-assigned grade (assignments) or average grade (units)">Grade</span>
-              <span class="content-tree-header__column content-tree-header__column--status" title="Submission status (assignments) or completion percentage (units)">Status</span>
+              <span class="content-tree-header__column content-tree-header__column--tests" title="${say('Test attempts / max allowed tests', 'Testläufe / erlaubte Testläufe')}">${say('Tests', 'Tests')}</span>
+              <span class="content-tree-header__column content-tree-header__column--subs" title="${say('Submission count / max allowed submissions', 'Abgaben / erlaubte Abgaben')}">${say('Subs', 'Abg.')}</span>
+              <span class="content-tree-header__column content-tree-header__column--correction" title="${say('Correction status', 'Korrekturstatus')}">●</span>
+              <span class="content-tree-header__column content-tree-header__column--progress" title="${say('Submission progress (units only)', 'Abgabefortschritt (nur Einheiten)')}">${say('Progress', 'Fortschritt')}</span>
+              <span class="content-tree-header__column content-tree-header__column--result" title="${say('Latest test result', 'Letztes Testergebnis')}">${say('Result', 'Ergebnis')}</span>
+              <span class="content-tree-header__column content-tree-header__column--grade" title="${say('Tutor-assigned grade (assignments) or average grade (units)', 'Bewertung durch Tutor:innen (Aufgaben) oder Durchschnitt (Einheiten)')}">${say('Grade', 'Bewertung')}</span>
+              <span class="content-tree-header__column content-tree-header__column--status" title="${say('Submission status (assignments) or completion percentage (units)', 'Abgabestatus (Aufgaben) oder Erledigungsgrad (Einheiten)')}">Status</span>
             </div>
           </div>
           ${renderTreeNodes(tree, 0, colorMap)}
@@ -380,9 +380,7 @@
         const statusColor = gradingStatus === 'corrected' ? '#57cc5d'
           : gradingStatus === 'correction_necessary' ? '#fc4a4a'
           : '#fdba4d';
-        const badgeText = gradingStatus === 'corrected' ? 'Corrected'
-          : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
-          : 'Improvement Possible';
+        const badgeText = statusName(gradingStatus);
         cornerBadgeHtml = `<span class="content-tree-node__icon-badge" style="background-color: ${statusColor};" role="img" aria-label="${escapeHtml(badgeText)}" title="${escapeHtml(badgeText)}"></span>`;
       }
 
@@ -390,37 +388,33 @@
       const graderName = extractGraderName(node);
       const tooltipParts = [];
       if (isSubmittable) {
-        tooltipParts.push(`Submitted: ${isSubmitted ? 'Yes' : 'No'}`);
+        tooltipParts.push(`${say('Submitted', 'Abgegeben')}: ${isSubmitted ? say('Yes', 'Ja') : say('No', 'Nein')}`);
         if (hasGrading) {
-          tooltipParts.push(`Grade: ${gradingDisplay}`);
+          tooltipParts.push(`${say('Grade', 'Bewertung')}: ${gradingDisplay}`);
         }
         if (graderName) {
-          tooltipParts.push(`Graded by: ${graderName}`);
+          tooltipParts.push(`${say('Graded by', 'Bewertet von')}: ${graderName}`);
         }
         if (hasResult) {
-          tooltipParts.push(`Result: ${resultDisplay}`);
+          tooltipParts.push(`${say('Result', 'Ergebnis')}: ${resultDisplay}`);
         }
         if (typeof testRunsCount === 'number') {
-          tooltipParts.push(`Tests: ${testRunsCount}${typeof maxTestRuns === 'number' ? ` of ${maxTestRuns}` : ''}`);
+          tooltipParts.push(`Tests: ${testRunsCount}${typeof maxTestRuns === 'number' ? ` ${say('of', 'von')} ${maxTestRuns}` : ''}`);
         }
         if (typeof submissionsCount === 'number') {
-          tooltipParts.push(`Submissions: ${submissionsCount}${typeof maxSubmissions === 'number' ? ` of ${maxSubmissions}` : ''}`);
+          tooltipParts.push(`${say('Submissions', 'Abgaben')}: ${submissionsCount}${typeof maxSubmissions === 'number' ? ` ${say('of', 'von')} ${maxSubmissions}` : ''}`);
         }
         if (gradingStatus && gradingStatus !== 'not_reviewed') {
-          const statusText = gradingStatus === 'corrected' ? 'Corrected'
-            : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
-            : 'Improvement Possible';
+          const statusText = statusName(gradingStatus);
           tooltipParts.push(`Status: ${statusText}`);
         }
       } else {
-        tooltipParts.push(`Submissions: ${node.submitted_assignments || 0} / ${node.max_assignments || 0} (${percentage}%)`);
+        tooltipParts.push(`${say('Submissions', 'Abgaben')}: ${node.submitted_assignments || 0} / ${node.max_assignments || 0} (${percentage}%)`);
         if (hasGrading) {
-          tooltipParts.push(`Avg. Grade: ${gradingDisplay}`);
+          tooltipParts.push(`${say('Avg. Grade', 'Durchschnittliche Bewertung')}: ${gradingDisplay}`);
         }
         if (gradingStatus && gradingStatus !== 'not_reviewed') {
-          const statusText = gradingStatus === 'corrected' ? 'Corrected'
-            : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
-            : 'Improvement Possible';
+          const statusText = statusName(gradingStatus);
           tooltipParts.push(`Status: ${statusText}`);
         }
       }
@@ -434,9 +428,7 @@
         const statusColor = gradingStatus === 'corrected' ? '#57cc5d'
           : gradingStatus === 'correction_necessary' ? '#fc4a4a'
           : '#fdba4d';
-        const statusText = gradingStatus === 'corrected' ? 'Corrected'
-          : gradingStatus === 'correction_necessary' ? 'Correction Necessary'
-          : 'Improvement Possible';
+        const statusText = statusName(gradingStatus);
         return `<span class="content-tree-node__status-indicator" style="background-color: ${statusColor};" role="img" aria-label="${escapeHtml(statusText)}" title="${statusText}"></span>`;
       })();
 
@@ -541,19 +533,19 @@
     const series = computeSubmissionSeries(gradings);
     const total = toNonNegativeInt(gradings.total_max_assignments);
     const body = series.length === 0
-      ? '<p style="color: var(--vscode-descriptionForeground); font-size: 13px;">No official submissions to plot yet.</p>'
+      ? `<p style="color: var(--vscode-descriptionForeground); font-size: 13px;">${say('No official submissions to plot yet.', 'Noch keine offiziellen Abgaben für das Diagramm.')}</p>`
       : `
           <div class="chart-card__canvas">
             <canvas id="submissionCurve"></canvas>
           </div>
           <p style="margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground);">
-            Cumulative assignments submitted (${series.length}/${total})
+            ${say('Cumulative assignments submitted', 'Abgegebene Aufgaben, kumuliert')} (${series.length}/${total})
           </p>
         `;
     return `
       <section class="submission-timeline-section">
         <div class="chart-card">
-          <h3 class="chart-card__title">Submission timeline</h3>
+          <h3 class="chart-card__title">${say('Submission timeline', 'Abgaben im Zeitverlauf')}</h3>
           ${body}
         </div>
       </section>
@@ -575,13 +567,13 @@
 
     const total = Math.max(toNonNegativeInt(gradings.total_max_assignments), series.length);
     const labels = series.map(p =>
-      new Date(p.t).toLocaleDateString(undefined, { month: 'short', day: '2-digit' })
+      new Date(p.t).toLocaleDateString(window.ComputorWebview.language, { month: 'short', day: '2-digit' })
     );
     const values = series.map((_, i) => i + 1);
 
     submissionChart = ComputorCharts.createLineChart('submissionCurve', {
       labels,
-      datasets: [{ label: 'Submitted', values, color: ComputorCharts.ThemeColors.info }]
+      datasets: [{ label: say('Submitted', 'Abgegeben'), values, color: ComputorCharts.ThemeColors.info }]
     }, {
       stepped: true,
       fill: false,
@@ -612,7 +604,7 @@
 
     // Add "Remaining" segment if there are incomplete assignments
     if (remaining > 0) {
-      labels.push('Remaining');
+      labels.push(say('Remaining', 'Offen'));
       values.push(remaining);
       colors.push('rgba(100, 149, 237, 0.2)'); // Light blue to match unfilled progress bars
       segments.push({ kind: 'remaining', remaining });
@@ -642,11 +634,17 @@
       tooltipLabelFormatter: ({ label, value, percentage, index }) => {
         const seg = segments[index];
         if (seg?.kind === 'type') {
-          return `${label}: ${seg.submitted}/${seg.max} submitted (${seg.progressPercentage}%)`;
+          return `${label}: ${seg.submitted}/${seg.max} ${say('submitted', 'abgegeben')} (${seg.progressPercentage}%)`;
         }
         return `${label}: ${value} (${percentage}%)`;
       }
     });
+  }
+
+  function statusName(gradingStatus) {
+    return gradingStatus === 'corrected' ? say('Corrected', 'Bewertet')
+      : gradingStatus === 'correction_necessary' ? say('Correction Necessary', 'Korrektur nötig')
+      : say('Improvement Possible', 'Verbesserung möglich');
   }
 
   function renderEmptyState(title, description) {
@@ -664,7 +662,7 @@
     if (parts.length > 0) {
       return parts.join(' ');
     }
-    return fallbackName || gradings.username || 'Unknown Student';
+    return fallbackName || gradings.username || say('Unknown Student', 'Unbekannte Person');
   }
 
   const COPY_ICON = '<svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>';
@@ -676,7 +674,7 @@
       <div class="copyable-id">
         ${label ? `<span class="copyable-id__label">${escapeHtml(label)}</span>` : ''}
         <span class="copyable-id__value">${escapeHtml(value)}</span>
-        <button class="copyable-id__btn" id="${id}" data-copy-value="${escapeHtml(value)}" title="Copy to clipboard">
+        <button class="copyable-id__btn" id="${id}" data-copy-value="${escapeHtml(value)}" title="${say('Copy to clipboard', 'In die Zwischenablage kopieren')}">
           ${COPY_ICON}
         </button>
       </div>
