@@ -360,6 +360,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             },
             // Reading the thread elsewhere must drop the badge too.
             onReadUpdate: () => this.scheduleUnreadRefresh(undefined, undefined),
+            // Test result, submission or grading (issue #554), on the user:<id>
+            // inbox; the course channel never carries it.
+            onSubmissionGroupUpdated: (event) => {
+                this.scheduleStatusRefresh(event.course_id, event.course_content_id);
+            },
         });
     }
 
@@ -384,13 +389,23 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         }, 300);
     }
 
+    private statusRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    /** Debounced per content: one test run or a doubled channel delivery is one refetch. */
+    private scheduleStatusRefresh(courseId: string, courseContentId: string): void {
+        const pending = this.statusRefreshTimers.get(courseContentId);
+        if (pending) {
+            clearTimeout(pending);
+        }
+        this.statusRefreshTimers.set(courseContentId, setTimeout(() => {
+            this.statusRefreshTimers.delete(courseContentId);
+            this.refreshContentById(courseId, courseContentId);
+        }, 300));
+    }
+
     private refreshContentById(courseId: string, courseContentId: string): void {
-        // Invalidate cache for this course so fresh data is fetched
-        this.courseContentsCache.delete(courseId);
-        // Try to find and refresh the specific item, fall back to course refresh
-        const item = this.itemIndex.get(courseContentId);
-        if (item) {
-            this.onDidChangeTreeDataEmitter.fire(item);
+        if (this.itemIndex.has(courseContentId)) {
+            void this.refreshContentItem(courseContentId, courseId);
         } else {
             this.refreshCourseById(courseId);
         }
@@ -457,79 +472,58 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     }
     
     /**
-     * Refresh only the specific course content item without affecting the entire tree
+     * Refetch one content's state and update its row, its units and the
+     * course root in place. Firing the existing item alone is not enough:
+     * VS Code re-reads the same object, whose icon was computed from the old
+     * data (issue #554).
      */
-    async refreshContentItem(contentId: string): Promise<void> {
+    async refreshContentItem(contentId: string, courseId?: string): Promise<void> {
         try {
-            console.log(`[TreeProvider] Refreshing content item: ${contentId}`);
-            const selectedCourseId = this.courseSelection.getCurrentCourseId();
-
-            let updatedFromList: CourseContentStudentList | undefined;
-
-            if (selectedCourseId) {
-                // Always refresh the cached course contents so we preserve
-                // enriched fields (type metadata, colors, etc.) that the
-                // single-content endpoint omits.
-                console.log(`[TreeProvider] Fetching all course contents for course: ${selectedCourseId}`);
-                const refreshedList = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
-                console.log(`[TreeProvider] Fetched ${refreshedList.length} course contents`);
-                this.courseContentsCache.set(selectedCourseId, refreshedList);
-                await this.annotateCourseGit(selectedCourseId, refreshedList);
-
-                // Prefer the freshly cached entry so we retain content type data.
-                updatedFromList = refreshedList.find(c => c.id === contentId);
-                console.log(`[TreeProvider] Found content in list:`, updatedFromList ? 'yes' : 'no');
-                if (updatedFromList) {
-                    console.log(`[TreeProvider] Using refreshed content from list, result:`, updatedFromList.result);
-                }
-            }
-
-            if (!updatedFromList) {
-                console.log(`[TreeProvider] No updated content found in list, firing full tree refresh`);
+            const existing = this.itemIndex.get(contentId);
+            const course = courseId
+                ?? (existing instanceof CourseContentItem ? await this.findCourseIdForContent(existing.courseContent) : undefined)
+                ?? this.courseSelection.getCurrentCourseId();
+            if (!course) {
                 this.onDidChangeTreeDataEmitter.fire(undefined);
                 return;
             }
 
-            console.log(`[TreeProvider] Looking for tree item in index for contentId: ${contentId}`);
-            const ti = this.itemIndex.get(contentId);
-            console.log(`[TreeProvider] Found tree item:`, ti ? 'yes' : 'no');
-            if (ti && ti instanceof CourseContentItem) {
-                console.log(`[TreeProvider] Applying update to CourseContentItem`);
-                ti.applyUpdate(updatedFromList);
-                this.onDidChangeTreeDataEmitter.fire(ti);
-                console.log(`[TreeProvider] Tree change event fired for item`);
-                // Also refresh parent unit if possible
-                const parentPath = (updatedFromList.path || '').split('.').slice(0, -1).join('.');
-                if (parentPath && selectedCourseId) {
-                    const list = this.courseContentsCache.get(selectedCourseId) || [];
-                    const parent = list.find(c => c.path === parentPath);
-                    if (parent && parent.id) {
-                        const parentItem = this.itemIndex.get(parent.id);
-                        if (parentItem && parentItem instanceof CourseContentPathItem) {
-                            // Rebuild fresh node and update parent item
-                            const tree = this.buildContentTree(list, [], [], this.contentKinds, selectedCourseId);
-                            const freshNode = this.findNodeByPath(tree, parentPath);
-                            if (freshNode) {
-                                parentItem.updateFromNode(freshNode);
-                                this.onDidChangeTreeDataEmitter.fire(parentItem);
-                            }
-                        }
-                    }
-                }
-                // Also update course root counts
-                const courseId = selectedCourseId;
-                if (courseId) {
-                    const rootItem = this.itemIndex.get(`course-${courseId}`);
-                    if (rootItem && rootItem instanceof CourseRootItem) {
-                        const list = this.courseContentsCache.get(courseId) || [];
-                        rootItem.updateCounts(list.length);
-                        this.onDidChangeTreeDataEmitter.fire(rootItem);
-                    }
-                }
+            // The full list keeps the enriched fields (type, colour) that the
+            // single-content endpoint omits.
+            this.apiService.clearStudentCourseContentsCache(course);
+            this.apiService.clearStudentCourseContentCache(contentId);
+            const list = await this.apiService.getStudentCourseContents(course, { force: true }) || [];
+            this.courseContentsCache.set(course, list);
+            await this.annotateCourseGit(course, list);
+
+            const updated = list.find(c => c.id === contentId);
+            const item = this.itemIndex.get(contentId);
+            if (!updated || !(item instanceof CourseContentItem)) {
+                this.refreshCourseById(course);
                 return;
             }
-            console.log(`[TreeProvider] Item not found or wrong type, firing full tree refresh`);
-            this.onDidChangeTreeDataEmitter.fire(undefined);
+            item.applyUpdate(updated);
+            this.onDidChangeTreeDataEmitter.fire(item);
+
+            const gitContext = await this.resolveGitContext(course);
+            const tree = this.buildContentTree(list, [], [], this.contentKinds, course);
+            const segments = (updated.path || '').split('.');
+            for (let depth = segments.length - 1; depth > 0; depth--) {
+                const unitPath = segments.slice(0, depth).join('.');
+                const unit = list.find(c => c.path === unitPath);
+                const unitItem = unit?.id ? this.itemIndex.get(unit.id) : undefined;
+                const freshNode = this.findNodeByPath(tree, unitPath);
+                if (unitItem instanceof CourseContentPathItem && freshNode) {
+                    unitItem.updateFromNode(freshNode, this.subtreeBadges(freshNode, gitContext));
+                    this.onDidChangeTreeDataEmitter.fire(unitItem);
+                }
+            }
+
+            const rootItem = this.itemIndex.get(`course-${course}`);
+            if (rootItem instanceof CourseRootItem) {
+                rootItem.updateCounts(list.length);
+                this.onDidChangeTreeDataEmitter.fire(rootItem);
+            }
         } catch (e) {
             console.error('refreshContentItem failed:', e);
             this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -1630,27 +1624,7 @@ class CourseContentPathItem extends TreeItem {
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         
-        try {
-            // Units (folders) always use circle shape; include grading-status corner dot when available.
-            const derivedContentType = node.contentType
-                || (node.courseContent as any)?.course_content_type
-                || (node.courseContent as any)?.course_content_types;
-            const color = derivedContentType?.color || (node.courseContent as any)?.color || 'grey';
-
-            const status = ((node.courseContent as any)?.status || node.submissionGroup?.status)?.toLowerCase?.();
-            const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
-                status === 'corrected' ? 'corrected'
-                    : status === 'correction_necessary' ? 'correction_necessary'
-                        : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
-                            : 'none';
-
-            this.iconPath = corner === 'none'
-                ? IconGenerator.getColoredIcon(color, 'circle')
-                : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
-        } catch {
-            // Fallback to default folder icon
-            this.iconPath = new vscode.ThemeIcon('folder-opened');
-        }
+        this.applyIcon(node);
         
         this.contextValue = 'studentCourseUnit';
         this.id = node.courseContent ? node.courseContent.id : `unit-${name}`;
@@ -1673,7 +1647,32 @@ class CourseContentPathItem extends TreeItem {
     public updateFromNode(node: ContentNode, gitBadges?: AssignmentGitBadges): void {
         this.node = node;
         this.gitBadges = gitBadges;
+        this.applyIcon(node);
         this.applyCounts(node);
+    }
+
+    private applyIcon(node: ContentNode): void {
+        try {
+            // Units (folders) always use circle shape; include grading-status corner dot when available.
+            const derivedContentType = node.contentType
+                || (node.courseContent as any)?.course_content_type
+                || (node.courseContent as any)?.course_content_types;
+            const color = derivedContentType?.color || (node.courseContent as any)?.color || 'grey';
+
+            const status = ((node.courseContent as any)?.status || node.submissionGroup?.status)?.toLowerCase?.();
+            const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
+                status === 'corrected' ? 'corrected'
+                    : status === 'correction_necessary' ? 'correction_necessary'
+                        : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
+                            : 'none';
+
+            this.iconPath = corner === 'none'
+                ? IconGenerator.getColoredIcon(color, 'circle')
+                : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
+        } catch {
+            // Fallback to default folder icon
+            this.iconPath = new vscode.ThemeIcon('folder-opened');
+        }
     }
 
     private countItems(node: ContentNode): number {

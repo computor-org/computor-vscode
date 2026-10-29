@@ -100,6 +100,9 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
         this.scheduleUnreadRefresh();
       },
       onReadUpdate: () => this.scheduleUnreadRefresh(),
+      // Grading or test status (issue #554); a tutor receives it on the
+      // submission_group:<id> channel of an open conversation.
+      onSubmissionGroupUpdated: () => this.scheduleUnreadRefresh(),
     });
   }
 
