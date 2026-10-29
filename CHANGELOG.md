@@ -3,6 +3,12 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.9
+
+- In a browser workspace or a remote window, the extension no longer offers a browser sign-in
+  that cannot complete there. When the workspace's sign-in has stopped working, it says to
+  restart the workspace from the Computor web app or to use an API token.
+
 ## 2027.3.8
 
 - The connection indicator follows the visible Computor views and asks for attention only after
