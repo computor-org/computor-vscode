@@ -1138,7 +1138,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Check if path already exists
       const existingContents = await this.getCourseContents(folderItem.course.id);
       if (existingContents.some(c => c.path === path)) {
-        notify.error(`A content item with path '${path}' already exists. Please use a different slug.`);
+        notify.error(say(`A content item with path '${path}' already exists. Please use a different slug.`, `Ein Inhalt mit dem Pfad „${path}“ existiert bereits. Verwende einen anderen Slug.`));
         return;
       }
       
@@ -1196,7 +1196,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
           hasCourse: !!contentItem?.course,
           hasCourseId: !!contentItem?.course?.id
         });
-        throw new Error('Invalid content item - missing required data');
+        throw new Error(say('Invalid content item - missing required data', 'Ungültiger Inhalt: erforderliche Daten fehlen'));
       }
       
       const title = contentItem.courseContent.title || contentItem.courseContent.path || say('Unknown', 'Unbekannt');
@@ -1811,7 +1811,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Get the example with versions to find the latest version ID
       const fullExample = await this.apiService.getExample(example.exampleId);
       if (!fullExample || !fullExample.versions || fullExample.versions.length === 0) {
-        throw new Error('Example has no versions available');
+        throw new Error(say('Example has no versions available', 'Das Beispiel hat keine Versionen.'));
       }
 
       // Use the latest version
@@ -1921,7 +1921,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Check if path already exists
       const existingContents = await this.getCourseContents(courseId);
       if (existingContents.some(c => c.path === path)) {
-        notify.error(`A content item with path '${path}' already exists.`);
+        notify.error(say(`A content item with path '${path}' already exists.`, `Ein Inhalt mit dem Pfad „${path}“ existiert bereits.`));
         return;
       }
 

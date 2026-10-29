@@ -125,11 +125,11 @@ class RepositoryFilterToggleItem extends vscode.TreeItem {
     this.id = `repo-filter-${repository.id}`;
     this.contextValue = 'repositoryFilterToggle';
     this.iconPath = new vscode.ThemeIcon(selected ? 'pass-filled' : 'circle-large-outline');
-    this.tooltip = `${repository.name} — click to ${selected ? 'remove from' : 'add to'} filter`;
+    this.tooltip = say(`${repository.name} — click to ${selected ? 'remove from' : 'add to'} filter`, `${repository.name}: klicke, um es ${selected ? 'aus dem Filter zu entfernen' : 'zum Filter hinzuzufügen'}`);
     this.description = repository.source_type;
     this.command = {
       command: 'computor.lecturer.toggleRepositoryFilter',
-      title: 'Toggle Repository Filter',
+      title: say('Toggle Repository Filter', 'Repository-Filter umschalten'),
       arguments: [this]
     };
   }
@@ -191,7 +191,7 @@ class ExampleTreeItem extends vscode.TreeItem {
     }
     if (this.merged.category) { parts.push(`${say('Category', 'Kategorie')}: ${this.merged.category}`); }
     if (this.merged.tags && this.merged.tags.length > 0) {
-      parts.push(`Tags: ${this.merged.tags.join(', ')}`);
+      parts.push(say(`Tags: ${this.merged.tags.join(', ')}`, `Schlagwörter: ${this.merged.tags.join(', ')}`));
     }
     if (this.merged.local) {
       const versionCount = this.merged.local.versions.length;
@@ -214,10 +214,10 @@ class ExampleTreeItem extends vscode.TreeItem {
     // (local-checkout state and unsaved working changes).
     const parts: string[] = [];
     if (this.merged.local) {
-      parts.push('[local]');
+      parts.push(say('[local]', '[lokal]'));
     }
     if (this.merged.workingDiff) {
-      parts.push(`● ${this.merged.workingDiff.total} changed`);
+      parts.push(say(`● ${this.merged.workingDiff.total} changed`, `● ${this.merged.workingDiff.total} geändert`));
     }
     return parts.join(' ');
   }
@@ -285,7 +285,7 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
   private buildDescription(): string {
     if (this.version.isWorking && this.workingDiff) {
       const v = this.version.localVersion ? `${this.version.localVersion} ` : '';
-      return `${v}● ${this.workingDiff.total} changed`;
+      return say(`${v}● ${this.workingDiff.total} changed`, `${v}● ${this.workingDiff.total} geändert`);
     }
     if (this.version.isWorking && this.version.localVersion) {
       return this.version.localVersion;
@@ -575,7 +575,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
       ),
       new ExampleFilterTreeItem(
         'tags',
-        'Tags',
+        say('Tags', 'Schlagwörter'),
         'tag',
         this.selectedTags.length > 0 ? this.selectedTags.join(', ') : undefined,
         'computor.lecturer.filterExamplesByTags'
@@ -909,11 +909,11 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
    */
   describeActiveFilters(): string[] {
     const parts: string[] = [];
-    if (this.searchQuery) { parts.push(`search: "${this.searchQuery}"`); }
-    if (this.selectedCategory) { parts.push(`category: ${this.selectedCategory}`); }
-    if (this.selectedTags.length > 0) { parts.push(`tags: ${this.selectedTags.join(', ')}`); }
+    if (this.searchQuery) { parts.push(say(`search: "${this.searchQuery}"`, `Suche: „${this.searchQuery}“`)); }
+    if (this.selectedCategory) { parts.push(say(`category: ${this.selectedCategory}`, `Kategorie: ${this.selectedCategory}`)); }
+    if (this.selectedTags.length > 0) { parts.push(say(`tags: ${this.selectedTags.join(', ')}`, `Schlagwörter: ${this.selectedTags.join(', ')}`)); }
     if (this.selectedRepositoryIds.size > 0) {
-      parts.push(`repositories: ${this.selectedRepositoryIds.size} selected`);
+      parts.push(say(`repositories: ${this.selectedRepositoryIds.size} selected`, `Repositorys: ${this.selectedRepositoryIds.size} ausgewählt`));
     }
     return parts;
   }

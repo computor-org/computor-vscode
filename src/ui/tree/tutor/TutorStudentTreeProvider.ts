@@ -887,7 +887,7 @@ class TutorUnitItem extends vscode.TreeItem {
     const ct = getEmbeddedCourseContentType(this.node.courseContent);
     const typeTitle = localizedTitle(ct, uiLanguage());
     if (typeTitle) {
-      tooltipLines.push(`Type: ${typeTitle}`);
+      tooltipLines.push(`${say('Type', 'Typ')}: ${typeTitle}`);
     }
     const status = (this.node.courseContent as any)?.status || this.node.submissionGroup?.status;
     if (status) {
