@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { HttpError } from '../exceptions/errors/HttpError';
 import { extractAuthFailureOrigin, isGitAuthenticationError } from '../utils/gitErrors';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 
 /**
  * The one place that answers "a credential just died — now what?"
@@ -193,25 +194,37 @@ export class CredentialRecoveryService {
   }
 
   private async reportBackendExpired(): Promise<void> {
+    const signIn = say('Sign in', 'Anmelden');
+    const useToken = say('Use API Token', 'API-Token verwenden');
     const choice = await notify.warning(
-      'Your Computor sign-in has expired. Sign in again to continue — your work on this machine is untouched.',
-      'Sign in',
-      'Use API Token'
+      say(
+        'Your Computor sign-in has expired. Sign in again to continue — your work on this machine is untouched.',
+        'Deine Anmeldung bei Computor ist abgelaufen. Melde dich erneut an, um weiterzumachen. Deine Arbeit auf diesem Rechner bleibt unverändert.'
+      ),
+      signIn,
+      useToken
     );
-    if (choice === 'Sign in') {
+    if (choice === signIn) {
       await vscode.commands.executeCommand('computor.login');
-    } else if (choice === 'Use API Token') {
+    } else if (choice === useToken) {
       await vscode.commands.executeCommand('computor.loginWithApiToken');
     }
   }
 
   private async reportProviderExpired(url?: string): Promise<void> {
     const message = url
-      ? `Your access token for ${url} was rejected — it has expired or been revoked. Replace it to reach your repositories again.`
-      : 'Your git provider access token was rejected — it has expired or been revoked. Replace it to reach your repositories again.';
+      ? say(
+        `Your access token for ${url} was rejected — it has expired or been revoked. Replace it to reach your repositories again.`,
+        `Dein Zugriffstoken für ${url} wurde abgelehnt, weil es abgelaufen ist oder widerrufen wurde. Ersetze es, damit du wieder auf deine Repositories zugreifen kannst.`
+      )
+      : say(
+        'Your git provider access token was rejected — it has expired or been revoked. Replace it to reach your repositories again.',
+        'Das Zugriffstoken für deinen Git-Anbieter wurde abgelehnt, weil es abgelaufen ist oder widerrufen wurde. Ersetze es, damit du wieder auf deine Repositories zugreifen kannst.'
+      );
 
-    const choice = await notify.error(message, 'Update Token', 'Not Now');
-    if (choice !== 'Update Token') {
+    const updateToken = say('Update Token', 'Token ersetzen');
+    const choice = await notify.error(message, updateToken, say('Not Now', 'Nicht jetzt'));
+    if (choice !== updateToken) {
       return;
     }
     await vscode.commands.executeCommand('computor.settingsView', {

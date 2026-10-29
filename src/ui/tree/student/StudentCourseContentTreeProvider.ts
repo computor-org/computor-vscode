@@ -1576,8 +1576,8 @@ class OrganizationItem extends TreeItem {
         super(organizationInfo.title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('organization');
         this.contextValue = 'studentOrganization';
-        this.tooltip = `Organization: ${organizationInfo.title}`;
-        this.description = courseCount > 1 ? `${courseCount} courses` : undefined;
+        this.tooltip = `${say('Organization', 'Organisation')}: ${organizationInfo.title}`;
+        this.description = courseCount > 1 ? say(`${courseCount} courses`, `${courseCount} Kurse`) : undefined;
     }
 }
 
@@ -1592,8 +1592,8 @@ class CourseFamilyItem extends TreeItem {
         super(courseFamilyInfo.title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('folder-library');
         this.contextValue = 'studentCourseFamily';
-        this.tooltip = `Course Family: ${courseFamilyInfo.title}\nOrganization: ${organizationInfo.title}`;
-        this.description = courseCount > 1 ? `${courseCount} courses` : undefined;
+        this.tooltip = `${say('Course Family', 'Kursfamilie')}: ${courseFamilyInfo.title}\n${say('Organization', 'Organisation')}: ${organizationInfo.title}`;
+        this.description = courseCount > 1 ? say(`${courseCount} courses`, `${courseCount} Kurse`) : undefined;
     }
 }
 

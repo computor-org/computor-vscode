@@ -12,6 +12,7 @@ import {
   UserUpdate
 } from '../../types/generated';
 import { notify } from '../../utils/notify';
+import { onDidChangeUiLanguage, say } from '../../utils/uiLanguage';
 
 interface UserProfileViewState {
   user?: UserGet;
@@ -34,6 +35,16 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
   constructor(context: vscode.ExtensionContext, apiService: ComputorApiService) {
     super(context, 'computor.user.profileView');
     this.apiService = apiService;
+    // The language is often changed right here; the panel follows it at once.
+    context.subscriptions?.push(onDidChangeUiLanguage(() => { void this.refreshLanguage(); }));
+  }
+
+  private async refreshLanguage(): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.title = say('My Profile', 'Mein Profil');
+    this.panel.webview.html = await this.getWebviewContent(this.currentData);
   }
 
   setApiService(apiService: ComputorApiService): void {
@@ -43,19 +54,19 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
   async open(): Promise<void> {
     try {
       const state = await this.loadState();
-      await this.show('My Profile', state);
+      await this.show(say('My Profile', 'Mein Profil'), state);
     } catch (error: any) {
-      notify.error(`Failed to open profile: ${error?.message || error}`);
+      notify.error(say(`Failed to open profile: ${error?.message || error}`, `Das Profil konnte nicht geöffnet werden: ${error?.message || error}`));
     }
   }
 
   protected async getWebviewContent(data?: UserProfileViewState): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Profile', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Profile', 'Profil'), `<p>${say('Loading…', 'Wird geladen …')}</p>`);
     }
 
     return this.renderPage({
-      title: 'My Profile',
+      title: say('My Profile', 'Mein Profil'),
       bodyHtml: '<div id="app" class="page-root"></div>',
       cssFiles: ['admin/user-profile.css'],
       scriptFiles: ['admin/user-profile.js'],
@@ -116,7 +127,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
       this.panel.webview.postMessage({ command: 'updateState', data: state });
       if (options?.notice) { this.postNotice(options.notice); }
     } catch (error: any) {
-      this.handleError('Failed to refresh profile data', error);
+      this.handleError(say('Failed to refresh profile data', 'Die Profildaten konnten nicht aktualisiert werden'), error);
     }
   }
 
@@ -134,9 +145,9 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
 
     try {
       await this.apiService.updateUserAccount(updates);
-      await this.refreshState({ force: true, notice: { type: 'success', message: 'Account details updated.' } });
+      await this.refreshState({ force: true, notice: { type: 'success', message: say('Account details updated.', 'Die Kontodaten wurden aktualisiert.') } });
     } catch (error: any) {
-      this.handleError('Failed to update account details', error);
+      this.handleError(say('Failed to update account details', 'Die Kontodaten konnten nicht aktualisiert werden'), error);
     }
   }
 
@@ -147,7 +158,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
 
     const user = await this.apiService.getUserAccount();
     if (!user?.id) {
-      this.handleError('Failed to save profile', new Error('User ID not found'));
+      this.handleError(say('Failed to save profile', 'Das Profil konnte nicht gespeichert werden'), new Error('User ID not found'));
       return;
     }
 
@@ -167,7 +178,7 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
         };
 
         await this.apiService.createUserProfile(payload);
-        await this.refreshState({ force: true, notice: { type: 'success', message: 'Profile created.' } });
+        await this.refreshState({ force: true, notice: { type: 'success', message: say('Profile created.', 'Das Profil wurde angelegt.') } });
       } else {
         const updates: ProfileUpdate = {
           nickname: raw.nickname ?? undefined,
@@ -180,10 +191,10 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
         };
 
         await this.apiService.updateUserProfile(profile.id, updates);
-        await this.refreshState({ force: true, notice: { type: 'success', message: 'Profile updated.' } });
+        await this.refreshState({ force: true, notice: { type: 'success', message: say('Profile updated.', 'Das Profil wurde aktualisiert.') } });
       }
     } catch (error: any) {
-      this.handleError('Failed to save profile', error);
+      this.handleError(say('Failed to save profile', 'Das Profil konnte nicht gespeichert werden'), error);
     }
   }
 
@@ -210,9 +221,9 @@ export class UserProfileWebviewProvider extends BaseWebviewProvider {
         };
         await this.apiService.createStudentProfile(payload);
       }
-      await this.refreshState({ force: true, notice: { type: 'success', message: 'Student profile saved.' } });
+      await this.refreshState({ force: true, notice: { type: 'success', message: say('Student profile saved.', 'Das Studierendenprofil wurde gespeichert.') } });
     } catch (error: any) {
-      this.handleError('Failed to save student profile', error);
+      this.handleError(say('Failed to save student profile', 'Das Studierendenprofil konnte nicht gespeichert werden'), error);
     }
   }
 

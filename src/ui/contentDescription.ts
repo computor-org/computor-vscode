@@ -4,6 +4,7 @@ import { isRestoringSelection } from './treeRestore';
 import { isCourseWelcomeContent } from '../services/WorkspaceCourseLanding';
 import type { CourseContentStudentList } from '../types/generated';
 import { descriptionInLanguage } from '../utils/contentLanguage';
+import { say } from '../utils/uiLanguage';
 
 /**
  * Showing the description a lecturer wrote for a course or a unit.
@@ -181,7 +182,7 @@ export function registerContentDescription(context: vscode.ExtensionContext): vo
   context.subscriptions.push(
     vscode.commands.registerCommand(SHOW_DESCRIPTION_COMMAND, async (item?: StudentDescriptionTreeItem) => {
       if (!item?.descriptionMarkdown) {
-        void vscode.window.showInformationMessage('Nothing has been described here yet.');
+        void vscode.window.showInformationMessage(say('Nothing has been described here yet.', 'Hier gibt es noch keine Beschreibung.'));
         return;
       }
       const request = beginMarkdownPreviewRequest();

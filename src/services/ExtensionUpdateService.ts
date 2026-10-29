@@ -7,6 +7,7 @@ import semver from 'semver';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import { ExtensionVersionListItem, ExtensionVersionListResponse } from '../types/generated';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import { revealUri } from '../utils/reveal';
 
 /**
@@ -69,13 +70,17 @@ export class ExtensionUpdateService {
         return;
       }
 
+      const updateNow = say('Update Now', 'Jetzt aktualisieren');
       const choice = await notify.info(
-        `Computor extension update available: ${currentVersion} → ${latest.version}`,
-        'Update Now',
-        'Later'
+        say(
+          `Computor extension update available: ${currentVersion} → ${latest.version}`,
+          `Für die Computor-Erweiterung gibt es ein Update: ${currentVersion} → ${latest.version}`
+        ),
+        updateNow,
+        say('Later', 'Später')
       );
 
-      if (choice !== 'Update Now') {
+      if (choice !== updateNow) {
         return;
       }
 
@@ -84,7 +89,7 @@ export class ExtensionUpdateService {
     } catch (error) {
       console.error('Failed to complete Computor auto-update check', error);
       if (attemptedInstall) {
-        void notify.warning('Computor auto-update failed. Check logs for details.');
+        void notify.warning(say('Computor auto-update failed. Check logs for details.', 'Die automatische Aktualisierung von Computor ist fehlgeschlagen. Details stehen im Log.'));
       }
     } finally {
       this.checking = false;
@@ -181,10 +186,10 @@ export class ExtensionUpdateService {
 
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: `Computor: Installing update ${versionLabel}`,
+      title: say(`Computor: Installing update ${versionLabel}`, `Computor: Update ${versionLabel} wird installiert`),
       cancellable: false
     }, async (progress) => {
-      progress.report({ message: 'Downloading…' });
+      progress.report({ message: say('Downloading…', 'Wird heruntergeladen …') });
 
       const headers = await this.buildAuthHeaders();
       if (!headers) {
@@ -225,7 +230,7 @@ export class ExtensionUpdateService {
       await fs.promises.writeFile(vsixPath, buffer);
       savedVsixPath = vsixPath;
 
-      progress.report({ message: 'Installing…' });
+      progress.report({ message: say('Installing…', 'Wird installiert …') });
       try {
         await vscode.commands.executeCommand('workbench.extensions.installExtension', vscode.Uri.file(vsixPath));
         installSucceeded = true;
@@ -239,12 +244,16 @@ export class ExtensionUpdateService {
       if (savedVsixPath) {
         await fs.promises.rm(savedVsixPath, { force: true }).catch(() => undefined);
       }
+      const reloadNow = say('Reload Now', 'Jetzt neu laden');
       const choice = await notify.info(
-        `Computor extension updated to ${versionLabel}. Reload VS Code to apply changes.`,
-        'Reload Now',
-        'Later'
+        say(
+          `Computor extension updated to ${versionLabel}. Reload VS Code to apply changes.`,
+          `Die Computor-Erweiterung ist jetzt auf ${versionLabel} aktualisiert. Lade VS Code neu, damit die Änderungen wirksam werden.`
+        ),
+        reloadNow,
+        say('Later', 'Später')
       );
-      if (choice === 'Reload Now') {
+      if (choice === reloadNow) {
         void vscode.commands.executeCommand('workbench.action.reloadWindow');
       }
       return;
@@ -255,17 +264,22 @@ export class ExtensionUpdateService {
     // manually by dragging into the Extensions view.
     console.warn('Computor auto-install rejected by VS Code:', installError);
     if (!savedVsixPath) {
-      void notify.warning('Computor auto-update failed. Check logs for details.');
+      void notify.warning(say('Computor auto-update failed. Check logs for details.', 'Die automatische Aktualisierung von Computor ist fehlgeschlagen. Details stehen im Log.'));
       return;
     }
+    const reveal = say('Reveal VSIX', 'VSIX anzeigen');
+    const openExtensions = say('Open Extensions View', 'Erweiterungen öffnen');
     const choice = await notify.warning(
-      `Computor auto-install was blocked, but the update was downloaded to ${savedVsixPath}. Reveal the file and drop it into the Extensions view to install manually.`,
-      'Reveal VSIX',
-      'Open Extensions View'
+      say(
+        `Computor auto-install was blocked, but the update was downloaded to ${savedVsixPath}. Reveal the file and drop it into the Extensions view to install manually.`,
+        `Die automatische Installation von Computor wurde blockiert, das Update liegt aber unter ${savedVsixPath}. Lass dir die Datei anzeigen und zieh sie in die Ansicht „Erweiterungen“, um sie selbst zu installieren.`
+      ),
+      reveal,
+      openExtensions
     );
-    if (choice === 'Reveal VSIX') {
+    if (choice === reveal) {
       await revealUri(vscode.Uri.file(savedVsixPath));
-    } else if (choice === 'Open Extensions View') {
+    } else if (choice === openExtensions) {
       await vscode.commands.executeCommand('workbench.view.extensions');
     }
   }

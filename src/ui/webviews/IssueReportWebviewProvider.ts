@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
+import { say } from '../../utils/uiLanguage';
 import type { IssueReportingMode } from '../IssueReportStatusBarService';
 
 /** Mirrors what the backend accepts; kept small so nothing implicit is sent. */
@@ -52,7 +53,7 @@ export class IssueReportWebviewProvider extends BaseWebviewProvider {
 
   protected async getWebviewContent(): Promise<string> {
     return this.renderPage({
-      title: 'Report a Problem',
+      title: say('Report a Problem', 'Problem melden'),
       bodyHtml: '<div id="app" class="page-root"></div>',
       cssFiles: ['support/issue-report.css'],
       scriptFiles: ['support/issue-report.js'],
@@ -89,7 +90,7 @@ export class IssueReportWebviewProvider extends BaseWebviewProvider {
   private async submit(message: SubmitMessage): Promise<void> {
     const description = (message.description || '').trim();
     if (!description) {
-      this.postError('Please describe the problem before submitting.');
+      this.postError(say('Please describe the problem before submitting.', 'Beschreib bitte das Problem, bevor du die Meldung absendest.'));
       return;
     }
 
@@ -159,7 +160,7 @@ export function encodeLog(
   }
   const buffer = Buffer.from(log.text, 'utf8');
   if (buffer.length > MAX_LOG_BYTES) {
-    throw new Error('The attached log is larger than 1 MB.');
+    throw new Error(say('The attached log is larger than 1 MB.', 'Das angehängte Log ist größer als 1 MB.'));
   }
   return { buffer, fileName: 'computor.log' };
 }
@@ -168,15 +169,22 @@ export function encodeLog(
 export function submitFailureMessage(error: unknown): string {
   const status = (error as { status?: number } | undefined)?.status;
   if (status === 429) {
-    return 'You have already sent a problem report. Please wait a few minutes before sending another.';
+    return say(
+      'You have already sent a problem report. Please wait a few minutes before sending another.',
+      'Du hast gerade erst ein Problem gemeldet. Warte bitte ein paar Minuten, bevor du die nächste Meldung sendest.'
+    );
   }
   if (status === 503) {
-    return 'Problem reporting is temporarily unavailable. Please try again later.';
+    return say(
+      'Problem reporting is temporarily unavailable. Please try again later.',
+      'Problemmeldungen sind vorübergehend nicht möglich. Versuche es bitte später noch einmal.'
+    );
   }
   if (status === 404) {
-    return 'This Computor deployment does not accept problem reports.';
+    return say('This Computor deployment does not accept problem reports.', 'Diese Computor-Installation nimmt keine Problemmeldungen an.');
   }
-  return `Could not submit the problem report: ${error instanceof Error ? error.message : String(error)}`;
+  const detail = error instanceof Error ? error.message : String(error);
+  return say(`Could not submit the problem report: ${detail}`, `Die Problemmeldung konnte nicht gesendet werden: ${detail}`);
 }
 
 /**
@@ -194,19 +202,19 @@ function decodeScreenshot(
   }
   const match = /^data:([^;,]+);base64,(.*)$/s.exec(screenshot.dataUrl);
   if (!match) {
-    throw new Error('The attached screenshot could not be read.');
+    throw new Error(say('The attached screenshot could not be read.', 'Der angehängte Screenshot ließ sich nicht lesen.'));
   }
   const contentType = (match[1] || '').toLowerCase();
   const extension = ALLOWED_IMAGE_TYPES[contentType];
   if (!extension) {
-    throw new Error('Screenshots must be PNG, JPEG, GIF, or WebP.');
+    throw new Error(say('Screenshots must be PNG, JPEG, GIF, or WebP.', 'Screenshots müssen PNG, JPEG, GIF oder WebP sein.'));
   }
   const buffer = Buffer.from(match[2] || '', 'base64');
   if (buffer.length === 0) {
-    throw new Error('The attached screenshot is empty.');
+    throw new Error(say('The attached screenshot is empty.', 'Der angehängte Screenshot ist leer.'));
   }
   if (buffer.length > MAX_SCREENSHOT_BYTES) {
-    throw new Error('The attached screenshot is larger than 5 MB.');
+    throw new Error(say('The attached screenshot is larger than 5 MB.', 'Der angehängte Screenshot ist größer als 5 MB.'));
   }
   return { buffer, fileName: `screenshot.${extension}`, contentType };
 }

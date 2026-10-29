@@ -117,6 +117,16 @@
     return tpl.innerHTML;
   }
 
+  /**
+   * Dates follow the page language, not the webview's own locale (the VS Code
+   * display language). The display locale is kept when it is in the page
+   * language, so "en-GB" keeps its order.
+   */
+  function pageLocale() {
+    const display = ((typeof navigator !== 'undefined' && navigator.language) || '').trim();
+    return display && display.toLowerCase().split(/[-_]/)[0] === pageLanguage ? display : pageLanguage;
+  }
+
   /** Format an ISO date string as a local date, or '' if absent/invalid. */
   function formatDate(value, options) {
     if (!value) {
@@ -126,7 +136,7 @@
     if (isNaN(date.getTime())) {
       return '';
     }
-    return date.toLocaleDateString(undefined, options);
+    return date.toLocaleDateString(pageLocale(), options);
   }
 
   /** Format an ISO date string as local date + time, or '' if absent/invalid. */
@@ -138,10 +148,10 @@
     if (isNaN(date.getTime())) {
       return '';
     }
-    return date.toLocaleString();
+    return date.toLocaleString(pageLocale());
   }
 
-  /** Human relative date: "today", "3 days ago", falls back to formatDate. */
+  /** Human relative date: "today", "3 days ago" ("heute", "vor 3 Tagen"), falls back to formatDate. */
   function formatRelativeDate(value) {
     if (!value) {
       return '';
@@ -152,15 +162,15 @@
     }
     const days = Math.floor((Date.now() - date.getTime()) / 86400000);
     if (days <= 0) {
-      return 'today';
+      return say('today', 'heute');
     }
     if (days === 1) {
-      return 'yesterday';
+      return say('yesterday', 'gestern');
     }
     if (days < 30) {
-      return days + ' days ago';
+      return say(days + ' days ago', 'vor ' + days + ' Tagen');
     }
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(pageLocale());
   }
 
   /**

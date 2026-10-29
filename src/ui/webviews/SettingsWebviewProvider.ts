@@ -7,6 +7,7 @@ import { ComputorSettingsManager } from '../../settings/ComputorSettingsManager'
 import { GitEnvironmentService } from '../../services/GitEnvironmentService';
 import { BackendConnectionService } from '../../services/BackendConnectionService';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 const execFileAsync = promisify(execFile);
 
@@ -49,19 +50,19 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
       const initialState = { ...(await this.loadInitialState()), focus };
       // Passing state re-renders an already-open panel, so a deep link lands on
       // its field whether or not the view was already on screen.
-      await this.show('Computor Settings', initialState);
+      await this.show(say('Computor Settings', 'Computor-Einstellungen'), initialState);
     } catch (error: any) {
-      notify.error(`Failed to open settings: ${error?.message || error}`);
+      notify.error(say(`Failed to open settings: ${error?.message || error}`, `Die Einstellungen konnten nicht geöffnet werden: ${error?.message || error}`));
     }
   }
 
   protected async getWebviewContent(data?: SettingsInitialState): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Settings', '<p>Loading...</p>');
+      return this.getBaseHtml(say('Settings', 'Einstellungen'), `<p>${say('Loading…', 'Wird geladen …')}</p>`);
     }
 
     return this.renderPage({
-      title: 'Computor Settings',
+      title: say('Computor Settings', 'Computor-Einstellungen'),
       bodyHtml: '<div id="app" class="page-root wide settings-root"></div>',
       cssFiles: ['admin/settings-view.css'],
       scriptFiles: ['shared/validators.js', 'admin/settings-view.js'],
@@ -134,7 +135,10 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
   private async setGitConfig(key: string, value: string): Promise<void> {
     const gitBinary = await GitEnvironmentService.getInstance().getGitBinaryPath();
     if (!gitBinary) {
-      throw new Error('Git is required but was not found. Install Git and ensure it is available on your PATH.');
+      throw new Error(say(
+        'Git is required but was not found. Install Git and ensure it is available on your PATH.',
+        'Git wird benötigt, wurde aber nicht gefunden. Installiere Git und sorge dafür, dass es über deinen PATH erreichbar ist.'
+      ));
     }
     await execFileAsync(gitBinary, ['config', '--global', key, value]);
   }
@@ -142,9 +146,9 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
   private async handleSaveBackendUrl(data: { backendUrl: string }): Promise<void> {
     try {
       await this.settingsManager.setBaseUrl(data.backendUrl.trim());
-      this.postNotice('success', 'Backend URL saved.');
+      this.postNotice('success', say('Backend URL saved.', 'Die Server-Adresse wurde gespeichert.'), 'backendUrl');
     } catch (error: any) {
-      this.postNotice('error', `Failed to save backend URL: ${error?.message || error}`);
+      this.postNotice('error', say(`Failed to save backend URL: ${error?.message || error}`, `Die Server-Adresse konnte nicht gespeichert werden: ${error?.message || error}`), 'backendUrl');
     }
   }
 
@@ -152,9 +156,9 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
     try {
       await this.setGitConfig('user.name', data.gitName.trim());
       await this.setGitConfig('user.email', data.gitEmail.trim());
-      this.postNotice('success', 'Git configuration saved.');
+      this.postNotice('success', say('Git configuration saved.', 'Die Git-Einrichtung wurde gespeichert.'), 'gitConfig');
     } catch (error: any) {
-      this.postNotice('error', `Failed to save git config: ${error?.message || error}`);
+      this.postNotice('error', say(`Failed to save git config: ${error?.message || error}`, `Die Git-Einrichtung konnte nicht gespeichert werden: ${error?.message || error}`), 'gitConfig');
     }
   }
 
@@ -196,7 +200,7 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
         data: {
           url: data.url,
           valid: false,
-          error: error?.message || 'Validation failed'
+          error: error?.message || say('Validation failed', 'Prüfung fehlgeschlagen')
         }
       });
     }
@@ -214,9 +218,9 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
         command: 'providerTokenSaved',
         data: { url: data.url, storedProviderTokens }
       });
-      this.postNotice('success', `Provider token saved for ${data.url}.`);
+      this.postNotice('success', say(`Provider token saved for ${data.url}.`, `Das Token für ${data.url} wurde gespeichert.`));
     } catch (error: any) {
-      this.postNotice('error', `Failed to save Provider token: ${error?.message || error}`);
+      this.postNotice('error', say(`Failed to save Provider token: ${error?.message || error}`, `Das Token konnte nicht gespeichert werden: ${error?.message || error}`));
     }
   }
 
@@ -232,16 +236,17 @@ export class SettingsWebviewProvider extends BaseWebviewProvider {
         command: 'providerTokenRemoved',
         data: { url: data.url, storedProviderTokens }
       });
-      this.postNotice('success', `Provider token removed for ${data.url}.`);
+      this.postNotice('success', say(`Provider token removed for ${data.url}.`, `Das Token für ${data.url} wurde entfernt.`));
     } catch (error: any) {
-      this.postNotice('error', `Failed to remove Provider token: ${error?.message || error}`);
+      this.postNotice('error', say(`Failed to remove Provider token: ${error?.message || error}`, `Das Token konnte nicht entfernt werden: ${error?.message || error}`));
     }
   }
 
-  private postNotice(type: string, message: string): void {
+  /** `code` names the save button a notice belongs to; the page cannot match the translated text. */
+  private postNotice(type: string, message: string, code?: 'backendUrl' | 'gitConfig'): void {
     this.panel?.webview.postMessage({
       command: 'notice',
-      data: { type, message }
+      data: { type, message, code }
     });
   }
 }
