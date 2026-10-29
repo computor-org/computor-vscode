@@ -81,7 +81,12 @@ import { registerDocumentPreviewProviders } from './ui/panels/DocumentPreviewPan
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
-import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
+import {
+  browserSignInUnavailableHint,
+  browserSignInAvailable,
+  ssoBrowserLogin,
+  SsoLoginResult
+} from './authentication/SsoLoginService';
 import { openMyProblemReports, reportProblem } from './commands/reportProblem';
 import { isWelcomeShownOnStartup, registerWelcomePage, WelcomeWebviewProvider } from './ui/webviews/WelcomeWebviewProvider';
 import { IssueReportStatusBarService } from './ui/IssueReportStatusBarService';
@@ -638,7 +643,13 @@ async function handleComputorWorkspaceDetected(
     isAuthenticating = false;
   }
 
-  // Priority 3: nothing stored (or session expired) — offer to sign in.
+  // Priority 3: nothing stored (or session expired) — offer to sign in. A
+  // hosted workspace lands here when its injected token stopped working, and
+  // there the browser sign-in cannot complete.
+  if (!browserSignInAvailable()) {
+    await explainBrowserSignInUnavailable(context);
+    return;
+  }
   const action = await notify.info(
     'Computor workspace detected. Sign in to continue.',
     'Sign in',
@@ -2027,8 +2038,20 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
   }
 }
 
+/** Browser sign-in cannot complete in this window; say what works instead. */
+async function explainBrowserSignInUnavailable(context: vscode.ExtensionContext): Promise<void> {
+  const action = await notify.warning(browserSignInUnavailableHint, 'Use API Token', 'Not Now');
+  if (action === 'Use API Token') {
+    await apiTokenLoginFlow(context);
+  }
+}
+
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
   if (isAuthenticating) { notify.info('Login already in progress.'); return; }
+  if (!browserSignInAvailable()) {
+    await explainBrowserSignInUnavailable(context);
+    return;
+  }
   // Claim the in-flight guard synchronously, before any await, so a second
   // trigger (e.g. the auto-login prompt) can't race us into a duplicate
   // controller.activate().
