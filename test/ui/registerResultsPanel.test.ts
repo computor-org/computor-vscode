@@ -76,6 +76,34 @@ describe('registerResultsPanel', () => {
     }
   });
 
+  it('titles both Results views in the reading language and renames them on a switch', () => {
+    const originalProvider = vscode.window.registerWebviewViewProvider;
+    const originalTreeView = vscode.window.createTreeView;
+    let panel: any;
+    let tree: any;
+    (vscode.window as any).registerWebviewViewProvider = (_id: string, provider: any) => { panel = provider; return { dispose() {} }; };
+    (vscode.window as any).createTreeView = (...args: any[]) => { tree = (originalTreeView as any)(...args); return tree; };
+    setUiProfileLanguage('de');
+    const disposables = registerResultsPanel(context, api, async () => {});
+    try {
+      const view: any = {
+        visible: true,
+        webview: { options: {}, html: '', postMessage: () => Promise.resolve(true), onDidReceiveMessage: () => ({ dispose() {} }), asWebviewUri: (uri: any) => uri, cspSource: '' },
+        onDidChangeVisibility: () => ({ dispose() {} }),
+        onDidDispose: () => ({ dispose() {} })
+      };
+      panel.resolveWebviewView(view, {} as any, {} as any);
+      expect([tree.title, view.title]).to.deep.equal(['Ergebnisliste', 'Ergebnisdetails']);
+      setUiProfileLanguage('en');
+      expect([tree.title, view.title]).to.deep.equal(['Result Tree', 'Result Details']);
+    } finally {
+      for (const disposable of disposables) disposable.dispose();
+      (vscode.window as any).registerWebviewViewProvider = originalProvider;
+      (vscode.window as any).createTreeView = originalTreeView;
+      setUiProfileLanguage(undefined);
+    }
+  });
+
   it('returns disposables for everything it registered', () => {
     const disposables = registerResultsPanel(context, api, async () => {});
 

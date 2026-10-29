@@ -1,5 +1,5 @@
 (function () {
-  const { escapeHtml } = window.ComputorWebview;
+  const { escapeHtml, say } = window.ComputorWebview;
   const vscode = window.vscodeApi || acquireVsCodeApi();
 
   const state = {
@@ -120,9 +120,9 @@
               <input id="profile-avatar-image" name="avatar_image" type="url" value="${escapeHtml(toInputValue(profile.avatar_image))}" placeholder="https://...">
             </div>
             <div class="form-field">
-              <label for="profile-language">Language</label>
+              <label for="profile-language">${say('Language', 'Sprache')}</label>
               <select id="profile-language" name="language_code">
-                <option value="">No preference</option>
+                <option value="">${say('Automatic', 'Automatisch')}</option>
                 ${languages.map(lang => `<option value="${escapeHtml(lang.code)}" ${profile.language_code === lang.code ? 'selected' : ''}>${escapeHtml(lang.name)}${lang.native_name ? ` (${escapeHtml(lang.native_name)})` : ''}</option>`).join('')}
               </select>
             </div>

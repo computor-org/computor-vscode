@@ -45,7 +45,14 @@ export function registerResultsPanel(
   } });
 
   TestResultService.getInstance().setApiService(api);
-  disposables.push(onDidChangeUiLanguage(() => resultsTree.refreshLanguage()));
+  // The package.nls view names follow only the VS Code display language.
+  const setTreeTitle = () => { treeView.title = say('Result Tree', 'Ergebnisliste'); };
+  setTreeTitle();
+  disposables.push(onDidChangeUiLanguage(() => {
+    setTreeTitle();
+    panelProvider.refreshTitle();
+    resultsTree.refreshLanguage();
+  }));
 
   disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any, resultId?: string, artifacts?: any[], opts?: { preserveFocus?: boolean }) => {
     try {

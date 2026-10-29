@@ -71,4 +71,17 @@ describe('webview language', () => {
     deliver({ command: 'updateState', data: { courseMemberId: '', title: '', editingComment: null, loading: false } });
     expect(texts(mount)).to.include('Öffne die Kommentare zu einem Kursmitglied, um hier einen Kommentar zu schreiben oder zu bearbeiten.');
   });
+
+  it('calls an unset profile language Automatic, in the page language', () => {
+    for (const [lang, expected] of [['de', '<option value="">Automatisch</option>'], ['en', '<option value="">Automatic</option>']] as const) {
+      const { context, mount, deliver } = page(lang);
+      let html = '';
+      Object.defineProperty(mount, 'innerHTML', { set: (value: string) => { html = value; }, get: () => html });
+      Object.assign(mount, { querySelector: () => null, querySelectorAll: () => [] });
+      Object.assign(context.document, { querySelector: () => null });
+      runInNewContext(read('admin/user-profile.js'), context);
+      deliver({ command: 'updateState', data: { profile: {}, languages: [{ code: 'de', name: 'German' }] } });
+      expect(html).to.contain(expected);
+    }
+  });
 });

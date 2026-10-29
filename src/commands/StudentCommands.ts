@@ -469,7 +469,7 @@ export class StudentCommands {
       }
 
       if (!silent) {
-        notify.info('No README.md found in this assignment');
+        notify.info(say('No README.md found in this assignment', 'Diese Aufgabe hat keine README.md'));
       }
       return false;
     } catch (e) {
@@ -486,7 +486,7 @@ export class StudentCommands {
     const archive = await this.apiService.downloadStudentCourseContentDescription(content.id);
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
     if (!archive) {
-      if (!options.silent) notify.info('This assignment has no published description.');
+      if (!options.silent) notify.info(say('This assignment has no published description.', 'Diese Aufgabe hat noch keine veröffentlichte Beschreibung.'));
       return;
     }
 
@@ -501,7 +501,7 @@ export class StudentCommands {
       }).map(file => file.name);
       const descriptions = listDescriptionFiles(files);
       if (descriptions.length === 0) {
-        notify.info('This assignment has no description.');
+        notify.info(say('This assignment has no description.', 'Diese Aufgabe hat keine Beschreibung.'));
         return;
       }
       const names = await this.languageNames();
@@ -525,7 +525,7 @@ export class StudentCommands {
       markdown = await readStudentDescription(archive, await readingLanguage(this.apiService));
     }
     if (!markdown) {
-      if (!options.silent) notify.info('This assignment has no description.');
+      if (!options.silent) notify.info(say('This assignment has no description.', 'Diese Aufgabe hat keine Beschreibung.'));
       return;
     }
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
@@ -626,7 +626,7 @@ export class StudentCommands {
       if (!existing) {
         const descriptor = await this.provisioningService.getDescriptor(cid);
         if (!descriptor.configured) {
-          notify.info('This course has no git repository configured yet.');
+          notify.info(say('This course has no git repository configured yet.', 'Für diesen Kurs ist noch kein Git-Repository eingerichtet.'));
           return;
         }
         const supported = descriptor.student_repo_modes.filter(
@@ -708,7 +708,7 @@ export class StudentCommands {
       await this.saveAllFilesInDirectory(repoPath);
 
       if (!(await this.gitService.hasChanges(repoPath))) {
-        notify.info('No changes to commit in this course.');
+        notify.info(say('No changes to commit in this course.', 'In diesem Kurs gibt es keine Änderungen zum Committen.'));
         return;
       }
 
@@ -861,7 +861,7 @@ export class StudentCommands {
         // Student backed out of a prompt — nothing to report.
         break;
       case 'not-configured':
-        notify.info('This course has no git repository configured yet.');
+        notify.info(say('This course has no git repository configured yet.', 'Für diesen Kurs ist noch kein Git-Repository eingerichtet.'));
         break;
     }
   }
@@ -1065,7 +1065,7 @@ export class StudentCommands {
         // this picker from metadata and download only the selected archive.
         const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
         if (!courseId) {
-          notify.warning('No course selected. Select a course then try again.');
+          notify.warning(say('No course selected. Select a course then try again.', 'Kein Kurs ausgewählt. Wähle einen Kurs aus und versuche es noch einmal.'));
           return;
         }
         const contents = await this.apiService.getStudentCourseContents(courseId);
@@ -1080,7 +1080,7 @@ export class StudentCommands {
               || content.deployment?.deployment_status === 'deployed' || Boolean(content.deployment?.deployed_at)));
 
         if (assignables.length === 0) {
-          notify.info('No released assignment descriptions are available for this course.');
+          notify.info(say('No released assignment descriptions are available for this course.', 'Für diesen Kurs sind noch keine Aufgabenbeschreibungen freigegeben.'));
           return;
         }
 
@@ -1109,7 +1109,7 @@ export class StudentCommands {
           if (item?.courseContent?.id) {
             await this.openRemoteDescription(item.courseContent, true, options);
           } else {
-            notify.warning('Select an assignment to preview its description.');
+            notify.warning(say('Select an assignment to preview its description.', 'Wähle eine Aufgabe aus, um ihre Beschreibung anzuzeigen.'));
           }
           return;
         }
@@ -2325,7 +2325,7 @@ export class StudentCommands {
         courseId = content.course_id || courseId;
 
         if (!courseId) {
-          notify.warning('No course selected.');
+          notify.warning(say('No course selected.', 'Kein Kurs ausgewählt.'));
           return;
         }
 
@@ -2384,7 +2384,7 @@ export class StudentCommands {
 
       if (!target) {
         if (!courseId) {
-          notify.warning('No course selected.');
+          notify.warning(say('No course selected.', 'Kein Kurs ausgewählt.'));
           return;
         }
 
@@ -2595,7 +2595,7 @@ export class StudentCommands {
       }
 
       if (!courseContentSummary) {
-        notify.warning('No detailed information available for this content yet.');
+        notify.warning(say('No detailed information available for this content yet.', 'Zu diesem Inhalt gibt es noch keine Details.'));
         return;
       }
 

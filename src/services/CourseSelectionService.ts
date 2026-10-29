@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ComputorApiService } from './ComputorApiService';
 import { StatusBarService } from '../ui/StatusBarService';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 
 export interface CourseInfo {
     id: string;
@@ -93,7 +94,7 @@ export class CourseSelectionService {
             const courses = await this.apiService.getStudentCourses();
             
             if (!courses || courses.length === 0) {
-                notify.info('No courses available');
+                notify.info(say('No courses available', 'Keine Kurse verfügbar'));
                 return undefined;
             }
 
