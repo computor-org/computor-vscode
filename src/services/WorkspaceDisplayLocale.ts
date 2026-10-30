@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { applyEdits, modify, parse, ParseError } from 'jsonc-parser';
 import type * as vscode from 'vscode';
-import { validWorkspaceLaunchContext, WorkspaceLaunchContext } from './WorkspaceLaunchContextService';
+import { WorkspaceLaunchContext, workspaceLaunchLanguage } from './WorkspaceLaunchContextService';
 import { setWorkspaceLaunchLanguage } from '../utils/uiLanguage';
 
 const attemptKey = 'computor.workspaceDisplayLocale.reloadAttempt';
@@ -93,7 +93,7 @@ export class WorkspaceDisplayLocale implements vscode.Disposable {
       // A launch carries the web app's language for this browser. It is a
       // hint for this activation only: stored, it outlived browser and
       // profile changes and acted like an explicit choice.
-      const launchLanguage = launch && validWorkspaceLaunchContext(launch) ? supportedLocale(launch.ui_language) : undefined;
+      const launchLanguage = workspaceLaunchLanguage(launch ?? null);
       if (launchLanguage) this.launchLanguage = launchLanguage;
       if (this.disposed) return;
       setWorkspaceLaunchLanguage(this.launchLanguage);

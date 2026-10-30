@@ -259,6 +259,17 @@ describe('WorkspaceDisplayLocale', () => {
       language = target;
       await assertReadingLanguage(target, opposite);
     });
+    // Start and open from the workspace list names no course; the launch
+    // still carries the browser's language, against the workspace's own.
+    it(`switches the editor and welcome page to ${target} for a launch without a course`, async () => {
+      language = '';
+      effective = opposite; // derived from the workspace's display language
+      launch = { request_id: 'language-only', expires_at: new Date(Date.now() + 60000).toISOString(), ui_language: target };
+      await service(opposite).poll();
+      expect(parse(await fs.readFile(argvFile, 'utf8')).locale).to.equal(target);
+      expect(reloads).to.equal(1);
+      await assertReadingLanguage(target, opposite);
+    });
   }
 
   it('keeps English as the safe default without a profile, launch or course language', async () => {

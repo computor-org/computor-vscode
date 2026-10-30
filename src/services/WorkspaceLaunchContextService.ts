@@ -4,7 +4,8 @@ import type { TreeHandle } from '../ui/treeRegistry';
 import { findInTree } from '../ui/tree/chat/chatJump';
 
 export interface WorkspaceLaunchContext {
-  course_id: string;
+  /** Absent when the workspace was opened without a course: the launch then carries only the reading language. */
+  course_id?: string | null;
   course_content_id?: string | null;
   request_id: string;
   expires_at: string;
@@ -49,13 +50,34 @@ export function workspaceLaunchIdentity(env: NodeJS.ProcessEnv = process.env): {
   return owner && name ? { owner, name } : undefined;
 }
 
-export function validWorkspaceLaunchContext(value: WorkspaceLaunchContext | null, now = Date.now()): value is WorkspaceLaunchContext {
-  return Boolean(value && typeof value.course_id === 'string' && value.course_id.trim()
-    && (value.course_content_id === undefined || value.course_content_id === null
-      || (typeof value.course_content_id === 'string' && Boolean(value.course_content_id.trim())))
-    && typeof value.request_id === 'string' && value.request_id.trim()
+function absent(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+function nonBlank(value: unknown): value is string {
+  return typeof value === 'string' && Boolean(value.trim());
+}
+
+/** A current launch, with or without a course. */
+function currentLaunch(value: WorkspaceLaunchContext | null, now: number): value is WorkspaceLaunchContext {
+  return Boolean(value
+    && (absent(value.course_id) ? absent(value.course_content_id) : nonBlank(value.course_id))
+    && (absent(value.course_content_id) || nonBlank(value.course_content_id))
+    && nonBlank(value.request_id)
     && typeof value.expires_at === 'string' && Date.parse(value.expires_at) > now
-    && (value.ui_language === undefined || value.ui_language === null || value.ui_language === 'de' || value.ui_language === 'en'));
+    && (absent(value.ui_language) || value.ui_language === 'de' || value.ui_language === 'en'));
+}
+
+/** A current launch that names a course to open. */
+export function validWorkspaceLaunchContext(
+  value: WorkspaceLaunchContext | null, now = Date.now()
+): value is WorkspaceLaunchContext & { course_id: string } {
+  return currentLaunch(value, now) && nonBlank(value.course_id);
+}
+
+/** The reading language a current launch carries, also when it names no course. */
+export function workspaceLaunchLanguage(value: WorkspaceLaunchContext | null, now = Date.now()): 'de' | 'en' | undefined {
+  return currentLaunch(value, now) ? value.ui_language ?? undefined : undefined;
 }
 
 interface LaunchContextOptions {
