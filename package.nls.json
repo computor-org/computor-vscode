@@ -260,6 +260,8 @@
   "command.lecturer.releaseCourseContent": "Release Content",
   "command.matlab.moveWorkspaceView": "Move MATLAB Workspace to the Secondary Side Bar",
   "command.lecturer.editContentDescription": "Edit Description...",
+  "command.lecturer.draftDescriptionWithLena": "Draft Description with Lena...",
+  "command.lecturer.draftUnitDescriptionsWithLena": "Draft Unit Descriptions with Lena...",
   "command.lecturer.checkLinks": "Check Links",
   "command.lecturer.checkExampleLinks": "Check Links",
   "command.figures.show": "Show Figures",

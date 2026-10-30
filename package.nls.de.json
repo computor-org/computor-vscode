@@ -260,6 +260,8 @@
   "command.lecturer.releaseCourseContent": "Inhalt freigeben",
   "command.matlab.moveWorkspaceView": "MATLAB-Arbeitsbereich in die sekundäre Seitenleiste verschieben",
   "command.lecturer.editContentDescription": "Beschreibung bearbeiten…",
+  "command.lecturer.draftDescriptionWithLena": "Beschreibung von Lena entwerfen…",
+  "command.lecturer.draftUnitDescriptionsWithLena": "Einheitenbeschreibungen von Lena entwerfen…",
   "command.lecturer.checkLinks": "Links prüfen",
   "command.lecturer.checkExampleLinks": "Links prüfen",
   "command.figures.show": "Abbildungen anzeigen",

@@ -9,7 +9,12 @@ import { requestBatchingService } from './RequestBatchingService';
 import { multiTierCache } from './CacheService';
 import { performanceMonitor } from './PerformanceMonitoringService';
 import type { CourseDeploymentGet, VersionUpgradeGet, CourseDeployRequest, CourseDeployResult, InstanceInfoGet } from '../types/generated';
-import type { CourseTaskRequest } from '../types/generated/courses';
+import type {
+  CourseTaskRequest,
+  DescriptionDraftJob,
+  DescriptionDraftRequest,
+  DescriptionDraftStatus
+} from '../types/generated/courses';
 import type { CascadeDeleteResult } from '../types/generated/common';
 import type { TaskInfo } from '../types/generated/tasks';
 import { notify } from '../utils/notify';
@@ -550,6 +555,62 @@ export class ComputorApiService {
     this.invalidateCachePattern(`courseContent-${contentId}`);
     
     return response.data;
+  }
+
+  /**
+   * Whether the server has a Lena worker for unit description drafts
+   * (computor-org/issues#559). False on servers without the route, too.
+   *
+   * @backendCompat a 404 on backends without drafts reads as "not available"
+   */
+  async getDescriptionDraftAvailability(): Promise<boolean> {
+    try {
+      const client = await this.getHttpClient();
+      const response = await client.get<{ enabled: boolean }>('/course-contents/description-drafts/availability');
+      return response.data?.enabled === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ask Lena for a draft description of a unit; returns the queued job.
+   *
+   * @backendCompat only reached after getDescriptionDraftAvailability() is true
+   */
+  async requestDescriptionDraft(contentId: string, body: DescriptionDraftRequest): Promise<DescriptionDraftJob> {
+    const client = await this.getHttpClient();
+    const response = await client.post<DescriptionDraftJob>(`/course-contents/${contentId}/description-draft`, body);
+    return response.data;
+  }
+
+  /**
+   * State of a description draft job, with the drafts once it is done. Never cached.
+   *
+   * @backendCompat only reached for a job requestDescriptionDraft() created
+   */
+  async getDescriptionDraft(jobId: string): Promise<DescriptionDraftStatus> {
+    const client = await this.getHttpClient();
+    // No type argument: on backends without drafts this path reads as
+    // GET /course-contents/{id}, so the compat guard would hold it against
+    // CourseContentGet. The shape is checked here instead.
+    const response = await client.get(`/course-contents/description-drafts/${jobId}`);
+    const status = response.data as DescriptionDraftStatus | undefined;
+    if (!status || typeof status.state !== 'string') {
+      throw new Error('Unexpected description draft response');
+    }
+    return status;
+  }
+
+  /**
+   * Cancel a description draft job and free the lecturer's one pending draft
+   * at once. Idempotent: a job that is already gone answers 204 as well.
+   *
+   * @backendCompat only reached for a job requestDescriptionDraft() created
+   */
+  async cancelDescriptionDraft(jobId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/course-contents/description-drafts/${jobId}`);
   }
 
   async moveCourseContent(courseId: string, contentId: string, path: string, position: number): Promise<CourseContentGet> {

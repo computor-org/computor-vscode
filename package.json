@@ -1366,6 +1366,18 @@
         "category": "%category.computor%"
       },
       {
+        "command": "computor.lecturer.draftDescriptionWithLena",
+        "title": "%command.lecturer.draftDescriptionWithLena%",
+        "icon": "$(sparkle)",
+        "category": "%category.computor%"
+      },
+      {
+        "command": "computor.lecturer.draftUnitDescriptionsWithLena",
+        "title": "%command.lecturer.draftUnitDescriptionsWithLena%",
+        "icon": "$(sparkle)",
+        "category": "%category.computor%"
+      },
+      {
         "command": "computor.lecturer.checkLinks",
         "title": "%command.lecturer.checkLinks%",
         "icon": "$(link)",
@@ -1692,6 +1704,14 @@
         },
         {
           "command": "computor.student.fs.deleteFolder",
+          "when": "false"
+        },
+        {
+          "command": "computor.lecturer.draftDescriptionWithLena",
+          "when": "false"
+        },
+        {
+          "command": "computor.lecturer.draftUnitDescriptionsWithLena",
           "when": "false"
         }
       ],
@@ -2812,6 +2832,16 @@
           "command": "computor.lecturer.editContentDescription",
           "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent\\.nonSubmittable/",
           "group": "5_details@0"
+        },
+        {
+          "command": "computor.lecturer.draftDescriptionWithLena",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent\\.nonSubmittable(?=.*\\.hasChildren)(?!.*\\.archived)/ && computor.lecturer.lenaDrafts",
+          "group": "5_details@1"
+        },
+        {
+          "command": "computor.lecturer.draftUnitDescriptionsWithLena",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.hasDescription)?$/ && computor.lecturer.lenaDrafts",
+          "group": "5_details@1"
         },
         {
           "command": "computor.student.showPreview",
