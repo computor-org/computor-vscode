@@ -231,6 +231,8 @@ async function openDescriptionDocument(
  * Ctrl+S/Cmd+S publishes it as usual, closing without saving discards it.
  * `compare` opens the draft beside the current description in a diff, so
  * parts can be carried over into the description, which stays editable.
+ * Returns how the draft was opened (a `replace` on an editor with unsaved
+ * edits becomes a `compare`), or undefined when nothing opened.
  */
 export async function openDescriptionDraft(
   context: vscode.ExtensionContext,
@@ -239,10 +241,10 @@ export async function openDescriptionDraft(
   draft: string,
   mode: 'replace' | 'compare',
   draftLabel = 'Lena draft'
-): Promise<boolean> {
+): Promise<'replace' | 'compare' | undefined> {
   const opened = await openDescriptionDocument(context, apiService, target);
   if (!opened) {
-    return false;
+    return undefined;
   }
   const { document } = opened;
 
@@ -254,7 +256,7 @@ export async function openDescriptionDraft(
       document.positionAt(document.getText().length)
     );
     edit.replace(document.uri, whole, draft);
-    return vscode.workspace.applyEdit(edit);
+    return (await vscode.workspace.applyEdit(edit)) ? 'replace' : undefined;
   }
 
   // The draft lives beside the scratch document but is not registered as a
@@ -270,7 +272,7 @@ export async function openDescriptionDraft(
     `${draftLabel} ↔ ${target.label}`,
     { viewColumn: SOURCE_COLUMN, preview: false }
   );
-  return true;
+  return 'compare';
 }
 
 export function registerDescriptionEditor(

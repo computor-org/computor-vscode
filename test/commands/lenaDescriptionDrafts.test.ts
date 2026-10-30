@@ -6,10 +6,14 @@ import {
   DRAFT_DESCRIPTION_COMMAND,
   DRAFT_UNIT_DESCRIPTIONS_COMMAND,
   LENA_DRAFTS_CONTEXT_KEY,
+  aiNote,
   draftFailureMessage,
+  draftRequestErrorMessage,
+  requestAndWait,
   unitsWithAssignments,
   waitForDraft
 } from '../../src/commands/LenaDescriptionDraftCommands';
+import { HttpError, NetworkError } from '../../src/exceptions/errors';
 
 /**
  * Lena drafts of a unit description (computor-org/issues#559): which units
@@ -33,6 +37,15 @@ describe('Lena description drafts', () => {
       ]);
     });
 
+    it('labels units in the reading language, as the tree does', () => {
+      const rows = [
+        { id: 'u', path: 'week1', title: 'Woche 1', title_i18n: { de: 'Woche 1', en: 'Week 1' }, position: 1, is_submittable: false },
+        { id: 'a', path: 'week1.task', position: 1, is_submittable: true }
+      ];
+      expect(unitsWithAssignments(rows, 'en')[0]!.label).to.equal('Week 1');
+      expect(unitsWithAssignments(rows, 'de')[0]!.label).to.equal('Woche 1');
+    });
+
     it('does not count a sibling with a common prefix as a child', () => {
       const rows = [
         { id: 'a', path: 'week1', position: 1, is_submittable: false },
@@ -42,19 +55,32 @@ describe('Lena description drafts', () => {
     });
   });
 
+  const unavailable = () => new HttpError('Service Unavailable', 503, 'Service Unavailable');
+
+  // Each poll answers with the next entry; an Error entry is thrown.
+  function api(states: any[], request: () => Promise<any> = async () => ({ id: 'j', state: 'queued' as const })) {
+    const calls: string[] = [];
+    const cancelled: string[] = [];
+    return {
+      calls,
+      cancelled,
+      getDescriptionDraft: async (jobId: string) => {
+        calls.push(jobId);
+        const next = states.shift();
+        if (next instanceof Error) {
+          throw next;
+        }
+        return next;
+      },
+      requestDescriptionDraft: request,
+      cancelDescriptionDraft: async (jobId: string) => {
+        cancelled.push(jobId);
+      },
+      getDescriptionDraftAvailability: async () => true
+    };
+  }
+
   describe('waitForDraft', () => {
-    function api(states: any[]) {
-      const calls: string[] = [];
-      return {
-        calls,
-        getDescriptionDraft: async (jobId: string) => {
-          calls.push(jobId);
-          return states.shift();
-        },
-        requestDescriptionDraft: async () => ({ id: 'j', state: 'queued' as const }),
-        getDescriptionDraftAvailability: async () => true
-      };
-    }
     const noWait = async () => undefined;
 
     it('polls until the drafts are there', async () => {
@@ -83,6 +109,95 @@ describe('Lena description drafts', () => {
       const outcome = await waitForDraft(api(running) as any, 'j', { wait: noWait, intervalMs: 1, timeoutMs: 3 });
       expect(outcome.kind).to.equal('failed');
     });
+
+    it('rides out a few failed polls, such as a backend restart', async () => {
+      const drafts = [{ language: 'en', description: 'Week 1 covers loops.' }];
+      const fake = api([unavailable(), new NetworkError('reset'), { id: 'j', state: 'running' }, unavailable(), { id: 'j', state: 'done', drafts }]);
+      const outcome = await waitForDraft(fake as any, 'j', { wait: noWait });
+      expect(outcome).to.deep.equal({ kind: 'done', drafts });
+    });
+
+    it('fails, without throwing, after too many failed polls in a row', async () => {
+      const fake = api(Array.from({ length: 20 }, unavailable));
+      const outcome = await waitForDraft(fake as any, 'j', { wait: noWait });
+      expect(outcome.kind).to.equal('failed');
+      expect(fake.calls.length).to.be.lessThan(20);
+    });
+
+    it('fails at once when the job is gone', async () => {
+      const fake = api([new HttpError('Not Found', 404, 'Not Found')]);
+      const outcome = await waitForDraft(fake as any, 'j', { wait: noWait });
+      expect(outcome).to.deep.equal({ kind: 'failed', message: draftRequestErrorMessage(new HttpError('', 404, '')) });
+      expect(fake.calls).to.have.length(1);
+    });
+  });
+
+  describe('requestAndWait', () => {
+    const noWait = async () => undefined;
+
+    it('marks a refused request as busy, so a batch stops, and asks for nothing more', async () => {
+      const fake = api([], async () => {
+        throw new HttpError('Too Many Requests', 429, 'Too Many Requests');
+      });
+      const outcome = await requestAndWait(fake as any, 'u', '', () => false, { wait: noWait });
+      expect(outcome).to.deep.equal({
+        kind: 'failed',
+        message: draftRequestErrorMessage(new HttpError('', 429, '')),
+        busy: true
+      });
+      expect(fake.calls).to.have.length(0);
+      expect(fake.cancelled).to.have.length(0);
+    });
+
+    it('cancels the job on the server when the lecturer cancels', async () => {
+      let cancel = false;
+      const fake = api([{ id: 'j', state: 'running' }, { id: 'j', state: 'running' }]);
+      const outcome = await requestAndWait(fake as any, 'u', '', () => cancel, {
+        wait: async () => {
+          cancel = true;
+        }
+      });
+      expect(outcome).to.deep.equal({ kind: 'cancelled' });
+      expect(fake.cancelled).to.deep.equal(['j']);
+    });
+
+    it('cancels the job on the server when it takes too long', async () => {
+      const running = Array.from({ length: 10 }, () => ({ id: 'j', state: 'running' }));
+      const fake = api(running);
+      const outcome = await requestAndWait(fake as any, 'u', '', () => false, { wait: noWait, intervalMs: 1, timeoutMs: 3 });
+      expect(outcome.kind).to.equal('failed');
+      expect(fake.cancelled).to.deep.equal(['j']);
+    });
+
+    it('keeps a finished job and survives a failing cancel', async () => {
+      const drafts = [{ language: 'de', description: 'Woche 1 behandelt Schleifen.' }];
+      const done = api([{ id: 'j', state: 'done', drafts }]);
+      expect(await requestAndWait(done as any, 'u', '', () => false, { wait: noWait })).to.deep.equal({ kind: 'done', drafts });
+      expect(done.cancelled).to.have.length(0);
+
+      const lost = api([new HttpError('Not Found', 404, 'Not Found')]);
+      lost.cancelDescriptionDraft = async () => {
+        throw unavailable();
+      };
+      const outcome = await requestAndWait(lost as any, 'u', '', () => false, { wait: noWait });
+      expect(outcome.kind).to.equal('failed');
+    });
+  });
+
+  describe('messages', () => {
+    it('maps the server refusals to texts of its own, not the English detail', () => {
+      for (const status of [400, 403, 404, 429, 503]) {
+        const message = draftRequestErrorMessage(new HttpError('server detail', status, '', { detail: 'server detail' }));
+        expect(message, String(status)).to.not.contain('server detail');
+        expect(message, String(status)).to.contain(status === 403 ? 'lecturers' : status === 400 ? 'assignments' : 'Lena');
+      }
+    });
+
+    it('words the AI note for how the drafts were opened', () => {
+      expect(aiNote(['replace'])).to.contain('publishes it');
+      expect(aiNote(['compare'])).to.contain('beside the current description');
+      expect(aiNote(['replace', 'compare'])).to.not.equal(aiNote(['compare']));
+    });
   });
 
   describe('contributions', () => {
@@ -99,11 +214,14 @@ describe('Lena description drafts', () => {
       return new RegExp(entry!.when!.match(/viewItem =~ \/(.+?)\/(?=\s|$)/)![1] as string);
     }
 
-    it('offers the unit action on units only, while Lena is available', () => {
+    it('offers the unit action on live units with children only, while Lena is available', () => {
+      // Tokens as CourseContentTreeItem.getContextValue() and withDescription() set them.
       const unit = viewItemRegex(DRAFT_DESCRIPTION_COMMAND);
-      expect(unit.test('courseContent.nonSubmittable.unit')).to.equal(true);
-      expect(unit.test('courseContent.nonSubmittable.unit.hasDescription')).to.equal(true);
-      expect(unit.test('courseContent.submittable.assignment')).to.equal(false);
+      expect(unit.test('courseContent.nonSubmittable.hasChildren')).to.equal(true);
+      expect(unit.test('courseContent.nonSubmittable.hasChildren.hidden.hiddenHere.hasDescription')).to.equal(true);
+      expect(unit.test('courseContent.nonSubmittable')).to.equal(false);
+      expect(unit.test('courseContent.nonSubmittable.hasChildren.archived')).to.equal(false);
+      expect(unit.test('courseContent.submittable.assignment.hasExample')).to.equal(false);
     });
 
     it('offers the course action on live courses only', () => {

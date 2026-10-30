@@ -2835,7 +2835,7 @@
         },
         {
           "command": "computor.lecturer.draftDescriptionWithLena",
-          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent\\.nonSubmittable/ && computor.lecturer.lenaDrafts",
+          "when": "view == computor.lecturer.courses && viewItem =~ /^courseContent\\.nonSubmittable(?=.*\\.hasChildren)(?!.*\\.archived)/ && computor.lecturer.lenaDrafts",
           "group": "5_details@1"
         },
         {

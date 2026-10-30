@@ -602,6 +602,17 @@ export class ComputorApiService {
     return status;
   }
 
+  /**
+   * Cancel a description draft job and free the lecturer's one pending draft
+   * at once. Idempotent: a job that is already gone answers 204 as well.
+   *
+   * @backendCompat only reached for a job requestDescriptionDraft() created
+   */
+  async cancelDescriptionDraft(jobId: string): Promise<void> {
+    const client = await this.getHttpClient();
+    await client.delete(`/course-contents/description-drafts/${jobId}`);
+  }
+
   async moveCourseContent(courseId: string, contentId: string, path: string, position: number): Promise<CourseContentGet> {
     const client = await this.getHttpClient();
     const response = await client.patch<CourseContentGet>(`/course-contents/${contentId}/move`, { path, position });

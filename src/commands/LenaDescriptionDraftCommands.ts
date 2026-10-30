@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { HttpError, MaintenanceError, NetworkError, TimeoutError } from '../exceptions/errors';
 import { ComputorApiService } from '../services/ComputorApiService';
 import type { DescriptionDraft, DescriptionDraftStatus } from '../types/generated/courses';
 import {
@@ -6,8 +7,9 @@ import {
   openDescriptionDraft,
   targetFromTreeItem
 } from '../ui/descriptionEditor';
+import { localizedTitle, type TextMap } from '../utils/contentLanguage';
 import { notify } from '../utils/notify';
-import { say } from '../utils/uiLanguage';
+import { say, uiLanguage } from '../utils/uiLanguage';
 
 /**
  * Lena drafts of a unit description (computor-org/issues#559).
@@ -27,15 +29,20 @@ export const LENA_DRAFTS_CONTEXT_KEY = 'computor.lecturer.lenaDrafts';
 const POLL_INTERVAL_MS = 3000;
 const DRAFT_TIMEOUT_MS = 10 * 60 * 1000;
 const AVAILABILITY_REFRESH_MS = 5 * 60 * 1000;
+// Polling rides out this many failed polls in a row (network, timeout, a
+// backend restart) before it gives up on the job.
+const MAX_POLL_ERRORS = 5;
 
 export type DraftApi = Pick<
   ComputorApiService,
-  'requestDescriptionDraft' | 'getDescriptionDraft' | 'getDescriptionDraftAvailability'
+  'requestDescriptionDraft' | 'getDescriptionDraft' | 'cancelDescriptionDraft' | 'getDescriptionDraftAvailability'
 >;
 
-type DraftOutcome =
+export type DraftOutcome =
   | { kind: 'done'; drafts: DescriptionDraft[] }
-  | { kind: 'failed'; message: string }
+  // `busy`: the server refused because this lecturer's previous draft is still
+  // pending or the queue is full, so the next unit of a batch would fail too.
+  | { kind: 'failed'; message: string; busy?: boolean }
   | { kind: 'cancelled' };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -60,7 +67,59 @@ export function draftFailureMessage(error: DescriptionDraftStatus['error']): str
   }
 }
 
-/** Poll a draft job until it is finished, cancelled or too old. */
+/** A failure that may be gone on the next try: no HTTP status, or a 408/5xx. */
+function isTransient(error: unknown): boolean {
+  if (error instanceof HttpError) {
+    return error.status === 408 || error.status >= 500;
+  }
+  return error instanceof NetworkError || error instanceof TimeoutError || error instanceof MaintenanceError;
+}
+
+/** The lecturer-facing text for a failed draft request or poll. */
+export function draftRequestErrorMessage(error: unknown): string {
+  const status = error instanceof HttpError ? error.status : undefined;
+  switch (status) {
+    case 429:
+      return say(
+        'Lena is still writing your previous draft or is busy. Try again in a few minutes.',
+        'Lena schreibt noch an deinem vorigen Entwurf oder ist ausgelastet. Versuche es in ein paar Minuten erneut.'
+      );
+    case 503:
+      return say(
+        'Lena cannot write description drafts at the moment.',
+        'Lena kann gerade keine Beschreibungsentwürfe schreiben.'
+      );
+    case 400:
+      return say(
+        'This unit has no assignments for Lena to describe.',
+        'Diese Einheit hat keine Aufgaben, aus denen Lena eine Beschreibung schreiben könnte.'
+      );
+    case 403:
+      return say(
+        'Only lecturers of this course can ask Lena for a description draft.',
+        'Nur Lehrende dieses Kurses können Lena um einen Beschreibungsentwurf bitten.'
+      );
+    case 404:
+      return say(
+        'The draft is no longer available. Ask Lena again.',
+        'Der Entwurf ist nicht mehr verfügbar. Frage Lena erneut.'
+      );
+  }
+  if (isTransient(error)) {
+    return say(
+      'Computor could not be reached. Try again later.',
+      'Computor war nicht erreichbar. Versuche es später erneut.'
+    );
+  }
+  // Anything else (a signed-out session, an unexpected refusal) keeps its own reason.
+  const detail = error instanceof HttpError ? error.serverDetail || error.message : error instanceof Error ? error.message : '';
+  return detail || say('Lena could not take the request.', 'Lena konnte die Anfrage nicht annehmen.');
+}
+
+/**
+ * Poll a draft job until it is finished, cancelled or too old. Never throws:
+ * a few failed polls in a row are ridden out, anything else is a failure.
+ */
 export async function waitForDraft(
   api: DraftApi,
   jobId: string,
@@ -74,11 +133,23 @@ export async function waitForDraft(
   const intervalMs = options.intervalMs ?? POLL_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DRAFT_TIMEOUT_MS;
   const wait = options.wait ?? sleep;
+  let errors = 0;
   for (let waited = 0; waited <= timeoutMs; waited += intervalMs) {
     if (options.isCancelled?.()) {
       return { kind: 'cancelled' };
     }
-    const status = await api.getDescriptionDraft(jobId);
+    let status: DescriptionDraftStatus;
+    try {
+      status = await api.getDescriptionDraft(jobId);
+      errors = 0;
+    } catch (error) {
+      errors++;
+      if (!isTransient(error) || errors >= MAX_POLL_ERRORS) {
+        return { kind: 'failed', message: draftRequestErrorMessage(error) };
+      }
+      await wait(intervalMs);
+      continue;
+    }
     if (status.state === 'done' && status.drafts && status.drafts.length > 0) {
       return { kind: 'done', drafts: status.drafts };
     }
@@ -100,6 +171,7 @@ interface ContentRow {
   id: string;
   path: string;
   title?: string | null;
+  title_i18n?: TextMap;
   description?: string | null;
   position?: number | null;
   is_submittable?: boolean | null;
@@ -112,8 +184,11 @@ export interface DraftableUnit {
   hasDescription: boolean;
 }
 
-/** Units of a course that hold at least one assignment, in tree order. */
-export function unitsWithAssignments(contents: ContentRow[]): DraftableUnit[] {
+/**
+ * Units of a course that hold at least one assignment, in tree order, labelled
+ * in the reading language as the course tree labels them.
+ */
+export function unitsWithAssignments(contents: ContentRow[], language: string = uiLanguage()): DraftableUnit[] {
   const live = contents.filter((c) => !c.archived_at);
   const positions = new Map(live.map((c) => [c.path, c.position ?? 0]));
   const order = (c: ContentRow) => {
@@ -137,7 +212,7 @@ export function unitsWithAssignments(contents: ContentRow[]): DraftableUnit[] {
     .sort(compare)
     .map((unit) => ({
       id: String(unit.id),
-      label: String(unit.title || unit.path),
+      label: String(localizedTitle(unit, language) || unit.path),
       hasDescription: (unit.description ?? '').trim().length > 0
     }));
 }
@@ -185,28 +260,64 @@ async function askInstruction(): Promise<string | undefined> {
   });
 }
 
-async function requestAndWait(
+/**
+ * Ask for a draft and wait for it. Never throws. A job that is given up on
+ * (cancelled, timed out, lost) is cancelled on the server too, so the
+ * lecturer's one pending draft is free for the next request at once.
+ */
+export async function requestAndWait(
   api: DraftApi,
   unitId: string,
   instruction: string,
-  isCancelled: () => boolean
+  isCancelled: () => boolean,
+  options: Parameters<typeof waitForDraft>[2] = {}
 ): Promise<DraftOutcome> {
   let jobId: string;
   try {
     const job = await api.requestDescriptionDraft(unitId, { instruction: instruction.trim() || null });
     jobId = job.id;
-  } catch (error: any) {
-    const detail = error?.response?.data?.detail || error?.message || String(error);
-    return { kind: 'failed', message: typeof detail === 'string' ? detail : JSON.stringify(detail) };
+  } catch (error) {
+    const busy = error instanceof HttpError && error.status === 429;
+    return { kind: 'failed', message: draftRequestErrorMessage(error), busy };
   }
-  return waitForDraft(api, jobId, { isCancelled });
+  let outcome: DraftOutcome;
+  try {
+    outcome = await waitForDraft(api, jobId, { ...options, isCancelled });
+  } catch (error) {
+    outcome = { kind: 'failed', message: draftRequestErrorMessage(error) };
+  }
+  if (outcome.kind !== 'done') {
+    try {
+      await api.cancelDescriptionDraft(jobId);
+    } catch {
+      // Best effort: the server's lock expires on its own.
+    }
+  }
+  return outcome;
 }
 
-const aiNote = () =>
-  say(
-    "Lena is an AI: check the draft. It is not saved — Ctrl+S/Cmd+S publishes it, closing without saving discards it.",
-    'Lena ist eine KI: Prüfe den Entwurf. Er ist nicht gespeichert — Strg+S/Cmd+S veröffentlicht ihn, Schließen ohne Speichern verwirft ihn.'
+export type DraftMode = 'replace' | 'compare';
+
+/** The AI note after opening drafts, worded for how they were opened. */
+export function aiNote(modes: Iterable<DraftMode>): string {
+  const used = new Set(modes);
+  if (!used.has('compare')) {
+    return say(
+      'Lena is an AI: check the draft. It is not saved — Ctrl+S/Cmd+S publishes it, closing without saving discards it.',
+      'Lena ist eine KI: Prüfe den Entwurf. Er ist nicht gespeichert — Strg+S/Cmd+S veröffentlicht ihn, Schließen ohne Speichern verwirft ihn.'
+    );
+  }
+  if (!used.has('replace')) {
+    return say(
+      'Lena is an AI: check the draft. It opens beside the current description and is never saved itself — carry over what you want; Ctrl+S/Cmd+S publishes the description on the right.',
+      'Lena ist eine KI: Prüfe den Entwurf. Er öffnet sich neben der aktuellen Beschreibung und wird selbst nie gespeichert — übernimm, was du willst; Strg+S/Cmd+S veröffentlicht die Beschreibung rechts.'
+    );
+  }
+  return say(
+    'Lena is an AI: check the drafts. Nothing is saved — Ctrl+S/Cmd+S publishes a description editor; a draft shown beside a description is never saved itself.',
+    'Lena ist eine KI: Prüfe die Entwürfe. Nichts ist gespeichert — Strg+S/Cmd+S veröffentlicht einen Beschreibungseditor; ein Entwurf neben einer Beschreibung wird selbst nie gespeichert.'
   );
+}
 
 export class LenaDescriptionDraftCommands {
   private available = false;
@@ -279,7 +390,7 @@ export class LenaDescriptionDraftCommands {
       return;
     }
     const current = await this.api.getCourseContent(target.contentId);
-    let mode: 'replace' | 'compare' = 'replace';
+    let mode: DraftMode = 'replace';
     if (((current as any)?.description ?? '').trim().length > 0) {
       const replace = say('Replace in the editor', 'Im Editor ersetzen');
       const compare = say('Compare with the current description', 'Mit der aktuellen Beschreibung vergleichen');
@@ -298,8 +409,10 @@ export class LenaDescriptionDraftCommands {
       }
       mode = choice.label === replace ? 'replace' : 'compare';
     }
-    await this.open(target, draft, mode);
-    notify.info(aiNote());
+    const used = await this.open(target, draft, mode);
+    if (used) {
+      notify.info(aiNote([used]));
+    }
   }
 
   private async draftMany(item: any): Promise<void> {
@@ -339,6 +452,7 @@ export class LenaDescriptionDraftCommands {
     }
 
     const results: Array<{ unit: DraftableUnit; outcome: DraftOutcome }> = [];
+    let notReached: DraftableUnit[] = [];
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -351,20 +465,24 @@ export class LenaDescriptionDraftCommands {
           if (token.isCancellationRequested) {
             break;
           }
-          progress.report({
-            message: `${unit.label} (${index + 1}/${picked.length})`,
-            increment: 100 / picked.length
-          });
+          progress.report({ message: `${unit.label} (${index + 1}/${picked.length})` });
           const outcome = await requestAndWait(this.api, unit.id, instruction, () => token.isCancellationRequested);
+          progress.report({ increment: 100 / picked.length });
           if (outcome.kind === 'cancelled') {
             break;
           }
           results.push({ unit, outcome });
+          if (outcome.kind === 'failed' && outcome.busy) {
+            // Every remaining unit would be refused the same way.
+            notReached = picked.slice(index + 1).map((p) => p.unit);
+            break;
+          }
         }
       }
     );
 
-    let opened = 0;
+    // Whatever happened to later units, the drafts that are done open.
+    const modes: DraftMode[] = [];
     const failed: string[] = [];
     for (const { unit, outcome } of results) {
       if (outcome.kind !== 'done') {
@@ -378,22 +496,36 @@ export class LenaDescriptionDraftCommands {
       const target: DescriptionTarget = { kind: 'content', courseId, contentId: unit.id, label: unit.label };
       // No question per unit: an empty description gets the draft, an
       // existing one is compared side by side.
-      if (await this.open(target, draft, unit.hasDescription ? 'compare' : 'replace')) {
-        opened++;
+      try {
+        const used = await this.open(target, draft, unit.hasDescription ? 'compare' : 'replace');
+        if (used) {
+          modes.push(used);
+        }
+      } catch (error) {
+        failed.push(`${unit.label}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    // Notifications show one line, so the list is joined inline.
     if (failed.length > 0) {
       notify.warning(
         say(`Lena could not draft ${failed.length} unit(s).`, `Lena konnte ${failed.length} Einheit(en) nicht entwerfen.`)
-          + '\n' + failed.join('\n')
+          + ' ' + failed.join(' · ')
       );
     }
-    if (opened > 0) {
-      notify.info(aiNote());
+    if (notReached.length > 0) {
+      notify.warning(
+        say(
+          `Lena stopped before ${notReached.length} unit(s): ${notReached.map((u) => u.label).join(', ')}. Ask again in a few minutes.`,
+          `Lena hat vor ${notReached.length} Einheit(en) aufgehört: ${notReached.map((u) => u.label).join(', ')}. Frage in ein paar Minuten erneut.`
+        )
+      );
+    }
+    if (modes.length > 0) {
+      notify.info(aiNote(modes));
     }
   }
 
-  private open(target: DescriptionTarget, draft: DescriptionDraft, mode: 'replace' | 'compare'): Promise<boolean> {
+  private open(target: DescriptionTarget, draft: DescriptionDraft, mode: DraftMode): Promise<DraftMode | undefined> {
     const label = say(`Lena draft, ${languageName(draft.language)}`, `Entwurf von Lena, ${languageName(draft.language)}`);
     return openDescriptionDraft(this.context, this.api, target, draft.description, mode, label);
   }
