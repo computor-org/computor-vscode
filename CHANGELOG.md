@@ -3,6 +3,13 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.11
+
+- A workspace started from the web app without choosing a course opens in your reading
+  language, including VS Code's own menus and the welcome page.
+- Test results show each message, error and test type in your reading language, also for runs
+  made while you read in the other language. Older results keep the language they were stored in.
+
 ## 2027.3.10
 
 - The extension follows one reading language: your profile language, else the language the
