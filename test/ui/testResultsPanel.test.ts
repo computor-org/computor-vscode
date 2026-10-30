@@ -277,3 +277,58 @@ describe('Result Tree language', () => {
     expect(artifacts.children[0].toolTip).to.equal('PNG image');
   });
 });
+
+/**
+ * The runner stores each message in German and English next to the one in the
+ * language the run was started in, so a tutor or a learner who switched reads
+ * it in the UI language. Older results carry one message and show it as stored.
+ */
+describe('Result Tree messages in the UI language', () => {
+  afterEach(() => setUiProfileLanguage(undefined));
+
+  const de = 'Fehlgeschlagen: Die Variable `x_start` wurde in deiner Lösung nicht gefunden';
+  const en = 'Failed: Variable `x_start` not found in student namespace';
+
+  function collection(): any {
+    const tree = new TestResultsTreeDataProvider({});
+    tree.refresh({
+      type: 'python',
+      tests: [{
+        name: 'start', type: 'variable', result: 'FAILED', summary: { total: 2, passed: 0, failed: 2 },
+        tests: [
+          { name: 'x_start', result: 'FAILED', resultMessage: de, resultMessageI18n: { de, en } },
+          { name: 'y_start', result: 'FAILED', resultMessage: de },
+        ],
+      }],
+    });
+    const [, tests] = tree.getChildren() as any[];
+    return tests.children[0];
+  }
+
+  it('shows a stored message and the test type in English for an English UI', () => {
+    setUiProfileLanguage('en');
+    const start = collection();
+    expect(start.description).to.equal('[0/2] Variables');
+    expect(start.children[0].message).to.equal(en);
+    expect(start.children[1].message).to.equal(de);
+  });
+
+  it('shows them in German for a German UI', () => {
+    setUiProfileLanguage('de');
+    const start = collection();
+    expect(start.description).to.equal('[0/2] Variablen');
+    expect(start.children[0].message).to.equal(de);
+  });
+
+  it('shows the worker\'s own error in the UI language', () => {
+    setUiProfileLanguage('en');
+    const tree = new TestResultsTreeDataProvider({});
+    tree.refresh({
+      error: 'Es wurde keine Datei mit Testergebnissen gefunden',
+      error_i18n: { de: 'Es wurde keine Datei mit Testergebnissen gefunden', en: 'No test results file found' },
+      passed: 0, failed: 1, total: 1,
+    });
+    const [error] = tree.getChildren() as any[];
+    expect(error.message).to.equal('No test results file found');
+  });
+});
