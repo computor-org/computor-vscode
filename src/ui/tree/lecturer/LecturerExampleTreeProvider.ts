@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { DragDropManager } from '../../../services/DragDropManager';
 import { notify } from '../../../utils/notify';
+import { formatUiDateTime, say, sayFailed } from '../../../utils/uiLanguage';
 import {
   ExampleRepositoryList,
   ExampleList
@@ -45,6 +46,14 @@ export interface MergedExample {
   workingDiff?: WorkingDiffStatus;
 }
 
+function diffSegments(d: { modified?: number; added?: number; removed?: number }): string {
+  const segments: string[] = [];
+  if (d.modified) { segments.push(say(`${d.modified} modified`, `${d.modified} geändert`)); }
+  if (d.added) { segments.push(say(`${d.added} added`, `${d.added} hinzugefügt`)); }
+  if (d.removed) { segments.push(say(`${d.removed} removed`, `${d.removed} entfernt`)); }
+  return segments.join(', ');
+}
+
 class RootSectionTreeItem extends vscode.TreeItem {
   constructor(
     public readonly section: 'filters' | 'repositories' | 'examples',
@@ -83,12 +92,12 @@ class ExampleFilterTreeItem extends vscode.TreeItem {
   ) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.id = `example-filter-${kind}`;
-    this.description = value ?? 'none';
+    this.description = value ?? say('none', 'keiner');
     this.iconPath = new vscode.ThemeIcon(icon);
     this.contextValue = value ? `exampleFilter_${kind}_active` : `exampleFilter_${kind}`;
     this.tooltip = value
-      ? `${label}: ${value}\nClick to change, or use the × to clear`
-      : `No ${label.toLowerCase()} filter — click to set one`;
+      ? `${label}: ${value}\n${say('Click to change, or use the × to clear', 'Klicke zum Ändern oder auf ×, um den Filter zu entfernen')}`
+      : say(`No ${label.toLowerCase()} filter — click to set one`, `Kein Filter „${label}“. Klicke, um einen zu setzen`);
     this.command = { command, title: label, arguments: [] };
   }
 }
@@ -116,11 +125,11 @@ class RepositoryFilterToggleItem extends vscode.TreeItem {
     this.id = `repo-filter-${repository.id}`;
     this.contextValue = 'repositoryFilterToggle';
     this.iconPath = new vscode.ThemeIcon(selected ? 'pass-filled' : 'circle-large-outline');
-    this.tooltip = `${repository.name} — click to ${selected ? 'remove from' : 'add to'} filter`;
+    this.tooltip = say(`${repository.name} — click to ${selected ? 'remove from' : 'add to'} filter`, `${repository.name}: klicke, um es ${selected ? 'aus dem Filter zu entfernen' : 'zum Filter hinzuzufügen'}`);
     this.description = repository.source_type;
     this.command = {
       command: 'computor.lecturer.toggleRepositoryFilter',
-      title: 'Toggle Repository Filter',
+      title: say('Toggle Repository Filter', 'Repository-Filter umschalten'),
       arguments: [this]
     };
   }
@@ -172,34 +181,29 @@ class ExampleTreeItem extends vscode.TreeItem {
 
   private buildTooltip(): string {
     const parts = [
-      `Title: ${this.merged.title}`,
-      `Identifier: ${this.merged.identifier}`
+      `${say('Title', 'Titel')}: ${this.merged.title}`,
+      `${say('Identifier', 'Kennung')}: ${this.merged.identifier}`
     ];
     if (this.merged.repositoryName) {
       parts.push(`Repository: ${this.merged.repositoryName}`);
     } else {
-      parts.push('Repository: (local only)');
+      parts.push(`Repository: ${say('(local only)', '(nur lokal)')}`);
     }
-    if (this.merged.category) { parts.push(`Category: ${this.merged.category}`); }
+    if (this.merged.category) { parts.push(`${say('Category', 'Kategorie')}: ${this.merged.category}`); }
     if (this.merged.tags && this.merged.tags.length > 0) {
-      parts.push(`Tags: ${this.merged.tags.join(', ')}`);
+      parts.push(say(`Tags: ${this.merged.tags.join(', ')}`, `Schlagwörter: ${this.merged.tags.join(', ')}`));
     }
     if (this.merged.local) {
       const versionCount = this.merged.local.versions.length;
-      parts.push(`Local versions: ${versionCount}`);
+      parts.push(`${say('Local versions', 'Lokale Versionen')}: ${versionCount}`);
       if (this.merged.local.workingVersion) {
-        parts.push('Working copy: editable');
+        parts.push(say('Working copy: editable', 'Arbeitskopie: bearbeitbar'));
       }
       if (this.merged.workingDiff) {
-        const d = this.merged.workingDiff;
-        const segments: string[] = [];
-        if (d.modified) { segments.push(`${d.modified} modified`); }
-        if (d.added) { segments.push(`${d.added} added`); }
-        if (d.removed) { segments.push(`${d.removed} removed`); }
-        parts.push(`Working changes: ${segments.join(', ')}`);
+        parts.push(`${say('Working changes', 'Lokale Änderungen')}: ${diffSegments(this.merged.workingDiff)}`);
       }
     } else {
-      parts.push('Status: remote only');
+      parts.push(`Status: ${say('remote only', 'nur auf dem Server')}`);
     }
     return parts.join('\n');
   }
@@ -210,10 +214,10 @@ class ExampleTreeItem extends vscode.TreeItem {
     // (local-checkout state and unsaved working changes).
     const parts: string[] = [];
     if (this.merged.local) {
-      parts.push('[local]');
+      parts.push(say('[local]', '[lokal]'));
     }
     if (this.merged.workingDiff) {
-      parts.push(`● ${this.merged.workingDiff.total} changed`);
+      parts.push(say(`● ${this.merged.workingDiff.total} changed`, `● ${this.merged.workingDiff.total} geändert`));
     }
     return parts.join(' ');
   }
@@ -230,11 +234,11 @@ class CheckedOutGroupTreeItem extends vscode.TreeItem {
     const w = group.workingVersion;
     const versionCount = group.versions.length;
     this.tooltip = w
-      ? `Directory: ${group.directory}\nWorking version: ${w.localVersion || w.metadata.versionTag}\n${versionCount} version(s) locally`
-      : `Directory: ${group.directory}\n${versionCount} version(s) locally`;
+      ? `${say('Directory', 'Ordner')}: ${group.directory}\n${say('Working version', 'Arbeitsversion')}: ${w.localVersion || w.metadata.versionTag}\n${say(`${versionCount} version(s) locally`, `${versionCount} Version(en) lokal`)}`
+      : `${say('Directory', 'Ordner')}: ${group.directory}\n${say(`${versionCount} version(s) locally`, `${versionCount} Version(en) lokal`)}`;
     this.description = w
-      ? (versionCount > 1 ? `${w.localVersion || w.metadata.versionTag} (${versionCount} versions)` : (w.localVersion || w.metadata.versionTag))
-      : `${versionCount} version(s)`;
+      ? (versionCount > 1 ? `${w.localVersion || w.metadata.versionTag} (${say(`${versionCount} versions`, `${versionCount} Versionen`)})` : (w.localVersion || w.metadata.versionTag))
+      : say(`${versionCount} version(s)`, `${versionCount} Version(en)`);
   }
 }
 
@@ -263,22 +267,17 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
     const m = this.version.metadata;
     const parts: string[] = [];
     if (this.version.isWorking) {
-      parts.push('Working copy — editable');
+      parts.push(say('Working copy — editable', 'Arbeitskopie, bearbeitbar'));
     } else {
-      parts.push(`Version snapshot: ${this.version.versionTag}`);
+      parts.push(`${say('Version snapshot', 'Versionsstand')}: ${this.version.versionTag}`);
     }
-    parts.push(`Checked out from: ${m.versionTag} (#${m.versionNumber})`);
+    parts.push(`${say('Checked out from', 'Ausgecheckt aus')}: ${m.versionTag} (#${m.versionNumber})`);
     if (this.version.localVersion) {
-      parts.push(`Local meta.yaml version: ${this.version.localVersion}`);
+      parts.push(`${say('Local meta.yaml version', 'Lokale Version in meta.yaml')}: ${this.version.localVersion}`);
     }
-    parts.push(`Checked out: ${new Date(m.checkedOutAt).toLocaleString()}`);
+    parts.push(`${say('Checked out', 'Ausgecheckt')}: ${formatUiDateTime(new Date(m.checkedOutAt))}`);
     if (this.version.isWorking && this.workingDiff) {
-      const d = this.workingDiff;
-      const segments: string[] = [];
-      if (d.modified) { segments.push(`${d.modified} modified`); }
-      if (d.added) { segments.push(`${d.added} added`); }
-      if (d.removed) { segments.push(`${d.removed} removed`); }
-      parts.push(`Working changes vs ${m.versionTag}: ${segments.join(', ')}`);
+      parts.push(`${say(`Working changes vs ${m.versionTag}`, `Änderungen gegenüber ${m.versionTag}`)}: ${diffSegments(this.workingDiff)}`);
     }
     return parts.join('\n');
   }
@@ -286,7 +285,7 @@ class CheckedOutVersionTreeItem extends vscode.TreeItem {
   private buildDescription(): string {
     if (this.version.isWorking && this.workingDiff) {
       const v = this.version.localVersion ? `${this.version.localVersion} ` : '';
-      return `${v}● ${this.workingDiff.total} changed`;
+      return say(`${v}● ${this.workingDiff.total} changed`, `${v}● ${this.workingDiff.total} geändert`);
     }
     if (this.version.isWorking && this.version.localVersion) {
       return this.version.localVersion;
@@ -508,7 +507,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
       return [];
     } catch (error) {
       console.error('Failed to load example tree data:', error);
-      notify.error(`Failed to load examples: ${error}`);
+      notify.error(sayFailed('Failed to load examples', 'Die Beispiele konnten nicht geladen werden', error));
       return [];
     }
   }
@@ -518,7 +517,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
 
     const filtersSection = new RootSectionTreeItem(
       'filters',
-      'Filters',
+      say('Filters', 'Filter'),
       'filter',
       // Expanded while something is filtered, so the tree says why it is not
       // showing everything.
@@ -531,18 +530,18 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
 
     const repositories = new RootSectionTreeItem(
       'repositories',
-      'Repositories',
+      say('Repositories', 'Repositorys'),
       'cloud',
       vscode.TreeItemCollapsibleState.Collapsed
     );
     if (this.selectedRepositoryIds.size > 0) {
-      repositories.description = `${this.selectedRepositoryIds.size} selected`;
+      repositories.description = say(`${this.selectedRepositoryIds.size} selected`, `${this.selectedRepositoryIds.size} ausgewählt`);
     }
     items.push(repositories);
 
     items.push(new RootSectionTreeItem(
       'examples',
-      'Examples',
+      say('Examples', 'Beispiele'),
       'package',
       vscode.TreeItemCollapsibleState.Expanded
     ));
@@ -555,28 +554,28 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
   }
 
   private filterSummary(): string {
-    return this.hasActiveFilters() ? 'active' : 'none';
+    return this.hasActiveFilters() ? say('active', 'aktiv') : say('none', 'keiner');
   }
 
   private getFilterItems(parent: RootSectionTreeItem): vscode.TreeItem[] {
     const items = [
       new ExampleFilterTreeItem(
         'search',
-        'Search',
+        say('Search', 'Suche'),
         'search',
         this.searchQuery || undefined,
         'computor.lecturer.searchExamples'
       ),
       new ExampleFilterTreeItem(
         'category',
-        'Category',
+        say('Category', 'Kategorie'),
         'symbol-folder',
         this.selectedCategory,
         'computor.lecturer.filterExamplesByCategory'
       ),
       new ExampleFilterTreeItem(
         'tags',
-        'Tags',
+        say('Tags', 'Schlagwörter'),
         'tag',
         this.selectedTags.length > 0 ? this.selectedTags.join(', ') : undefined,
         'computor.lecturer.filterExamplesByTags'
@@ -601,7 +600,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
     const filtered = await this.getFilteredMergedExamples();
 
     if (filtered.length === 0) {
-      const empty = new vscode.TreeItem('No examples match the current filters', vscode.TreeItemCollapsibleState.None);
+      const empty = new vscode.TreeItem(say('No examples match the current filters', 'Kein Beispiel passt zu den aktuellen Filtern'), vscode.TreeItemCollapsibleState.None);
       empty.iconPath = new vscode.ThemeIcon('info');
       return [empty];
     }
@@ -910,11 +909,11 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
    */
   describeActiveFilters(): string[] {
     const parts: string[] = [];
-    if (this.searchQuery) { parts.push(`search: "${this.searchQuery}"`); }
-    if (this.selectedCategory) { parts.push(`category: ${this.selectedCategory}`); }
-    if (this.selectedTags.length > 0) { parts.push(`tags: ${this.selectedTags.join(', ')}`); }
+    if (this.searchQuery) { parts.push(say(`search: "${this.searchQuery}"`, `Suche: „${this.searchQuery}“`)); }
+    if (this.selectedCategory) { parts.push(say(`category: ${this.selectedCategory}`, `Kategorie: ${this.selectedCategory}`)); }
+    if (this.selectedTags.length > 0) { parts.push(say(`tags: ${this.selectedTags.join(', ')}`, `Schlagwörter: ${this.selectedTags.join(', ')}`)); }
     if (this.selectedRepositoryIds.size > 0) {
-      parts.push(`repositories: ${this.selectedRepositoryIds.size} selected`);
+      parts.push(say(`repositories: ${this.selectedRepositoryIds.size} selected`, `Repositorys: ${this.selectedRepositoryIds.size} ausgewählt`));
     }
     return parts;
   }
@@ -979,7 +978,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
 
     // Build the section's children *after* any filter reset, so parentMap holds
     // the rows that are actually rendered.
-    const examplesSection = new RootSectionTreeItem('examples', 'Examples', 'package');
+    const examplesSection = new RootSectionTreeItem('examples', say('Examples', 'Beispiele'), 'package');
     await this.getMergedExampleItems(examplesSection);
 
     const item = new ExampleTreeItem(match);
@@ -1056,18 +1055,18 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
 
       if (sourcePath === dest) { continue; }
       if (dest.startsWith(sourcePath + path.sep)) {
-        notify.warning(`Cannot move "${name}" into itself.`);
+        notify.warning(say(`Cannot move "${name}" into itself.`, `„${name}“ lässt sich nicht in sich selbst verschieben.`));
         continue;
       }
       if (PROTECTED_NAMES.has(name)) {
-        notify.warning(`Cannot move protected item "${name}".`);
+        notify.warning(say(`Cannot move protected item "${name}".`, `„${name}“ ist geschützt und lässt sich nicht verschieben.`));
         continue;
       }
 
       if (fs.existsSync(dest)) {
         const overwrite = await notify.confirm(
-          `"${name}" already exists in the target folder. Overwrite?`,
-          'Overwrite'
+          say(`"${name}" already exists in the target folder. Overwrite?`, `„${name}“ gibt es im Zielordner schon. Überschreiben?`),
+          say('Overwrite', 'Überschreiben')
         );
         if (!overwrite) { continue; }
       }
@@ -1076,7 +1075,7 @@ export class LecturerExampleTreeProvider extends BaseTreeDataProvider<vscode.Tre
         fs.renameSync(sourcePath, dest);
         moved.push(name);
       } catch (error) {
-        notify.error(`Failed to move "${name}": ${error}`);
+        notify.error(sayFailed(`Failed to move "${name}"`, `„${name}“ konnte nicht verschoben werden`, error));
       }
     }
 

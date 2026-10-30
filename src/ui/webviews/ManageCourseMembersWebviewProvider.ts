@@ -4,6 +4,8 @@ import { CourseMemberList, CourseGroupList } from '../../types/generated';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../tree/lecturer/LecturerTreeDataProvider';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
+import { localizedRoleTitle } from '../../utils/roleLabels';
 
 // Course role hierarchy mirrored from the backend (permissions/roles.py +
 // principal.py). Used for UI gating only — the backend still enforces the
@@ -15,13 +17,6 @@ const ROLE_RANK: Record<string, number> = {
   _lecturer: 3,
   _maintainer: 4,
   _owner: 5,
-};
-const ROLE_LABEL: Record<string, string> = {
-  _student: 'Student',
-  _tutor: 'Tutor',
-  _lecturer: 'Lecturer',
-  _maintainer: 'Maintainer',
-  _owner: 'Owner',
 };
 
 const USERS_PAGE_SIZE = 10;
@@ -118,13 +113,13 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
 
     const members = await this.loadMembers();
 
-    await this.show(`Members: ${courseName || 'Course'}`, {
+    await this.show(say(`Members: ${courseName || 'Course'}`, `Mitglieder: ${courseName || 'Kurs'}`), {
       courseId,
-      courseName: courseName || 'Course',
+      courseName: courseName || say('Course', 'Kurs'),
       members,
       canManage: this.canManage,
       assignableRoles: this.assignableRoles,
-      roleLabels: ROLE_LABEL,
+      roleLabels: Object.fromEntries(Object.keys(ROLE_RANK).map((id) => [id, localizedRoleTitle(id)])),
       usersPageSize: USERS_PAGE_SIZE,
     });
   }
@@ -191,7 +186,7 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
       case 'refresh':
         return this.refreshAndPostMembers();
       case 'showError':
-        notify.error(message.data?.message || 'Error');
+        notify.error(message.data?.message || say('Error', 'Fehler'));
         return;
       default:
         return;
@@ -255,7 +250,7 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
       await this.apiService.updateCourseMember(data.memberId, { course_role_id: data.roleId });
       await this.refreshAndPostMembers();
     } catch (e) {
-      notify.error(`Failed to change role: ${errMessage(e)}`);
+      notify.error(say(`Failed to change role: ${errMessage(e)}`, `Die Rolle konnte nicht geändert werden: ${errMessage(e)}`));
       // Re-sync the UI to the server's truth.
       await this.refreshAndPostMembers();
     }
@@ -264,15 +259,18 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
   private async handleRemoveMember(data: any): Promise<void> {
     if (!data?.memberId) return;
     const confirm = await notify.confirm(
-      `Remove ${data.name || 'this member'} from the course? Their account is not affected.`,
-      'Remove'
+      say(
+        `Remove ${data.name || 'this member'} from the course? Their account is not affected.`,
+        `${data.name || 'Dieses Mitglied'} aus dem Kurs entfernen? Das Benutzerkonto bleibt unberührt.`
+      ),
+      say('Remove', 'Entfernen')
     );
     if (!confirm) return;
     try {
       await this.apiService.deleteCourseMember(data.memberId);
       await this.refreshAndPostMembers();
     } catch (e) {
-      notify.error(`Failed to remove member: ${errMessage(e)}`);
+      notify.error(say(`Failed to remove member: ${errMessage(e)}`, `Das Mitglied konnte nicht entfernt werden: ${errMessage(e)}`));
     }
   }
 
@@ -294,7 +292,7 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
         command: 'importResult',
         data: {
           ok: !!res.success,
-          message: res.message || (res.success ? 'Member added.' : 'Import failed.'),
+          message: res.message || (res.success ? say('Member added.', 'Mitglied hinzugefügt.') : say('Import failed.', 'Import fehlgeschlagen.')),
           workflowId: res.workflow_id,
         },
       });
@@ -311,8 +309,8 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
     if (!this.courseId) return;
     const picked = await vscode.window.showOpenDialog({
       canSelectMany: false,
-      openLabel: 'Select member file',
-      filters: { 'Member lists': ['csv', 'tsv', 'txt', 'json', 'xlsx', 'xls', 'xml'] },
+      openLabel: say('Select member file', 'Mitgliederliste auswählen'),
+      filters: { [say('Member lists', 'Mitgliederlisten')]: ['csv', 'tsv', 'txt', 'json', 'xlsx', 'xls', 'xml'] },
     });
     const uri = picked && picked[0];
     if (!uri) return;
@@ -363,8 +361,8 @@ export class ManageCourseMembersWebviewProvider extends BaseWebviewProvider {
   protected async getWebviewContent(data?: any): Promise<string> {
     if (!this.panel) return '';
     return this.renderPage({
-      title: 'Manage Members',
-      bodyHtml: '<div id="app" class="members-container"><div class="loading">Loading members…</div></div>',
+      title: say('Manage Members', 'Mitglieder verwalten'),
+      bodyHtml: '<div id="app" class="members-container"><div class="loading">' + say('Loading members…', 'Mitglieder werden geladen …') + '</div></div>',
       cssFiles: ['courses/manage-course-members.css'],
       scriptFiles: ['courses/manage-course-members.js'],
       initialState: data ?? {}

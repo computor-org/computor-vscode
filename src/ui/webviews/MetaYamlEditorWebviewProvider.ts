@@ -5,6 +5,7 @@ import * as path from 'path';
 import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { escapeHtml } from './shared/webviewHelpers';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
 
 interface MetaYamlEditorData {
   filePath: string;
@@ -78,7 +79,7 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
 
   protected async getWebviewContent(data?: MetaYamlEditorData): Promise<string> {
     if (!data || !this.panel) {
-      return this.getBaseHtml('Meta Editor', '<p>No data available</p>');
+      return this.getBaseHtml(say('Meta Editor', 'Metadaten-Editor'), say('<p>No data available</p>', '<p>Keine Daten verfügbar</p>'));
     }
 
     const existingData = this.parseMetaYaml(data.filePath);
@@ -87,8 +88,8 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
     this.setupFileWatcher(data.exampleDir);
 
     return this.renderPage({
-      title: 'Meta Editor',
-      headerHtml: `<h1>Example Configuration</h1>
+      title: say('Meta Editor', 'Metadaten-Editor'),
+      headerHtml: `<h1>${say('Example Configuration', 'Konfiguration des Beispiels')}</h1>
     <p>${escapeHtml(data.exampleTitle || '')} &mdash; meta.yaml</p>`,
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['content/meta-yaml-editor.css'],
@@ -118,12 +119,12 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
   private async handleSave(data: { filePath: string; meta: Record<string, unknown> }): Promise<void> {
     try {
       this.saveMetaYaml(data.filePath, data.meta);
-      notify.info('meta.yaml saved successfully');
+      notify.info(say('meta.yaml saved successfully', 'meta.yaml gespeichert.'));
       if (this.panel) {
         this.panel.webview.postMessage({ command: 'saved' });
       }
     } catch (error) {
-      notify.error(`Failed to save meta.yaml: ${error}`);
+      notify.error(say(`Failed to save meta.yaml: ${error}`, `meta.yaml konnte nicht gespeichert werden: ${error}`));
     }
   }
 
@@ -162,7 +163,7 @@ export class MetaYamlEditorWebviewProvider extends BaseWebviewProvider {
       // (computor-org/issues#286).
       await vscode.window.showTextDocument(doc, { viewColumn: AUX_COLUMN });
     } catch (error) {
-      notify.error(`Failed to open file: ${error}`);
+      notify.error(say(`Failed to open file: ${error}`, `Die Datei konnte nicht geöffnet werden: ${error}`));
     }
   }
 }

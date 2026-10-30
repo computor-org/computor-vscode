@@ -23,6 +23,8 @@ import type { ReplaceOptions, ReplaceTarget } from '../utils/exampleTextReplace'
 import { UploadAllExamplesWebviewProvider } from '../ui/webviews/UploadAllExamplesWebviewProvider';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { say, uiLanguage, uiLocale } from '../utils/uiLanguage';
+import { localizedKindTitle } from '../utils/contentLanguage';
 
 /**
  * Simplified example commands for the lecturer view
@@ -52,17 +54,17 @@ export class LecturerExampleCommands {
       const currentQuery = this.treeProvider.getSearchQuery();
       
       const query = await vscode.window.showInputBox({
-        prompt: 'Search examples by title, identifier, or tags',
-        placeHolder: 'Enter search query',
+        prompt: say('Search examples by title, identifier, or tags', 'Beispiele nach Titel, Kennung oder Schlagwörtern durchsuchen'),
+        placeHolder: say('Enter search query', 'Suchbegriff eingeben'),
         value: currentQuery  // Prefill with current search
       });
       
       if (query !== undefined) {
         this.treeProvider.setSearchQuery(query);
         if (query) {
-          notify.info(`Searching for: ${query}`);
+          notify.info(say(`Searching for: ${query}`, `Suche nach: ${query}`));
         } else {
-          notify.info('Search cleared');
+          notify.info(say('Search cleared', 'Suche zurückgesetzt.'));
         }
       }
     });
@@ -70,13 +72,13 @@ export class LecturerExampleCommands {
     // Clear search
     register('computor.lecturer.clearExampleSearch', () => {
       this.treeProvider.clearSearch();
-      notify.info('Search cleared');
+      notify.info(say('Search cleared', 'Suche zurückgesetzt.'));
     });
 
     // Also register clearSearch for the tree item click
     register('computor.lecturer.clearSearch', () => {
       this.treeProvider.clearSearch();
-      notify.info('Search cleared');
+      notify.info(say('Search cleared', 'Suche zurückgesetzt.'));
     });
 
     // Filter by category. Picked from the categories the examples carry rather
@@ -88,27 +90,27 @@ export class LecturerExampleCommands {
 
       if (categories.length === 0) {
         notify.info(
-          'None of your examples has a category yet. Add `category: ...` to an example\'s meta.yaml and upload it.'
+          say('None of your examples has a category yet. Add `category: ...` to an example\'s meta.yaml and upload it.', 'Noch keines deiner Beispiele hat eine Kategorie. Trage `category: ...` in die meta.yaml eines Beispiels ein und lade es hoch.')
         );
         return;
       }
 
-      const clearItem = { label: 'Show all categories', category: undefined as string | undefined };
+      const clearItem = { label: say('Show all categories', 'Alle Kategorien anzeigen'), category: undefined as string | undefined };
       const picked = await vscode.window.showQuickPick(
         [
           ...(current ? [clearItem] : []),
           ...categories.map(category => ({
             label: category,
-            description: category === current ? 'current filter' : undefined,
+            description: category === current ? say('current filter', 'aktueller Filter') : undefined,
             category: category as string | undefined
           }))
         ],
-        { title: 'Filter Examples by Category', placeHolder: 'Category', ignoreFocusOut: true }
+        { title: say('Filter Examples by Category', 'Beispiele nach Kategorie filtern'), placeHolder: say('Category', 'Kategorie'), ignoreFocusOut: true }
       );
       if (!picked) { return; }
 
       this.treeProvider.setCategory(picked.category);
-      notify.info(picked.category ? `Filtering by category: ${picked.category}` : 'Category filter cleared');
+      notify.info(picked.category ? say(`Filtering by category: ${picked.category}`, `Gefiltert nach Kategorie: ${picked.category}`) : say('Category filter cleared', 'Kategoriefilter zurückgesetzt.'));
     });
 
     // Filter by tags — multi-select over the tags in use.
@@ -118,7 +120,7 @@ export class LecturerExampleCommands {
 
       if (tags.length === 0) {
         notify.info(
-          'None of your examples has tags yet. List them under `keywords:` in an example\'s meta.yaml and upload it.'
+          say('None of your examples has tags yet. List them under `keywords:` in an example\'s meta.yaml and upload it.', 'Noch keines deiner Beispiele hat Schlagwörter. Trage sie unter `keywords:` in die meta.yaml eines Beispiels ein und lade es hoch.')
         );
         return;
       }
@@ -127,8 +129,8 @@ export class LecturerExampleCommands {
       const picked = await vscode.window.showQuickPick(
         tags.map(tag => ({ label: tag, picked: selected.has(tag.toLowerCase()) })),
         {
-          title: 'Filter Examples by Tags',
-          placeHolder: 'An example must carry every tag you pick',
+          title: say('Filter Examples by Tags', 'Beispiele nach Schlagwörtern filtern'),
+          placeHolder: say('An example must carry every tag you pick', 'Ein Beispiel muss alle gewählten Schlagwörter tragen'),
           canPickMany: true,
           ignoreFocusOut: true
         }
@@ -137,19 +139,19 @@ export class LecturerExampleCommands {
 
       const chosen = picked.map(item => item.label);
       this.treeProvider.setTags(chosen);
-      notify.info(chosen.length > 0 ? `Filtering by tags: ${chosen.join(', ')}` : 'Tag filter cleared');
+      notify.info(chosen.length > 0 ? say(`Filtering by tags: ${chosen.join(', ')}`, `Gefiltert nach Schlagwörtern: ${chosen.join(', ')}`) : say('Tag filter cleared', 'Schlagwortfilter zurückgesetzt.'));
     });
 
     // Clear category filter
     register('computor.lecturer.clearCategoryFilter', () => {
       this.treeProvider.clearCategoryFilter();
-      notify.info('Category filter cleared');
+      notify.info(say('Category filter cleared', 'Kategoriefilter zurückgesetzt.'));
     });
 
     // Clear tags filter
     register('computor.lecturer.clearTagsFilter', () => {
       this.treeProvider.clearTagsFilter();
-      notify.info('Tags filter cleared');
+      notify.info(say('Tags filter cleared', 'Schlagwortfilter zurückgesetzt.'));
     });
 
     // Toggle a repository in the repository filter
@@ -161,7 +163,7 @@ export class LecturerExampleCommands {
     // Clear repository filter
     register('computor.lecturer.clearRepositoriesFilter', () => {
       this.treeProvider.clearRepositoriesFilter();
-      notify.info('Repositories filter cleared');
+      notify.info(say('Repositories filter cleared', 'Repository-Filter zurückgesetzt.'));
     });
 
     // Checkout example (latest version)
@@ -221,7 +223,7 @@ export class LecturerExampleCommands {
         target = item.merged.local?.fullPath;
       }
       if (!target) {
-        notify.warning('No local copy to reveal.');
+        notify.warning(say('No local copy to reveal.', 'Es gibt keine lokale Kopie zum Anzeigen.'));
         return;
       }
       await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(target));
@@ -231,7 +233,7 @@ export class LecturerExampleCommands {
     register('computor.lecturer.deleteCheckedOutExample', async (item: CheckedOutGroupTreeItem | ExampleTreeItem) => {
       const group = item instanceof ExampleTreeItem ? item.merged.local : item?.group;
       if (!group) {
-        notify.warning('No local copy to delete.');
+        notify.warning(say('No local copy to delete.', 'Es gibt keine lokale Kopie zum Löschen.'));
         return;
       }
       await this.deleteCheckedOutGroup({ group } as CheckedOutGroupTreeItem);
@@ -294,7 +296,7 @@ export class LecturerExampleCommands {
 
     // Checkout multiple examples
     register('computor.lecturer.checkoutMultipleExamples', async () => {
-      notify.info('Checkout multiple examples - not yet implemented');
+      notify.info(say('Checkout multiple examples - not yet implemented', 'Mehrere Beispiele auschecken ist noch nicht umgesetzt.'));
     });
 
     // Upload examples from ZIP
@@ -352,7 +354,7 @@ export class LecturerExampleCommands {
 
     // Upload all examples
     register('computor.lecturer.uploadAllExamples', async () => {
-      await this.uploadAllProvider.show('Upload All Examples');
+      await this.uploadAllProvider.show(say('Upload All Examples', 'Alle Beispiele hochladen'));
     });
 
     // Install computor-testing tools
@@ -381,7 +383,7 @@ export class LecturerExampleCommands {
 
   private async checkoutExample(item: ExampleTreeItem, pickVersion: boolean = false): Promise<void> {
     if (!item?.example) {
-      notify.error('Invalid example item');
+      notify.error(say('Invalid example item', 'Ungültiges Beispiel.'));
       return;
     }
 
@@ -398,19 +400,19 @@ export class LecturerExampleCommands {
       if (pickVersion) {
         const versions = await this.apiService.getExampleVersions(item.example.id);
         if (versions.length === 0) {
-          notify.error('No versions available for this example');
+          notify.error(say('No versions available for this example', 'Für dieses Beispiel gibt es keine Versionen.'));
           return;
         }
         const sorted = versions.slice().sort((a, b) => b.version_number - a.version_number);
         const picked = await vscode.window.showQuickPick(
           sorted.map(v => ({
             label: v.version_tag,
-            description: `#${v.version_number}${v.created_at ? ' — ' + new Date(v.created_at).toLocaleDateString() : ''}`,
+            description: `#${v.version_number}${v.created_at ? ' — ' + new Date(v.created_at).toLocaleDateString(uiLocale()) : ''}`,
             versionId: v.id,
             versionTag: v.version_tag,
             versionNumber: v.version_number
           })),
-          { placeHolder: 'Select a version to checkout' }
+          { placeHolder: say('Select a version to checkout', 'Version zum Auschecken auswählen') }
         );
         if (!picked) { return; }
         versionId = picked.versionId;
@@ -423,7 +425,7 @@ export class LecturerExampleCommands {
         : await this.apiService.downloadExample(item.example.id, false);
 
       if (!exampleData) {
-        notify.error('Failed to download example');
+        notify.error(say('Failed to download example', 'Das Beispiel konnte nicht heruntergeladen werden.'));
         return;
       }
 
@@ -446,9 +448,9 @@ export class LecturerExampleCommands {
 
         if (fs.existsSync(versionDir)) {
           const overwrite = await notify.warning(
-            `'${versionLabel}' already exists. Overwrite?`, 'Yes', 'No'
+            say(`'${versionLabel}' already exists. Overwrite?`, `„${versionLabel}“ existiert bereits. Überschreiben?`), say('Yes', 'Ja'), say('No', 'Nein')
           );
-          if (overwrite !== 'Yes') { return; }
+          if (overwrite !== say('Yes', 'Ja')) { return; }
           fs.rmSync(versionDir, { recursive: true, force: true });
         }
 
@@ -458,7 +460,7 @@ export class LecturerExampleCommands {
 
         this.treeProvider.refresh();
         notify.info(
-          `Checked out '${item.example.title}' [${resolvedTag}] to ${versionLabel}`
+          say(`Checked out '${item.example.title}' [${resolvedTag}] to ${versionLabel}`, `„${item.example.title}“ [${resolvedTag}] nach ${versionLabel} ausgecheckt.`)
         );
       } else {
         // Latest: create working copy in examples/ and version snapshot in example_versions/
@@ -467,9 +469,9 @@ export class LecturerExampleCommands {
 
         if (fs.existsSync(workingDir)) {
           const overwrite = await notify.warning(
-            `Working copy of '${item.example.directory}' already exists. Overwrite?`, 'Yes', 'No'
+            say(`Working copy of '${item.example.directory}' already exists. Overwrite?`, `Die Arbeitskopie von „${item.example.directory}“ existiert bereits. Überschreiben?`), say('Yes', 'Ja'), say('No', 'Nein')
           );
-          if (overwrite !== 'Yes') { return; }
+          if (overwrite !== say('Yes', 'Ja')) { return; }
           fs.rmSync(workingDir, { recursive: true, force: true });
         }
 
@@ -487,18 +489,18 @@ export class LecturerExampleCommands {
 
         this.treeProvider.refresh();
         notify.info(
-          `Checked out '${item.example.title}' [${resolvedTag}]`
+          say(`Checked out '${item.example.title}' [${resolvedTag}]`, `„${item.example.title}“ [${resolvedTag}] ausgecheckt.`)
         );
       }
     } catch (error) {
       console.error('Failed to checkout example:', error);
-      notify.error(`Failed to checkout example: ${error}`);
+      notify.error(say(`Failed to checkout example: ${error}`, `Das Beispiel konnte nicht ausgecheckt werden: ${error}`));
     }
   }
 
   private async checkoutAssignmentExample(item: any): Promise<void> {
     if (!item?.exampleVersionInfo?.id || !item?.exampleInfo) {
-      notify.warning('No example version assigned to this content.');
+      notify.warning(say('No example version assigned to this content.', 'Diesem Inhalt ist keine Beispielversion zugewiesen.'));
       return;
     }
 
@@ -506,7 +508,7 @@ export class LecturerExampleCommands {
       const dirs = WorkspaceStructureManager.getInstance().getDirectories();
       const exampleData = await this.apiService.downloadExampleVersion(item.exampleVersionInfo.id);
       if (!exampleData) {
-        notify.error('Failed to download example version.');
+        notify.error(say('Failed to download example version.', 'Die Beispielversion konnte nicht heruntergeladen werden.'));
         return;
       }
 
@@ -534,9 +536,9 @@ export class LecturerExampleCommands {
 
       if (fs.existsSync(workingDir)) {
         const overwrite = await notify.warning(
-          `Working copy of '${directory}' already exists. Overwrite?`, 'Yes', 'No'
+          say(`Working copy of '${directory}' already exists. Overwrite?`, `Die Arbeitskopie von „${directory}“ existiert bereits. Überschreiben?`), say('Yes', 'Ja'), say('No', 'Nein')
         );
-        if (overwrite !== 'Yes') { return; }
+        if (overwrite !== say('Yes', 'Ja')) { return; }
         fs.rmSync(workingDir, { recursive: true, force: true });
       }
 
@@ -552,7 +554,7 @@ export class LecturerExampleCommands {
 
       this.treeProvider.refresh();
       notify.info(
-        `Checked out '${item.exampleInfo.title || directory}' [${versionTag}]`
+        say(`Checked out '${item.exampleInfo.title || directory}' [${versionTag}]`, `„${item.exampleInfo.title || directory}“ [${versionTag}] ausgecheckt.`)
       );
 
       // Reveal the (now merged) example row in the examples tree so the
@@ -560,7 +562,7 @@ export class LecturerExampleCommands {
       void this.treeProvider.revealExample({ identifier });
     } catch (error) {
       console.error('Failed to checkout assignment example:', error);
-      notify.error(`Failed to checkout: ${error}`);
+      notify.error(say(`Failed to checkout: ${error}`, `Auschecken fehlgeschlagen: ${error}`));
     }
   }
 
@@ -635,8 +637,8 @@ export class LecturerExampleCommands {
   private describeScope(): string {
     const filters = this.treeProvider.describeActiveFilters();
     return filters.length > 0
-      ? `Filters: ${filters.join(', ')}`
-      : 'No filters set - this covers every example.';
+      ? say(`Filters: ${filters.join(', ')}`, `Filter: ${filters.join(', ')}`)
+      : say('No filters set - this covers every example.', 'Kein Filter gesetzt, das betrifft also alle Beispiele.');
   }
 
   /**
@@ -654,19 +656,19 @@ export class LecturerExampleCommands {
     skipReason: string
   ): void {
     const skippedNote = skipped.length > 0
-      ? ` ${skipped.length} skipped - ${skipReason}.`
+      ? say(` ${skipped.length} skipped - ${skipReason}.`, ` ${skipped.length} übersprungen, weil ${skipReason}.`)
       : '';
 
     if (errors.length === 0) {
-      notify.info(`${doneLabel} ${successCount} example(s).${skippedNote}`);
+      notify.info(say(`${doneLabel} ${successCount} example(s).${skippedNote}`, `${doneLabel}: ${successCount} Beispiel(e).${skippedNote}`));
       return;
     }
 
     const shown = errors.length > 3 ? errors.slice(0, 3).join('; ') + '...' : errors.join('; ');
     if (successCount > 0) {
-      notify.warning(`${doneLabel} ${successCount} of ${attempted}.${skippedNote} Errors: ${shown}`);
+      notify.warning(say(`${doneLabel} ${successCount} of ${attempted}.${skippedNote} Errors: ${shown}`, `${doneLabel}: ${successCount} von ${attempted}.${skippedNote} Fehler: ${shown}`));
     } else {
-      notify.error(`Failed to ${failingLabel} any example.${skippedNote} ${shown}`);
+      notify.error(say(`Failed to ${failingLabel} any example.${skippedNote} ${shown}`, `Kein Beispiel konnte ${failingLabel} werden.${skippedNote} ${shown}`));
     }
   }
 
@@ -688,7 +690,7 @@ export class LecturerExampleCommands {
 
     const merged = await this.treeProvider.getFilteredMergedExamples();
     if (!merged.some(m => m.remote)) {
-      notify.info('No examples match the current filters.');
+      notify.info(say('No examples match the current filters.', 'Kein Beispiel passt zu den aktuellen Filtern.'));
       return;
     }
 
@@ -696,7 +698,7 @@ export class LecturerExampleCommands {
 
     if (toCheckout.length === 0) {
       notify.info(
-        `Nothing checked out: all ${skipped.length} matching example(s) have local changes.`
+        say(`Nothing checked out: all ${skipped.length} matching example(s) have local changes.`, `Nichts ausgecheckt: Alle ${skipped.length} passenden Beispiele haben lokale Änderungen.`)
       );
       return;
     }
@@ -704,20 +706,20 @@ export class LecturerExampleCommands {
     const detail = [
       this.describeScope(),
       '',
-      `${toCheckout.length} example(s) will be checked out at their latest version, replacing any unmodified local copy.`,
+      say(`${toCheckout.length} example(s) will be checked out at their latest version, replacing any unmodified local copy.`, `${toCheckout.length} Beispiel(e) werden in der neuesten Version ausgecheckt; unveränderte lokale Kopien werden dabei ersetzt.`),
       skipped.length > 0
-        ? `${skipped.length} will be left alone because they have local changes.`
+        ? say(`${skipped.length} will be left alone because they have local changes.`, `${skipped.length} bleiben unberührt, weil sie lokale Änderungen haben.`)
         : ''
     ].filter(Boolean).join('\n');
 
     const confirmed = await notify.confirm(
-      `Checkout the latest version of ${toCheckout.length} example(s)?`,
-      'Checkout',
+      say(`Checkout the latest version of ${toCheckout.length} example(s)?`, `Neueste Version von ${toCheckout.length} Beispiel(en) auschecken?`),
+      say('Checkout', 'Auschecken'),
       detail
     );
     if (!confirmed) { return; }
 
-    await notify.progress('Checking out examples', async (progress) => {
+    await notify.progress(say('Checking out examples', 'Beispiele werden ausgecheckt'), async (progress) => {
       let successCount = 0;
       const errors: string[] = [];
 
@@ -733,7 +735,7 @@ export class LecturerExampleCommands {
         try {
           const exampleData = await this.apiService.downloadExample(remote.id, false);
           if (!exampleData) {
-            errors.push(`${remote.title}: failed to download`);
+            errors.push(say(`${remote.title}: failed to download`, `${remote.title}: Herunterladen fehlgeschlagen`));
             continue;
           }
 
@@ -768,9 +770,9 @@ export class LecturerExampleCommands {
 
       this.treeProvider.refresh();
       this.reportBulkOutcome(
-        'Checked out', 'check out',
+        say('Checked out', 'Ausgecheckt'), say('check out', 'ausgecheckt'),
         successCount, toCheckout.length, errors,
-        skipped, 'they have local changes'
+        skipped, say('they have local changes', 'sie lokale Änderungen haben')
       );
     });
   }
@@ -800,8 +802,8 @@ export class LecturerExampleCommands {
 
     if (toDelete.length === 0) {
       notify.info(skipped.length > 0
-        ? `Nothing to clean up: all ${skipped.length} matching example(s) have local changes.`
-        : 'No checked-out examples match the current filters.');
+        ? say(`Nothing to clean up: all ${skipped.length} matching example(s) have local changes.`, `Nichts aufzuräumen: Alle ${skipped.length} passenden Beispiele haben lokale Änderungen.`)
+        : say('No checked-out examples match the current filters.', 'Kein ausgechecktes Beispiel passt zu den aktuellen Filtern.'));
       return;
     }
 
@@ -809,24 +811,24 @@ export class LecturerExampleCommands {
       this.describeScope(),
       '',
       includeVersions
-        ? `${toDelete.length} example(s) will lose their working copy in examples/ and every`
-        : `${toDelete.length} example(s) will have their working copy removed from examples/.`,
+        ? say(`${toDelete.length} example(s) will lose their working copy in examples/ and every`, `${toDelete.length} Beispiel(e) verlieren ihre Arbeitskopie in examples/ und alle`)
+        : say(`${toDelete.length} example(s) will have their working copy removed from examples/.`, `Bei ${toDelete.length} Beispiel(en) wird die Arbeitskopie aus examples/ entfernt.`),
       includeVersions
-        ? 'version snapshot in example_versions/, and will disappear from the tree until'
-        : 'Version snapshots under example_versions/ are kept, so an example that has any',
+        ? say('version snapshot in example_versions/, and will disappear from the tree until', 'Versionsstände in example_versions/ und verschwinden aus dem Baum, bis sie')
+        : say('Version snapshots under example_versions/ are kept, so an example that has any', 'Versionsstände unter example_versions/ bleiben erhalten, ein Beispiel mit solchen Ständen'),
       includeVersions
-        ? 'checked out again.'
-        : 'still shows in the tree with its versions under it.',
+        ? say('checked out again.', 'erneut ausgecheckt werden.')
+        : say('still shows in the tree with its versions under it.', 'erscheint also weiter im Baum, mit seinen Versionen darunter.'),
       skipped.length > 0
-        ? `${skipped.length} will be kept because they have local changes.`
+        ? say(`${skipped.length} will be kept because they have local changes.`, `${skipped.length} bleiben erhalten, weil sie lokale Änderungen haben.`)
         : ''
     ].filter(Boolean).join('\n');
 
     const confirmed = await notify.confirm(
       includeVersions
-        ? `Delete all local data of ${toDelete.length} example(s)?`
-        : `Delete the local working copy of ${toDelete.length} example(s)?`,
-      'Delete',
+        ? say(`Delete all local data of ${toDelete.length} example(s)?`, `Alle lokalen Daten von ${toDelete.length} Beispiel(en) löschen?`)
+        : say(`Delete the local working copy of ${toDelete.length} example(s)?`, `Lokale Arbeitskopie von ${toDelete.length} Beispiel(en) löschen?`),
+      say('Delete', 'Löschen'),
       detail
     );
     if (!confirmed) { return; }
@@ -849,9 +851,9 @@ export class LecturerExampleCommands {
 
     this.treeProvider.refresh();
     this.reportBulkOutcome(
-      'Cleaned up', 'clean up',
+      say('Cleaned up', 'Aufgeräumt'), say('clean up', 'aufgeräumt'),
       successCount, toDelete.length, errors,
-      skipped, 'they have local changes'
+      skipped, say('they have local changes', 'sie lokale Änderungen haben')
     );
   }
 
@@ -872,7 +874,7 @@ export class LecturerExampleCommands {
       .map(m => ({ directory: m.identifier, dirPath: m.local!.workingVersion!.fullPath }));
 
     if (targets.length === 0) {
-      notify.info('No checked-out examples match the current filters. Run "Checkout Latest (Filtered)" first.');
+      notify.info(say('No checked-out examples match the current filters. Run "Checkout Latest (Filtered)" first.', 'Kein ausgechecktes Beispiel passt zu den aktuellen Filtern. Führe zuerst „Neueste Versionen auschecken (gefiltert)“ aus.'));
       return;
     }
 
@@ -880,20 +882,20 @@ export class LecturerExampleCommands {
     if (!options) { return; }
 
     const plans = await notify.progress(
-      'Searching examples',
+      say('Searching examples', 'Beispiele werden durchsucht'),
       async () => planReplacements(targets, options)
     );
 
     const { files, replacements } = totalHits(plans);
     if (replacements === 0) {
-      notify.info(`No matches for "${options.find}" in ${targets.length} example(s).`);
+      notify.info(say(`No matches for "${options.find}" in ${targets.length} example(s).`, `Keine Treffer für „${options.find}“ in ${targets.length} Beispiel(en).`));
       return;
     }
 
     const preview = plans.slice(0, 10)
-      .map(plan => `  ${plan.directory}: ${plan.total} in ${plan.files.length} file(s)`);
+      .map(plan => say(`  ${plan.directory}: ${plan.total} in ${plan.files.length} file(s)`, `  ${plan.directory}: ${plan.total} in ${plan.files.length} Datei(en)`));
     if (plans.length > 10) {
-      preview.push(`  ...and ${plans.length - 10} more`);
+      preview.push(say(`  ...and ${plans.length - 10} more`, `  … und ${plans.length - 10} weitere`));
     }
 
     const detail = [
@@ -901,26 +903,26 @@ export class LecturerExampleCommands {
       '',
       ...preview,
       '',
-      'Only working copies under examples/ are rewritten. Version snapshots are left alone,',
-      'and no version is bumped - choose that in Upload All Examples.'
+      say('Only working copies under examples/ are rewritten. Version snapshots are left alone,', 'Nur Arbeitskopien unter examples/ werden geändert. Versionsstände bleiben unberührt,'),
+      say('and no version is bumped - choose that in Upload All Examples.', 'und keine Version wird erhöht; das wählst du unter „Alle Beispiele hochladen“.')
     ].join('\n');
 
     const confirmed = await notify.confirm(
-      `Replace ${replacements} occurrence(s) across ${files} file(s) in ${plans.length} example(s)?`,
-      'Replace',
+      say(`Replace ${replacements} occurrence(s) across ${files} file(s) in ${plans.length} example(s)?`, `${replacements} Vorkommen in ${files} Datei(en) von ${plans.length} Beispiel(en) ersetzen?`),
+      say('Replace', 'Ersetzen'),
       detail
     );
     if (!confirmed) { return; }
 
     const summary = await notify.progress(
-      'Replacing in examples',
+      say('Replacing in examples', 'In Beispielen wird ersetzt'),
       async () => applyReplacements(plans, options)
     );
     this.treeProvider.refresh();
 
     if (summary.errors.length === 0) {
       notify.info(
-        `Replaced ${summary.replacements} occurrence(s) in ${summary.files} file(s) across ${summary.examples} example(s).`
+        say(`Replaced ${summary.replacements} occurrence(s) in ${summary.files} file(s) across ${summary.examples} example(s).`, `${summary.replacements} Vorkommen in ${summary.files} Datei(en) von ${summary.examples} Beispiel(en) ersetzt.`)
       );
       return;
     }
@@ -930,10 +932,10 @@ export class LecturerExampleCommands {
       : summary.errors.join('; ');
     if (summary.replacements > 0) {
       notify.warning(
-        `Replaced ${summary.replacements} occurrence(s) in ${summary.files} file(s). Errors: ${shown}`
+        say(`Replaced ${summary.replacements} occurrence(s) in ${summary.files} file(s). Errors: ${shown}`, `${summary.replacements} Vorkommen in ${summary.files} Datei(en) ersetzt. Fehler: ${shown}`)
       );
     } else {
-      notify.error(`Failed to replace anything. ${shown}`);
+      notify.error(say(`Failed to replace anything. ${shown}`, `Es konnte nichts ersetzt werden. ${shown}`));
     }
   }
 
@@ -941,27 +943,27 @@ export class LecturerExampleCommands {
     const state = { regex: false, matchCase: false };
 
     const find = await this.showToggleInput({
-      label: 'Find',
-      prompt: `Text to find across ${exampleCount} checked-out example(s)`,
+      label: say('Find', 'Suchen'),
+      prompt: say(`Text to find across ${exampleCount} checked-out example(s)`, `Text, der in ${exampleCount} ausgecheckten Beispiel(en) gesucht wird`),
       state,
       validate: (value) => {
-        if (!value) { return 'Enter the text to find.'; }
+        if (!value) { return say('Enter the text to find.', 'Gib den Suchtext ein.'); }
         if (!state.regex) { return undefined; }
         try {
           new RegExp(value);
           return undefined;
         } catch (error) {
-          return `Invalid regular expression: ${error instanceof Error ? error.message : String(error)}`;
+          return say(`Invalid regular expression: ${error instanceof Error ? error.message : String(error)}`, `Ungültiger regulärer Ausdruck: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
     });
     if (find === undefined) { return undefined; }
 
     const replace = await this.showToggleInput({
-      label: 'Replace with',
+      label: say('Replace with', 'Ersetzen durch'),
       prompt: state.regex
-        ? 'Replacement text - $1, $2 refer to capture groups. Empty deletes the matches.'
-        : 'Replacement text. Empty deletes the matches.',
+        ? say('Replacement text - $1, $2 refer to capture groups. Empty deletes the matches.', 'Ersetzungstext; $1, $2 verweisen auf Gruppen. Leer löscht die Treffer.')
+        : say('Replacement text. Empty deletes the matches.', 'Ersetzungstext. Leer löscht die Treffer.'),
       state,
       allowEmpty: true
     });
@@ -988,11 +990,11 @@ export class LecturerExampleCommands {
       const input = vscode.window.createInputBox();
       const caseButton: vscode.QuickInputButton = {
         iconPath: new vscode.ThemeIcon('case-sensitive'),
-        tooltip: 'Toggle Match Case'
+        tooltip: say('Toggle Match Case', 'Groß-/Kleinschreibung beachten ein/aus')
       };
       const regexButton: vscode.QuickInputButton = {
         iconPath: new vscode.ThemeIcon('regex'),
-        tooltip: 'Toggle Use Regular Expression'
+        tooltip: say('Toggle Use Regular Expression', 'Regulären Ausdruck verwenden ein/aus')
       };
 
       input.buttons = [caseButton, regexButton];
@@ -1001,7 +1003,7 @@ export class LecturerExampleCommands {
       input.ignoreFocusOut = true;
 
       const applyTitle = () => {
-        input.title = `${config.label} - regex: ${config.state.regex ? 'on' : 'off'}, match case: ${config.state.matchCase ? 'on' : 'off'}`;
+        input.title = say(`${config.label} - regex: ${config.state.regex ? 'on' : 'off'}, match case: ${config.state.matchCase ? 'on' : 'off'}`, `${config.label} – regulärer Ausdruck: ${config.state.regex ? 'ein' : 'aus'}, Groß-/Kleinschreibung: ${config.state.matchCase ? 'ein' : 'aus'}`);
       };
       const revalidate = () => {
         input.validationMessage = config.validate ? config.validate(input.value) : undefined;
@@ -1025,7 +1027,7 @@ export class LecturerExampleCommands {
       input.onDidAccept(() => {
         const value = input.value;
         if (!value && !config.allowEmpty) {
-          input.validationMessage = `Enter the text to ${config.label.toLowerCase()}.`;
+          input.validationMessage = say(`Enter the text to ${config.label.toLowerCase()}.`, `Gib den Text für „${config.label}“ ein.`);
           return;
         }
         const problem = config.validate ? config.validate(value) : undefined;
@@ -1052,7 +1054,7 @@ export class LecturerExampleCommands {
       fs.mkdirSync(examplesPath, { recursive: true });
       return examplesPath;
     } catch {
-      notify.error('No workspace folder open');
+      notify.error(say('No workspace folder open', 'Es ist kein Arbeitsbereichsordner geöffnet.'));
       return undefined;
     }
   }
@@ -1064,7 +1066,7 @@ export class LecturerExampleCommands {
       fs.mkdirSync(versionsPath, { recursive: true });
       return versionsPath;
     } catch {
-      notify.error('No workspace folder open');
+      notify.error(say('No workspace folder open', 'Es ist kein Arbeitsbereichsordner geöffnet.'));
       return undefined;
     }
   }
@@ -1083,13 +1085,13 @@ export class LecturerExampleCommands {
 
     const directory = local?.directory || remote?.directory;
     if (!directory) {
-      notify.error('Invalid example item');
+      notify.error(say('Invalid example item', 'Ungültiges Beispiel.'));
       return;
     }
 
     const workingDir = local?.workingVersion?.fullPath || getWorkingPath(examplesPath, directory);
     if (!fs.existsSync(workingDir)) {
-      notify.error(`No working copy found. Check out the example first.`);
+      notify.error(say(`No working copy found. Check out the example first.`, `Keine Arbeitskopie gefunden. Checke das Beispiel zuerst aus.`));
       return;
     }
 
@@ -1104,7 +1106,7 @@ export class LecturerExampleCommands {
 
   private async uploadCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
     if (!item?.version) {
-      notify.error('Invalid checked-out version');
+      notify.error(say('Invalid checked-out version', 'Ungültige ausgecheckte Version.'));
       return;
     }
 
@@ -1119,7 +1121,7 @@ export class LecturerExampleCommands {
     dirPath: string, directory: string, repositoryId: string, title: string, exampleId: string
   ): Promise<void> {
     if (!fs.existsSync(dirPath)) {
-      notify.error(`Directory not found: ${dirPath}`);
+      notify.error(say(`Directory not found: ${dirPath}`, `Verzeichnis nicht gefunden: ${dirPath}`));
       return;
     }
 
@@ -1127,7 +1129,7 @@ export class LecturerExampleCommands {
     if (!repositoryId) {
       const repos = await this.apiService.getExampleRepositories();
       if (!repos || repos.length === 0) {
-        notify.error('No example repositories found. Please create one first.');
+        notify.error(say('No example repositories found. Please create one first.', 'Keine Beispiel-Repositorys gefunden. Lege zuerst eines an.'));
         return;
       }
 
@@ -1136,7 +1138,7 @@ export class LecturerExampleCommands {
       } else {
         const picked = await vscode.window.showQuickPick(
           repos.map(r => ({ label: r.name, description: r.source_url, id: r.id })),
-          { placeHolder: 'Select a repository for this example' }
+          { placeHolder: say('Select a repository for this example', 'Repository für dieses Beispiel auswählen') }
         );
         if (!picked) { return; }
         repositoryId = picked.id;
@@ -1171,20 +1173,20 @@ export class LecturerExampleCommands {
     let picked;
     if (isFirstUpload || !latestRemoteVersion) {
       picked = await vscode.window.showQuickPick([
-        { label: `Use current: ${localVersion}`, description: 'First upload', version: localVersion },
-        { label: `Patch: ${patchBump}`, description: `From ${baseVersion}`, version: patchBump },
-        { label: `Minor: ${minorBump}`, description: `From ${baseVersion}`, version: minorBump },
-        { label: `Major: ${majorBump}`, description: `From ${baseVersion}`, version: majorBump },
-        { label: 'Custom version...', description: '', version: '' }
-      ], { placeHolder: `Select version for first upload of "${title}"` });
+        { label: say(`Use current: ${localVersion}`, `Aktuelle verwenden: ${localVersion}`), description: say('First upload', 'Erstes Hochladen'), version: localVersion },
+        { label: `Patch: ${patchBump}`, description: say(`From ${baseVersion}`, `Von ${baseVersion}`), version: patchBump },
+        { label: `Minor: ${minorBump}`, description: say(`From ${baseVersion}`, `Von ${baseVersion}`), version: minorBump },
+        { label: `Major: ${majorBump}`, description: say(`From ${baseVersion}`, `Von ${baseVersion}`), version: majorBump },
+        { label: say('Custom version...', 'Eigene Version …'), description: '', version: '' }
+      ], { placeHolder: say(`Select version for first upload of "${title}"`, `Version für das erste Hochladen von „${title}“ auswählen`) });
     } else {
-      const remoteLabel = `Latest remote: ${latestRemoteVersion}`;
+      const remoteLabel = say(`Latest remote: ${latestRemoteVersion}`, `Neueste auf dem Server: ${latestRemoteVersion}`);
       picked = await vscode.window.showQuickPick([
         { label: `Patch: ${patchBump}`, description: remoteLabel, version: patchBump },
         { label: `Minor: ${minorBump}`, description: remoteLabel, version: minorBump },
         { label: `Major: ${majorBump}`, description: remoteLabel, version: majorBump },
-        { label: 'Custom version...', description: remoteLabel, version: '' }
-      ], { placeHolder: `Select version for "${title}" upload` });
+        { label: say('Custom version...', 'Eigene Version …'), description: remoteLabel, version: '' }
+      ], { placeHolder: say(`Select version for "${title}" upload`, `Version für das Hochladen von „${title}“ auswählen`) });
     }
 
     if (!picked) { return; }
@@ -1192,7 +1194,7 @@ export class LecturerExampleCommands {
     let uploadVersion = picked.version;
     if (!uploadVersion) {
       const custom = await vscode.window.showInputBox({
-        prompt: 'Enter version tag',
+        prompt: say('Enter version tag', 'Versionskennung eingeben'),
         placeHolder: 'e.g., 1.2.3',
         value: patchBump
       });
@@ -1201,25 +1203,25 @@ export class LecturerExampleCommands {
     }
 
     const confirm = await notify.info(
-      `Upload "${title}" as version ${uploadVersion}?`, 'Upload', 'Cancel'
+      say(`Upload "${title}" as version ${uploadVersion}?`, `„${title}“ als Version ${uploadVersion} hochladen?`), say('Upload', 'Hochladen'), say('Cancel', 'Abbrechen')
     );
-    if (confirm !== 'Upload') { return; }
+    if (confirm !== say('Upload', 'Hochladen')) { return; }
 
     // Update meta.yaml with the chosen version before uploading
     try {
       updateMetaYamlVersion(dirPath, uploadVersion);
     } catch (e) {
-      notify.error(`Failed to update meta.yaml version: ${e}`);
+      notify.error(say(`Failed to update meta.yaml version: ${e}`, `Die Version in meta.yaml konnte nicht aktualisiert werden: ${e}`));
       return;
     }
 
     try {
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Uploading: ${title} [${uploadVersion}]`,
+        title: say(`Uploading: ${title} [${uploadVersion}]`, `Wird hochgeladen: ${title} [${uploadVersion}]`),
         cancellable: false
       }, async (progress) => {
-        progress.report({ increment: 10, message: 'Packaging as zip...' });
+        progress.report({ increment: 10, message: say('Packaging as zip...', 'Wird als ZIP gepackt …') });
 
         const zipper = new JSZip();
         const addToZip = (currentDir: string, basePath: string) => {
@@ -1239,7 +1241,7 @@ export class LecturerExampleCommands {
         addToZip(dirPath, dirPath);
 
         const base64Zip = await zipper.generateAsync({ type: 'base64', compression: 'DEFLATE' });
-        progress.report({ increment: 30, message: 'Uploading...' });
+        progress.report({ increment: 30, message: say('Uploading...', 'Wird hochgeladen …') });
 
         const zipName = `${directory}.zip`;
         const uploadRequest: ExampleUploadRequest = {
@@ -1250,12 +1252,12 @@ export class LecturerExampleCommands {
 
         const result = await this.apiService.uploadExample(uploadRequest);
         if (!result) {
-          throw new Error('Upload failed - no response from server');
+          throw new Error(say('Upload failed - no response from server', 'Hochladen fehlgeschlagen: keine Antwort vom Server'));
         }
 
         const returnedExampleId = (result as any).example_id || exampleId;
 
-        progress.report({ increment: 20, message: 'Downloading version snapshot...' });
+        progress.report({ increment: 20, message: say('Downloading version snapshot...', 'Versionsstand wird heruntergeladen …') });
 
         // Download the newly created version from the API to create a clean snapshot
         const examplesPath = this.getExamplesDir();
@@ -1328,49 +1330,49 @@ export class LecturerExampleCommands {
           }
         }
 
-        progress.report({ increment: 20, message: 'Complete!' });
-        notify.info(`Successfully uploaded: ${title} [${uploadVersion}]`);
+        progress.report({ increment: 20, message: say('Complete!', 'Fertig.') });
+        notify.info(say(`Successfully uploaded: ${title} [${uploadVersion}]`, `Hochgeladen: ${title} [${uploadVersion}]`));
         this.treeProvider.refresh();
         vscode.commands.executeCommand('computor.lecturer.refresh');
       });
     } catch (error) {
       console.error('Failed to upload example:', error);
-      notify.error(`Failed to upload: ${error}`);
+      notify.error(say(`Failed to upload: ${error}`, `Hochladen fehlgeschlagen: ${error}`));
     }
   }
 
   private async createExampleRepository(): Promise<void> {
     const name = await vscode.window.showInputBox({
-      prompt: 'Example Repository name',
-      placeHolder: 'e.g., Default Examples',
-      validateInput: (value) => (value && value.trim() ? undefined : 'A name is required')
+      prompt: say('Example Repository name', 'Name des Beispiel-Repositorys'),
+      placeHolder: say('e.g., Default Examples', 'z. B. Standardbeispiele'),
+      validateInput: (value) => (value && value.trim() ? undefined : say('A name is required', 'Ein Name ist erforderlich.'))
     });
     if (!name) { return; }
 
     const sourceTypePick = await vscode.window.showQuickPick(
       [
-        { label: 'MinIO (uploadable)', value: 'minio' },
-        { label: 'S3 (uploadable)', value: 's3' },
-        { label: 'Git (read-only — synced via push)', value: 'git' }
+        { label: say('MinIO (uploadable)', 'MinIO (Hochladen möglich)'), value: 'minio' },
+        { label: say('S3 (uploadable)', 'S3 (Hochladen möglich)'), value: 's3' },
+        { label: say('Git (read-only — synced via push)', 'Git (nur lesen, Abgleich per Push)'), value: 'git' }
       ],
-      { placeHolder: 'Select the repository source type' }
+      { placeHolder: say('Select the repository source type', 'Quelltyp des Repositorys auswählen') }
     );
     if (!sourceTypePick) { return; }
     const sourceType = sourceTypePick.value;
 
     const isObjectStore = sourceType === 'minio' || sourceType === 's3';
     const sourceUrl = await vscode.window.showInputBox({
-      prompt: isObjectStore ? 'Bucket (source URL)' : 'Git URL',
-      placeHolder: isObjectStore ? 'e.g., computor-storage' : 'e.g., https://git.example.com/org/examples.git',
+      prompt: isObjectStore ? say('Bucket (source URL)', 'Bucket (Quell-URL)') : 'Git URL',
+      placeHolder: isObjectStore ? say('e.g., computor-storage', 'z. B. computor-storage') : say('e.g., https://git.example.com/org/examples.git', 'z. B. https://git.example.com/org/examples.git'),
       value: isObjectStore ? 'computor-storage' : '',
       // First path segment is the bucket for minio/s3; must be unique across repositories.
-      validateInput: (value) => (value && value.trim() ? undefined : 'A source URL is required')
+      validateInput: (value) => (value && value.trim() ? undefined : say('A source URL is required', 'Eine Quell-URL ist erforderlich.'))
     });
     if (!sourceUrl) { return; }
 
     const description = await vscode.window.showInputBox({
-      prompt: 'Description (optional)',
-      placeHolder: 'What does this repository contain?'
+      prompt: say('Description (optional)', 'Beschreibung (optional)'),
+      placeHolder: say('What does this repository contain?', 'Was enthält dieses Repository?')
     });
     if (description === undefined) { return; }
 
@@ -1383,11 +1385,11 @@ export class LecturerExampleCommands {
 
     try {
       const repo = await this.apiService.createExampleRepository(payload);
-      notify.info(`Example repository "${repo.name}" created.`);
+      notify.info(say(`Example repository "${repo.name}" created.`, `Das Beispiel-Repository „${repo.name}“ wurde angelegt.`));
       try { this.apiService.clearExamplesCache(); } catch {}
       this.treeProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to create example repository: ${error?.message || error}`);
+      notify.error(say(`Failed to create example repository: ${error?.message || error}`, `Das Beispiel-Repository konnte nicht angelegt werden: ${error?.message || error}`));
     }
   }
 
@@ -1396,18 +1398,18 @@ export class LecturerExampleCommands {
     if (!examplesPath) { return; }
 
     const title = await vscode.window.showInputBox({
-      prompt: 'Example Title',
-      placeHolder: 'Enter a title for the new example'
+      prompt: say('Example Title', 'Titel des Beispiels'),
+      placeHolder: say('Enter a title for the new example', 'Titel für das neue Beispiel eingeben')
     });
     if (!title) { return; }
 
     const identifier = await vscode.window.showInputBox({
-      prompt: 'Example Identifier (ltree: letters, digits, dots, underscores)',
-      placeHolder: 'e.g., hello.world.basic',
+      prompt: say('Example Identifier (ltree: letters, digits, dots, underscores)', 'Kennung des Beispiels (ltree: Buchstaben, Ziffern, Punkte, Unterstriche)'),
+      placeHolder: say('e.g., hello.world.basic', 'z. B. hello.world.basic'),
       value: title.toLowerCase().replace(/\s+/g, '.'),
       validateInput: (value) => {
         if (!/^[a-zA-Z0-9._]+$/.test(value)) {
-          return 'Only letters, digits, dots, and underscores allowed (ltree format)';
+          return say('Only letters, digits, dots, and underscores allowed (ltree format)', 'Erlaubt sind nur Buchstaben, Ziffern, Punkte und Unterstriche (ltree-Format).');
         }
         return undefined;
       }
@@ -1417,15 +1419,15 @@ export class LecturerExampleCommands {
     try {
       const existingExamples = await this.apiService.getExamples();
       if (existingExamples.some(e => e.identifier === identifier)) {
-        notify.error(`Example identifier "${identifier}" is already in use.`);
+        notify.error(say(`Example identifier "${identifier}" is already in use.`, `Die Kennung „${identifier}“ ist bereits vergeben.`));
         return;
       }
     } catch {
       const proceed = await notify.warning(
-        'Could not verify identifier uniqueness. Continue anyway?',
-        'Continue', 'Cancel'
+        say('Could not verify identifier uniqueness. Continue anyway?', 'Es ließ sich nicht prüfen, ob die Kennung eindeutig ist. Trotzdem fortfahren?'),
+        say('Continue', 'Fortfahren'), say('Cancel', 'Abbrechen')
       );
-      if (proceed !== 'Continue') { return; }
+      if (proceed !== say('Continue', 'Fortfahren')) { return; }
     }
 
     const directory = identifier;
@@ -1437,7 +1439,7 @@ export class LecturerExampleCommands {
       if (repositories.length > 0) {
         const picked = await vscode.window.showQuickPick(
           repositories.map(r => ({ label: r.name, description: r.description || undefined, id: r.id })),
-          { placeHolder: 'Select target repository for this example' }
+          { placeHolder: say('Select target repository for this example', 'Ziel-Repository für dieses Beispiel auswählen') }
         );
         if (!picked) { return; }
         repositoryId = picked.id;
@@ -1451,7 +1453,7 @@ export class LecturerExampleCommands {
     try {
       languages = await this.apiService.getLanguages();
     } catch {
-      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+      languages = [{ code: 'en', name: say('English', 'Englisch') }, { code: 'de', name: say('German', 'Deutsch') }];
     }
 
     const hasEnglish = languages.some(l => l.code === 'en');
@@ -1461,13 +1463,13 @@ export class LecturerExampleCommands {
 
     const pickedLang = await vscode.window.showQuickPick(
       sortedLanguages.map(l => ({ label: l.name, description: l.code, langCode: l.code })),
-      { placeHolder: 'Select language for this example' }
+      { placeHolder: say('Select language for this example', 'Sprache für dieses Beispiel auswählen') }
     );
     if (!pickedLang) { return; }
 
     const workingDir = getWorkingPath(examplesPath, directory);
     if (fs.existsSync(workingDir)) {
-      notify.error(`Local example "${directory}" already exists.`);
+      notify.error(say(`Local example "${directory}" already exists.`, `Das lokale Beispiel „${directory}“ existiert bereits.`));
       return;
     }
 
@@ -1516,9 +1518,9 @@ export class LecturerExampleCommands {
 
       this.treeProvider.refreshAndExpand(directory);
 
-      notify.info(`Created new example "${title}" — checked out locally.`);
+      notify.info(say(`Created new example "${title}" — checked out locally.`, `Das neue Beispiel „${title}“ wurde angelegt und lokal ausgecheckt.`));
     } catch (error) {
-      notify.error(`Failed to create example: ${error}`);
+      notify.error(say(`Failed to create example: ${error}`, `Das Beispiel konnte nicht angelegt werden: ${error}`));
     }
   }
 
@@ -1530,7 +1532,7 @@ export class LecturerExampleCommands {
     const metaFiles = await vscode.workspace.findFiles('**/meta.yaml', '**/node_modules/**');
     
     if (metaFiles.length === 0) {
-      notify.error('No meta.yaml files found in workspace');
+      notify.error(say('No meta.yaml files found in workspace', 'Im Arbeitsbereich gibt es keine meta.yaml-Dateien.'));
       return;
     }
 
@@ -1547,7 +1549,7 @@ export class LecturerExampleCommands {
       }));
 
       const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select meta.yaml file to upload'
+        placeHolder: say('Select meta.yaml file to upload', 'meta.yaml zum Hochladen auswählen')
       });
 
       if (!selected) {
@@ -1564,7 +1566,7 @@ export class LecturerExampleCommands {
       return;
     }
     
-    notify.info(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`);
+    notify.info(say(`Uploading example from ${metaFile.fsPath} - not yet fully implemented`, `Hochladen eines Beispiels aus ${metaFile.fsPath} ist noch nicht vollständig umgesetzt.`));
   }
 
   /**
@@ -1583,7 +1585,7 @@ export class LecturerExampleCommands {
         // Ask user to select a repository
         const repositories = await this.apiService.getExampleRepositories();
         if (repositories.length === 0) {
-          notify.error('No example repositories available');
+          notify.error(say('No example repositories available', 'Keine Beispiel-Repositorys verfügbar.'));
           return;
         }
         
@@ -1593,7 +1595,7 @@ export class LecturerExampleCommands {
             description: r.description || undefined,
             id: r.id
           })),
-          { placeHolder: 'Select repository to upload examples to' }
+          { placeHolder: say('Select repository to upload examples to', 'Repository zum Hochladen der Beispiele auswählen') }
         );
         
         if (!selected) {
@@ -1610,9 +1612,9 @@ export class LecturerExampleCommands {
         canSelectFolders: false,
         canSelectMany: false,
         filters: {
-          'ZIP Archives': ['zip']
+          [say('ZIP Archives', 'ZIP-Archive')]: ['zip']
         },
-        title: 'Select ZIP file containing examples'
+        title: say('Select ZIP file containing examples', 'ZIP-Datei mit Beispielen auswählen')
       });
 
       if (!zipFileUri || zipFileUri.length === 0) {
@@ -1632,10 +1634,10 @@ export class LecturerExampleCommands {
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Processing ${zipFileName}`,
+        title: say(`Processing ${zipFileName}`, `${zipFileName} wird verarbeitet`),
         cancellable: false
       }, async (progress) => {
-        progress.report({ increment: 0, message: 'Loading ZIP file...' });
+        progress.report({ increment: 0, message: say('Loading ZIP file...', 'ZIP-Datei wird geladen …') });
 
         // Load the ZIP content
         const loadedZip = await zip.loadAsync(zipContent);
@@ -1650,10 +1652,10 @@ export class LecturerExampleCommands {
         const metaYamlPaths = allPaths.filter(path => path.endsWith('meta.yaml'));
         
         if (metaYamlPaths.length === 0) {
-          throw new Error('No meta.yaml files found in the ZIP archive');
+          throw new Error(say('No meta.yaml files found in the ZIP archive', 'Das ZIP-Archiv enthält keine meta.yaml-Dateien.'));
         }
 
-        progress.report({ increment: 20, message: `Found ${metaYamlPaths.length} example(s)...` });
+        progress.report({ increment: 20, message: say(`Found ${metaYamlPaths.length} example(s)...`, `${metaYamlPaths.length} Beispiel(e) gefunden …`) });
 
         // Process each example (we will re-zip each directory individually)
         const examples: Array<{
@@ -1733,14 +1735,14 @@ export class LecturerExampleCommands {
         }
 
         if (examples.length === 0) {
-          throw new Error('No valid examples found in ZIP file');
+          throw new Error(say('No valid examples found in ZIP file', 'Die ZIP-Datei enthält keine gültigen Beispiele.'));
         }
 
         // Show selection dialog with all items preselected
         const quickPickItems = examples.map(ex => ({
           label: ex.title,
           description: ex.identifier,
-          detail: `will upload as ${ex.zipName}${ex.dependencies.length ? ` • deps: ${ex.dependencies.join(', ')}` : ''}`,
+          detail: say(`will upload as ${ex.zipName}${ex.dependencies.length ? ` • deps: ${ex.dependencies.join(', ')}` : ''}`, `wird hochgeladen als ${ex.zipName}${ex.dependencies.length ? ` • Abhängigkeiten: ${ex.dependencies.join(', ')}` : ''}`),
           example: ex,
           picked: true  // Preselect all items
         }));
@@ -1749,8 +1751,8 @@ export class LecturerExampleCommands {
           quickPickItems,
           {
             canPickMany: true,
-            placeHolder: `Select examples to upload to ${repositoryName}`,
-            title: 'Select Examples to Upload'
+            placeHolder: say(`Select examples to upload to ${repositoryName}`, `Beispiele zum Hochladen nach ${repositoryName} auswählen`),
+            title: say('Select Examples to Upload', 'Beispiele zum Hochladen auswählen')
           }
         );
 
@@ -1811,10 +1813,10 @@ export class LecturerExampleCommands {
           if (missing.length) missingSummary.push(`${ex.slug}: ${missing.join(', ')}`);
         }
         if (missingSummary.length) {
-          notify.warning(`Some selected examples reference dependencies not in selection: ${missingSummary.slice(0,3).join('; ')}${missingSummary.length>3?' ...':''}`);
+          notify.warning(say(`Some selected examples reference dependencies not in selection: ${missingSummary.slice(0,3).join('; ')}${missingSummary.length>3?' ...':''}`, `Einige ausgewählte Beispiele verweisen auf Abhängigkeiten außerhalb der Auswahl: ${missingSummary.slice(0,3).join('; ')}${missingSummary.length>3?' …':''}`));
         }
 
-        progress.report({ increment: 40, message: `Uploading ${selectedItems.length} example(s) with dependency order...` });
+        progress.report({ increment: 40, message: say(`Uploading ${selectedItems.length} example(s) with dependency order...`, `${selectedItems.length} Beispiel(e) werden in der Reihenfolge ihrer Abhängigkeiten hochgeladen …`) });
 
         // Upload selected examples
         let successCount = 0;
@@ -1825,7 +1827,7 @@ export class LecturerExampleCommands {
           
           progress.report({ 
             increment: 40 + (40 * i / uploadOrder.length), 
-            message: `Uploading ${example.title}...` 
+            message: say(`Uploading ${example.title}...`, `${example.title} wird hochgeladen …`) 
           });
 
           try {
@@ -1844,20 +1846,20 @@ export class LecturerExampleCommands {
           }
         }
 
-        progress.report({ increment: 100, message: 'Complete!' });
+        progress.report({ increment: 100, message: say('Complete!', 'Fertig.') });
 
         // Show results
         if (successCount === selectedItems.length) {
           notify.info(
-            `Successfully uploaded ${successCount} example(s) to ${repositoryName}`
+            say(`Successfully uploaded ${successCount} example(s) to ${repositoryName}`, `${successCount} Beispiel(e) nach ${repositoryName} hochgeladen.`)
           );
         } else if (successCount > 0) {
           notify.warning(
-            `Uploaded ${successCount} of ${selectedItems.length} examples. Errors: ${errors.join('; ')}`
+            say(`Uploaded ${successCount} of ${selectedItems.length} examples. Errors: ${errors.join('; ')}`, `${successCount} von ${selectedItems.length} Beispielen hochgeladen. Fehler: ${errors.join('; ')}`)
           );
         } else {
           notify.error(
-            `Failed to upload examples. Errors: ${errors.join('; ')}`
+            say(`Failed to upload examples. Errors: ${errors.join('; ')}`, `Die Beispiele konnten nicht hochgeladen werden. Fehler: ${errors.join('; ')}`)
           );
         }
 
@@ -1874,7 +1876,7 @@ export class LecturerExampleCommands {
     } catch (error) {
       console.error('Failed to upload examples from ZIP:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      notify.error(`Failed to upload examples: ${errorMessage}`);
+      notify.error(say(`Failed to upload examples: ${errorMessage}`, `Die Beispiele konnten nicht hochgeladen werden: ${errorMessage}`));
     }
   }
 
@@ -1883,7 +1885,7 @@ export class LecturerExampleCommands {
    */
   private async createCourseContentFromExample(item: ExampleTreeItem): Promise<void> {
     if (!item || !item.example) {
-      notify.error('Invalid example item');
+      notify.error(say('Invalid example item', 'Ungültiges Beispiel.'));
       return;
     }
 
@@ -1907,7 +1909,7 @@ export class LecturerExampleCommands {
       }
       
       if (allCourses.length === 0) {
-        notify.error('No courses available');
+        notify.error(say('No courses available', 'Keine Kurse verfügbar.'));
         return;
       }
 
@@ -1916,12 +1918,12 @@ export class LecturerExampleCommands {
         allCourses.map(item => ({
           label: item.course.title || item.course.path,
           description: `${item.orgTitle} / ${item.familyTitle}`,
-          detail: `Path: ${item.course.path}`,
+          detail: say(`Path: ${item.course.path}`, `Pfad: ${item.course.path}`),
           id: item.course.id
         })),
         {
-          placeHolder: 'Select a course to add this example to',
-          title: 'Select Course'
+          placeHolder: say('Select a course to add this example to', 'Kurs auswählen, dem dieses Beispiel hinzugefügt wird'),
+          title: say('Select Course', 'Kurs auswählen')
         }
       );
 
@@ -1940,7 +1942,7 @@ export class LecturerExampleCommands {
           if (fullType?.course_content_kind?.submittable) {
             submittableTypes.push({
               type: type,
-              kindTitle: fullType.course_content_kind.title || 'Assignment'
+              kindTitle: localizedKindTitle(fullType.course_content_kind_id, fullType.course_content_kind.title, uiLanguage()) || 'Assignment'
             });
           }
         } catch (error) {
@@ -1949,7 +1951,7 @@ export class LecturerExampleCommands {
       }
 
       if (submittableTypes.length === 0) {
-        notify.error('No submittable content types available in this course. Please create an assignment-type content type first.');
+        notify.error(say('No submittable content types available in this course. Please create an assignment-type content type first.', 'In diesem Kurs gibt es keinen Inhaltstyp mit Abgabe. Lege zuerst einen Inhaltstyp der Art Aufgabe an.'));
         return;
       }
 
@@ -1958,12 +1960,12 @@ export class LecturerExampleCommands {
         submittableTypes.map(st => ({
           label: st.type.title || st.type.slug,
           description: st.kindTitle,
-          detail: `Color: ${st.type.color}`,
+          detail: say(`Color: ${st.type.color}`, `Farbe: ${st.type.color}`),
           id: st.type.id
         })),
         {
-          placeHolder: 'Select content type for this assignment',
-          title: 'Select Content Type'
+          placeHolder: say('Select content type for this assignment', 'Inhaltstyp für diese Aufgabe auswählen'),
+          title: say('Select Content Type', 'Inhaltstyp auswählen')
         }
       );
 
@@ -1986,7 +1988,7 @@ export class LecturerExampleCommands {
                 fullType.course_content_kind.has_descendants) {
               units.push({
                 content: content,
-                kindTitle: fullType.course_content_kind.title || 'Unit'
+                kindTitle: localizedKindTitle(fullType.course_content_kind_id, fullType.course_content_kind.title, uiLanguage()) || 'Unit'
               });
             }
           } catch (error) {
@@ -2000,7 +2002,7 @@ export class LecturerExampleCommands {
       
       if (units.length > 0) {
         const placementOptions = [
-          { label: '📁 Course Root', description: 'Place at the root level of the course', path: undefined },
+          { label: say('📁 Course Root', '📁 Oberste Ebene des Kurses'), description: say('Place at the root level of the course', 'Auf der obersten Ebene des Kurses einordnen'), path: undefined },
           ...units.map(unit => ({
             label: unit.content.title || unit.content.path,
             description: `${unit.kindTitle} - ${unit.content.path}`,
@@ -2011,8 +2013,8 @@ export class LecturerExampleCommands {
         const placementSelection = await vscode.window.showQuickPick(
           placementOptions,
           {
-            placeHolder: 'Select where to place this assignment',
-            title: 'Select Parent Location'
+            placeHolder: say('Select where to place this assignment', 'Auswählen, wo diese Aufgabe eingeordnet wird'),
+            title: say('Select Parent Location', 'Übergeordneten Ort auswählen')
           }
         );
 
@@ -2033,7 +2035,7 @@ export class LecturerExampleCommands {
       
       // Check if path already exists
       if (courseContents.some(c => c.path === path)) {
-        notify.error(`A content item with path '${path}' already exists.`);
+        notify.error(say(`A content item with path '${path}' already exists.`, `Ein Inhalt mit dem Pfad „${path}“ existiert bereits.`));
         return;
       }
 
@@ -2083,23 +2085,23 @@ export class LecturerExampleCommands {
               console.warn('Failed to trigger assignments generation after creating content:', e);
             }
             notify.info(
-              `Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}"`
+              say(`Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}"`, `Die Aufgabe „${item.example.title}“ wurde mit Version ${latestVersion.version_tag} im Kurs „${courseSelection.label}“ angelegt.`)
             );
           } catch (assignError) {
             // Content was created but example assignment failed
             notify.warning(
-              `Assignment "${item.example.title}" was created but example assignment failed: ${assignError}. You can assign it manually later.`
+              say(`Assignment "${item.example.title}" was created but example assignment failed: ${assignError}. You can assign it manually later.`, `Die Aufgabe „${item.example.title}“ wurde angelegt, aber das Beispiel konnte nicht zugewiesen werden: ${assignError}. Du kannst es später von Hand zuweisen.`)
             );
           }
         } else {
           // Content created but no versions available
           notify.warning(
-            `Assignment "${item.example.title}" was created but no example versions were found. Please assign a version manually.`
+            say(`Assignment "${item.example.title}" was created but no example versions were found. Please assign a version manually.`, `Die Aufgabe „${item.example.title}“ wurde angelegt, aber es wurden keine Beispielversionen gefunden. Weise eine Version von Hand zu.`)
           );
         }
       } else {
         notify.info(
-          `Successfully created assignment "${item.example.title}" in course "${courseSelection.label}"`
+          say(`Successfully created assignment "${item.example.title}" in course "${courseSelection.label}"`, `Die Aufgabe „${item.example.title}“ wurde im Kurs „${courseSelection.label}“ angelegt.`)
         );
       }
 
@@ -2108,7 +2110,7 @@ export class LecturerExampleCommands {
       
     } catch (error) {
       console.error('Failed to create content from example:', error);
-      notify.error(`Failed to create assignment: ${error}`);
+      notify.error(say(`Failed to create assignment: ${error}`, `Die Aufgabe konnte nicht angelegt werden: ${error}`));
     }
   }
 
@@ -2118,7 +2120,7 @@ export class LecturerExampleCommands {
     if (!examplesPath) { return; }
     const workingPath = getWorkingPath(examplesPath, item.example.directory);
     if (!fs.existsSync(workingPath)) {
-      notify.error('Example is not checked out');
+      notify.error(say('Example is not checked out', 'Das Beispiel ist nicht ausgecheckt.'));
       return;
     }
     await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(workingPath));
@@ -2132,7 +2134,7 @@ export class LecturerExampleCommands {
 
     const currentVersion = readMetaYamlVersion(item.version.fullPath);
     if (!currentVersion) {
-      notify.error('No version field found in meta.yaml');
+      notify.error(say('No version field found in meta.yaml', 'In meta.yaml gibt es kein Feld „version“.'));
       return;
     }
 
@@ -2145,12 +2147,12 @@ export class LecturerExampleCommands {
       { label: `Patch: ${normalized} -> ${patchBump}`, part: 'patch' as const, newVersion: patchBump },
       { label: `Minor: ${normalized} -> ${minorBump}`, part: 'minor' as const, newVersion: minorBump },
       { label: `Major: ${normalized} -> ${majorBump}`, part: 'major' as const, newVersion: majorBump }
-    ], { placeHolder: 'Select version bump type' });
+    ], { placeHolder: say('Select version bump type', 'Art der Versionserhöhung auswählen') });
 
     if (!picked) { return; }
 
     updateMetaYamlVersion(item.version.fullPath, picked.newVersion);
-    notify.info(`Version bumped: ${normalized} -> ${picked.newVersion}`);
+    notify.info(say(`Version bumped: ${normalized} -> ${picked.newVersion}`, `Version erhöht: ${normalized} -> ${picked.newVersion}`));
     this.treeProvider.refresh();
   }
 
@@ -2158,10 +2160,10 @@ export class LecturerExampleCommands {
     if (!item?.group) { return; }
 
     const confirm = await notify.warning(
-      `Delete all local data of "${item.group.directory}"? This removes the working copy and all version snapshots.`,
-      'Delete', 'Cancel'
+      say(`Delete all local data of "${item.group.directory}"? This removes the working copy and all version snapshots.`, `Alle lokalen Daten von „${item.group.directory}“ löschen? Das entfernt die Arbeitskopie und alle Versionsstände.`),
+      say('Delete', 'Löschen'), say('Cancel', 'Abbrechen')
     );
-    if (confirm !== 'Delete') { return; }
+    if (confirm !== say('Delete', 'Löschen')) { return; }
 
     try {
       // Delete working copy from examples/
@@ -2177,28 +2179,28 @@ export class LecturerExampleCommands {
         }
       }
       this.treeProvider.refresh();
-      notify.info(`Deleted: ${item.group.directory}`);
+      notify.info(say(`Deleted: ${item.group.directory}`, `Gelöscht: ${item.group.directory}`));
     } catch (error) {
-      notify.error(`Failed to delete: ${error}`);
+      notify.error(say(`Failed to delete: ${error}`, `Löschen fehlgeschlagen: ${error}`));
     }
   }
 
   private async deleteCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {
     if (!item?.version) { return; }
 
-    const label = item.version.isWorking ? 'working copy' : `version ${item.version.versionTag}`;
+    const label = item.version.isWorking ? say('working copy', 'Arbeitskopie') : say(`version ${item.version.versionTag}`, `Version ${item.version.versionTag}`);
     const confirm = await notify.warning(
-      `Delete ${label} of "${item.groupDirectory}"?`,
-      'Delete', 'Cancel'
+      say(`Delete ${label} of "${item.groupDirectory}"?`, `${label} von „${item.groupDirectory}“ löschen?`),
+      say('Delete', 'Löschen'), say('Cancel', 'Abbrechen')
     );
-    if (confirm !== 'Delete') { return; }
+    if (confirm !== say('Delete', 'Löschen')) { return; }
 
     try {
       fs.rmSync(item.version.fullPath, { recursive: true, force: true });
       this.treeProvider.refresh();
-      notify.info(`Deleted ${label}`);
+      notify.info(say(`Deleted ${label}`, `${label} gelöscht.`));
     } catch (error) {
-      notify.error(`Failed to delete: ${error}`);
+      notify.error(say(`Failed to delete: ${error}`, `Löschen fehlgeschlagen: ${error}`));
     }
   }
 
@@ -2211,10 +2213,10 @@ export class LecturerExampleCommands {
     const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
 
     const confirm = await notify.warning(
-      `Restore version ${item.version.versionTag} to working copy of "${item.groupDirectory}"? Any unsaved changes in the working directory will be lost.`,
-      'Restore', 'Cancel'
+      say(`Restore version ${item.version.versionTag} to working copy of "${item.groupDirectory}"? Any unsaved changes in the working directory will be lost.`, `Version ${item.version.versionTag} in die Arbeitskopie von „${item.groupDirectory}“ zurückholen? Nicht gespeicherte Änderungen im Arbeitsverzeichnis gehen verloren.`),
+      say('Restore', 'Wiederherstellen'), say('Cancel', 'Abbrechen')
     );
-    if (confirm !== 'Restore') { return; }
+    if (confirm !== say('Restore', 'Wiederherstellen')) { return; }
 
     try {
       if (fs.existsSync(workingDir)) {
@@ -2223,9 +2225,9 @@ export class LecturerExampleCommands {
       fs.cpSync(item.version.fullPath, workingDir, { recursive: true });
 
       this.treeProvider.refresh();
-      notify.info(`Restored ${item.version.versionTag} to working copy`);
+      notify.info(say(`Restored ${item.version.versionTag} to working copy`, `${item.version.versionTag} in die Arbeitskopie zurückgeholt.`));
     } catch (error) {
-      notify.error(`Failed to restore: ${error}`);
+      notify.error(say(`Failed to restore: ${error}`, `Wiederherstellen fehlgeschlagen: ${error}`));
     }
   }
 
@@ -2237,7 +2239,7 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesPath, item.groupDirectory);
     if (!fs.existsSync(workingDir)) {
-      notify.warning('No working copy found to compare against.');
+      notify.warning(say('No working copy found to compare against.', 'Keine Arbeitskopie zum Vergleichen gefunden.'));
       return;
     }
 
@@ -2245,7 +2247,7 @@ export class LecturerExampleCommands {
     const versionFiles = this.collectFiles(versionDir, versionDir);
 
     if (versionFiles.length === 0 && !fs.existsSync(workingDir)) {
-      notify.info('No files found in version snapshot.');
+      notify.info(say('No files found in version snapshot.', 'Der Versionsstand enthält keine Dateien.'));
       return;
     }
 
@@ -2258,13 +2260,13 @@ export class LecturerExampleCommands {
 
     const picks: Pick[] = [];
     for (const rel of diff.modified) {
-      picks.push({ label: `$(diff-modified) ${rel}`, description: 'modified', relativePath: rel, existsInVersion: true, existsInWorking: true });
+      picks.push({ label: `$(diff-modified) ${rel}`, description: say('modified', 'geändert'), relativePath: rel, existsInVersion: true, existsInWorking: true });
     }
     for (const rel of diff.added) {
-      picks.push({ label: `$(diff-added) ${rel}`, description: 'added in working', relativePath: rel, existsInVersion: false, existsInWorking: true });
+      picks.push({ label: `$(diff-added) ${rel}`, description: say('added in working', 'in der Arbeitskopie hinzugefügt'), relativePath: rel, existsInVersion: false, existsInWorking: true });
     }
     for (const rel of diff.removed) {
-      picks.push({ label: `$(diff-removed) ${rel}`, description: 'removed from working', relativePath: rel, existsInVersion: true, existsInWorking: false });
+      picks.push({ label: `$(diff-removed) ${rel}`, description: say('removed from working', 'aus der Arbeitskopie entfernt'), relativePath: rel, existsInVersion: true, existsInWorking: false });
     }
 
     const unchanged = versionFiles.filter(rel =>
@@ -2275,18 +2277,18 @@ export class LecturerExampleCommands {
         picks.push({ label: '', kind: vscode.QuickPickItemKind.Separator, relativePath: '', existsInVersion: false, existsInWorking: false });
       }
       for (const rel of unchanged) {
-        picks.push({ label: rel, description: 'unchanged', relativePath: rel, existsInVersion: true, existsInWorking: true });
+        picks.push({ label: rel, description: say('unchanged', 'unverändert'), relativePath: rel, existsInVersion: true, existsInWorking: true });
       }
     }
 
     const changedCount = diff.modified.length + diff.added.length + diff.removed.length;
     const placeHolder = changedCount === 0
-      ? 'No differences with working copy. Pick a file to inspect anyway.'
-      : `${changedCount} change(s) — pick a file to open the diff`;
+      ? say('No differences with working copy. Pick a file to inspect anyway.', 'Keine Unterschiede zur Arbeitskopie. Wähle trotzdem eine Datei zum Ansehen.')
+      : say(`${changedCount} change(s) — pick a file to open the diff`, `${changedCount} Änderung(en). Wähle eine Datei, um die Unterschiede zu öffnen`);
 
     const selected = await vscode.window.showQuickPick(picks, {
       placeHolder,
-      title: `Compare ${item.version.versionTag} with working`,
+      title: say(`Compare ${item.version.versionTag} with working`, `${item.version.versionTag} mit der Arbeitskopie vergleichen`),
       matchOnDescription: true
     });
 
@@ -2297,7 +2299,7 @@ export class LecturerExampleCommands {
 
     await vscode.commands.executeCommand('vscode.diff',
       versionFile, workingFile,
-      `${selected.relativePath} (${item.version.versionTag} ↔ working)`
+      say(`${selected.relativePath} (${item.version.versionTag} ↔ working)`, `${selected.relativePath} (${item.version.versionTag} ↔ Arbeitskopie)`)
     );
   }
 
@@ -2312,7 +2314,7 @@ export class LecturerExampleCommands {
 
     if (item instanceof CheckedOutVersionTreeItem) {
       if (item.version.isWorking) {
-        notify.info('Pick a non-working version snapshot to diff against the working copy.');
+        notify.info(say('Pick a non-working version snapshot to diff against the working copy.', 'Wähle einen Versionsstand (nicht die Arbeitskopie), um ihn mit der Arbeitskopie zu vergleichen.'));
         return;
       }
       versionDir = item.version.fullPath;
@@ -2327,7 +2329,7 @@ export class LecturerExampleCommands {
     } else if (item instanceof ExampleTreeItem) {
       const group = item.merged.local;
       if (!group) {
-        notify.warning('This example is not checked out locally.');
+        notify.warning(say('This example is not checked out locally.', 'Dieses Beispiel ist lokal nicht ausgecheckt.'));
         return;
       }
       const picked = this.pickSnapshotForGroup(group, versionsPath);
@@ -2343,14 +2345,14 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesPath, groupDirectory);
     if (!fs.existsSync(workingDir)) {
-      notify.warning('No working copy found to compare against.');
+      notify.warning(say('No working copy found to compare against.', 'Keine Arbeitskopie zum Vergleichen gefunden.'));
       return;
     }
 
     const diff = computeExampleDiff(versionDir, workingDir);
     const total = diff.modified.length + diff.added.length + diff.removed.length;
     if (total === 0) {
-      notify.info(`No differences between ${versionTag} and the working copy.`);
+      notify.info(say(`No differences between ${versionTag} and the working copy.`, `Keine Unterschiede zwischen ${versionTag} und der Arbeitskopie.`));
       return;
     }
 
@@ -2375,12 +2377,12 @@ export class LecturerExampleCommands {
       resources.push([left, left, emptyUri]);
     }
 
-    const title = `${groupDirectory}: ${versionTag} ↔ working (${total} change${total === 1 ? '' : 's'})`;
+    const title = say(`${groupDirectory}: ${versionTag} ↔ working (${total} change${total === 1 ? '' : 's'})`, `${groupDirectory}: ${versionTag} ↔ Arbeitskopie (${total} ${total === 1 ? 'Änderung' : 'Änderungen'})`);
     try {
       await vscode.commands.executeCommand('vscode.changes', title, resources);
     } catch (err) {
       console.error('Failed to open multi-file diff editor:', err);
-      notify.error(`Failed to open diff: ${err}`);
+      notify.error(say(`Failed to open diff: ${err}`, `Die Unterschiede konnten nicht geöffnet werden: ${err}`));
     }
   }
 
@@ -2403,7 +2405,7 @@ export class LecturerExampleCommands {
     }
     const snapshots = group.versions.filter(v => !v.isWorking);
     if (snapshots.length === 0) {
-      notify.warning('No version snapshots available to diff against.');
+      notify.warning(say('No version snapshots available to diff against.', 'Es gibt keine Versionsstände zum Vergleichen.'));
       return undefined;
     }
     const latest = snapshots[0]!;
@@ -2428,7 +2430,7 @@ export class LecturerExampleCommands {
 
     const workingDir = getWorkingPath(examplesDir, exampleDirectory);
     if (!fs.existsSync(workingDir)) {
-      notify.warning('No working copy found to compare against.');
+      notify.warning(say('No working copy found to compare against.', 'Keine Arbeitskopie zum Vergleichen gefunden.'));
       return;
     }
 
@@ -2437,10 +2439,10 @@ export class LecturerExampleCommands {
 
     if (!fs.existsSync(workingFilePath)) {
       const action = await notify.warning(
-        `"${relativeFile}" does not exist in the working copy.`,
-        'Open Version File'
+        say(`"${relativeFile}" does not exist in the working copy.`, `„${relativeFile}“ gibt es in der Arbeitskopie nicht.`),
+        say('Open Version File', 'Datei der Version öffnen')
       );
-      if (action === 'Open Version File') {
+      if (action === say('Open Version File', 'Datei der Version öffnen')) {
         await openFile(versionUri);
       }
       return;
@@ -2480,14 +2482,14 @@ export class LecturerExampleCommands {
     }
 
     const name = await vscode.window.showInputBox({
-      prompt: isFolder ? 'Enter folder name' : 'Enter file name',
+      prompt: isFolder ? say('Enter folder name', 'Ordnernamen eingeben') : say('Enter file name', 'Dateinamen eingeben'),
       placeHolder: isFolder ? 'new-folder' : 'new-file.txt'
     });
     if (!name) { return; }
 
     const targetPath = path.join(targetDir, name);
     if (fs.existsSync(targetPath)) {
-      notify.error(`"${name}" already exists.`);
+      notify.error(say(`"${name}" already exists.`, `„${name}“ existiert bereits.`));
       return;
     }
 
@@ -2503,7 +2505,7 @@ export class LecturerExampleCommands {
       }
       this.treeProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to create: ${error}`);
+      notify.error(say(`Failed to create: ${error}`, `Anlegen fehlgeschlagen: ${error}`));
     }
   }
 
@@ -2512,14 +2514,14 @@ export class LecturerExampleCommands {
 
     const oldName = path.basename(item.filePath);
     const newName = await vscode.window.showInputBox({
-      prompt: `Rename "${oldName}"`,
+      prompt: say(`Rename "${oldName}"`, `„${oldName}“ umbenennen`),
       value: oldName
     });
     if (!newName || newName === oldName) { return; }
 
     const newPath = path.join(path.dirname(item.filePath), newName);
     if (fs.existsSync(newPath)) {
-      notify.error(`"${newName}" already exists.`);
+      notify.error(say(`"${newName}" already exists.`, `„${newName}“ existiert bereits.`));
       return;
     }
 
@@ -2527,7 +2529,7 @@ export class LecturerExampleCommands {
       fs.renameSync(item.filePath, newPath);
       this.treeProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to rename: ${error}`);
+      notify.error(say(`Failed to rename: ${error}`, `Umbenennen fehlgeschlagen: ${error}`));
     }
   }
 
@@ -2535,17 +2537,17 @@ export class LecturerExampleCommands {
     if (!item) { return; }
 
     const name = path.basename(item.filePath);
-    const label = item.isDirectory ? `folder "${name}" and all its contents` : `file "${name}"`;
+    const label = item.isDirectory ? say(`folder "${name}" and all its contents`, `Ordner „${name}“ samt Inhalt`) : say(`file "${name}"`, `Datei „${name}“`);
     const confirm = await notify.warning(
-      `Delete ${label}?`, 'Delete', 'Cancel'
+      say(`Delete ${label}?`, `${label} löschen?`), say('Delete', 'Löschen'), say('Cancel', 'Abbrechen')
     );
-    if (confirm !== 'Delete') { return; }
+    if (confirm !== say('Delete', 'Löschen')) { return; }
 
     try {
       fs.rmSync(item.filePath, { recursive: true, force: true });
       this.treeProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to delete: ${error}`);
+      notify.error(say(`Failed to delete: ${error}`, `Löschen fehlgeschlagen: ${error}`));
     }
   }
 
@@ -2566,7 +2568,7 @@ export class LecturerExampleCommands {
 
   private async showExampleDetails(item: ExampleTreeItem): Promise<void> {
     if (!item?.example) {
-      notify.error('Invalid example item');
+      notify.error(say('Invalid example item', 'Ungültiges Beispiel.'));
       return;
     }
 
@@ -2585,7 +2587,7 @@ export class LecturerExampleCommands {
       }
     }
 
-    await this.exampleDetailProvider.show(`Example: ${item.example.title}`, {
+    await this.exampleDetailProvider.show(say(`Example: ${item.example.title}`, `Beispiel: ${item.example.title}`), {
       example: item.example,
       repository: item.repository,
       isDownloaded,
@@ -2600,7 +2602,7 @@ export class LecturerExampleCommands {
 
     if (item instanceof CheckedOutVersionTreeItem) {
       if (!item?.version?.isWorking) {
-        notify.error('Test configuration can only be edited on working copies');
+        notify.error(say('Test configuration can only be edited on working copies', 'Die Testkonfiguration lässt sich nur in Arbeitskopien bearbeiten.'));
         return;
       }
       exampleDir = item.version.fullPath;
@@ -2611,13 +2613,13 @@ export class LecturerExampleCommands {
       }
     } else if (item instanceof FileSystemTreeItem) {
       if (!item?.filePath) {
-        notify.error('Invalid file item');
+        notify.error(say('Invalid file item', 'Ungültige Datei.'));
         return;
       }
       testYamlPath = item.filePath;
       exampleDir = path.dirname(testYamlPath);
     } else {
-      notify.error('Invalid item');
+      notify.error(say('Invalid item', 'Ungültiges Element.'));
       return;
     }
 
@@ -2635,7 +2637,7 @@ export class LecturerExampleCommands {
     }
 
     await this.testYamlEditorProvider.show(
-      `Test Editor: ${exampleTitle || path.basename(exampleDir)}`,
+      say(`Test Editor: ${exampleTitle || path.basename(exampleDir)}`, `Test-Editor: ${exampleTitle || path.basename(exampleDir)}`),
       {
         filePath: testYamlPath,
         exampleDir,
@@ -2646,7 +2648,7 @@ export class LecturerExampleCommands {
 
   private async addTests(item: CheckedOutVersionTreeItem): Promise<void> {
     if (!item?.version?.isWorking) {
-      notify.error('Tests can only be added to working copies');
+      notify.error(say('Tests can only be added to working copies', 'Tests lassen sich nur zu Arbeitskopien hinzufügen.'));
       return;
     }
 
@@ -2674,7 +2676,7 @@ export class LecturerExampleCommands {
     this.treeProvider.refresh();
 
     await this.testYamlEditorProvider.show(
-      `Test Editor: ${exampleTitle || path.basename(workingDir)}`,
+      say(`Test Editor: ${exampleTitle || path.basename(workingDir)}`, `Test-Editor: ${exampleTitle || path.basename(workingDir)}`),
       {
         filePath: testYamlPath,
         exampleDir: workingDir,
@@ -2689,7 +2691,7 @@ export class LecturerExampleCommands {
 
     if (item instanceof CheckedOutVersionTreeItem) {
       if (!item?.version?.isWorking) {
-        notify.error('Meta configuration can only be edited on working copies');
+        notify.error(say('Meta configuration can only be edited on working copies', 'Die Metadaten lassen sich nur in Arbeitskopien bearbeiten.'));
         return;
       }
       exampleDir = item.version.fullPath;
@@ -2698,12 +2700,12 @@ export class LecturerExampleCommands {
       metaYamlPath = item.filePath;
       exampleDir = path.dirname(metaYamlPath);
     } else {
-      notify.error('Invalid item');
+      notify.error(say('Invalid item', 'Ungültiges Element.'));
       return;
     }
 
     if (!fs.existsSync(metaYamlPath)) {
-      notify.error('meta.yaml not found');
+      notify.error(say('meta.yaml not found', 'meta.yaml nicht gefunden.'));
       return;
     }
 
@@ -2720,11 +2722,11 @@ export class LecturerExampleCommands {
     try {
       languages = await this.apiService.getLanguages();
     } catch {
-      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+      languages = [{ code: 'en', name: say('English', 'Englisch') }, { code: 'de', name: say('German', 'Deutsch') }];
     }
 
     await this.metaYamlEditorProvider.show(
-      `Meta Editor: ${exampleTitle || path.basename(exampleDir)}`,
+      say(`Meta Editor: ${exampleTitle || path.basename(exampleDir)}`, `Metadaten-Editor: ${exampleTitle || path.basename(exampleDir)}`),
       {
         filePath: metaYamlPath,
         exampleDir,
@@ -2736,7 +2738,7 @@ export class LecturerExampleCommands {
 
   private async createNewReadme(item: FileSystemTreeItem): Promise<void> {
     if (!item?.filePath || !item.isDirectory) {
-      notify.error('Invalid content directory');
+      notify.error(say('Invalid content directory', 'Ungültiges Verzeichnis für den Inhalt.'));
       return;
     }
 
@@ -2744,7 +2746,7 @@ export class LecturerExampleCommands {
     try {
       languages = await this.apiService.getLanguages();
     } catch {
-      languages = [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }];
+      languages = [{ code: 'en', name: say('English', 'Englisch') }, { code: 'de', name: say('German', 'Deutsch') }];
     }
 
     // Find existing readmes to filter them out
@@ -2757,7 +2759,7 @@ export class LecturerExampleCommands {
 
     const availableLanguages = languages.filter(l => !existingLangs.has(l.code));
     if (availableLanguages.length === 0) {
-      notify.info('Readmes for all available languages already exist');
+      notify.info(say('Readmes for all available languages already exist', 'Für alle verfügbaren Sprachen gibt es bereits eine README.'));
       return;
     }
 
@@ -2769,7 +2771,7 @@ export class LecturerExampleCommands {
 
     const picked = await vscode.window.showQuickPick(
       sortedLanguages.map(l => ({ label: l.name, description: l.code, langCode: l.code })),
-      { placeHolder: 'Select language for the readme' }
+      { placeHolder: say('Select language for the readme', 'Sprache für die README auswählen') }
     );
 
     if (!picked) { return; }
@@ -2786,12 +2788,12 @@ export class LecturerExampleCommands {
 
   private async runExampleTests(item: CheckedOutVersionTreeItem): Promise<void> {
     if (!item?.version?.fullPath) {
-      notify.error('Invalid example item');
+      notify.error(say('Invalid example item', 'Ungültiges Beispiel.'));
       return;
     }
 
     if (!fs.existsSync(item.version.fullPath)) {
-      notify.error('Example directory not found.');
+      notify.error(say('Example directory not found.', 'Das Beispielverzeichnis wurde nicht gefunden.'));
       return;
     }
 
@@ -2804,7 +2806,7 @@ export class LecturerExampleCommands {
       canSelectFiles: false,
       canSelectFolders: true,
       canSelectMany: false,
-      openLabel: 'Import Examples'
+      openLabel: say('Import Examples', 'Beispiele importieren')
     });
     if (!uris || uris.length === 0) { return; }
 
@@ -2812,7 +2814,7 @@ export class LecturerExampleCommands {
     const exampleDirs = this.detectExampleDirectories(selectedDir);
 
     if (exampleDirs.length === 0) {
-      notify.warning('No examples found. A valid example directory must contain a meta.yaml with a slug.');
+      notify.warning(say('No examples found. A valid example directory must contain a meta.yaml with a slug.', 'Keine Beispiele gefunden. Ein gültiges Beispielverzeichnis enthält eine meta.yaml mit einem Slug.'));
       return;
     }
 
@@ -2832,7 +2834,7 @@ export class LecturerExampleCommands {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: 'Importing Examples',
+        title: say('Importing Examples', 'Beispiele werden importiert'),
         cancellable: false
       },
       async (progress) => {
@@ -2932,7 +2934,7 @@ export class LecturerExampleCommands {
               if (!fallbackRepositoryId) {
                 const repos = await this.apiService.getExampleRepositories();
                 if (!repos || repos.length === 0) {
-                  notify.error('No example repositories found. Please create one first.');
+                  notify.error(say('No example repositories found. Please create one first.', 'Keine Beispiel-Repositorys gefunden. Lege zuerst eines an.'));
                   return;
                 }
 
@@ -2941,7 +2943,7 @@ export class LecturerExampleCommands {
                 } else {
                   const picked = await vscode.window.showQuickPick(
                     repos.map(r => ({ label: r.name, description: r.source_url, id: r.id })),
-                    { placeHolder: 'Select a repository for new examples not yet on the server' }
+                    { placeHolder: say('Select a repository for new examples not yet on the server', 'Repository für neue Beispiele auswählen, die noch nicht auf dem Server sind') }
                   );
                   if (!picked) { return; }
                   fallbackRepositoryId = picked.id;
@@ -2971,9 +2973,9 @@ export class LecturerExampleCommands {
         this.treeProvider.refresh();
 
         if (failed > 0) {
-          notify.warning(`Imported ${imported} example(s), ${failed} failed.`);
+          notify.warning(say(`Imported ${imported} example(s), ${failed} failed.`, `${imported} Beispiel(e) importiert, ${failed} fehlgeschlagen.`));
         } else {
-          notify.info(`Imported ${imported} example(s) successfully.`);
+          notify.info(say(`Imported ${imported} example(s) successfully.`, `${imported} Beispiel(e) importiert.`));
         }
       }
     );

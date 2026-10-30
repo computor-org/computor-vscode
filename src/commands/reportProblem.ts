@@ -4,6 +4,7 @@ import { ComputorApiService } from '../services/ComputorApiService';
 import { IssueReportWebviewProvider } from '../ui/webviews/IssueReportWebviewProvider';
 import { IssueReportStatusBarService, issueReportingMode } from '../ui/IssueReportStatusBarService';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 
 let provider: IssueReportWebviewProvider | undefined;
 
@@ -25,14 +26,14 @@ export async function reportProblem(
   api: ComputorApiService | undefined
 ): Promise<void> {
   if (!api) {
-    await notify.warning('Sign in to Computor before submitting a problem report.');
+    await notify.warning(say('Sign in to Computor before submitting a problem report.', 'Melde dich bei Computor an, bevor du ein Problem meldest.'));
     return;
   }
 
   const reporting = IssueReportStatusBarService.current();
   const mode = issueReportingMode(reporting);
   if (mode === 'off') {
-    await notify.warning('This Computor deployment does not accept problem reports.');
+    await notify.warning(say('This Computor deployment does not accept problem reports.', 'Diese Computor-Installation nimmt keine Problemmeldungen an.'));
     return;
   }
 
@@ -45,18 +46,18 @@ export async function reportProblem(
     provider = new IssueReportWebviewProvider(context, api);
   }
   provider.setMode(mode);
-  await provider.show('Report a Problem');
+  await provider.show(say('Report a Problem', 'Problem melden'));
 }
 
 /** Open the reporter's own reports in the web app (tickets mode only). */
 export async function openMyProblemReports(api: ComputorApiService | undefined): Promise<void> {
   if (!api || issueReportingMode(IssueReportStatusBarService.current()) !== 'tickets') {
-    await notify.warning('This Computor deployment does not keep problem reports as tickets.');
+    await notify.warning(say('This Computor deployment does not keep problem reports as tickets.', 'Diese Computor-Installation führt Problemmeldungen nicht als Tickets.'));
     return;
   }
   const webUrl = (await api.getInstanceInfo())?.web_url;
   if (!webUrl) {
-    await notify.warning('This server has no public web address configured.');
+    await notify.warning(say('This server has no public web address configured.', 'Für diesen Server ist keine öffentliche Webadresse eingerichtet.'));
     return;
   }
   await vscode.env.openExternal(vscode.Uri.parse(`${webUrl}/support`));

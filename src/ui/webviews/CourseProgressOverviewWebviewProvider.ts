@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseGet, CourseMemberGradingsList } from '../../types/generated';
 import { notify } from '../../utils/notify';
+import { say, sayFailed } from '../../utils/uiLanguage';
 
 interface CourseProgressOverviewData {
   course: CourseGet;
@@ -20,16 +21,16 @@ export class CourseProgressOverviewWebviewProvider extends BaseWebviewProvider {
   async showCourseProgress(course: CourseGet): Promise<void> {
     const students = await this.apiService.getCourseMemberGradings(course.id);
     const payload: CourseProgressOverviewData = { course, students };
-    await this.show(`Progress: ${course.title || course.path}`, payload);
+    await this.show(say(`Progress: ${course.title || course.path}`, `Fortschritt: ${course.title || course.path}`), payload);
   }
 
   protected async getWebviewContent(data?: CourseProgressOverviewData): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Course Progress', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Course Progress', 'Kursfortschritt'), say('<p>Loading…</p>', '<p>Wird geladen …</p>'));
     }
 
     return this.renderPage({
-      title: 'Course Progress Overview',
+      title: say('Course Progress Overview', 'Fortschrittsübersicht des Kurses'),
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['courses/charts.css', 'courses/course-progress-overview.css'],
       scriptFiles: ['vendor/chart.min.js', 'courses/charts.js', 'courses/course-progress-overview.js'],
@@ -66,7 +67,7 @@ export class CourseProgressOverviewWebviewProvider extends BaseWebviewProvider {
             await vscode.env.clipboard.writeText(message.data.text);
             this.panel?.webview.postMessage({ command: 'copySuccess', data: { btnId: message.data.btnId } });
           } catch (err) {
-            notify.error(`Failed to copy: ${err}`);
+            notify.error(sayFailed(`Failed to copy`, `Kopieren fehlgeschlagen`, err));
           }
         }
         break;
@@ -87,7 +88,7 @@ export class CourseProgressOverviewWebviewProvider extends BaseWebviewProvider {
       this.currentData = { ...data, students };
       this.panel.webview.postMessage({ command: 'updateData', data: { students } });
     } catch (error: any) {
-      notify.error(`Failed to refresh progress data: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to refresh progress data`, `Die Fortschrittsdaten konnten nicht aktualisiert werden`, error?.message || error));
     } finally {
       this.postLoadingState(false);
     }

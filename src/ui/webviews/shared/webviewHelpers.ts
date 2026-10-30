@@ -1,3 +1,5 @@
+import { say } from '../../../utils/uiLanguage';
+
 const HTML_ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -78,7 +80,19 @@ export function deploymentStatusVariant(status: string): BadgeVariant {
 
 /** Deployment status as a themed badge, e.g. badge('DEPLOYED', 'success'). */
 export function deploymentBadge(status: string): string {
-  return badge(status.toUpperCase(), deploymentStatusVariant(status));
+  return badge(deploymentStatusLabel(status).toUpperCase(), deploymentStatusVariant(status));
+}
+
+/** A deployment status in the reading language; unknown codes stay as sent. */
+export function deploymentStatusLabel(status: string): string {
+  switch (status) {
+    case 'pending': return say('pending', 'ausstehend');
+    case 'deployed': return say('deployed', 'bereitgestellt');
+    case 'failed': return say('failed', 'fehlgeschlagen');
+    case 'deploying': return say('deploying', 'wird bereitgestellt');
+    case 'unassigned': return say('unassigned', 'nicht zugewiesen');
+    default: return status;
+  }
 }
 
 export function colorSwatch(color: string): string {

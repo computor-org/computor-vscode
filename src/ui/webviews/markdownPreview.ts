@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { AUX_COLUMN, learnerReadingColumn, ensureAuxColumn, updateLearnerReadingWidth, trackLearnerReadingPanel, setStudentNavigationInvalidator } from '../editorLayout';
 import { renderWebviewPage } from './shared/webviewPage';
+import { say } from '../../utils/uiLanguage';
 
 export interface MarkdownPreviewOptions {
   /** Learner instructions use the right desktop group and share native tabs on narrow screens. */
@@ -44,6 +45,12 @@ let currentStudentPreview: PreviewState | undefined;
 /** Bring the current task reading tab back without taking focus. */
 export function revealMarkdownPreview(preserveFocus = true): void {
   previews.get('current')?.panel?.reveal(undefined, preserveFocus);
+}
+
+/** Which render the visible task reading tab shows, or undefined when none is visible. */
+export function readingPreviewGeneration(): number | undefined {
+  const current = previews.get('current');
+  return current?.panel?.visible ? current.generation : undefined;
 }
 
 /** Reserve priority before any asynchronous description work. */
@@ -107,7 +114,8 @@ export async function showMarkdownPreview(
     path.dirname(filePath),
     options.title ?? path.basename(filePath),
     options,
-    path.resolve(filePath) === path.join(context.extensionUri.fsPath, 'docs', 'help', 'student-course.md')
+    ['student-course.md', 'student-course_de.md']
+      .some(page => path.resolve(filePath) === path.join(context.extensionUri.fsPath, 'docs', 'help', page))
       ? ['computor.student.askCourseQuestion'] : undefined
   );
 }
@@ -234,7 +242,7 @@ async function renderMarkdownPreview(
         preview.context.extensionUri.fsPath
       );
       if (!target) {
-        void vscode.window.showWarningMessage(`Cannot open '${message.href}' — no such document.`);
+        void vscode.window.showWarningMessage(say(`Cannot open '${message.href}' — no such document.`, `„${message.href}“ lässt sich nicht öffnen, weil es dieses Dokument nicht gibt.`));
         return;
       }
       const hash = message.href.indexOf('#');

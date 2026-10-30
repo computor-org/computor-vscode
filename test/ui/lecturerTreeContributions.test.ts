@@ -21,7 +21,12 @@ const LECTURER_VIEW = 'computor.lecturer.courses';
 interface Command { command: string; title: string }
 interface MenuEntry { command: string; when?: string; group?: string }
 
-const commands: Command[] = pkg.contributes.commands;
+// Titles as an English VS Code shows them, through package.nls.json.
+const nls = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
+const commands: Command[] = pkg.contributes.commands.map((c: Command) => ({
+  ...c,
+  title: nls[/^%(.+)%$/.exec(c.title)?.[1] ?? ''] ?? c.title
+}));
 const contextMenus: MenuEntry[] = pkg.contributes.menus['view/item/context'];
 
 function command(id: string): Command | undefined {

@@ -1,6 +1,6 @@
 (function () {
   // Shared runtime (base.js). The old local escapeHtml was unused and dropped.
-  const { vscode, el, createStore } = window.ComputorWebview;
+  const { vscode, el, createStore, say } = window.ComputorWebview;
 
   const { state, setState } = createStore({
     courseMemberId: undefined,
@@ -45,7 +45,7 @@
   function submit(value) {
     const message = (value || '').trim();
     if (!message) {
-      vscode.postMessage({ command: 'showWarning', data: 'Comment text is required.' });
+      vscode.postMessage({ command: 'showWarning', data: say('Comment text is required.', 'Bitte gib einen Kommentar ein.') });
       return;
     }
     if (state.editingComment) {
@@ -71,7 +71,8 @@
       wrapper.appendChild(
         createElement('p', {
           className: 'comments-input-empty',
-          textContent: 'Open a course member’s comments to add or edit a comment here.'
+          textContent: say('Open a course member’s comments to add or edit a comment here.',
+            'Öffne die Kommentare zu einem Kursmitglied, um hier einen Kommentar zu schreiben oder zu bearbeiten.')
         })
       );
       mount.appendChild(wrapper);
@@ -81,7 +82,7 @@
     const header = createElement('div', { className: 'comments-input-header' });
     header.appendChild(createElement('span', {
       className: 'comments-input-title',
-      textContent: state.editingComment ? 'Editing comment' : 'New comment'
+      textContent: state.editingComment ? say('Editing comment', 'Kommentar bearbeiten') : say('New comment', 'Neuer Kommentar')
     }));
     if (state.title) {
       header.appendChild(createElement('span', {
@@ -95,8 +96,8 @@
       className: 'comments-input-textarea',
       attributes: {
         rows: '4',
-        placeholder: state.editingComment ? 'Edit comment...' : 'Add a comment...',
-        'aria-label': 'Comment text'
+        placeholder: state.editingComment ? say('Edit comment...', 'Kommentar bearbeiten …') : say('Add a comment...', 'Kommentar schreiben …'),
+        'aria-label': say('Comment text', 'Kommentartext')
       }
     });
     textarea.value = state.editingComment
@@ -124,7 +125,7 @@
 
     const submitBtn = createElement('button', {
       className: 'btn',
-      textContent: state.editingComment ? 'Save Changes' : 'Add Comment',
+      textContent: state.editingComment ? say('Save Changes', 'Änderungen speichern') : say('Add Comment', 'Kommentar hinzufügen'),
       attributes: { type: 'button', disabled: state.loading ? 'disabled' : null }
     });
     submitBtn.addEventListener('click', () => submit(textarea.value));
@@ -133,7 +134,7 @@
     if (state.editingComment) {
       const cancelBtn = createElement('button', {
         className: 'btn secondary',
-        textContent: 'Cancel',
+        textContent: say('Cancel', 'Abbrechen'),
         attributes: { type: 'button' }
       });
       cancelBtn.addEventListener('click', () => vscode.postMessage({ command: 'cancel' }));
@@ -142,7 +143,7 @@
 
     const hint = createElement('span', {
       className: 'comments-input-hint',
-      textContent: 'Ctrl/Cmd+Enter to submit'
+      textContent: say('Ctrl/Cmd+Enter to submit', 'Strg/Cmd+Enter zum Speichern')
     });
     actions.appendChild(hint);
 
@@ -169,6 +170,16 @@
           draft: message.data?.editingComment ? state.draft : readDraft(message.data?.courseMemberId)
         });
         break;
+      case 'setLanguage': {
+        // Relabel from state; an edit in progress lives only in the textarea.
+        const textarea = document.querySelector && document.querySelector('.comments-input-textarea');
+        if (textarea && state.editingComment) {
+          state.editingComment = Object.assign({}, state.editingComment, { message: textarea.value });
+        }
+        window.ComputorWebview.setLanguage(message.data?.language);
+        render();
+        break;
+      }
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
         break;

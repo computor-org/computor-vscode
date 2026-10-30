@@ -2,11 +2,14 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { applyEdits, modify, parse, ParseError } from 'jsonc-parser';
 import type * as vscode from 'vscode';
-import { validWorkspaceLaunchContext, WorkspaceLaunchContext } from './WorkspaceLaunchContextService';
-import { setWorkspaceLaunchLanguage } from '../utils/contentLanguage';
+import { WorkspaceLaunchContext, workspaceLaunchLanguage } from './WorkspaceLaunchContextService';
+import { setWorkspaceLaunchLanguage } from '../utils/uiLanguage';
 
 const attemptKey = 'computor.workspaceDisplayLocale.reloadAttempt';
-const launchLanguageKey = 'computor.workspaceDisplayLocale.launchLanguage';
+// Written by earlier versions, which kept a launch language forever.
+const legacyLaunchLanguageKey = 'computor.workspaceDisplayLocale.launchLanguage';
+
+interface ReloadAttempt { locale: string; display?: string }
 
 /** Only the managed browser workspace owns this code-server display setting. */
 export function workspaceLocaleFile(
@@ -43,7 +46,6 @@ interface LocaleOptions {
   displayLanguage: string;
   state: Pick<vscode.Memento, 'get' | 'update'>;
   reload(): PromiseLike<unknown>;
-  onLanguage?(language: string | null | undefined): void;
   intervalMs?: number;
 }
 
@@ -57,13 +59,15 @@ export class WorkspaceDisplayLocale implements vscode.Disposable {
   private timer?: ReturnType<typeof setInterval>;
   private pending?: Promise<void>;
   private disposed = false;
+  private launchLanguage?: 'de' | 'en';
 
   constructor(private readonly options: LocaleOptions) {}
 
   start(): void {
     if (this.timer || this.disposed) return;
-    // Profile changes in the web app have no websocket event. Bypass the
-    // account cache periodically, and let window focus request an earlier poll.
+    // A missed `user:profile_updated` event must not leave the display
+    // language behind. Bypass the account cache periodically, and let window
+    // focus request an earlier poll.
     this.timer = setInterval(() => { void this.poll(); }, this.options.intervalMs ?? 30000);
     void this.poll();
   }
@@ -83,18 +87,17 @@ export class WorkspaceDisplayLocale implements vscode.Disposable {
         this.options.fetchLaunchContext?.()
       ]);
       if (this.disposed) return;
-      // A launch carries the web app's resolved UI language, without turning
-      // Automatic into an explicit profile preference. Keep it beyond the
-      // short-lived context so reloads and later profile changes use it too.
-      if (launch && validWorkspaceLaunchContext(launch) && launch.ui_language
-        && this.options.state.get(launchLanguageKey) !== launch.ui_language) {
-        await this.options.state.update(launchLanguageKey, launch.ui_language);
+      if (this.options.state.get(legacyLaunchLanguageKey) !== undefined) {
+        await this.options.state.update(legacyLaunchLanguageKey, undefined);
       }
+      // A launch carries the web app's language for this browser. It is a
+      // hint for this activation only: stored, it outlived browser and
+      // profile changes and acted like an explicit choice.
+      const launchLanguage = workspaceLaunchLanguage(launch ?? null);
+      if (launchLanguage) this.launchLanguage = launchLanguage;
       if (this.disposed) return;
-      const launchLanguage = supportedLocale(this.options.state.get<string>(launchLanguageKey));
-      setWorkspaceLaunchLanguage(launchLanguage);
-      const locale = supportedLocale(language) ?? launchLanguage;
-      this.options.onLanguage?.(locale ?? language);
+      setWorkspaceLaunchLanguage(this.launchLanguage);
+      const locale = supportedLocale(language) ?? this.launchLanguage;
       // With no supported profile or launch language, retain the editor setting.
       if (!locale) return;
       let text: string;
@@ -113,9 +116,11 @@ export class WorkspaceDisplayLocale implements vscode.Disposable {
         return;
       }
       // Persist before reload: a missing pack or an overriding CLI flag must
-      // not reload again on activation. A different preference can try again.
-      if (this.options.state.get<string>(attemptKey) === locale) return;
-      await this.options.state.update(attemptKey, locale);
+      // not reload again on activation. A different preference, or a display
+      // language that changed since, can try again.
+      const attempt = this.options.state.get<ReloadAttempt | string>(attemptKey);
+      if (typeof attempt === 'object' && attempt?.locale === locale && attempt.display === this.options.displayLanguage) return;
+      await this.options.state.update(attemptKey, { locale, display: this.options.displayLanguage } satisfies ReloadAttempt);
       if (!this.disposed) await this.options.reload();
     } catch (error) {
       console.warn('[WorkspaceDisplayLocale] Could not apply display language:', error);

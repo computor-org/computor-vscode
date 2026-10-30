@@ -1,11 +1,11 @@
 (function () {
   // Shared runtime (base.js). formatDateTime matches the old local
   // formatDate (toLocaleString, i.e. date + time).
-  const { vscode, escapeHtml, formatDateTime: formatDate, el, createStore } = window.ComputorWebview;
+  const { vscode, escapeHtml, formatDateTime: formatDate, el, createStore, say } = window.ComputorWebview;
 
   const { state, setState } = createStore({
     courseMemberId: undefined,
-    title: 'Comments',
+    title: say('Comments', 'Kommentare'),
     comments: [],
     loading: false,
     error: undefined,
@@ -44,7 +44,7 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'Loading comments…'
+          textContent: say('Loading comments…', 'Kommentare werden geladen …')
         })
       );
       return;
@@ -64,7 +64,7 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'No comments yet.'
+          textContent: say('No comments yet.', 'Noch keine Kommentare.')
         })
       );
       return;
@@ -82,7 +82,7 @@
 
         const authorName = comment.transmitter?.user
           ? `${comment.transmitter.user.given_name || ''} ${comment.transmitter.user.family_name || ''}`.trim() || comment.transmitter.user.username || comment.transmitter.user.email
-          : comment.transmitter_id || 'Unknown';
+          : comment.transmitter_id || say('Unknown', 'Unbekannt');
 
         card.appendChild(
           createElement('div', {
@@ -105,7 +105,7 @@
 
         const editBtn = createElement('button', {
           className: 'btn secondary sm',
-          textContent: 'Edit',
+          textContent: say('Edit', 'Bearbeiten'),
           attributes: { type: 'button' }
         });
         editBtn.addEventListener('click', () => {
@@ -118,7 +118,7 @@
 
         const deleteBtn = createElement('button', {
           className: 'btn ghost sm',
-          textContent: 'Delete',
+          textContent: say('Delete', 'Löschen'),
           attributes: { type: 'button' }
         });
 
@@ -147,14 +147,14 @@
     const header = createElement('div', { className: 'view-header' });
     header.appendChild(
       createElement('h1', {
-        textContent: state.title || 'Comments'
+        textContent: state.title || say('Comments', 'Kommentare')
       })
     );
 
     const toolbar = createElement('div', { className: 'toolbar' });
     const refreshBtn = createElement('button', {
       className: 'btn secondary',
-      textContent: 'Refresh',
+      textContent: say('Refresh', 'Aktualisieren'),
       attributes: { type: 'button' }
     });
     refreshBtn.addEventListener('click', () => {
@@ -195,6 +195,9 @@
         break;
     }
   });
+
+  // The list redraws from state, so a new language keeps what is loaded.
+  window.ComputorWebview.onLanguageChange(() => render());
 
   document.addEventListener('DOMContentLoaded', () => {
     render();

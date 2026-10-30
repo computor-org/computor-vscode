@@ -172,6 +172,13 @@ export class ArtifactsPanel implements vscode.Disposable {
     }
   }
 
+  /** Render the open panel again in the current language; it asks for its files once ready. */
+  refreshLanguage(): void {
+    if (!this.panel) return;
+    this.panel.title = say('Artifacts', 'Ergebnisdateien');
+    this.panel.webview.html = this.getHtmlContent(this.panel.webview);
+  }
+
   private getHtmlContent(webview: vscode.Webview): string {
     return renderWebviewPage(webview, this.extensionUri, {
       title: say('Artifacts', 'Ergebnisdateien'),

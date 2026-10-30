@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import type { RequestInterceptor } from '../types/HttpTypes';
+import { automaticLanguage, uiLanguage } from '../utils/uiLanguage';
 import FormData = require('form-data');
 import { HttpClient } from '../http/HttpClient';
 import { HttpError } from '../exceptions/errors/HttpError';
@@ -140,6 +142,16 @@ function tutorMemberCourseContentCacheKey(memberId: string, courseContentId: str
 }
 
 
+/**
+ * The backend reads the reading language from Accept-Language (effective_language
+ * of GET /user, the language stored with a message) and assumes German without
+ * it, so every request carries the client's Automatic language.
+ */
+export const acceptLanguageInterceptor: RequestInterceptor = {
+  onRequest: config => ({ ...config, headers: { ...config.headers, 'Accept-Language': automaticLanguage() } }),
+  onError: error => Promise.reject(error)
+};
+
 export class ComputorApiService {
   private static instance?: ComputorApiService;
 
@@ -151,6 +163,7 @@ export class ComputorApiService {
 
   constructor(context: vscode.ExtensionContext, httpClient?: HttpClient) {
     this.httpClient = httpClient;
+    this.httpClient?.addRequestInterceptor?.(acceptLanguageInterceptor);
 
     // Store as singleton instance
     ComputorApiService.instance = this;
@@ -1237,14 +1250,14 @@ export class ComputorApiService {
     if (!contentId) {
       return;
     }
-    multiTierCache.delete(`studentCourseContent-${contentId}`);
+    multiTierCache.deletePrefix(`studentCourseContent-${contentId}`);
   }
 
   clearStudentCourseContentsCache(courseId?: string): void {
     if (courseId) {
-      multiTierCache.delete(`studentCourseContents-${courseId}`);
+      multiTierCache.deletePrefix(`studentCourseContents-${courseId}`);
     }
-    multiTierCache.delete('studentCourseContents-all');
+    multiTierCache.deletePrefix('studentCourseContents-all');
   }
 
   clearAllCaches(): void {
@@ -1919,12 +1932,33 @@ export class ComputorApiService {
     }
   }
 
-  async getUserAccount(options?: { force?: boolean }): Promise<UserGet | undefined> {
+  /** `effective_language` is the backend's reading language for this client (backend #464, not yet in the generated types). */
+  async getUserAccount(options?: { force?: boolean }): Promise<(UserGet & { effective_language?: string | null }) | undefined> {
     const user = await this.getCurrentUser(options);
     if (!user) {
       return undefined;
     }
     return user as unknown as UserGet;
+  }
+
+  /**
+   * Whether the caller joined this course through the public catalog.
+   * @backendCompat undefined where the backend has no such endpoint (404), which callers read as "not known"
+   */
+  async getOwnSelfEnrollment(courseId: string): Promise<{ course_id: string; self_registered: boolean; can_leave: boolean } | undefined> {
+    try {
+      return await this.cachedRequest({
+        cacheKey: `self-enrollment-${courseId}`,
+        tier: 'warm',
+        fetch: async () => {
+          const client = await this.getHttpClient();
+          return (await client.get<{ course_id: string; self_registered: boolean; can_leave: boolean }>(
+            `/user/courses/${courseId}/self-enrollment`)).data;
+        }
+      });
+    } catch {
+      return undefined;
+    }
   }
 
   async getUserViews(): Promise<string[]> {
@@ -2202,13 +2236,14 @@ export class ComputorApiService {
   }
 
   async getStudentCourses(options?: { force?: boolean; throwOnError?: boolean }): Promise<any[]> {
+    const language = uiLanguage();
     try {
       return await this.cachedRequest({
-        cacheKey: 'studentCourses',
+        cacheKey: `studentCourses-${language}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<any[]>('/students/courses')).data;
+          return (await client.get<any[]>(`/students/courses?localize=${language}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force
@@ -2221,13 +2256,14 @@ export class ComputorApiService {
   }
 
   async getStudentCourse(courseId: string, options?: { force?: boolean }): Promise<any | undefined> {
+    const language = uiLanguage();
     try {
       return await this.cachedRequest({
-        cacheKey: `studentCourse-${courseId}`,
+        cacheKey: `studentCourse-${courseId}-${language}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<any>(`/students/courses/${courseId}`)).data;
+          return (await client.get<any>(`/students/courses/${courseId}?localize=${language}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force
@@ -2242,9 +2278,11 @@ export class ComputorApiService {
     courseId?: string,
     options?: { force?: boolean; throwOnError?: boolean }
   ): Promise<CourseContentStudentList[]> {
-    const cacheKey = courseId ? `studentCourseContents-${courseId}` : 'studentCourseContents-all';
+    // Titles and descriptions come back in the reading language, so the cache is per language.
+    const language = uiLanguage();
+    const cacheKey = `studentCourseContents-${courseId ?? 'all'}-${language}`;
     if (options?.force && courseId) {
-      multiTierCache.delete('studentCourseContents-all');
+      multiTierCache.deletePrefix('studentCourseContents-all');
     }
     try {
       return await this.cachedRequest({
@@ -2252,7 +2290,7 @@ export class ComputorApiService {
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          const params = courseId ? `?course_id=${courseId}` : '';
+          const params = courseId ? `?course_id=${courseId}&localize=${language}` : `?localize=${language}`;
           // Deliberately NOT filtered client-side (issue #338). The backend is
           // the only filter, and it already drops hidden content for students.
           // Rows that reach here hidden mean the caller is a lecturer or tutor
@@ -2275,13 +2313,14 @@ export class ComputorApiService {
     contentId: string,
     options?: { force?: boolean }
   ): Promise<CourseContentStudentGet | undefined> {
+    const language = uiLanguage();
     try {
       return await this.cachedRequest({
-        cacheKey: `studentCourseContent-${contentId}`,
+        cacheKey: `studentCourseContent-${contentId}-${language}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`)).data;
+          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}?localize=${language}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force
@@ -2296,13 +2335,14 @@ export class ComputorApiService {
     contentId: string,
     options?: { force?: boolean }
   ): Promise<CourseContentStudentGet | undefined> {
+    const language = uiLanguage();
     try {
       return await this.cachedRequest({
-        cacheKey: `studentCourseContentDetails-${contentId}`,
+        cacheKey: `studentCourseContentDetails-${contentId}-${language}`,
         tier: 'warm',
         fetch: async () => {
           const client = await this.getHttpClient();
-          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}`)).data;
+          return (await client.get<CourseContentStudentGet>(`/students/course-contents/${contentId}?localize=${language}`)).data;
         },
         retry: { maxRetries: 2 },
         force: options?.force
@@ -3916,10 +3956,10 @@ export class ComputorApiService {
    * Get the current maintenance mode status.
    * @returns Maintenance status with active state, message, and schedule info
    */
-  async getMaintenanceStatus(): Promise<{ active: boolean; message: string; scheduled_at: string | null } | undefined> {
+  async getMaintenanceStatus(): Promise<{ active: boolean; message: string; message_i18n?: Record<string, string> | null; scheduled_at: string | null } | undefined> {
     try {
       const client = await this.getHttpClient();
-      const response = await client.get<{ active: boolean; message: string; activated_at: string | null; activated_by: string | null; scheduled_at: string | null; scheduled_by: string | null }>(
+      const response = await client.get<{ active: boolean; message: string; message_i18n?: Record<string, string> | null; activated_at: string | null; activated_by: string | null; scheduled_at: string | null; scheduled_by: string | null }>(
         '/system/maintenance/status'
       );
       return response.data;

@@ -7,6 +7,8 @@ import { CourseMemberParserFactory } from '../../utils/parsers/CourseMemberParse
 import { CourseMemberImportRow } from '../../utils/parsers/ICourseMemberParser';
 import * as path from 'path';
 import { notify } from '../../utils/notify';
+import { say } from '../../utils/uiLanguage';
+import { localizedRoleTitle } from '../../utils/roleLabels';
 
 interface ImportMemberRow extends CourseMemberImportRow {
   rowNumber: number;
@@ -78,7 +80,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       ]);
     } catch (error) {
       console.error('Failed to fetch course data:', error);
-      notify.error(`Failed to fetch course data: ${error}`);
+      notify.error(say(`Failed to fetch course data: ${error}`, `Die Kursdaten konnten nicht geladen werden: ${error}`));
       existingMembers = [];
       this.availableRoles = [
         { id: '_student', title: 'Student' },
@@ -131,17 +133,17 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       };
     });
 
-    await this.show('Course Members', {
+    await this.show(say('Course Members', 'Kursmitglieder'), {
       courseId,
       members: this.members,
-      availableRoles: this.availableRoles,
+      availableRoles: this.availableRoles.map((r) => ({ ...r, title: localizedRoleTitle(r.id, r.title) })),
       availableGroups: this.availableGroups
     });
   }
 
   async loadImportData(importMembers: CourseMemberImportRow[]): Promise<void> {
     if (!this.courseId) {
-      notify.error('Course ID not set');
+      notify.error(say('Course ID not set', 'Keine Kurs-ID gesetzt.'));
       return;
     }
 
@@ -224,7 +226,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       command: 'updateMembers',
       data: {
         members: this.members,
-        availableRoles: this.availableRoles,
+        availableRoles: this.availableRoles.map((r) => ({ ...r, title: localizedRoleTitle(r.id, r.title) })),
         availableGroups: this.availableGroups
       }
     });
@@ -237,16 +239,16 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     availableGroups: CourseGroupList[];
   }): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Course Member Import', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Course Member Import', 'Import von Kursmitgliedern'), say('<p>Loading…</p>', '<p>Wird geladen …</p>'));
     }
 
     if (!data) {
-      return this.getBaseHtml('Course Member Import', '<p>No import data available</p>');
+      return this.getBaseHtml(say('Course Member Import', 'Import von Kursmitgliedern'), say('<p>No import data available</p>', '<p>Keine Importdaten verfügbar</p>'));
     }
 
     return this.renderPage({
-      title: 'Course Members',
-      bodyHtml: '<div id="app" class="import-container"><div class="loading">Loading import preview...</div></div>',
+      title: say('Course Members', 'Kursmitglieder'),
+      bodyHtml: '<div id="app" class="import-container"><div class="loading">' + say('Loading import preview...', 'Importvorschau wird geladen …') + '</div></div>',
       cssFiles: ['courses/course-member-import.css'],
       scriptFiles: ['courses/course-member-import.js'],
       initialState: data
@@ -327,7 +329,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
           rowNumber: data.rowNumber,
           workflowId: data.workflowId,
           status: 'error',
-          error: error?.message || 'Failed to get workflow status'
+          error: error?.message || say('Failed to get workflow status', 'Der Status des Ablaufs konnte nicht abgefragt werden')
         }
       });
     }
@@ -340,10 +342,10 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       canSelectFolders: false,
       canSelectMany: false,
       filters: {
-        'Course Member Files': supportedExtensions,
-        'All Files': ['*']
+        [say('Course Member Files', 'Mitgliederlisten')]: supportedExtensions,
+        [say('All Files', 'Alle Dateien')]: ['*']
       },
-      title: 'Select file containing course members'
+      title: say('Select file containing course members', 'Datei mit den Kursmitgliedern auswählen')
     });
 
     if (!fileUri || fileUri.length === 0) {
@@ -367,24 +369,24 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       const members = CourseMemberParserFactory.parse(fileContent, fileExtension);
 
       if (members.length === 0) {
-        notify.warning('No valid course members found in file');
+        notify.warning(say('No valid course members found in file', 'Die Datei enthält keine gültigen Kursmitglieder.'));
         return;
       }
 
       await this.loadImportData(members);
 
       notify.info(
-        `Import file loaded successfully: ${members.length} member(s) found`
+        say(`Import file loaded successfully: ${members.length} member(s) found`, `Importdatei geladen: ${members.length} Mitglied(er) gefunden.`)
       );
     } catch (error: any) {
       console.error('Failed to load import file:', error);
-      notify.error(`Failed to load import file: ${error?.message || error}`);
+      notify.error(say(`Failed to load import file: ${error?.message || error}`, `Die Importdatei konnte nicht geladen werden: ${error?.message || error}`));
     }
   }
 
   private async handleFileDropped(data: { fileName: string; content: string }): Promise<void> {
     if (!this.courseId) {
-      notify.error('Course ID not set');
+      notify.error(say('Course ID not set', 'Keine Kurs-ID gesetzt.'));
       return;
     }
 
@@ -394,7 +396,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     const supportedExtensions = CourseMemberParserFactory.getSupportedExtensions();
     if (!supportedExtensions.includes(fileExtension)) {
       notify.error(
-        `Unsupported file type: .${fileExtension}. Supported formats: ${supportedExtensions.map(ext => `.${ext}`).join(', ')}`
+        say(`Unsupported file type: .${fileExtension}. Supported formats: ${supportedExtensions.map(ext => `.${ext}`).join(', ')}`, `Nicht unterstützter Dateityp: .${fileExtension}. Unterstützte Formate: ${supportedExtensions.map(ext => `.${ext}`).join(', ')}`)
       );
       return;
     }
@@ -403,18 +405,18 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
       const members = CourseMemberParserFactory.parse(content, fileExtension);
 
       if (members.length === 0) {
-        notify.warning('No valid course members found in file. Make sure the file has an "email" column.');
+        notify.warning(say('No valid course members found in file. Make sure the file has an "email" column.', 'Die Datei enthält keine gültigen Kursmitglieder. Sie braucht eine Spalte „email“.'));
         return;
       }
 
       await this.loadImportData(members);
 
       notify.info(
-        `Import file loaded successfully: ${members.length} member(s) found`
+        say(`Import file loaded successfully: ${members.length} member(s) found`, `Importdatei geladen: ${members.length} Mitglied(er) gefunden.`)
       );
     } catch (error: any) {
       console.error('Failed to parse dropped file:', error);
-      notify.error(`Failed to parse file: ${error?.message || error}`);
+      notify.error(say(`Failed to parse file: ${error?.message || error}`, `Die Datei konnte nicht gelesen werden: ${error?.message || error}`));
     }
   }
 
@@ -430,7 +432,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     };
   }): Promise<void> {
     if (!this.courseId) {
-      notify.error('Course ID not set');
+      notify.error(say('Course ID not set', 'Keine Kurs-ID gesetzt.'));
       return;
     }
 
@@ -444,7 +446,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: 'Importing course members...',
+        title: say('Importing course members...', 'Kursmitglieder werden importiert …'),
         cancellable: true
       },
       async (progress, token) => {
@@ -453,7 +455,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
 
           const chunk = data.selectedRows.slice(chunkStart, chunkStart + chunkSize);
           progress.report({
-            message: `Importing ${chunkStart + 1}–${Math.min(chunkStart + chunkSize, totalRows)} of ${totalRows}...`
+            message: say(`Importing ${chunkStart + 1}–${Math.min(chunkStart + chunkSize, totalRows)} of ${totalRows}...`, `Import ${chunkStart + 1}–${Math.min(chunkStart + chunkSize, totalRows)} von ${totalRows} …`)
           });
 
           await Promise.all(chunk.map(async (row) => {
@@ -492,7 +494,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
                     rowNumber: row.rowNumber,
                     result: {
                       status,
-                      message: result.message || (result.success ? 'Member imported successfully' : 'Import failed')
+                      message: result.message || (result.success ? say('Member imported successfully', 'Mitglied importiert') : say('Import failed', 'Import fehlgeschlagen'))
                     }
                   }
                 });
@@ -504,7 +506,7 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
                 command: 'importProgress',
                 data: {
                   rowNumber: row.rowNumber,
-                  result: { status: 'error', message: error?.message || 'Unknown error' }
+                  result: { status: 'error', message: error?.message || say('Unknown error', 'Unbekannter Fehler') }
                 }
               });
               errorCount++;
@@ -525,15 +527,15 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
 
         if (token.isCancellationRequested) {
           notify.warning(
-            `Import cancelled. Processed: ${successCount + errorCount}/${totalRows}`
+            say(`Import cancelled. Processed: ${successCount + errorCount}/${totalRows}`, `Import abgebrochen. Verarbeitet: ${successCount + errorCount}/${totalRows}`)
           );
         } else if (errorCount > 0) {
           notify.warning(
-            `Import completed with errors. Success: ${successCount}, Errors: ${errorCount}`
+            say(`Import completed with errors. Success: ${successCount}, Errors: ${errorCount}`, `Import mit Fehlern abgeschlossen. Erfolgreich: ${successCount}, Fehler: ${errorCount}`)
           );
         } else {
           notify.info(
-            `Import successful! ${successCount} members imported.`
+            say(`Import successful! ${successCount} members imported.`, `Import abgeschlossen: ${successCount} Mitglieder importiert.`)
           );
         }
 
@@ -578,11 +580,11 @@ export class CourseMemberImportWebviewProvider extends BaseWebviewProvider {
     rowNumber: number;
   }): Promise<void> {
     const groupTitle = await vscode.window.showInputBox({
-      prompt: 'Enter new group name',
-      placeHolder: 'Group name',
+      prompt: say('Enter new group name', 'Namen der neuen Gruppe eingeben'),
+      placeHolder: say('Group name', 'Name der Gruppe'),
       validateInput: (value) => {
         if (!value || value.trim().length === 0) {
-          return 'Group name cannot be empty';
+          return say('Group name cannot be empty', 'Der Gruppenname darf nicht leer sein');
         }
         return null;
       }

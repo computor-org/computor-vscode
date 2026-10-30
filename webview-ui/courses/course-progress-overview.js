@@ -7,7 +7,7 @@
   'use strict';
 
   const vscode = window.vscodeApi || acquireVsCodeApi();
-  const { escapeHtml, setLoading } = window.ComputorWebview;
+  const { escapeHtml, setLoading, say } = window.ComputorWebview;
   const state = window.__INITIAL_STATE__ || { course: null, students: [] };
 
   let histogramChart = null;
@@ -64,7 +64,7 @@
     if (!app) return;
 
     if (!state.course) {
-      app.innerHTML = renderEmptyState('No Course Selected', 'Select a course to view progress overview.');
+      app.innerHTML = renderEmptyState(say('No Course Selected', 'Kein Kurs ausgewählt'), say('Select a course to view progress overview.', 'Wähle einen Kurs aus, um die Fortschrittsübersicht zu sehen.'));
       return;
     }
 
@@ -91,9 +91,9 @@
       <header class="course-progress-header">
         <div>
           <h1 class="course-progress-header__title">${escapeHtml(course.title || course.path)}</h1>
-          <p class="course-progress-header__subtitle">Student Progress Overview</p>
+          <p class="course-progress-header__subtitle">${say('Student Progress Overview', 'Fortschrittsübersicht der Studierenden')}</p>
         </div>
-        <button type="button" class="btn btn-secondary" id="refreshBtn" title="Refresh data">Refresh</button>
+        <button type="button" class="btn btn-secondary" id="refreshBtn" title="${say('Refresh data', 'Daten aktualisieren')}">${say('Refresh', 'Aktualisieren')}</button>
       </header>
     `;
   }
@@ -113,11 +113,11 @@
 
     return `
       <div class="computor-stat-cards">
-        ${createStatCardHtml('Total Students', stats.total, null, ComputorCharts.ThemeColors.info)}
-        ${createStatCardHtml('Average Progress', stats.avgProgress + '%', null, ComputorCharts.ThemeColors.primary)}
-        ${createStatCardHtml('Completed', stats.completed, '100% progress', ComputorCharts.ThemeColors.success)}
-        ${createStatCardHtml('At Risk', stats.atRisk, '<25% progress', ComputorCharts.ThemeColors.error)}
-        ${createStatCardHtml('Inactive', stats.inactive, '>14 days', ComputorCharts.ThemeColors.warning)}
+        ${createStatCardHtml(say('Total Students', 'Studierende gesamt'), stats.total, null, ComputorCharts.ThemeColors.info)}
+        ${createStatCardHtml(say('Average Progress', 'Durchschnittlicher Fortschritt'), stats.avgProgress + '%', null, ComputorCharts.ThemeColors.primary)}
+        ${createStatCardHtml(say('Completed', 'Abgeschlossen'), stats.completed, say('100% progress', '100 % Fortschritt'), ComputorCharts.ThemeColors.success)}
+        ${createStatCardHtml(say('At Risk', 'Gefährdet'), stats.atRisk, say('<25% progress', 'unter 25 % Fortschritt'), ComputorCharts.ThemeColors.error)}
+        ${createStatCardHtml(say('Inactive', 'Inaktiv'), stats.inactive, say('>14 days', 'über 14 Tage'), ComputorCharts.ThemeColors.warning)}
       </div>
     `;
   }
@@ -138,13 +138,13 @@
     return `
       <div class="charts-row">
         <div class="chart-card">
-          <h3 class="chart-card__title">Progress Distribution</h3>
+          <h3 class="chart-card__title">${say('Progress Distribution', 'Verteilung des Fortschritts')}</h3>
           <div class="chart-card__canvas">
             <canvas id="histogramChart"></canvas>
           </div>
         </div>
         <div class="chart-card">
-          <h3 class="chart-card__title">Content Type Completion</h3>
+          <h3 class="chart-card__title">${say('Content Type Completion', 'Erledigung nach Inhaltstyp')}</h3>
           <div class="chart-card__canvas">
             <canvas id="contentTypeChart"></canvas>
           </div>
@@ -207,8 +207,8 @@
     // Histogram
     const histogramData = buildHistogramData(students);
     histogramChart = ComputorCharts.createHistogram('histogramChart', histogramData, {
-      xAxisLabel: 'Progress Range',
-      yAxisLabel: 'Students',
+      xAxisLabel: say('Progress Range', 'Fortschrittsbereich'),
+      yAxisLabel: say('Students', 'Studierende'),
       color: ComputorCharts.ThemeColors.primary
     });
 
@@ -218,14 +218,14 @@
       contentTypeChart = ComputorCharts.createBarChart('contentTypeChart', {
         labels: contentTypeData.labels,
         datasets: [{
-          label: 'Average Progress',
+          label: say('Average Progress', 'Durchschnittlicher Fortschritt'),
           values: contentTypeData.values,
           color: contentTypeData.colors
         }]
       }, {
         horizontal: true,
         maxValue: 100,
-        xAxisLabel: 'Average Progress %'
+        xAxisLabel: say('Average Progress %', 'Durchschnittlicher Fortschritt in %')
       });
     }
   }
@@ -282,11 +282,11 @@
       columns: [
         {
           key: 'name',
-          label: 'Student',
+          label: say('Student', 'Person'),
           render: (val, row) => {
             const name = (row.family_name && row.given_name)
               ? row.family_name + ', ' + row.given_name
-              : row.family_name || row.given_name || 'Unknown';
+              : row.family_name || row.given_name || say('Unknown', 'Unbekannt');
             const studentId = row.student_id;
             const copyBtnId = 'copy-btn-' + row.course_member_id;
             return `
@@ -294,7 +294,7 @@
               ${studentId ? `
                 <div class="copyable-id">
                   <span class="copyable-id__value">${escapeHtml(studentId)}</span>
-                  <button class="copyable-id__btn" id="${copyBtnId}" data-copy-value="${escapeHtml(studentId)}" title="Copy to clipboard">
+                  <button class="copyable-id__btn" id="${copyBtnId}" data-copy-value="${escapeHtml(studentId)}" title="${say('Copy to clipboard', 'In die Zwischenablage kopieren')}">
                     ${COPY_ICON}
                   </button>
                 </div>
@@ -304,7 +304,7 @@
         },
         {
           key: 'overall_progress_percentage',
-          label: 'Overall Progress',
+          label: say('Overall Progress', 'Gesamtfortschritt'),
           width: '180px',
           render: (val) => {
             const percentage = val || 0;
@@ -314,14 +314,14 @@
         },
         {
           key: 'by_content_type',
-          label: 'By Type',
+          label: say('By Type', 'Nach Typ'),
           width: '200px',
           sortable: false,
           render: (val) => renderContentTypeProgress(val)
         },
         {
           key: 'latest_submission_at',
-          label: 'Last Active',
+          label: say('Last Active', 'Zuletzt aktiv'),
           width: '120px',
           render: (val, row) => {
             const relative = ComputorCharts.formatRelativeDate(val);
@@ -343,7 +343,7 @@
         ...s,
         name: (s.family_name && s.given_name)
           ? s.family_name + ', ' + s.given_name
-          : s.family_name || s.given_name || s.username || 'Unknown'
+          : s.family_name || s.given_name || s.username || say('Unknown', 'Unbekannt')
       })),
       defaultSort: 'name',
       defaultSortDirection: 'asc',
@@ -356,7 +356,7 @@
           }
         });
       },
-      emptyMessage: 'No students found in this course.'
+      emptyMessage: say('No students found in this course.', 'In diesem Kurs wurden keine Studierenden gefunden.')
     });
 
     container.appendChild(studentTable);
@@ -420,11 +420,11 @@
     if (statCardsContainer) {
       const stats = calculateStats(students);
       statCardsContainer.innerHTML = `
-        ${createStatCardHtml('Total Students', stats.total, null, ComputorCharts.ThemeColors.info)}
-        ${createStatCardHtml('Average Progress', stats.avgProgress + '%', null, ComputorCharts.ThemeColors.primary)}
-        ${createStatCardHtml('Completed', stats.completed, '100% progress', ComputorCharts.ThemeColors.success)}
-        ${createStatCardHtml('At Risk', stats.atRisk, '<25% progress', ComputorCharts.ThemeColors.error)}
-        ${createStatCardHtml('Inactive', stats.inactive, '>14 days', ComputorCharts.ThemeColors.warning)}
+        ${createStatCardHtml(say('Total Students', 'Studierende gesamt'), stats.total, null, ComputorCharts.ThemeColors.info)}
+        ${createStatCardHtml(say('Average Progress', 'Durchschnittlicher Fortschritt'), stats.avgProgress + '%', null, ComputorCharts.ThemeColors.primary)}
+        ${createStatCardHtml(say('Completed', 'Abgeschlossen'), stats.completed, say('100% progress', '100 % Fortschritt'), ComputorCharts.ThemeColors.success)}
+        ${createStatCardHtml(say('At Risk', 'Gefährdet'), stats.atRisk, say('<25% progress', 'unter 25 % Fortschritt'), ComputorCharts.ThemeColors.error)}
+        ${createStatCardHtml(say('Inactive', 'Inaktiv'), stats.inactive, say('>14 days', 'über 14 Tage'), ComputorCharts.ThemeColors.warning)}
       `;
     }
   }
@@ -436,7 +436,7 @@
         ...s,
         name: (s.family_name && s.given_name)
           ? s.family_name + ', ' + s.given_name
-          : s.family_name || s.given_name || s.username || 'Unknown'
+          : s.family_name || s.given_name || s.username || say('Unknown', 'Unbekannt')
       })));
     }
   }

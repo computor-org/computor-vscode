@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 
-import { setUiProfileLanguage, setUiCourseLanguage } from '../../src/utils/uiLanguage';
+import { setUiAccount, setUiProfileLanguage } from '../../src/utils/uiLanguage';
 import { errorCatalog } from '../../src/exceptions/ErrorCatalog';
 import { AuthenticationError, HttpError } from '../../src/exceptions/errors/HttpError';
 import { showErrorWithSeverity } from '../../src/utils/errorDisplay';
@@ -51,8 +51,7 @@ describe('showErrorWithSeverity', () => {
 
   beforeEach(() => {
     shown = [];
-    setUiProfileLanguage('en');
-    setUiCourseLanguage('de');
+    setUiAccount({ profile: { language_code: 'en' }, effective_language: 'de' });
     originalCatalog = (errorCatalog as any).catalog;
     originalInitialized = (errorCatalog as any).initialized;
     originalInfo = (vscode.window as any).showInformationMessage;
@@ -73,8 +72,7 @@ describe('showErrorWithSeverity', () => {
   });
 
   afterEach(() => {
-    setUiProfileLanguage(undefined);
-    setUiCourseLanguage(undefined);
+    setUiAccount({});
     (errorCatalog as any).catalog = originalCatalog;
     (errorCatalog as any).initialized = originalInitialized;
     (vscode.window as any).showInformationMessage = originalInfo;
@@ -98,16 +96,18 @@ describe('showErrorWithSeverity', () => {
     expect(shown[0]!.message).to.equal('Your session has expired. Please sign in again.');
   });
 
-  it('localizes a known learner rejection and preserves its severity', () => {
-    setUiProfileLanguage('de');
+  it("shows the server's localized title and reason and preserves the severity", () => {
     seedCatalog('warning');
     const catalog = (errorCatalog as any).catalog;
     catalog.errors.SUBMIT_014 = { ...catalog.errors[CODE], code: 'SUBMIT_014' };
     showErrorWithSeverity(new HttpError('Bad Request', 400, 'Bad Request', {
-      error_code: 'SUBMIT_014', detail: 'Nothing to submit: /tmp/private-upload'
+      error_code: 'SUBMIT_014',
+      title: 'Nichts abzugeben',
+      message: 'Deine Abgabe enthält keine Dateien. Schreibe zuerst deine Lösung und gib sie dann noch einmal ab.',
+      message_en: 'Your submission contains no files. Write your solution first, then submit again.'
     }));
     expect(shown).to.deep.equal([{ level: 'warning', message:
-      'Es gibt noch nichts abzugeben. Schreibe zuerst deine Lösung und gib sie dann ab.' }]);
+      'Nichts abzugeben: Deine Abgabe enthält keine Dateien. Schreibe zuerst deine Lösung und gib sie dann noch einmal ab.' }]);
   });
 
   it("shows the server's own reason, not the catalog's per-code text", () => {

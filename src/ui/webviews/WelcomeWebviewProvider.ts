@@ -6,12 +6,13 @@ import { showMarkdownPreview } from './markdownPreview';
 import { focusViewContainer } from '../focusViewContainer';
 import { containerById } from '../viewContainers';
 import { notify } from '../../utils/notify';
+import { say, uiLanguage } from '../../utils/uiLanguage';
+import { helpPagePath } from '../../utils/studentHelpPages';
 import {
   collectWelcomeFacts,
   renderWelcomeBody,
   resolveWelcomeMessage,
   welcomeRoleContainers,
-  welcomeLanguage,
   welcomeTitle,
   WelcomeApi,
   WelcomeIntent,
@@ -97,9 +98,8 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
     const facts = await collectWelcomeFacts(this.sources.api(), this.sources.launchedCourseId?.());
     return {
       ...facts,
-      // Before sign-in there is no profile to ask, so the page follows the
-      // display language VS Code itself uses (computor-org/issues#366).
-      language: facts.language ?? welcomeLanguage(vscode.env.language),
+      // Before sign-in there is no account to ask (computor-org/issues#366).
+      language: facts.language ?? uiLanguage(),
       inBrowser: vscode.env.uiKind === vscode.UIKind.Web,
       workbenchLanguage: vscode.env.language?.toLowerCase().startsWith('de') ? 'de' : 'en',
       backendUrl: await this.sources.backendUrl().catch(() => undefined),
@@ -152,12 +152,12 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
   private async perform(intent: WelcomeIntent): Promise<void> {
     switch (intent.kind) {
       case 'help': {
-        const helpPath = path.join(this.context.extensionPath, 'docs', 'help', intent.page);
+        const helpPath = helpPagePath(this.context.extensionPath, intent.page);
         try {
-          await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
+          await showMarkdownPreview(this.context, helpPath, { title: say('Computor Help', 'Computor-Hilfe') });
         } catch (error) {
           console.error('[Welcome] Failed to open help page:', error);
-          notify.error('Failed to open help documentation');
+          notify.error(say('Failed to open help documentation', 'Die Hilfe konnte nicht geöffnet werden.'));
         }
         return;
       }
@@ -167,7 +167,8 @@ export class WelcomeWebviewProvider extends BaseWebviewProvider {
       case 'view': {
         const container = containerById(welcomeRoleContainers[intent.role]);
         if (!container || !await focusViewContainer(container)) {
-          notify.warning(`The ${intent.role} view is not available yet.`);
+          const germanView = { student: 'Studierende', tutor: 'Tutor', lecturer: 'Lehrende' }[intent.role] ?? intent.role;
+          notify.warning(say(`The ${intent.role} view is not available yet.`, `Die Ansicht „Computor ${germanView}“ ist noch nicht verfügbar.`));
         }
         return;
       }

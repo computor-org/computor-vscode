@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { say } from './uiLanguage';
 
 /**
  * Filesystem primitives behind the student tree's file operations.
@@ -25,9 +26,9 @@ const RESERVED_AT_ROOT = new Set(['mediaFiles', 'README.md']);
 
 /** Validates a single path segment for the file/folder name inputs. */
 export function validateSegment(value: string): string | undefined {
-  if (!value || !value.trim()) { return 'Name cannot be empty.'; }
-  if (value.includes('/') || value.includes('\\')) { return 'Name cannot contain path separators.'; }
-  if (value === '.' || value === '..') { return 'Reserved name.'; }
+  if (!value || !value.trim()) { return say('Name cannot be empty.', 'Der Name darf nicht leer sein.'); }
+  if (value.includes('/') || value.includes('\\')) { return say('Name cannot contain path separators.', 'Der Name darf keine Pfadtrenner enthalten.'); }
+  if (value === '.' || value === '..') { return say('Reserved name.', 'Dieser Name ist reserviert.'); }
   return undefined;
 }
 

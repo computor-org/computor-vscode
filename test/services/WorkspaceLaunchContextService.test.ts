@@ -120,6 +120,18 @@ describe('WorkspaceLaunchContextService', () => {
     expect(opened).to.deep.equal([undefined, null]);
   });
 
+  it('opens no course for a launch that carries only the reading language', async () => {
+    const contexts: unknown[] = [
+      { request_id: 'language-only', expires_at: new Date(NOW + 60_000).toISOString(), ui_language: 'de' },
+      { ...request('language-null'), course_id: null, ui_language: 'en' }
+    ];
+    const opened: string[] = [];
+    const value = service(async () => contexts.shift() as WorkspaceLaunchContext | null, async id => { opened.push(id); return true; });
+    await value.poll();
+    await value.poll();
+    expect(opened).to.deep.equal([]);
+  });
+
   it('ignores malformed exercise targets instead of degrading them to course-only launches', async () => {
     const contexts = ['', ' ', 42, {}, false].map((course_content_id, index) => ({
       ...request(`invalid-${index}`), course_content_id

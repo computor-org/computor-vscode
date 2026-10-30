@@ -13,6 +13,8 @@ import {
 } from '../limitFormatting';
 import { hiddenBadge, isHidden } from '../visibility';
 import { IconGenerator } from '../../../utils/IconGenerator';
+import { formatUiDateTime, say } from '../../../utils/uiLanguage';
+import { statusLabel } from '../student/StudentCourseContentTreeProvider';
 import { openFileCommand } from '../../editorLayout';
 import { UiStateService } from '../../../services/UiStateService';
 import { CourseContentStudentList, CourseContentKindList, SubmissionGroupStudentList } from '../../../types/generated';
@@ -25,6 +27,8 @@ import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { tooltipWithDescription, withDescription } from '../../contentDescription';
 import { withRepoLock } from '../../../utils/repoLock';
 import { safeExtractTarget } from '../../../utils/zipHelpers';
+import { localizedTitle } from '../../../utils/contentLanguage';
+import { uiLanguage } from '../../../utils/uiLanguage';
 
 function getEmbeddedCourseContentType(courseContent: any): any | undefined {
   const ct = courseContent?.course_content_type ?? courseContent?.course_content_types;
@@ -100,6 +104,9 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
         this.scheduleUnreadRefresh();
       },
       onReadUpdate: () => this.scheduleUnreadRefresh(),
+      // Grading or test status (issue #554); a tutor receives it on the
+      // submission_group:<id> channel of an open conversation.
+      onSubmissionGroupUpdated: () => this.scheduleUnreadRefresh(),
     });
   }
 
@@ -171,10 +178,10 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
     const memberId = this.selection.getCurrentMemberId();
 
     if (!courseId) {
-      return [new MessageItem('Select a course to begin', 'info')];
+      return [new MessageItem(say('Select a course to begin', 'Wähle zuerst einen Kurs aus'), 'info')];
     }
     if (!memberId) {
-      return [new MessageItem('Select a member to view content', 'info')];
+      return [new MessageItem(say('Select a member to view content', 'Wähle eine Person aus, um ihre Inhalte zu sehen'), 'info')];
     }
 
     // Ensure kinds
@@ -192,12 +199,12 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       const courseLabel = this.selection.getCurrentCourseLabel() || courseId;
       const headerItems: vscode.TreeItem[] = [
         new TutorSelectionCourseItem(courseLabel),
-        new TutorSelectionGroupItem(memberGroupLabel || 'No Group'),
+        new TutorSelectionGroupItem(memberGroupLabel || say('No Group', 'Ohne Gruppe')),
         new TutorSelectionMemberItem(memberLabel, this.selection.getMemberEmail(), this.selection.getMemberUsername())
       ];
 
       const courseContents = await (this.api as any).getTutorCourseContents?.(courseId, memberId) || [];
-      if (courseContents.length === 0) return [...headerItems, new MessageItem('No content available', 'info')];
+      if (courseContents.length === 0) return [...headerItems, new MessageItem(say('No content available', 'Keine Inhalte vorhanden'), 'info')];
       const tree = this.buildContentTree(courseContents, this.contentKinds);
       return [...headerItems, ...this.createTreeItems(tree, memberId)];
     }
@@ -251,7 +258,8 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       const isUnit = contentKind ? !!contentKind.has_descendants : false;
 
       const node: ContentNode = {
-        name: content.title || content.path.split('.').pop() || content.path,
+        // The tutor endpoint has no ?localize=; its maps are resolved here.
+        name: localizedTitle(content, uiLanguage()) || content.path.split('.').pop() || content.path,
         children: new Map(),
         courseContent: content,
         contentKind,
@@ -434,7 +442,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
     let latestDescription: string | undefined;
     if (latestArtifact) {
       const timestamp = latestArtifact.uploaded_at || latestArtifact.created_at;
-      const dateStr = timestamp ? new Date(timestamp).toLocaleString() : latestArtifact.id;
+      const dateStr = timestamp ? formatUiDateTime(new Date(timestamp)) : latestArtifact.id;
       const result = latestArtifact.latest_result?.result;
       latestDescription = typeof result === 'number'
         ? `${dateStr} ${(result * 100).toFixed(1)}%`
@@ -449,7 +457,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       this.expandedVirtualFolderIds.add(subsFolderId);
     }
     const shouldExpandSubs = isPendingExpand || this.expandedVirtualFolderIds.has(subsFolderId);
-    items.push(new TutorVirtualFolderItem('Submissions', 'submissions', element.content, courseId, memberId, {
+    items.push(new TutorVirtualFolderItem(say('Submissions', 'Abgaben'), 'submissions', element.content, courseId, memberId, {
       startExpanded: shouldExpandSubs,
       latestArtifactId: latestArtifact?.id,
       latestArtifactDescription: latestDescription,
@@ -464,7 +472,8 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       const referenceExists = await workspaceStructure.referenceExists(exampleVersionId);
 
       const versionTag = element.content.deployment.version_tag || '';
-      const label = versionTag ? `References (${versionTag})` : 'References';
+      const references = say('References', 'Musterlösung');
+      const label = versionTag ? `${references} (${versionTag})` : references;
 
       const refFolderId = `tutorVirtualFolder:reference:${contentId}:${courseId}:${memberId}`;
       if (isPendingExpand) {
@@ -484,7 +493,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
         this.expandedVirtualFolderIds.add(historyFolderId);
       }
       const shouldExpandHistory = this.expandedVirtualFolderIds.has(historyFolderId);
-      items.push(new TutorVirtualFolderItem('History', 'history', element.content, courseId, memberId, {
+      items.push(new TutorVirtualFolderItem(say('History', 'Verlauf'), 'history', element.content, courseId, memberId, {
         startExpanded: shouldExpandHistory,
         artifacts: sortedArtifacts,
         submissionGroupId,
@@ -520,7 +529,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
   private async getVirtualFolderChildren(element: TutorVirtualFolderItem): Promise<vscode.TreeItem[]> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) {
-      return [new MessageItem('Open a workspace folder to view files.', 'warning')];
+      return [new MessageItem(say('Open a workspace folder to view files.', 'Öffne einen Arbeitsbereichsordner, um die Dateien zu sehen.'), 'warning')];
     }
 
     const workspaceStructure = WorkspaceStructureManager.getInstance();
@@ -544,7 +553,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
     const gitDir = path.join(repoRoot, '.git');
 
     if (!fs.existsSync(gitDir)) {
-      return [new MessageItem('Student repository not found locally. Use "Clone Student Repository" first.', 'warning')];
+      return [new MessageItem(say('Student repository not found locally. Use "Clone Student Repository" first.', 'Das Repository der Person ist lokal nicht vorhanden. Klone es zuerst mit „Repository der Person klonen“.'), 'warning')];
     }
 
     // Auto-update repository when expanding.
@@ -571,39 +580,39 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
     const prefix = staleWarning ? [staleWarning] : [];
 
     if (!directoryName) {
-      return [...prefix, new MessageItem('Assignment directory is not specified for this content.', 'info')];
+      return [...prefix, new MessageItem(say('Assignment directory is not specified for this content.', 'Für diesen Inhalt ist kein Aufgabenordner festgelegt.'), 'info')];
     }
 
     const assignmentPath = path.join(repoRoot, directoryName);
     if (!fs.existsSync(assignmentPath)) {
-      return [...prefix, new MessageItem('Assignment directory missing locally. Pull the latest student repository.', 'warning')];
+      return [...prefix, new MessageItem(say('Assignment directory missing locally. Pull the latest student repository.', 'Der Aufgabenordner fehlt lokal. Hole den neuesten Stand des Repositorys der Person.'), 'warning')];
     }
 
     const items = await this.readDirectoryItems(assignmentPath, element.courseId, element.memberId, repoRoot, element.content, 'repository');
-    return items.length > 0 ? [...prefix, ...items] : [...prefix, new MessageItem('Assignment directory is empty.', 'info')];
+    return items.length > 0 ? [...prefix, ...items] : [...prefix, new MessageItem(say('Assignment directory is empty.', 'Der Aufgabenordner ist leer.'), 'info')];
   }
 
   private async getReferenceChildren(element: TutorVirtualFolderItem, workspaceStructure: WorkspaceStructureManager): Promise<vscode.TreeItem[]> {
     const deployment = element.content.deployment;
     if (!deployment || !deployment.example_version_id) {
-      return [new MessageItem('No reference available for this assignment.', 'info')];
+      return [new MessageItem(say('No reference available for this assignment.', 'Für diese Aufgabe gibt es keine Musterlösung.'), 'info')];
     }
 
     const referencePath = workspaceStructure.getReviewReferencePath(deployment.example_version_id);
 
     if (!fs.existsSync(referencePath)) {
-      return [new MessageItem('Reference not downloaded. Right-click assignment → "Download Reference".', 'info')];
+      return [new MessageItem(say('Reference not downloaded. Right-click assignment → "Checkout".', 'Die Musterlösung ist noch nicht heruntergeladen. Rechtsklick auf die Aufgabe → „Auschecken“.'), 'info')];
     }
 
     const items = await this.readDirectoryItems(referencePath, element.courseId, element.memberId, referencePath, element.content, 'reference');
-    return items.length > 0 ? items : [new MessageItem('Reference directory is empty.', 'info')];
+    return items.length > 0 ? items : [new MessageItem(say('Reference directory is empty.', 'Der Ordner der Musterlösung ist leer.'), 'info')];
   }
 
   private async getLatestSubmissionFiles(element: TutorVirtualFolderItem, workspaceStructure: WorkspaceStructureManager): Promise<vscode.TreeItem[]> {
     const submissionGroupId = element.submissionGroupId;
     const artifactId = element.latestArtifactId;
     if (!submissionGroupId || !artifactId) {
-      return [new MessageItem('No submissions available for this assignment.', 'info')];
+      return [new MessageItem(say('No submissions available for this assignment.', 'Zu dieser Aufgabe gibt es keine Abgaben.'), 'info')];
     }
 
     const submissionPath = workspaceStructure.getReviewSubmissionPath(submissionGroupId, artifactId);
@@ -613,7 +622,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       try {
         const buffer = await this.api.downloadSubmissionArtifact(artifactId);
         if (!buffer) {
-          return [new MessageItem('Failed to download submission artifact.', 'warning')];
+          return [new MessageItem(say('Failed to download submission artifact.', 'Die Abgabe konnte nicht heruntergeladen werden.'), 'warning')];
         }
         const JSZip = require('jszip');
         const zip = await JSZip.loadAsync(buffer);
@@ -636,30 +645,30 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
         }
       } catch (error) {
         console.warn('[TutorStudentTreeProvider] Failed to auto-download submission artifact:', error);
-        return [new MessageItem('Submission artifact not found locally.', 'warning')];
+        return [new MessageItem(say('Submission artifact not found locally.', 'Die Abgabe ist lokal nicht vorhanden.'), 'warning')];
       }
     }
 
     const items = await this.readDirectoryItems(submissionPath, element.courseId, element.memberId, submissionPath, element.content, 'submission');
-    return items.length > 0 ? items : [new MessageItem('Submission directory is empty.', 'info')];
+    return items.length > 0 ? items : [new MessageItem(say('Submission directory is empty.', 'Der Ordner der Abgabe ist leer.'), 'info')];
   }
 
   private getHistoryChildren(element: TutorVirtualFolderItem): vscode.TreeItem[] {
     const artifacts = element.artifacts;
     const submissionGroupId = element.submissionGroupId;
     if (!artifacts || artifacts.length === 0 || !submissionGroupId) {
-      return [new MessageItem('No submissions available.', 'info')];
+      return [new MessageItem(say('No submissions available.', 'Keine Abgaben vorhanden.'), 'info')];
     }
 
     // Skip the latest (index 0) — it's already shown directly in the Submissions node
     const olderArtifacts = artifacts.slice(1);
     if (olderArtifacts.length === 0) {
-      return [new MessageItem('No older submissions.', 'info')];
+      return [new MessageItem(say('No older submissions.', 'Keine älteren Abgaben.'), 'info')];
     }
 
     return olderArtifacts.map((artifact) => {
       const timestamp = artifact.uploaded_at || artifact.created_at;
-      const formattedDate = timestamp ? new Date(timestamp).toLocaleString() : artifact.id;
+      const formattedDate = timestamp ? formatUiDateTime(new Date(timestamp)) : artifact.id;
       const result = (artifact as any).latest_result?.result;
       const submissionBaseId = `tutorSubmission:${artifact.id}:${submissionGroupId}:${element.courseId}:${element.memberId}`;
       const startExpanded = this.expandedSubmissionIds.has(submissionBaseId);
@@ -686,7 +695,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       try {
         const buffer = await this.api.downloadSubmissionArtifact(element.artifactId);
         if (!buffer) {
-          return [new MessageItem('Failed to download submission artifact.', 'warning')];
+          return [new MessageItem(say('Failed to download submission artifact.', 'Die Abgabe konnte nicht heruntergeladen werden.'), 'warning')];
         }
         const JSZip = require('jszip');
         const zip = await JSZip.loadAsync(buffer);
@@ -709,12 +718,12 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
         }
       } catch (error) {
         console.warn('[TutorStudentTreeProvider] Failed to auto-download submission artifact:', error);
-        return [new MessageItem('Submission artifact not found locally.', 'warning')];
+        return [new MessageItem(say('Submission artifact not found locally.', 'Die Abgabe ist lokal nicht vorhanden.'), 'warning')];
       }
     }
 
     const items = await this.readDirectoryItems(submissionPath, element.courseId, element.memberId, submissionPath, element.content, 'submission');
-    return items.length > 0 ? items : [new MessageItem('Submission directory is empty.', 'info')];
+    return items.length > 0 ? items : [new MessageItem(say('Submission directory is empty.', 'Der Ordner der Abgabe ist leer.'), 'info')];
   }
 
   private async readDirectoryItems(dir: string, courseId: string, memberId: string, repositoryRoot: string, content?: CourseContentStudentList, folderType?: 'repository' | 'reference' | 'submission'): Promise<vscode.TreeItem[]> {
@@ -743,7 +752,7 @@ export class TutorStudentTreeProvider extends BaseTreeDataProvider<vscode.TreeIt
       return items;
     } catch (error) {
       console.warn('Failed to read tutor assignment directory:', error);
-      return [new MessageItem('Error reading assignment directory.', 'error')];
+      return [new MessageItem(say('Error reading assignment directory.', 'Der Aufgabenordner konnte nicht gelesen werden.'), 'error')];
     }
   }
 }
@@ -777,8 +786,8 @@ class TutorSelectionMemberItem extends vscode.TreeItem {
     this.contextValue = 'tutorMember.selected';
     this.iconPath = new vscode.ThemeIcon('person-filled');
     const tooltipParts: string[] = [memberLabel];
-    if (email) { tooltipParts.push(`Email: ${email}`); }
-    if (username) { tooltipParts.push(`Username: ${username}`); }
+    if (email) { tooltipParts.push(`${say('Email', 'E-Mail')}: ${email}`); }
+    if (username) { tooltipParts.push(`${say('Username', 'Benutzername')}: ${username}`); }
     if (tooltipParts.length > 1) {
       this.tooltip = tooltipParts.join('\n');
     }
@@ -794,6 +803,14 @@ class TutorSelectionGroupItem extends vscode.TreeItem {
   }
 }
 
+function itemCount(count: number): string {
+  return count === 1 ? say('1 item', '1 Eintrag') : say(`${count} items`, `${count} Einträge`);
+}
+
+function unreadMessages(count: number): string {
+  return count === 1 ? say('1 unread message', '1 ungelesene Nachricht') : say(`${count} unread messages`, `${count} ungelesene Nachrichten`);
+}
+
 class MessageItem extends vscode.TreeItem {
   constructor(message: string, severity: 'info' | 'warning' | 'error') {
     super(message, vscode.TreeItemCollapsibleState.None);
@@ -805,7 +822,7 @@ class MessageItem extends vscode.TreeItem {
 
 class TutorUnitItem extends vscode.TreeItem {
   constructor(public node: ContentNode) {
-    super(node.name || 'Unit', vscode.TreeItemCollapsibleState.Collapsed);
+    super(node.name || say('Unit', 'Einheit'), vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = isHidden(node.courseContent as any) ? 'tutorUnit.hidden' : 'tutorUnit';
     // Try to use a colored circle icon like in the student view
     try {
@@ -853,33 +870,36 @@ class TutorUnitItem extends vscode.TreeItem {
     if (unread > 0) {
       labelParts.push(`[🔔${unread}]`);
     }
-    const baseName = this.node.name || 'Unit';
+    const baseName = this.node.name || say('Unit', 'Einheit');
     this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;
 
     // Description shows item count, plus the invisible marker. The unit is
     // usually the row the lecturer actually hid, so marking only the
     // assignments beneath it showed the effect and not the cause.
     const invisible = hiddenBadge(this.node.courseContent as any);
-    const itemLabel = `${count} item${count !== 1 ? 's' : ''}`;
+    const itemLabel = itemCount(count);
     this.description = invisible ? `${invisible} • ${itemLabel}` : itemLabel;
 
     const tooltipLines = [
-      `Unit: ${baseName}`,
-      `${count} item${count !== 1 ? 's' : ''}`
+      `${say('Unit', 'Einheit')}: ${baseName}`,
+      itemCount(count)
     ];
     const ct = getEmbeddedCourseContentType(this.node.courseContent);
-    if (ct?.title) {
-      tooltipLines.push(`Type: ${ct.title}`);
+    const typeTitle = localizedTitle(ct, uiLanguage());
+    if (typeTitle) {
+      tooltipLines.push(`${say('Type', 'Typ')}: ${typeTitle}`);
     }
     const status = (this.node.courseContent as any)?.status || this.node.submissionGroup?.status;
     if (status) {
-      tooltipLines.push(`Status: ${this.formatStatus(String(status))}`);
+      tooltipLines.push(`Status: ${statusLabel(String(status))}`);
     }
     if (unreviewed > 0) {
-      tooltipLines.push(`${unreviewed} unreviewed assignment${unreviewed === 1 ? '' : 's'}`);
+      tooltipLines.push(unreviewed === 1
+        ? say('1 unreviewed assignment', '1 nicht durchgesehene Aufgabe')
+        : say(`${unreviewed} unreviewed assignments`, `${unreviewed} nicht durchgesehene Aufgaben`));
     }
     if (unread > 0) {
-      tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+      tooltipLines.push(unreadMessages(unread));
     }
     this.tooltip = tooltipWithDescription(tooltipLines, this.node.courseContent?.description);
     withDescription(this, baseName, this.node.courseContent?.description);
@@ -897,11 +917,6 @@ class TutorUnitItem extends vscode.TreeItem {
     return count;
   }
 
-  private formatStatus(status: string): string {
-    return status
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, c => c.toUpperCase());
-  }
 }
 
 class TutorContentItem extends vscode.TreeItem {
@@ -921,7 +936,7 @@ class TutorContentItem extends vscode.TreeItem {
     const collapsibleState = isAssignment
       ? (startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed)
       : vscode.TreeItemCollapsibleState.None;
-    super(content.title || content.path, collapsibleState);
+    super(localizedTitle(content, uiLanguage()) || content.path, collapsibleState);
     this.memberId = memberId;
     this.isAssignment = isAssignment;
     this.assignmentDirectory = assignmentDirectory;
@@ -990,7 +1005,7 @@ class TutorContentItem extends vscode.TreeItem {
     if (unread > 0) {
       labelParts.push(`[🔔${unread}]`);
     }
-    const baseName = this.content.title || this.content.path;
+    const baseName = localizedTitle(this.content, uiLanguage()) || this.content.path;
     this.label = labelParts.length > 0 ? `${labelParts.join('')} ${baseName}` : baseName;
 
     // Build description with test/submission counts like student view
@@ -1032,15 +1047,7 @@ class TutorContentItem extends vscode.TreeItem {
       this.description = this.description ? `${this.description} ${pts}%` : `${pts}%`;
     }
 
-    const friendlyStatus = (() => {
-      if (!status) return undefined;
-      if (status === 'corrected') return 'Corrected';
-      if (status === 'correction_necessary') return 'Correction Necessary';
-      if (status === 'improvement_possible') return 'Improvement Possible';
-      if (status === 'correction_possible') return 'Correction Possible';
-      const t = status.replace(/_/g, ' ');
-      return t.charAt(0).toUpperCase() + t.slice(1);
-    })();
+    const friendlyStatus = status ? statusLabel(status) : undefined;
 
     // Build tooltip with detailed information
     const tooltipLines: string[] = [];
@@ -1051,23 +1058,23 @@ class TutorContentItem extends vscode.TreeItem {
       tooltipLines.push(`Tests: ${formatBudgetLong(tests)}`);
     }
     if (submissions.max !== null || typeof submitCount === 'number') {
-      tooltipLines.push(`Submissions: ${formatBudgetLong(submissions)}`);
+      tooltipLines.push(`${say('Submissions', 'Abgaben')}: ${formatBudgetLong(submissions)}`);
     }
     if (typeof result === 'number') {
-      tooltipLines.push(`Result: ${(result * 100).toFixed(2)}%`);
+      tooltipLines.push(`${say('Result', 'Ergebnis')}: ${(result * 100).toFixed(2)}%`);
     }
     if (typeof grading === 'number') {
-      tooltipLines.push(`Grading: ${(grading * 100).toFixed(2)}%`);
+      tooltipLines.push(`${say('Grading', 'Bewertung')}: ${(grading * 100).toFixed(2)}%`);
     }
     const graderName = extractGraderName(submission);
     if (graderName) {
-      tooltipLines.push(`Graded by: ${graderName}`);
+      tooltipLines.push(`${say('Graded by', 'Bewertet von')}: ${graderName}`);
     }
     if (hasUnreviewed) {
-      tooltipLines.push('Unreviewed assignment');
+      tooltipLines.push(say('Unreviewed assignment', 'Noch nicht durchgesehen'));
     }
     if (unread > 0) {
-      tooltipLines.push(`${unread} unread message${unread === 1 ? '' : 's'}`);
+      tooltipLines.push(unreadMessages(unread));
     }
     this.tooltip = tooltipLines.join('\n');
   }
@@ -1209,7 +1216,7 @@ class TutorSubmissionItem extends vscode.TreeItem {
 
     // Add (latest) suffix after result
     if (isLatest) {
-      label = `${label} (latest)`;
+      label = `${label} (${say('latest', 'neueste')})`;
     }
 
     super(label, startExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
@@ -1226,9 +1233,9 @@ class TutorSubmissionItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon('file-zip');
     }
 
-    let tooltip = isLatest ? `Latest Artifact: ${artifactId}` : `Artifact: ${artifactId}`;
+    let tooltip = isLatest ? `${say('Latest submission', 'Neueste Abgabe')}: ${artifactId}` : `${say('Submission', 'Abgabe')}: ${artifactId}`;
     if (typeof result === 'number') {
-      tooltip += `\nResult: ${(result * 100).toFixed(1)}%`;
+      tooltip += `\n${say('Result', 'Ergebnis')}: ${(result * 100).toFixed(1)}%`;
     }
     this.tooltip = tooltip;
   }

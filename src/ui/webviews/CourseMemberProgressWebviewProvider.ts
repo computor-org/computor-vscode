@@ -3,6 +3,7 @@ import { BaseWebviewProvider } from './BaseWebviewProvider';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { CourseMemberGradingsGet } from '../../types/generated';
 import { notify } from '../../utils/notify';
+import { say, sayFailed } from '../../utils/uiLanguage';
 
 interface CourseMemberProgressData {
   memberGradings: CourseMemberGradingsGet;
@@ -20,23 +21,23 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
   async showMemberProgress(courseMemberId: string, memberName?: string): Promise<void> {
     const memberGradings = await this.apiService.getCourseMemberGradingsDetail(courseMemberId);
     if (!memberGradings) {
-      notify.error('Failed to load course member progress data.');
+      notify.error(say('Failed to load course member progress data.', 'Die Fortschrittsdaten der Person konnten nicht geladen werden.'));
       return;
     }
 
-    const displayName = memberName || 'Student';
+    const displayName = memberName || say('Student', 'Person');
 
     const payload: CourseMemberProgressData = { memberGradings, fallbackName: memberName };
-    await this.show(`Progress: ${displayName}`, payload);
+    await this.show(say(`Progress: ${displayName}`, `Fortschritt: ${displayName}`), payload);
   }
 
   protected async getWebviewContent(data?: CourseMemberProgressData): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Student Progress', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Student Progress', 'Fortschritt der Person'), say('<p>Loading…</p>', '<p>Wird geladen …</p>'));
     }
 
     return this.renderPage({
-      title: 'Student Progress',
+      title: say('Student Progress', 'Fortschritt der Person'),
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['courses/charts.css', 'courses/course-member-progress.css'],
       scriptFiles: ['vendor/chart.min.js', 'courses/charts.js', 'courses/course-member-progress.js'],
@@ -64,7 +65,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
             await vscode.env.clipboard.writeText(message.data.text);
             this.panel?.webview.postMessage({ command: 'copySuccess', data: { btnId: message.data.btnId } });
           } catch (err) {
-            notify.error(`Failed to copy: ${err}`);
+            notify.error(sayFailed(`Failed to copy`, `Kopieren fehlgeschlagen`, err));
           }
         }
         break;
@@ -89,7 +90,7 @@ export class CourseMemberProgressWebviewProvider extends BaseWebviewProvider {
         this.panel.webview.postMessage({ command: 'updateData', data: { memberGradings } });
       }
     } catch (error: any) {
-      notify.error(`Failed to refresh progress data: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to refresh progress data`, `Die Fortschrittsdaten konnten nicht aktualisiert werden`, error?.message || error));
     } finally {
       this.postLoadingState(false);
     }

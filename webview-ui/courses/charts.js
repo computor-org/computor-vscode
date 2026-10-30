@@ -165,7 +165,7 @@
       data: {
         labels: data.labels,
         datasets: [{
-          label: options.label || 'Count',
+          label: options.label || window.ComputorWebview.say('Count', 'Anzahl'),
           data: data.values,
           backgroundColor: barColor,
           borderColor: barColor,
@@ -674,7 +674,7 @@
         const emptyCell = document.createElement('td');
         emptyCell.colSpan = config.columns.length;
         emptyCell.className = 'computor-table__empty';
-        emptyCell.textContent = config.emptyMessage || 'No data available';
+        emptyCell.textContent = config.emptyMessage || window.ComputorWebview.say('No data available', 'Keine Daten vorhanden');
         emptyRow.appendChild(emptyCell);
         tbody.appendChild(emptyRow);
         return;
@@ -763,7 +763,8 @@
    * @returns {string}
    */
   function formatRelativeDate(date) {
-    if (!date) return 'Never';
+    const say = window.ComputorWebview.say;
+    if (!date) return say('Never', 'Nie');
 
     const now = new Date();
     const then = new Date(date);
@@ -772,14 +773,14 @@
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
 
-    if (diffMinutes < 1) return 'Just now';
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
-    return `${Math.floor(diffDays / 365)}y ago`;
+    if (diffMinutes < 1) return say('Just now', 'Gerade eben');
+    if (diffMinutes < 60) return say(`${diffMinutes}m ago`, `vor ${diffMinutes} Min.`);
+    if (diffHours < 24) return say(`${diffHours}h ago`, `vor ${diffHours} Std.`);
+    if (diffDays === 1) return say('Yesterday', 'Gestern');
+    if (diffDays < 7) return say(`${diffDays}d ago`, `vor ${diffDays} Tagen`);
+    if (diffDays < 30) return say(`${Math.floor(diffDays / 7)}w ago`, `vor ${Math.floor(diffDays / 7)} Wo.`);
+    if (diffDays < 365) return say(`${Math.floor(diffDays / 30)}mo ago`, `vor ${Math.floor(diffDays / 30)} Mon.`);
+    return say(`${Math.floor(diffDays / 365)}y ago`, `vor ${Math.floor(diffDays / 365)} J.`);
   }
 
   /**

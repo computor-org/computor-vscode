@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { formatUiDateTime, say } from '../../utils/uiLanguage';
+import { formatUiDateTime, say, uiLanguage } from '../../utils/uiLanguage';
 import { ResultArtifactInfo } from '../../types/generated/common';
 import { escapeHtml } from '../webviews/shared/webviewHelpers';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
@@ -89,6 +89,11 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
             this.selectedNodeId = undefined;
             this.panelProvider.clearDetails(this.hasResults());
         }
+    }
+
+    /** The same result again, so the tree and the details are rebuilt in the current language. */
+    refreshLanguage(): void {
+        this.refresh(this.testResults);
     }
 
     private hasResults(): boolean {
@@ -306,10 +311,11 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
         // Handle error field in the result payload
         if (!Array.isArray(data) && 'error' in data && typeof data.error === 'string') {
             const errorId = parentPath ? `${parentPath}/error` : 'error';
+            const error = inReadingLanguage(data.error, data.error_i18n);
             const errorChildren: ResultsTreeNode[] = [
                 {
                     id: `${errorId}/message`,
-                    label: data.error,
+                    label: error,
                     themeIcon: new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'))
                 }
             ];
@@ -343,10 +349,10 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 description: undefined,
                 passed: false,
                 isTest: false,
-                toolTip: data.error,
+                toolTip: error,
                 collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
                 themeIcon: new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground')),
-                message: data.error,
+                message: error,
                 children: errorChildren
             }];
         }
@@ -374,12 +380,13 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 };
 
                 if ("type" in item && "result" in item && "name" in item && "summary" in item) {
-                    treeValue.description += " " + item.type;
+                    treeValue.description += " " + testTypeLabel(item.type);
                 }
 
                 if ("resultMessage" in item) {
-                    treeValue.toolTip = item.resultMessage;
-                    treeValue.message = item.resultMessage;
+                    const message = inReadingLanguage(item.resultMessage, item.resultMessageI18n);
+                    treeValue.toolTip = message;
+                    treeValue.message = message;
                 }
 
                 return treeValue;
@@ -476,8 +483,8 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
                 let messageIdentifier: string | undefined = undefined;
 
                 if ('resultMessage' in data) {
-                    toolTipIdentifier = data.resultMessage;
-                    messageIdentifier = data.resultMessage;
+                    toolTipIdentifier = inReadingLanguage(data.resultMessage, data.resultMessageI18n);
+                    messageIdentifier = toolTipIdentifier;
                 }
 
                 if ('name' in data) {
@@ -507,6 +514,46 @@ export class TestResultsTreeDataProvider implements vscode.TreeDataProvider<Resu
             return treeItems;
         }
     }
+}
+
+/**
+ * A stored runner text in the UI language. Newer runners store each message
+ * per language (`resultMessageI18n`, `error_i18n`) next to the one in the
+ * language the run was started in; older results are shown as stored.
+ */
+export function inReadingLanguage(stored: any, translations: any): any {
+    const value = translations && typeof translations === 'object' ? translations[uiLanguage()] : undefined;
+    return typeof value === 'string' && value.trim() ? value : stored;
+}
+
+// The tester's test types (computor_types.testing.TypeEnum), as readers name them.
+const testTypeNames: Record<string, [string, string]> = {
+    variable: ['Variables', 'Variablen'],
+    graphics: ['Graphics', 'Grafik'],
+    structural: ['Structure', 'Struktur'],
+    linting: ['Style', 'Stil'],
+    exist: ['Files', 'Dateien'],
+    error: ['Errors', 'Fehler'],
+    warning: ['Warnings', 'Warnungen'],
+    help: ['Help text', 'Hilfetext'],
+    stdout: ['Output', 'Ausgabe'],
+    stderr: ['Error output', 'Fehlerausgabe'],
+    stdio: ['Input and output', 'Ein- und Ausgabe'],
+    exitcode: ['Exit code', 'Exit-Code'],
+    compile: ['Compilation', 'Kompilierung'],
+    runtime: ['Runtime', 'Laufzeit'],
+    wordcount: ['Word count', 'Wortzahl'],
+    paragraphcount: ['Paragraph count', 'Absatzzahl'],
+    section: ['Sections', 'Abschnitte'],
+    linkcount: ['Links', 'Links'],
+    keyword: ['Keywords', 'Schlüsselwörter'],
+    uniquewords: ['Distinct words', 'Verschiedene Wörter'],
+};
+
+/** A test collection's type in the UI language; an unknown type as the tester wrote it. */
+export function testTypeLabel(type: string): string {
+    const names = testTypeNames[type];
+    return names ? say(names[0], names[1]) : type;
 }
 
 /** What the details view currently shows: one Result Tree entry, or a hint. */
@@ -544,6 +591,14 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
     public clearDetails(hasResults: boolean): void {
         this.details = this.emptyDetails(hasResults);
         this.postDetails();
+    }
+
+    /**
+     * The view name from package.nls follows only the VS Code display
+     * language; the title set here follows the reading language.
+     */
+    public refreshTitle(): void {
+        if (this.view) this.view.title = say('Result Details', 'Ergebnisdetails');
     }
 
     private postDetails(): void {
@@ -593,7 +648,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         }
 
         if (parts.length === 0) {
-            parts.push('<span class="no-results">No further details for this entry.</span>');
+            parts.push(`<span class="no-results">${say('No further details for this entry.', 'Zu diesem Eintrag gibt es keine weiteren Details.')}</span>`);
         }
 
         return { label, body: parts.join('') };
@@ -605,6 +660,7 @@ export class TestResultsPanelProvider implements vscode.WebviewViewProvider {
         token: vscode.CancellationToken
     ): void {
         this.view = webviewView;
+        this.refreshTitle();
         const uiState = UiStateService.getInstanceOrUndefined();
         uiState?.setViewVisible(TestResultsPanelProvider.viewType, webviewView.visible);
         webviewView.onDidChangeVisibility(() => {

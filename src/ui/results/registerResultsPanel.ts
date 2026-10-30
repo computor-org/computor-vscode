@@ -4,7 +4,7 @@ import { TestResultService } from '../../services/TestResultService';
 import { UiStateService } from '../../services/UiStateService';
 import { ComputorApiService } from '../../services/ComputorApiService';
 import { showErrorWithSeverity } from '../../utils/errorDisplay';
-import { say } from '../../utils/uiLanguage';
+import { onDidChangeUiLanguage, say } from '../../utils/uiLanguage';
 import { notify } from '../../utils/notify';
 import { resolveResultPayload, resultCacheKey, resultScopeFor } from './resolveResultPayload';
 
@@ -45,6 +45,14 @@ export function registerResultsPanel(
   } });
 
   TestResultService.getInstance().setApiService(api);
+  // The package.nls view names follow only the VS Code display language.
+  const setTreeTitle = () => { treeView.title = say('Result Tree', 'Ergebnisliste'); };
+  setTreeTitle();
+  disposables.push(onDidChangeUiLanguage(() => {
+    setTreeTitle();
+    panelProvider.refreshTitle();
+    resultsTree.refreshLanguage();
+  }));
 
   disposables.push(vscode.commands.registerCommand('computor.results.open', async (results: any, resultId?: string, artifacts?: any[], opts?: { preserveFocus?: boolean }) => {
     try {

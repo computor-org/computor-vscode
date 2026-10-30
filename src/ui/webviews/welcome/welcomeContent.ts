@@ -1,7 +1,7 @@
 import { escapeHtml } from '../shared/webviewHelpers';
 import { HELP_PAGES } from '../../../utils/studentHelpPages';
 import { TUTOR_HELP_PAGES } from '../../../utils/tutorHelpPages';
-import { resolveContentLanguage } from '../../../utils/contentLanguage';
+import { accountLanguage, LanguageAccount } from '../../../utils/uiLanguage';
 import { courseStartPointer, hasStartedCourse } from '../../../utils/courseStart';
 import { contentIconSvg, ContentIconBadge, ContentIconCorner, ContentIconShape } from '../../../utils/contentIconSvg';
 import { codicon, CodiconName } from './codicons';
@@ -18,14 +18,13 @@ import type { CourseContentStudentList } from '../../../types/generated';
  * a desktop VS Code is one set of steps, shown both in the browser edition
  * and on a desktop that is not signed in yet (computor-org/issues#366).
  *
- * Free of `vscode` on purpose, like the help-page mappings it links to: the
+ * Free of `vscode` on purpose, apart from the shared language resolver: the
  * provider gathers the facts, this turns them into markup, and a plain Node
  * test can check every variant (student, tutor, lecturer, browser, desktop,
  * signed out) without an extension host.
  *
- * The page speaks German when the learner's profile language, or else the
- * launched course's language, is German (computor-org/issues#527), and
- * English otherwise.
+ * The page is in the reading language (uiLanguage), like the rest of the
+ * extension and the web app (computor-org/issues#527).
  */
 
 export type WelcomeLanguage = 'en' | 'de';
@@ -37,6 +36,8 @@ export interface WelcomeLaunch {
   startHere?: string;
   /** The learner has started, so `startHere` is the next open assignment (computor-org/issues#525). */
   resume?: boolean;
+  /** Joined through the public catalog: no lecturer or tutor answers, Lena does (computor-org/issues#527). */
+  selfRegistered?: boolean;
 
 }
 
@@ -75,7 +76,14 @@ export const workbenchNames = {
   'computor.student.courses': ['Courses', 'Kurse'],
   'computor.welcome': ['Welcome and Help', 'Willkommen und Hilfe'],
   'computor.changeRealmUrl': ['Change Backend URL', 'Backend-URL ändern'],
-  'computor.login': ['Login', 'Anmelden']
+  'computor.login': ['Login', 'Anmelden'],
+  'computor-student': ['Computor Student', 'Computor Studierende'],
+  'computor-tutor': ['Computor Tutor', 'Computor Tutor'],
+  'computor-lecturer': ['Computor Lecturer', 'Computor Lehrende'],
+  'computor.tutor.filters': ['Courses & Members', 'Kurse und Teilnehmende'],
+  'computor.tutor.courses': ['Courses', 'Kurse'],
+  'computor.lecturer.courses': ['Courses', 'Kurse'],
+  'computor.lecturer.examples': ['Examples', 'Beispiele']
 } as const;
 
 export type WorkbenchName = keyof typeof workbenchNames;
@@ -178,7 +186,7 @@ interface CourseLike {
 
 /** The slice of ComputorApiService the page reads. Every call may fail on its own. */
 export interface WelcomeApi {
-  getUserAccount(): Promise<{ given_name?: string | null; profile?: { language_code?: string | null } | null } | undefined>;
+  getUserAccount(): Promise<({ given_name?: string | null } & LanguageAccount) | undefined>;
   getUserViews(): Promise<string[]>;
   getStudentCourses(): Promise<CourseLike[]>;
   getTutorCourses(): Promise<CourseLike[]>;
@@ -186,6 +194,7 @@ export interface WelcomeApi {
   getInstanceInfo(): Promise<{ web_url?: string | null } | undefined>;
   getCourse(courseId: string): Promise<{ title?: string | null; path?: string; language_code?: string | null } | undefined>;
   getStudentCourseContents(courseId: string): Promise<CourseContentStudentList[]>;
+  getOwnSelfEnrollment?(courseId: string): Promise<{ self_registered?: boolean } | undefined>;
 }
 
 export type WelcomeFacts = Pick<WelcomeModel, 'signedIn' | 'givenName' | 'roles' | 'courses' | 'webUrl' | 'language' | 'launch'>;
@@ -215,17 +224,18 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedC
   const roles = roleOrder.filter(role => views.includes(role));
   const none = Promise.resolve([] as CourseLike[]);
 
-  const [account, student, tutor, lecturer, info, launchedCourse, contents] = await Promise.all([
+  const [account, student, tutor, lecturer, info, launchedCourse, contents, enrollment] = await Promise.all([
     settle(api.getUserAccount(), undefined),
     roles.includes('student') ? settle(api.getStudentCourses(), [] as CourseLike[]) : none,
     roles.includes('tutor') ? settle(api.getTutorCourses(), [] as CourseLike[]) : none,
     roles.includes('lecturer') ? settle(api.getLecturerCourses(), [] as CourseLike[]) : none,
     settle(api.getInstanceInfo(), undefined),
     launchedCourseId ? settle(api.getCourse(launchedCourseId), undefined) : undefined,
-    launchedCourseId ? settle(api.getStudentCourseContents(launchedCourseId), [] as CourseContentStudentList[]) : []
+    launchedCourseId ? settle(api.getStudentCourseContents(launchedCourseId), [] as CourseContentStudentList[]) : [],
+    launchedCourseId && api.getOwnSelfEnrollment ? settle(api.getOwnSelfEnrollment(launchedCourseId), undefined) : undefined
   ]);
 
-  const language = welcomeLanguage(account?.profile?.language_code, launchedCourse?.language_code);
+  const language = accountLanguage(account);
   const courses = mergeCourses({ student, tutor, lecturer });
   const launchedTitle = launchedCourse?.title?.trim() || launchedCourse?.path?.trim()
     || courses.find(course => course.id === launchedCourseId)?.title;
@@ -239,14 +249,10 @@ export async function collectWelcomeFacts(api: WelcomeApi | undefined, launchedC
     launch: launchedCourseId && launchedTitle ? {
       title: launchedTitle,
       startHere: courseStartPointer(contents, language),
-      resume: hasStartedCourse(contents)
+      resume: hasStartedCourse(contents),
+      ...(enrollment?.self_registered ? { selfRegistered: true } : {})
     } : undefined
   };
-}
-
-/** The learner's own choice wins, then the launched course's language (as for the course landing). */
-export function welcomeLanguage(userLanguage?: string | null, courseLanguage?: string | null): WelcomeLanguage {
-  return resolveContentLanguage(userLanguage, courseLanguage).startsWith('de') ? 'de' : 'en';
 }
 
 /** Mirror the server's course order when combining separately ordered role lists. */
@@ -356,6 +362,11 @@ function sayer(model: Pick<WelcomeModel, 'language'>): Say {
   return (en, de) => (model.language === 'de' ? de : en);
 }
 
+/** Tutors and lecturers hold the student role too; their page opens on teaching (computor-org/issues#541). */
+function isStaff(model: Pick<WelcomeModel, 'roles'>): boolean {
+  return model.roles.includes('tutor') || model.roles.includes('lecturer');
+}
+
 function helpButton(page: string, label: string): string {
   return `<button type="button" class="btn secondary sm" data-action="help" data-page="${escapeHtml(page)}">${escapeHtml(label)}</button>`;
 }
@@ -401,8 +412,11 @@ function renderHero(model: WelcomeModel, say: Say): string {
     ${logo}
     <div>
       <h1>${welcomeTitle(model)}${name}!</h1>
-      <p>${say('Your courses inside VS Code: read the task, write and test your code, and hand it in.',
-        'Deine Kurse in VS Code: Aufgabe lesen, Code schreiben und testen, Lösung abgeben.')}</p>
+      <p>${isStaff(model)
+        ? say('Your teaching inside VS Code: review, test and grade what your students hand in, and see the course as they see it.',
+          'Deine Lehre in VS Code: Abgaben deiner Studierenden durchsehen, testen und bewerten und den Kurs so sehen, wie sie ihn sehen.')
+        : say('Your courses inside VS Code: read the task, write and test your code, and hand it in.',
+          'Deine Kurse in VS Code: Aufgabe lesen, Code schreiben und testen, Lösung abgeben.')}</p>
     </div>
   </div>`;
 }
@@ -444,7 +458,8 @@ function renderCourses(model: WelcomeModel, say: Say): string {
 
   // A launched workspace already shows the Student view; offering to open it
   // again leads nowhere (computor-org/issues#527).
-  const roles = model.launch ? model.roles.filter(role => role !== 'student') : model.roles;
+  const offered = model.launch ? model.roles.filter(role => role !== 'student') : model.roles;
+  const roles = isStaff(model) ? [...offered.filter(role => role !== 'student'), ...offered.filter(role => role === 'student')] : offered;
   const buttons = roles.map((role, index) => viewButton(role, index === 0, say)).join('');
   const intro = model.courses.length === 1
     ? say('Welcome to your course!', 'Willkommen in deinem Kurs!')
@@ -502,12 +517,18 @@ function renderRowPicture(model: Pick<WelcomeModel, 'rowPictureSvg' | 'workbench
     </figure>`;
 }
 
-/** Course questions use Messages; technical problems use support tickets. */
+/**
+ * Course questions use Messages; technical problems use support tickets. A
+ * self-enrolled learner has no lecturer or tutor, so Lena is named instead.
+ */
 function renderAskForHelp(model: WelcomeModel, say: Say): string {
   const stuck = `<strong>${say('Stuck?', 'Kommst du nicht weiter?')}</strong>`;
   const messages = action('comment-discussion', namer(model)('computor.student.showMessages'));
-  const ask = say(`${stuck} Choose ${messages} on an assignment row to ask for help in this course.`,
-    `${stuck} Wähle ${messages} an einer Aufgabenzeile, um in diesem Kurs um Hilfe zu bitten.`);
+  const ask = model.launch?.selfRegistered
+    ? say(`${stuck} Ask Lena, the AI tutor: choose ${messages} on an assignment row and write <code>@lena</code> in your message. She gives hints rather than complete solutions.`,
+      `${stuck} Frag Lena, die KI-Tutorin: Wähle ${messages} an einer Aufgabenzeile und schreib <code>@lena</code> in deine Nachricht. Sie gibt dir Hinweise statt fertiger Lösungen.`)
+    : say(`${stuck} Choose ${messages} on an assignment row to ask for help in this course.`,
+      `${stuck} Wähle ${messages} an einer Aufgabenzeile, um in diesem Kurs um Hilfe zu bitten.`);
   if (!model.signedIn) return `<p>${ask}</p>`;
 
   const ticket = say('For a technical problem with Computor itself, open a support ticket.',
@@ -539,8 +560,8 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
   openCourse[1] += description;
   const steps: Array<[string, string]> = [
     [say('Open the Student view.', 'Öffne die Student-Ansicht.'),
-      say(`Click the book ${codicon('book')} <strong>Computor Student</strong> in the Activity Bar on the far left. In a workspace started for a course, it is already open.`,
-        `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>Computor Student</strong>. In einer Arbeitsumgebung, die für einen Kurs gestartet wurde, ist sie schon offen.`)],
+      say(`Click the book ${codicon('book')} <strong>${n('computor-student')}</strong> in the Activity Bar on the far left. In a workspace started for a course, it is already open.`,
+        `Klicke in der Aktivitätsleiste ganz links auf das Buch ${codicon('book')} <strong>${n('computor-student')}</strong>. In einer Arbeitsumgebung, die für einen Kurs gestartet wurde, ist sie schon offen.`)],
     openCourse,
     [say('Read the task.', 'Lies die Aufgabe.'),
       say(`Click an assignment's title to open its instructions and Python source: code on the left and instructions on the right on a desktop, or tabs on a narrow screen. On first use, Computor may prepare your personal course repository, which takes a moment. For the instructions alone, choose ${action('open-preview', n('computor.student.showPreview'))}.`,
@@ -559,7 +580,13 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
         `Wenn du mit dem Ergebnis zufrieden bist, wähle die Wolke mit dem Pfeil ${action('cloud-upload', n('computor.student.submitAssignment'))}. Damit gibst du die Aufgabe zur Bewertung ab, und zwar in der Fassung, die du zuletzt getestet hast. Auch die Abgaben können begrenzt sein.`)]
   ];
 
-  return section('welcome-tutorial', say('Start working on an assignment', 'Mit einer Aufgabe beginnen'), `
+  const staff = isStaff(model);
+  const title = staff ? say('How students work', 'So arbeiten Studierende') : say('Start working on an assignment', 'Mit einer Aufgabe beginnen');
+  const lead = staff
+    ? say('The steps your students follow, as this page shows them to a student. ',
+      'Die Schritte, denen deine Studierenden folgen, so wie diese Seite sie ihnen zeigt. ')
+    : '';
+  return section('welcome-tutorial', title, `
     ${renderRowOnly(model, say)}
     <p class="welcome-steps-lead"><strong>${say('Step by step', 'Schritt für Schritt')}</strong></p>
     <ol class="welcome-steps">
@@ -570,7 +597,7 @@ function renderTutorial(model: WelcomeModel, say: Say): string {
     ${renderAskForHelp(model, say)}
     <p class="text-muted">${say('Not every course uses every step. The assignment row shows the actions available in your course.',
       'Nicht jeder Kurs nutzt jeden Schritt. Die Aufgabenzeile zeigt dir, welche Aktionen dein Kurs anbietet.')}</p>`,
-  say('Every assignment is a row in the Student view. Point to an assignment or focus its row to show its action icons. The same actions are available in the context menu.',
+  lead + say('Every assignment is a row in the Student view. Point to an assignment or focus its row to show its action icons. The same actions are available in the context menu.',
     'Jede Aufgabe ist eine Zeile in der Student-Ansicht. Zeige auf eine Aufgabe oder fokussiere ihre Zeile, damit ihre Aktionssymbole erscheinen. Dieselben Aktionen findest du im Kontextmenü.'));
 }
 
@@ -761,11 +788,14 @@ function renderStaff(model: WelcomeModel, say: Say): string {
   const isTutor = model.roles.includes('tutor');
   const isLecturer = model.roles.includes('lecturer');
   if (!isTutor && !isLecturer) return '';
+  const n = namer(model);
+  const tutorView = n('computor-tutor');
+  const lecturerView = n('computor-lecturer');
 
   const icons = [
-    isTutor ? say('<strong>Computor Tutor</strong> for reviewing and grading', '<strong>Computor Tutor</strong> zum Durchsehen und Bewerten') : '',
-    isLecturer ? say('<strong>Computor Lecturer</strong> for building and releasing course content',
-      '<strong>Computor Lecturer</strong> zum Erstellen und Freigeben von Kursinhalten') : ''
+    isTutor ? say(`<strong>${tutorView}</strong> for reviewing and grading`, `<strong>${tutorView}</strong> zum Durchsehen und Bewerten`) : '',
+    isLecturer ? say(`<strong>${lecturerView}</strong> for building and releasing course content`,
+      `<strong>${lecturerView}</strong> zum Erstellen und Freigeben von Kursinhalten`) : ''
   ].filter(Boolean).join(say(', and ', ' und '));
 
   const rows: Array<[string, string]> = [
@@ -787,7 +817,35 @@ function renderStaff(model: WelcomeModel, say: Say): string {
     );
   }
 
-  return section('welcome-staff', say('For tutors and lecturers', 'Für Tutorinnen, Tutoren und Lehrende'), linkRows(rows),
+  const steps: Array<[string, string]> = [
+    ...(isTutor ? [
+      [say('Open the Tutor view.', 'Öffne die Tutor-Ansicht.'),
+        say(`Click <strong>${tutorView}</strong> in the Activity Bar on the far left.`,
+          `Klicke in der Aktivitätsleiste ganz links auf <strong>${tutorView}</strong>.`)],
+      [say('Pick a student.', 'Wähle eine Person aus.'),
+        say(`Under <strong>${escapeHtml(n('computor.tutor.filters'))}</strong>, click a course and then a member; their work appears under <strong>${n('computor.tutor.courses')}</strong>. A 📝 behind a name counts submissions you have not reviewed yet, a 🔔 unread messages.`,
+          `Klicke unter <strong>${escapeHtml(n('computor.tutor.filters'))}</strong> auf einen Kurs und dann auf eine Person, deren Arbeit darauf unter <strong>${n('computor.tutor.courses')}</strong> erscheint. Ein 📝 hinter einem Namen zählt die Abgaben, die du noch nicht durchgesehen hast, ein 🔔 die ungelesenen Nachrichten.`)],
+      [say('Review and grade.', 'Prüfe und bewerte.'),
+        say('Click an assignment to download the latest submission and the reference solution. Test it, set the grade with the grading icon on its row, and say in the assignment\'s messages what to change.',
+          'Klicke auf eine Aufgabe, um die letzte Abgabe und die Musterlösung herunterzuladen. Teste die Abgabe, vergib mit dem Bewertungssymbol in ihrer Zeile die Bewertung und schreib in den Nachrichten zur Aufgabe, was noch zu ändern ist.')]
+    ] as Array<[string, string]> : []),
+    ...(isLecturer ? [
+      [say('Build the course.', 'Baue den Kurs auf.'),
+        say(`In <strong>${lecturerView}</strong>, <strong>${n('computor.lecturer.courses')}</strong> holds your courses with their content, content types and groups, and <strong>${n('computor.lecturer.examples')}</strong> the library of reusable assignments.`,
+          `In <strong>${lecturerView}</strong> findest du unter <strong>${n('computor.lecturer.courses')}</strong> deine Kurse mit ihren Inhalten, Inhaltstypen und Gruppen und unter <strong>${n('computor.lecturer.examples')}</strong> die Bibliothek wiederverwendbarer Aufgaben.`)]
+    ] as Array<[string, string]> : [])
+  ];
+  const students = model.roles.includes('student')
+    ? `<p>${say('Your account has the Student view too. <em>How students work</em>, under <em>More</em>, walks through it as your students meet it.',
+      'Dein Konto hat auch die Student-Ansicht. Wie deine Studierenden sie kennenlernen, zeigt <em>So arbeiten Studierende</em> unter <em>Mehr</em>.')}</p>`
+    : '';
+
+  return section('welcome-staff', say('Teaching with Computor', 'Lehren mit Computor'), `
+    <ol class="welcome-steps">
+      ${steps.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
+    </ol>
+    ${linkRows(rows)}
+    ${students}`,
     say(`Teaching has its own icons in the Activity Bar: ${icons}.`, `Für die Lehre gibt es eigene Symbole in der Aktivitätsleiste: ${icons}.`));
 }
 
@@ -827,14 +885,18 @@ export function renderWelcomeBody(model: WelcomeModel): string {
   // Before sign-in the role is unknown, and most people opening Computor are
   // students — so the tutorial shows unless the account is known not to be one.
   const showTutorial = !model.signedIn || model.roles.includes('student');
+  const students = `
+    ${showTutorial ? renderTutorial(model, say) : ''}
+    ${showTutorial ? renderMarks(say) : ''}
+    ${renderHelp(say, namer(model))}`;
+  // Tutors and lecturers open on teaching; how students work follows as an add-on (computor-org/issues#541).
+  const staff = isStaff(model);
   return `<div class="page-root welcome-page"${model.language === 'de' ? ' lang="de"' : ''}>
     ${renderHero(model, say)}
     ${renderCourses(model, say)}
-    ${showTutorial ? renderTutorial(model, say) : ''}
-    ${showTutorial ? renderMarks(say) : ''}
-    ${renderHelp(say, namer(model))}
+    ${staff ? renderStaff(model, say) : students}
     ${renderMoreHeading(say)}
-    ${renderStaff(model, say)}
+    ${staff ? students : ''}
     ${renderGitColours(say)}
     ${renderOtherEdition(model, say)}
     ${renderCredits(model, say)}

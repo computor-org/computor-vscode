@@ -11,6 +11,10 @@
  * and so the set of page names has one home.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+import { uiLanguage } from './uiLanguage';
+
 export const HELP_PAGES = {
   course: 'student-course.md',
   unit: 'student-unit.md',
@@ -57,4 +61,17 @@ export function helpPageFor(contextValue?: unknown): HelpPage {
   }
 
   return HELP_PAGES.course;
+}
+
+/**
+ * A bundled help page in the reading language: `page_de.md` next to the
+ * English `page.md`, and the English page while a German one is missing.
+ */
+export function helpPagePath(extensionPath: string, page: string, language: 'de' | 'en' = uiLanguage()): string {
+  const english = path.join(extensionPath, 'docs', 'help', page);
+  if (language !== 'de') {
+    return english;
+  }
+  const german = english.replace(/\.md$/, '_de.md');
+  return fs.existsSync(german) ? german : english;
 }

@@ -181,13 +181,13 @@ describe('welcome page content', () => {
       expect(html).to.contain('<code>●</code> <code>↑</code> <code>⚠</code>');
     });
 
-    it('keeps the Git colours, the other edition and the staff help below a More heading', () => {
-      const html = renderWelcomeBody(model({ roles: ['student', 'tutor'] }));
+    it('keeps the Git colours and the other edition below a More heading', () => {
+      const html = renderWelcomeBody(model());
 
       const more = html.indexOf('id="welcome-more"');
       expect(more).to.be.greaterThan(html.indexOf('id="welcome-marks"'));
       expect(more).to.be.greaterThan(html.indexOf('id="welcome-help"'));
-      for (const below of ['welcome-staff', 'welcome-git-colours', 'welcome-browser', 'welcome-credits']) {
+      for (const below of ['welcome-git-colours', 'welcome-browser', 'welcome-credits']) {
         expect(html.indexOf(`id="${below}"`), below).to.be.greaterThan(more);
       }
     });
@@ -321,6 +321,42 @@ describe('welcome page content', () => {
       expect(html).to.contain('data-page="tutor-course.md"');
       expect(html).to.contain('data-page="tutor-assignment.md"');
       expect(html).to.not.contain('data-link="lecturerGuide"');
+    });
+
+    it('opens on the teaching views and keeps how students work below More (computor-org/issues#541)', () => {
+      const html = renderWelcomeBody(model({ roles: ['student', 'tutor'] }));
+
+      const staff = html.indexOf('id="welcome-staff"');
+      const more = html.indexOf('id="welcome-more"');
+      expect(staff).to.be.greaterThan(html.indexOf('id="welcome-courses"'));
+      expect(more).to.be.greaterThan(staff);
+      for (const below of ['welcome-tutorial', 'welcome-marks', 'welcome-help']) {
+        expect(html.indexOf(`id="${below}"`), below).to.be.greaterThan(more);
+      }
+      expect(html).to.contain('How students work');
+      expect(html).to.not.contain('Start working on an assignment');
+      expect(html).to.contain('Courses &amp; Members');
+      expect(html).to.contain('class="btn" data-action="view" data-role="tutor"');
+      expect(html).to.contain('class="btn secondary" data-action="view" data-role="student"');
+    });
+
+    it('in German, introduces the teaching views and how students work', () => {
+      const html = renderWelcomeBody(model({ roles: ['student', 'tutor', 'lecturer'], language: 'de' }));
+
+      expect(html).to.contain('So arbeiten Studierende');
+      expect(html).to.not.contain('Mit einer Aufgabe beginnen');
+      expect(html).to.contain('Lehrende');
+      expect(html).to.not.contain('How students work');
+      expect(html.indexOf('id="welcome-staff"')).to.be.lessThan(html.indexOf('id="welcome-more"'));
+    });
+
+    it('names the teaching views as a German VS Code shows them', () => {
+      const html = renderWelcomeBody(model({ roles: ['tutor', 'lecturer'], language: 'de', workbenchLanguage: 'de' }));
+
+      expect(html).to.contain('<strong>Kurse und Teilnehmende</strong>');
+      expect(html).to.contain('<strong>Computor Lehrende</strong>');
+      expect(html).to.not.contain('Courses &amp; Members');
+      expect(html).to.not.contain('Computor Lecturer');
     });
 
     it('adds the lecturer guides for a lecturer', () => {
@@ -521,8 +557,11 @@ describe('collectWelcomeFacts', () => {
     expect(facts.language).to.equal('en');
   });
 
-  it('describes the launched course in its language, with where to start', async () => {
-    const facts = await collectWelcomeFacts(api(), 'c1');
+  it('describes the launched course in the reading language, not the course\'s, with where to start', async () => {
+    expect((await collectWelcomeFacts(api(), 'c1')).language).to.equal('en');
+    const facts = await collectWelcomeFacts(api({
+      getUserAccount: async () => ({ given_name: 'Ada', effective_language: 'de' })
+    }), 'c1');
 
     expect(facts.language).to.equal('de');
     expect(facts.launch).to.deep.equal({
@@ -532,16 +571,38 @@ describe('collectWelcomeFacts', () => {
     });
   });
 
-  it('keeps course help neutral for self-enrolment, staffed and unknown course metadata', async () => {
-    for (const publicCourse of [true, false, undefined]) {
+  it('keeps course help neutral unless the learner enrolled themselves', async () => {
+    for (const [publicCourse, enrollment] of [
+      [true, async () => ({ self_registered: false })],
+      [false, async () => undefined],
+      [undefined, async () => { throw new Error('404'); }]
+    ] as const) {
       const facts = await collectWelcomeFacts(api({
-        getCourse: async () => ({ title: 'Grundlagen', language_code: 'en', public: publicCourse })
+        getCourse: async () => ({ title: 'Grundlagen', language_code: 'en', public: publicCourse }),
+        getOwnSelfEnrollment: enrollment
       }), 'c1');
       const html = renderWelcomeBody(model(facts));
       expect(html).to.contain('to ask for help in this course.');
       expect(html).to.not.contain('@lena');
       expect(html).to.not.contain('human tutors');
     }
+  });
+
+  it('names Lena, not lecturers and tutors, for a self-enrolled course, in German for a German reader', async () => {
+    const enrolled = api({ getOwnSelfEnrollment: async () => ({ self_registered: true }) });
+    const english = renderWelcomeBody(model(await collectWelcomeFacts(enrolled, 'c1')));
+    expect(english).to.contain('Ask Lena, the AI tutor');
+    expect(english).to.contain('<code>@lena</code>');
+    expect(english).to.not.contain('ask for help in this course');
+
+    const german = renderWelcomeBody(model(await collectWelcomeFacts(api({
+      getUserAccount: async () => ({ profile: { language_code: 'de' } }),
+      getOwnSelfEnrollment: async () => ({ self_registered: true })
+    }), 'c1')));
+    expect(german).to.contain('Frag Lena, die KI-Tutorin');
+    expect(german).to.contain('<code>@lena</code>');
+    expect(german).to.contain('Dein Kurs ist schon geöffnet.');
+    expect(german).to.not.contain('Stuck?');
   });
 
   it('lets the learner\'s own language win over the course language', async () => {
@@ -700,14 +761,14 @@ describe('WelcomeWebviewProvider', () => {
     expect(latestHtml()).to.contain('id="welcome-browser"');
   });
 
-  it('before sign-in, follows the display language of VS Code', async () => {
+  it('before sign-in, follows the display language of VS Code, and after it the account', async () => {
     env.language = 'de-AT';
     await new WelcomeWebviewProvider(context, { api: () => undefined, backendUrl: async () => undefined }).open();
     expect(latestHtml()).to.contain('Backend-URL festlegen');
     expect(webviewPanels[webviewPanels.length - 1]!.title).to.equal('Willkommen bei Computor');
 
     webviewPanels.length = 0;
-    await provider().open();
+    await provider({ ...fakeApi, getUserAccount: async () => ({ given_name: 'Ada', effective_language: 'en' }) }).open();
     expect(latestHtml()).to.contain('Welcome to Computor, Ada!');
   });
 
@@ -746,10 +807,12 @@ describe('WelcomeWebviewProvider', () => {
     expect(latestHtml()).to.contain('Programming in Physics');
   });
 
-  it('speaks to a course launched into the open page, in place and in its language', async () => {
+  it('speaks to a course launched into the open page, in place and in the reading language', async () => {
     let launched: string | undefined;
+    let language: string | undefined;
     const page = new WelcomeWebviewProvider(context, {
-      api: () => fakeApi, backendUrl: async () => undefined, launchedCourseId: () => launched
+      api: () => ({ ...fakeApi, getUserAccount: async () => ({ given_name: 'Ada', profile: { language_code: language } }) }),
+      backendUrl: async () => undefined, launchedCourseId: () => launched
     });
     await page.open();
     expect(latestHtml()).to.contain('Welcome to Computor, Ada!');
@@ -757,6 +820,11 @@ describe('WelcomeWebviewProvider', () => {
     launched = 'c1';
     await page.refresh();
     expect(webviewPanels).to.have.length(1);
+    expect(webviewPanels[0]!.title).to.equal('Welcome to Computor', 'the German course alone does not switch the page');
+    expect(latestHtml()).to.contain('<strong>Your course is already open.</strong>');
+
+    language = 'de';
+    await page.refresh();
     expect(webviewPanels[0]!.title).to.equal('Willkommen bei Computor');
     expect(latestHtml()).to.contain('<strong>Dein Kurs ist schon geöffnet.</strong>');
   });
@@ -789,10 +857,10 @@ describe('welcome page contributions', () => {
 
   it('contributes the command under the Computor category', () => {
     const command = pkg.contributes.commands.find((c: { command: string }) => c.command === 'computor.welcome');
-    expect(command?.category).to.equal('Computor');
     const key = command.title.replace(/^%|%$/g, '');
     const en = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.json'), 'utf8'));
     const de = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.nls.de.json'), 'utf8'));
+    expect(en[command?.category.replace(/^%|%$/g, '')]).to.equal('Computor');
     expect(en[key]).to.equal('Welcome and Help');
     expect(de[key]).to.equal('Willkommen und Hilfe');
   });

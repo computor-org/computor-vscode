@@ -4,18 +4,18 @@ import * as os from 'os';
 import * as path from 'path';
 import { parse } from 'jsonc-parser';
 import { readingLanguage } from '../../src/services/WorkspaceCourseLanding';
-import { StudentCommands } from '../../src/commands/StudentCommands';
 import { collectWelcomeFacts } from '../../src/ui/webviews/welcome/welcomeContent';
 import { descriptionInLanguage } from '../../src/utils/contentLanguage';
 import { WorkspaceLaunchContext } from '../../src/services/WorkspaceLaunchContextService';
 import { WorkspaceDisplayLocale, workspaceLocaleFile, withDisplayLocale } from '../../src/services/WorkspaceDisplayLocale';
+import { uiLanguage } from '../../src/utils/uiLanguage';
 
 describe('WorkspaceDisplayLocale', () => {
   let directory: string;
   let argvFile: string;
   let language: string | undefined;
   let launch: WorkspaceLaunchContext | null;
-  let resolved: (string | null | undefined)[];
+  let effective: string | undefined;
   let reloads: number;
   let calls: number;
   let values: Map<string, unknown>;
@@ -26,7 +26,7 @@ describe('WorkspaceDisplayLocale', () => {
     argvFile = path.join(directory, 'argv.json');
     language = 'de';
     launch = null;
-    resolved = [];
+    effective = undefined;
     reloads = 0;
     calls = 0;
     values = new Map();
@@ -41,7 +41,6 @@ describe('WorkspaceDisplayLocale', () => {
     const instance = new WorkspaceDisplayLocale({
       argvFile, displayLanguage, fetchLanguage,
       fetchLaunchContext: async () => launch,
-      onLanguage: value => { resolved.push(value); },
       state: {
         get: <T>(key: string) => values.get(key) as T | undefined,
         update: async (key, value) => { values.set(key, value); }
@@ -75,7 +74,7 @@ describe('WorkspaceDisplayLocale', () => {
     await service('en-US').poll();
     expect(parse(await fs.readFile(argvFile, 'utf8')).locale).to.equal('de');
     expect(reloads).to.equal(1);
-    expect([...values.values()]).to.contain('de');
+    expect([...values.values()]).to.deep.include({ locale: 'de', display: 'en-US' });
   });
 
   it('persists English ahead of a German browser even when the editor already uses English', async () => {
@@ -125,18 +124,46 @@ describe('WorkspaceDisplayLocale', () => {
       expires_at: new Date(Date.now() + 60000).toISOString(), ui_language: uiLanguage };
   }
 
-  it('uses the web launch language for Automatic and retains it across reload and context expiry', async () => {
+  it('uses the web launch language for Automatic in this activation only, without storing it', async () => {
     language = '';
     launch = context('de');
-    await service('en').poll();
+    const first = service('en');
+    await first.poll();
     expect(parse(await fs.readFile(argvFile, 'utf8')).locale).to.equal('de');
     expect(reloads).to.equal(1);
+    expect(uiLanguage()).to.equal('de');
     launch = null;
-    await service('en').poll(); // Failed reload still cannot loop after context expiry.
-    expect(reloads).to.equal(1);
+    await first.poll(); // An expired context does not flip this activation back.
+    expect(uiLanguage()).to.equal('de');
+    first.dispose();
     await service('de').poll();
-    expect(resolved).to.deep.equal(['de', 'de', 'de']);
-    expect(parse(await fs.readFile(argvFile, 'utf8')).locale).to.equal('de');
+    expect(reloads).to.equal(1);
+    expect([...values.keys()]).to.deep.equal(['computor.workspaceDisplayLocale.reloadAttempt']);
+    expect(uiLanguage()).to.equal('en'); // The stub's display language: no stored launch language.
+  });
+
+  it('forgets the launch language that earlier versions stored', async () => {
+    language = '';
+    values.set('computor.workspaceDisplayLocale.launchLanguage', 'de');
+    await service('en').poll();
+    expect(values.get('computor.workspaceDisplayLocale.launchLanguage')).to.equal(undefined);
+    expect(reloads).to.equal(0);
+    let exists = true;
+    try { await fs.access(argvFile); } catch { exists = false; }
+    expect(exists).to.equal(false);
+    expect(uiLanguage()).to.equal('en');
+  });
+
+  it('tries a failed reload again once the display language has changed since', async () => {
+    values.set('computor.workspaceDisplayLocale.reloadAttempt', 'de'); // as earlier versions stored it
+    await service('en').poll();
+    expect(reloads).to.equal(1);
+    await service('en').poll();
+    expect(reloads).to.equal(1);
+    await service('fr').poll();
+    expect(reloads).to.equal(2);
+    await service('fr').poll();
+    expect(reloads).to.equal(2);
   });
 
   it('accepts a later launch language for Automatic without changing the profile preference', async () => {
@@ -148,7 +175,7 @@ describe('WorkspaceDisplayLocale', () => {
     await instance.poll();
     expect(language).to.equal('');
     expect(reloads).to.equal(1);
-    expect(resolved).to.deep.equal(['de', 'en']);
+    expect(uiLanguage()).to.equal('en');
     expect(parse(await fs.readFile(argvFile, 'utf8')).locale).to.equal('en');
   });
 
@@ -167,7 +194,6 @@ describe('WorkspaceDisplayLocale', () => {
     language = 'de';
     await service('en').poll();
     expect(reloads).to.equal(2);
-    expect(resolved).to.deep.equal(['de', 'en', 'de']);
   });
 
   it('does not derive Automatic from an expired or malformed launch', async () => {
@@ -183,7 +209,7 @@ describe('WorkspaceDisplayLocale', () => {
 
   async function assertReadingLanguage(expected: 'de' | 'en', courseLanguage: string | undefined): Promise<void> {
     const api = {
-      getUserAccount: async () => ({ profile: { language_code: language } }),
+      getUserAccount: async () => ({ profile: { language_code: language }, effective_language: effective }),
       getCourse: async () => ({ title: 'Course', language_code: courseLanguage }),
       getUserViews: async () => ['student'],
       getStudentCourses: async () => [],
@@ -192,14 +218,11 @@ describe('WorkspaceDisplayLocale', () => {
       getInstanceInfo: async () => undefined,
       getStudentCourseContents: async () => []
     };
-    const commands = Object.create(StudentCommands.prototype) as any;
-    commands.apiService = api;
     const languages = [
-      await readingLanguage(api as any, 'course-1'),
-      await commands.contentLanguage('course-1'),
+      await readingLanguage(api),
       (await collectWelcomeFacts(api, 'course-1')).language
     ];
-    expect(languages).to.deep.equal([expected, expected, expected]);
+    expect(languages).to.deep.equal([expected, expected]);
     for (const selected of languages) {
       expect(descriptionInLanguage('<!-- lang: de -->\nDeutsch\n<!-- lang: en -->\nEnglish', selected!))
         .to.equal(expected === 'de' ? 'Deutsch' : 'English');
@@ -208,14 +231,16 @@ describe('WorkspaceDisplayLocale', () => {
 
   for (const target of ['de', 'en'] as const) {
     const opposite = target === 'de' ? 'en' : 'de';
-    it(`uses shared ${target} launch language for new and returning Automatic readers`, async () => {
+    it(`uses shared ${target} launch language for a new Automatic reader and the display language after the reload`, async () => {
       language = '';
+      effective = opposite; // what the backend derives from the workspace's display language
       launch = context(target);
       const first = service(opposite);
       await first.poll();
       await assertReadingLanguage(target, opposite);
       first.dispose();
       launch = null;
+      effective = target; // the reload switched the display language
       await service(target).poll();
       await assertReadingLanguage(target, opposite);
     });
@@ -227,10 +252,22 @@ describe('WorkspaceDisplayLocale', () => {
       await assertReadingLanguage(target, opposite);
     });
 
-    it(`preserves ${target} course fallback without a managed launch and explicit profile precedence`, async () => {
+    it(`never reads a ${target} course in its own language against the ${opposite} reading language`, async () => {
       language = '';
-      await assertReadingLanguage(target, target);
+      effective = opposite;
+      await assertReadingLanguage(opposite, target);
       language = target;
+      await assertReadingLanguage(target, opposite);
+    });
+    // Start and open from the workspace list names no course; the launch
+    // still carries the browser's language, against the workspace's own.
+    it(`switches the editor and welcome page to ${target} for a launch without a course`, async () => {
+      language = '';
+      effective = opposite; // derived from the workspace's display language
+      launch = { request_id: 'language-only', expires_at: new Date(Date.now() + 60000).toISOString(), ui_language: target };
+      await service(opposite).poll();
+      expect(parse(await fs.readFile(argvFile, 'utf8')).locale).to.equal(target);
+      expect(reloads).to.equal(1);
       await assertReadingLanguage(target, opposite);
     });
   }

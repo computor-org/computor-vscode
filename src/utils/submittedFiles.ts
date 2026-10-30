@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { createSimpleGit } from '../git/simpleGitFactory';
 import type { ComputorApiService } from '../services/ComputorApiService';
+import { say } from './uiLanguage';
 
 /**
  * Which files of an assignment were part of an official submission.
@@ -159,12 +160,12 @@ export function submittedWarning(check: SubmittedCheck, isDirectory: boolean): s
     return undefined;
   }
   if (!isDirectory) {
-    return 'This file was part of a submission you already handed in.';
+    return say('This file was part of a submission you already handed in.', 'Diese Datei gehört zu einer Abgabe, die du bereits eingereicht hast.');
   }
   const count = check.paths.length;
   return count === 1
-    ? `It contains ${check.paths[0]}, which was part of a submission you already handed in.`
-    : `It contains ${count} files that were part of a submission you already handed in.`;
+    ? say(`It contains ${check.paths[0]}, which was part of a submission you already handed in.`, `Er enthält ${check.paths[0]}, das zu einer Abgabe gehört, die du bereits eingereicht hast.`)
+    : say(`It contains ${count} files that were part of a submission you already handed in.`, `Er enthält ${count} Dateien, die zu einer Abgabe gehören, die du bereits eingereicht hast.`);
 }
 
 /** Forget everything cached — for tests, and after a repository is re-cloned. */

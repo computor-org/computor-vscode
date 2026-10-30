@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { ComputorApiService } from '../services/ComputorApiService';
 import type { DocumentsTreeProvider } from '../ui/tree/lecturer-documents/DocumentsTreeProvider';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import { revealUri } from '../utils/reveal';
 import {
   DocumentsFileItem,
@@ -156,7 +157,7 @@ export class DocumentsCommands {
       }
       return undefined;
     } catch (err: any) {
-      notify.error(`Failed to download document: ${err?.message || err}`);
+      notify.error(say(`Failed to download document: ${err?.message || err}`, `Das Dokument konnte nicht heruntergeladen werden: ${err?.message || err}`));
       return undefined;
     }
   }
@@ -165,7 +166,7 @@ export class DocumentsCommands {
     if (!(item instanceof DocumentsFileItem)) { return; }
     const { scope, entry } = item;
     if (!entry.local?.absPath) {
-      notify.warning('No local copy to upload.');
+      notify.warning(say('No local copy to upload.', 'Es gibt keine lokale Kopie zum Hochladen.'));
       return;
     }
     try {
@@ -181,7 +182,7 @@ export class DocumentsCommands {
       await this.tree.cache.writePulled(scope, entry.relativePath, bytes, remote?.last_modified);
       this.tree.invalidateDirectory(scope, parent);
     } catch (err: any) {
-      notify.error(`Failed to upload document: ${err?.message || err}`);
+      notify.error(say(`Failed to upload document: ${err?.message || err}`, `Das Dokument konnte nicht hochgeladen werden: ${err?.message || err}`));
     }
   }
 
@@ -206,7 +207,7 @@ export class DocumentsCommands {
   private async downloadToComputer(item: any): Promise<void> {
     const target = this.resolveDownloadTarget(item);
     if (!target) {
-      notify.warning('Select a document, a folder, or a course to download.');
+      notify.warning(say('Select a document, a folder, or a course to download.', 'Wähle ein Dokument, einen Ordner oder einen Kurs zum Herunterladen aus.'));
       return;
     }
 
@@ -214,8 +215,8 @@ export class DocumentsCommands {
       const payload = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: target.isDirectory
-          ? `Collecting "${target.label}"…`
-          : `Preparing "${target.label}"…`,
+          ? say(`Collecting "${target.label}"…`, `„${target.label}“ wird zusammengestellt …`)
+          : say(`Preparing "${target.label}"…`, `„${target.label}“ wird vorbereitet …`),
         cancellable: false
       }, () => target.isDirectory
         ? this.buildDirectoryArchive(target.scope, target.relativePath)
@@ -235,10 +236,10 @@ export class DocumentsCommands {
           // searching for a feature instead of a folder (#361).
           const local = this.tree.cache.resolveLocalPath(target.scope, target.relativePath);
           notify.warning(
-            `"${payload.name}" could not be handed to the browser.` +
+            say(`"${payload.name}" could not be handed to the browser.`, `„${payload.name}“ konnte nicht an den Browser übergeben werden.`) +
             (local
-              ? ` The ${target.isDirectory ? 'folder' : 'file'} lives at ${local} in this ` +
-                'workspace — right-click it in the Explorer and choose Download.'
+              ? say(` The ${target.isDirectory ? 'folder' : 'file'} lives at ${local} in this `, ` ${target.isDirectory ? 'Der Ordner' : 'Die Datei'} liegt in diesem Arbeitsbereich unter ${local}; `) +
+                say('workspace — right-click it in the Explorer and choose Download.', 'klicke im Explorer mit der rechten Maustaste darauf und wähle „Herunterladen“.')
               : '')
           );
         }
@@ -247,13 +248,13 @@ export class DocumentsCommands {
 
       const destination = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(payload.name),
-        saveLabel: 'Save'
+        saveLabel: say('Save', 'Speichern')
       });
       if (!destination) { return; }
       await fs.promises.writeFile(destination.fsPath, payload.contents);
-      notify.info(`Saved ${payload.name}.`);
+      notify.info(say(`Saved ${payload.name}.`, `${payload.name} gespeichert.`));
     } catch (err: any) {
-      notify.error(`Failed to download: ${err?.message || err}`);
+      notify.error(say(`Failed to download: ${err?.message || err}`, `Herunterladen fehlgeschlagen: ${err?.message || err}`));
     }
   }
 
@@ -331,7 +332,7 @@ export class DocumentsCommands {
     await walk(relativePath);
 
     if (fileCount === 0) {
-      notify.info('That folder has no documents to download.');
+      notify.info(say('That folder has no documents to download.', 'Dieser Ordner enthält keine Dokumente zum Herunterladen.'));
       return undefined;
     }
 
@@ -348,14 +349,14 @@ export class DocumentsCommands {
   private async uploadFromComputer(item: any, options: { folder: boolean }): Promise<void> {
     const target = this.resolveTarget(item);
     if (!target) {
-      notify.warning('Right-click an organization, course family, course, or folder to upload into it.');
+      notify.warning(say('Right-click an organization, course family, course, or folder to upload into it.', 'Klicke mit der rechten Maustaste auf eine Organisation, eine Kursfamilie, einen Kurs oder einen Ordner, um dorthin hochzuladen.'));
       return;
     }
 
     const picked = vscode.env.uiKind === vscode.UIKind.Web
       ? await pickFilesFromBrowser(this.context.extensionUri, {
         folder: options.folder,
-        title: options.folder ? 'Upload a folder' : 'Upload files'
+        title: options.folder ? say('Upload a folder', 'Ordner hochladen') : say('Upload files', 'Dateien hochladen')
       })
       : await this.pickFilesFromDisk(options.folder);
 
@@ -365,7 +366,7 @@ export class DocumentsCommands {
     const failures: string[] = [];
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: `Uploading ${picked.length} file${picked.length === 1 ? '' : 's'}…`,
+      title: say(`Uploading ${picked.length} file${picked.length === 1 ? '' : 's'}…`, `${picked.length} ${picked.length === 1 ? 'Datei wird' : 'Dateien werden'} hochgeladen …`),
       cancellable: false
     }, async (progress) => {
       let index = 0;
@@ -378,7 +379,7 @@ export class DocumentsCommands {
 
         const relative = normalizeUploadPath(file.relativePath);
         if (!relative) {
-          failures.push(`${file.relativePath} (unusable name)`);
+          failures.push(say(`${file.relativePath} (unusable name)`, `${file.relativePath} (unbrauchbarer Name)`));
           continue;
         }
         const destination = target.parentPath ? `${target.parentPath}/${relative}` : relative;
@@ -405,11 +406,11 @@ export class DocumentsCommands {
     this.tree.invalidateDirectory(target.scope, target.parentPath);
 
     if (failures.length === 0) {
-      notify.info(`Uploaded ${succeeded} file${succeeded === 1 ? '' : 's'}. They are live at /docs.`);
+      notify.info(say(`Uploaded ${succeeded} file${succeeded === 1 ? '' : 's'}. They are live at /docs.`, `${succeeded} ${succeeded === 1 ? 'Datei' : 'Dateien'} hochgeladen. Sie sind unter /docs abrufbar.`));
     } else {
       notify.warning(
-        `Uploaded ${succeeded} of ${picked.length}. Failed: ${failures.slice(0, 5).join('; ')}` +
-        `${failures.length > 5 ? `; and ${failures.length - 5} more` : ''}`
+        say(`Uploaded ${succeeded} of ${picked.length}. Failed: ${failures.slice(0, 5).join('; ')}`, `${succeeded} von ${picked.length} hochgeladen. Fehlgeschlagen: ${failures.slice(0, 5).join('; ')}`) +
+        say(`${failures.length > 5 ? `; and ${failures.length - 5} more` : ''}`, `${failures.length > 5 ? `; und ${failures.length - 5} weitere` : ''}`)
       );
     }
   }
@@ -420,7 +421,7 @@ export class DocumentsCommands {
       canSelectFiles: !folder,
       canSelectFolders: folder,
       canSelectMany: !folder,
-      openLabel: folder ? 'Upload folder' : 'Upload'
+      openLabel: folder ? say('Upload folder', 'Ordner hochladen') : say('Upload', 'Hochladen')
     });
     if (!chosen || chosen.length === 0) { return []; }
 
@@ -462,7 +463,7 @@ export class DocumentsCommands {
     if (!(item instanceof DocumentsFileItem || item instanceof DocumentsDirectoryItem)) { return; }
     const segments = this.tree.scopePathSegments(item.scope);
     if (!segments) {
-      notify.warning('Expand this document\'s course first, so its address can be resolved.');
+      notify.warning(say('Expand this document\'s course first, so its address can be resolved.', 'Klappe zuerst den Kurs dieses Dokuments auf, damit seine Adresse ermittelt werden kann.'));
       return;
     }
 
@@ -480,15 +481,15 @@ export class DocumentsCommands {
     }
     if (!origin) {
       notify.warning(
-        'This server has no public web address configured (instance-info web_url), ' +
-        'so a shareable document URL cannot be built. Ask an administrator to set it.'
+        say('This server has no public web address configured (instance-info web_url), ', 'Für diesen Server ist keine öffentliche Webadresse konfiguriert (instance-info web_url), ') +
+        say('so a shareable document URL cannot be built. Ask an administrator to set it.', 'daher lässt sich keine teilbare Dokument-URL bilden. Bitte die Administration, sie einzurichten.')
       );
       return;
     }
 
     const url = buildPublicDocumentUrl(origin, segments, item.entry.relativePath);
 
-    await copyToClipboard(url, 'Document URL', `Public URL: ${url}`);
+    await copyToClipboard(url, say('Document URL', 'Dokument-URL'), say(`Public URL: ${url}`, `Öffentliche URL: ${url}`));
   }
 
   private async revealInOS(item: any): Promise<void> {
@@ -524,7 +525,7 @@ export class DocumentsCommands {
         : (item.entry.local?.absPath ?? this.tree.cache.resolveLocalPath(item.scope, item.entry.relativePath) ?? item.entry.relativePath);
       // Through the shared helper: a raw writeText fails silently on Safari,
       // which read as "the command does nothing" (#361).
-      await copyToClipboard(text, relative ? 'Relative path' : 'Path');
+      await copyToClipboard(text, relative ? say('Relative path', 'Relativer Pfad') : say('Path', 'Pfad'));
     }
   }
 
@@ -569,7 +570,7 @@ export class DocumentsCommands {
   private async newFile(item: any): Promise<void> {
     const target = this.resolveTargetOrSystemRoot(item);
     const name = await vscode.window.showInputBox({
-      prompt: 'New file name (relative to the selected directory)',
+      prompt: say('New file name (relative to the selected directory)', 'Name der neuen Datei (relativ zum gewählten Verzeichnis)'),
       validateInput: this.validateRelativeSegment
     });
     if (!name) { return; }
@@ -582,7 +583,7 @@ export class DocumentsCommands {
     try {
       await this.api.uploadDocument(target.scope.scope, target.scope.scopeId ?? null, relativePath, emptyBytes);
     } catch (err: any) {
-      notify.error(`Failed to create file on server: ${err?.message || err}`);
+      notify.error(say(`Failed to create file on server: ${err?.message || err}`, `Die Datei konnte auf dem Server nicht angelegt werden: ${err?.message || err}`));
       return;
     }
 
@@ -609,7 +610,7 @@ export class DocumentsCommands {
   private async newFolder(item: any): Promise<void> {
     const target = this.resolveTargetOrSystemRoot(item);
     const name = await vscode.window.showInputBox({
-      prompt: 'New folder name (relative to the selected directory)',
+      prompt: say('New folder name (relative to the selected directory)', 'Name des neuen Ordners (relativ zum gewählten Verzeichnis)'),
       validateInput: this.validateRelativeSegment
     });
     if (!name) { return; }
@@ -622,7 +623,7 @@ export class DocumentsCommands {
       }
       this.tree.invalidateDirectory(target.scope, target.parentPath);
     } catch (err: any) {
-      notify.error(`Failed to create folder: ${err?.message || err}`);
+      notify.error(say(`Failed to create folder: ${err?.message || err}`, `Der Ordner konnte nicht angelegt werden: ${err?.message || err}`));
     }
   }
 
@@ -630,7 +631,7 @@ export class DocumentsCommands {
     if (!(item instanceof DocumentsFileItem || item instanceof DocumentsDirectoryItem)) { return; }
     const { scope, entry } = item;
     const newName = await vscode.window.showInputBox({
-      prompt: `Rename "${entry.name}"`,
+      prompt: say(`Rename "${entry.name}"`, `„${entry.name}“ umbenennen`),
       value: entry.name,
       validateInput: this.validateRelativeSegment
     });
@@ -655,7 +656,7 @@ export class DocumentsCommands {
       }
       this.tree.invalidateDirectory(scope, parent);
     } catch (err: any) {
-      notify.error(`Failed to rename: ${err?.message || err}`);
+      notify.error(say(`Failed to rename: ${err?.message || err}`, `Umbenennen fehlgeschlagen: ${err?.message || err}`));
     }
   }
 
@@ -671,19 +672,23 @@ export class DocumentsCommands {
     // (computor-org/issues#361).
     if (entry.type === 'directory' && entry.state !== 'local-only') {
       const typed = await vscode.window.showInputBox({
-        title: `Delete folder "${entry.name}"`,
-        prompt: `This permanently removes the folder and everything inside it, for everyone, and any assignment linking to those documents will break. There is no undo. Type "${entry.name}" to confirm.`,
+        title: say(`Delete folder "${entry.name}"`, `Ordner „${entry.name}“ löschen`),
+        prompt: say(`This permanently removes the folder and everything inside it, for everyone, and any assignment linking to those documents will break. There is no undo. Type "${entry.name}" to confirm.`, `Das entfernt den Ordner samt Inhalt endgültig und für alle; Aufgaben, die auf diese Dokumente verlinken, funktionieren dann nicht mehr. Das lässt sich nicht rückgängig machen. Gib „${entry.name}“ ein, um zu bestätigen.`),
         ignoreFocusOut: true,
         validateInput: (value) => value === entry.name || value.length === 0
           ? undefined
-          : `Type "${entry.name}" exactly, or leave empty to cancel.`
+          : say(`Type "${entry.name}" exactly, or leave empty to cancel.`, `Gib genau „${entry.name}“ ein oder lass das Feld leer, um abzubrechen.`)
       });
       if (typed !== entry.name) { return; }
     } else {
       const choice = await notify.confirm(
-        `Delete ${kind} "${entry.relativePath}"?${entry.type === 'directory' ? ' This removes everything inside it.' : ''}` +
-        (entry.state === 'local-only' ? '' : ' It disappears for everyone, and any assignment linking to it will break.'),
-        'Delete'
+        say(
+          `Delete ${kind} "${entry.relativePath}"?${entry.type === 'directory' ? ' This removes everything inside it.' : ''}` +
+          (entry.state === 'local-only' ? '' : ' It disappears for everyone, and any assignment linking to it will break.'),
+          `${entry.type === 'directory' ? 'Ordner' : 'Datei'} „${entry.relativePath}“ löschen?${entry.type === 'directory' ? ' Das entfernt auch alles darin.' : ''}` +
+          (entry.state === 'local-only' ? '' : ` ${entry.type === 'directory' ? 'Er' : 'Sie'} verschwindet für alle, und Aufgaben, die darauf verlinken, funktionieren dann nicht mehr.`)
+        ),
+        say('Delete', 'Löschen')
       );
       if (!choice) { return; }
     }
@@ -700,19 +705,19 @@ export class DocumentsCommands {
       await this.tree.cache.removeLocal(scope, entry.relativePath);
       this.tree.invalidateDirectory(scope, parent);
     } catch (err: any) {
-      notify.error(`Failed to delete: ${err?.message || err}`);
+      notify.error(say(`Failed to delete: ${err?.message || err}`, `Löschen fehlgeschlagen: ${err?.message || err}`));
     }
   }
 
   private async discardLocal(item: any): Promise<void> {
     if (!(item instanceof DocumentsFileItem)) { return; }
     if (item.entry.state !== 'modified' && item.entry.state !== 'remote-changed') {
-      notify.info('Nothing to discard — file has no local changes.');
+      notify.info(say('Nothing to discard — file has no local changes.', 'Nichts zu verwerfen: Die Datei hat keine lokalen Änderungen.'));
       return;
     }
     const choice = await notify.confirm(
-      `Discard local changes to "${item.entry.relativePath}"?`,
-      'Discard'
+      say(`Discard local changes to "${item.entry.relativePath}"?`, `Lokale Änderungen an „${item.entry.relativePath}“ verwerfen?`),
+      say('Discard', 'Verwerfen')
     );
     if (!choice) { return; }
     const idx = item.entry.relativePath.lastIndexOf('/');
@@ -735,14 +740,14 @@ export class DocumentsCommands {
     if (item) {
       const target = this.resolveTarget(item);
       if (!target) {
-        notify.warning('Right-click an organization, course family, course, or folder to upload its pending changes.');
+        notify.warning(say('Right-click an organization, course family, course, or folder to upload its pending changes.', 'Klicke mit der rechten Maustaste auf eine Organisation, eine Kursfamilie, einen Kurs oder einen Ordner, um die ausstehenden Änderungen dort hochzuladen.'));
         return;
       }
       slices.push(target);
     } else {
       const scopes = await this.tree.cache.listScopesWithLocalFiles();
       if (scopes.length === 0) {
-        notify.info('No local documents staged for upload.');
+        notify.info(say('No local documents staged for upload.', 'Es liegen keine lokalen Dokumente zum Hochladen bereit.'));
         return;
       }
       for (const scope of scopes) { slices.push({ scope, parentPath: '' }); }
@@ -782,7 +787,7 @@ export class DocumentsCommands {
     }
 
     if (candidates.length === 0) {
-      notify.info('Nothing to upload — all local files are already in sync.');
+      notify.info(say('Nothing to upload — all local files are already in sync.', 'Nichts hochzuladen: Alle lokalen Dateien sind bereits abgeglichen.'));
       return;
     }
 
@@ -790,7 +795,7 @@ export class DocumentsCommands {
     let failed = 0;
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: `Uploading ${candidates.length} document${candidates.length === 1 ? '' : 's'}…`,
+      title: say(`Uploading ${candidates.length} document${candidates.length === 1 ? '' : 's'}…`, `${candidates.length} ${candidates.length === 1 ? 'Dokument wird' : 'Dokumente werden'} hochgeladen …`),
       cancellable: false
     }, async (progress) => {
       let i = 0;
@@ -820,9 +825,9 @@ export class DocumentsCommands {
 
     this.tree.refresh();
     if (failed === 0) {
-      notify.info(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}.`);
+      notify.info(say(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}.`, `${succeeded} ${succeeded === 1 ? 'Dokument' : 'Dokumente'} hochgeladen.`));
     } else {
-      notify.warning(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}, ${failed} failed.`);
+      notify.warning(say(`Uploaded ${succeeded} document${succeeded === 1 ? '' : 's'}, ${failed} failed.`, `${succeeded} ${succeeded === 1 ? 'Dokument' : 'Dokumente'} hochgeladen, ${failed} fehlgeschlagen.`));
     }
   }
 
@@ -832,7 +837,7 @@ export class DocumentsCommands {
   private async revealMirrorRoot(): Promise<void> {
     const root = this.tree.cache.resolveMirrorRoot();
     if (!root) {
-      notify.warning('No workspace is open.');
+      notify.warning(say('No workspace is open.', 'Es ist kein Arbeitsbereich geöffnet.'));
       return;
     }
     await fs.promises.mkdir(root, { recursive: true }).catch(() => undefined);

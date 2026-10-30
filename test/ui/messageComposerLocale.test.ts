@@ -4,7 +4,7 @@ import * as path from 'path';
 import { runInNewContext } from 'vm';
 import * as vscode from 'vscode';
 import { MessagesInputPanelProvider } from '../../src/ui/panels/MessagesInputPanel';
-import { setUiCourseLanguage, setUiProfileLanguage } from '../../src/utils/uiLanguage';
+import { setUiAccount } from '../../src/utils/uiLanguage';
 
 const english = {
   plain: 'Write your message… (Ctrl/Cmd+Enter to send, Markdown, @ to mention)',
@@ -18,7 +18,7 @@ const german = {
 };
 
 describe('message composer locale', () => {
-  afterEach(() => { setUiProfileLanguage(undefined); setUiCourseLanguage(undefined); });
+  afterEach(() => { setUiAccount({}); });
 
   function fixture() {
     const messages: any[] = [];
@@ -28,11 +28,11 @@ describe('message composer locale', () => {
     return { provider, messages };
   }
 
-  for (const [profile, course, expected] of [
+  for (const [profile, effective, expected] of [
     ['de', 'en', german], ['en', 'de', english], [undefined, 'de', german], [undefined, 'en', english], [undefined, undefined, english]
   ] as const) {
-    it(`uses profile ${profile || 'Automatic'} over course ${course}`, () => {
-      setUiProfileLanguage(profile); setUiCourseLanguage(course);
+    it(`uses profile ${profile || 'Automatic'} over the effective language ${effective}`, () => {
+      setUiAccount({ profile: { language_code: profile }, effective_language: effective });
       const { provider, messages } = fixture();
       (provider as any).postState();
       expect(messages[0].data.editorPlaceholders).to.deep.equal(expected);
@@ -49,7 +49,7 @@ describe('message composer locale', () => {
       const mount = node();
       const window = { __INITIAL_STATE__: { editorPlaceholders: placeholders },
         addEventListener: (name: string, handler: Function) => { handlers[name] = handler; },
-        ComputorWebview: { vscode: { postMessage() {} }, escapeHtml: (text: string) => text,
+        ComputorWebview: { vscode: { postMessage() {} }, escapeHtml: (text: string) => text, say: (english: string) => english,
           mention: { hasTutorAliases: () => true },
           el: (tag: string, props: any) => {
             const element = node();

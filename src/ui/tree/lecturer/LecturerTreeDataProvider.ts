@@ -16,6 +16,9 @@ import { GitWrapper } from '../../../git/GitWrapper';
 import { hasExampleAssigned } from '../../../utils/deploymentHelpers';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { notify } from '../../../utils/notify';
+import { say, sayFailed, uiLanguage } from '../../../utils/uiLanguage';
+import { localizedKindTitle } from '../../../utils/contentLanguage';
+import { localizedRoleTitle } from '../../../utils/roleLabels';
 import {
   courseContentCollapsibleState,
   OrganizationTreeItem,
@@ -412,7 +415,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
           { 
             maxRetries: 3,
             onRetry: (attempt) => {
-              notify.info(`Retrying connection... (attempt ${attempt})`);
+              notify.info(say(`Retrying connection… (attempt ${attempt})`, `Neuer Verbindungsversuch … (Versuch ${attempt})`));
             }
           }
         );
@@ -538,7 +541,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
             element.course,
             element.courseFamily,
             element.organization,
-            type.course_content_kind?.title || kindMap.get(type.course_content_kind_id)
+            localizedKindTitle(type.course_content_kind_id, type.course_content_kind?.title || kindMap.get(type.course_content_kind_id), uiLanguage())
           ));
         }
       }
@@ -645,14 +648,14 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // instead of dumping an opaque "HTTP 403: Forbidden".
       if (isConsentRequiredError(error)) {
         void handleConsentError(error);
-        const item = new InfoItem('Accept the privacy policy to continue', 'warning');
+        const item = new InfoItem(say('Accept the privacy policy to continue', 'Stimme der Datenschutzerklärung zu, um fortzufahren'), 'warning');
         item.command = {
           command: 'computor.acceptPrivacyPolicy',
-          title: 'Open Web App to accept the privacy policy',
+          title: say('Open Web App to accept the privacy policy', 'Web-App öffnen, um der Datenschutzerklärung zuzustimmen'),
         };
         return [item];
       }
-      notify.error(`Failed to load tree data: ${error}`);
+      notify.error(sayFailed('Failed to load tree data', 'Die Kursansicht konnte nicht geladen werden', error));
       return [];
     }
   }
@@ -775,7 +778,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         absolutePath: null,
         repositoryPath: null,
         exists: false,
-        statusMessage: { message: 'Assignments repository not configured for this course', severity: 'warning' }
+        statusMessage: { message: say('Assignments repository not configured for this course', 'Für diesen Kurs ist kein Aufgaben-Repository eingerichtet'), severity: 'warning' }
       };
     }
 
@@ -785,7 +788,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         absolutePath: null,
         repositoryPath: repoRoot,
         exists: false,
-        statusMessage: { message: 'Assignment directory name is invalid', severity: 'warning' }
+        statusMessage: { message: say('Assignment directory name is invalid', 'Der Name des Aufgabenordners ist ungültig'), severity: 'warning' }
       };
     }
 
@@ -798,14 +801,18 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         absolutePath: null,
         repositoryPath: repoRoot,
         exists: false,
-        statusMessage: { message: 'Assignment directory not configured', severity: 'warning' }
+        statusMessage: { message: say('Assignment directory not configured', 'Kein Aufgabenordner festgelegt'), severity: 'warning' }
       };
     }
 
     const folderExists = fs.existsSync(folder);
     const statusMessage: AssignmentDirectoryStatus | undefined = folderExists
       ? undefined
-      : { message: 'Assignment folder missing locally — run "Sync Assignments"', severity: 'warning' };
+      : {
+        message: say('Assignment folder missing locally — run "Sync Assignments Repositories"',
+          'Der Aufgabenordner fehlt lokal. Wähle „Aufgaben-Repositorys synchronisieren“'),
+        severity: 'warning'
+      };
 
     return {
       absolutePath: folder,
@@ -1006,7 +1013,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       }
     }
     return sortedMembers.map(member => new CourseMemberTreeItem(
-      member, course, courseFamily, organization, group, roleTitles.get(member.course_role_id)
+      member, course, courseFamily, organization, group, localizedRoleTitle(member.course_role_id, roleTitles.get(member.course_role_id)) || undefined
     ));
   }
 
@@ -1133,7 +1140,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Check if path already exists
       const existingContents = await this.getCourseContents(folderItem.course.id);
       if (existingContents.some(c => c.path === path)) {
-        notify.error(`A content item with path '${path}' already exists. Please use a different slug.`);
+        notify.error(say(`A content item with path '${path}' already exists. Please use a different slug.`, `Ein Inhalt mit dem Pfad „${path}“ existiert bereits. Verwende einen anderen Slug.`));
         return;
       }
       
@@ -1157,7 +1164,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       await this.forceRefreshCourse(folderItem.course.id);
       return created;
     } catch (error) {
-      notify.error(`Failed to create content: ${error}`);
+      notify.error(sayFailed('Failed to create content', 'Der Inhalt konnte nicht angelegt werden', error));
       return undefined;
     }
   }
@@ -1176,7 +1183,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Refresh the specific item
       this.onDidChangeTreeDataEmitter.fire(contentItem);
     } catch (error) {
-      notify.error(`Failed to update course content: ${error}`);
+      notify.error(sayFailed('Failed to update course content', 'Der Inhalt konnte nicht geändert werden', error));
     }
   }
 
@@ -1191,10 +1198,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
           hasCourse: !!contentItem?.course,
           hasCourseId: !!contentItem?.course?.id
         });
-        throw new Error('Invalid content item - missing required data');
+        throw new Error(say('Invalid content item - missing required data', 'Ungültiger Inhalt: erforderliche Daten fehlen'));
       }
       
-      const title = contentItem.courseContent.title || contentItem.courseContent.path || 'Unknown';
+      const title = contentItem.courseContent.title || contentItem.courseContent.path || say('Unknown', 'Unbekannt');
       await this.apiService.deleteCourseContent(
         contentItem.course.id,
         contentItem.courseContent.id
@@ -1205,10 +1212,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       this.refresh();
 
-      notify.info(`Deleted "${title}" successfully`);
+      notify.info(say(`Deleted "${title}" successfully`, `„${title}“ wurde gelöscht.`));
     } catch (error) {
       console.error('Failed to delete course content:', error);
-      notify.error(`Failed to delete course content: ${error}`);
+      notify.error(sayFailed('Failed to delete course content', 'Der Inhalt konnte nicht gelöscht werden', error));
     }
   }
 
@@ -1346,7 +1353,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       targetGroupId = null; // Moving to "No Group"
       courseId = target.course.id;
     } else {
-      notify.error('Members can only be dropped on course groups or "No Group"');
+      notify.error(say('Members can only be dropped on course groups or "No Group"', 'Mitglieder lassen sich nur auf Kursgruppen oder „Ohne Gruppe“ ziehen.'));
       return;
     }
 
@@ -1359,7 +1366,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Move all members to the target group
       for (const member of memberData) {
         if (member.courseId !== courseId) {
-          notify.warning(`Cannot move member to a different course`);
+          notify.warning(say('Cannot move member to a different course', 'Mitglieder lassen sich nicht in einen anderen Kurs verschieben.'));
           continue;
         }
 
@@ -1373,17 +1380,18 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       }
 
       const groupName = target instanceof CourseGroupTreeItem
-        ? target.group.title || 'the group'
-        : 'No Group';
+        ? target.group.title || say('the group', 'die Gruppe')
+        : say('No Group', 'Ohne Gruppe');
 
-      notify.info(
-        `Moved ${memberData.length} member(s) to ${groupName}`
-      );
+      notify.info(say(
+        `Moved ${memberData.length} member(s) to ${groupName}`,
+        `${memberData.length} Mitglied(er) nach „${groupName}“ verschoben.`
+      ));
 
       // Refresh the tree to show changes
       await this.refresh();
     } catch (error: any) {
-      notify.error(`Failed to move members: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to move members', 'Die Mitglieder konnten nicht verschoben werden', error?.message || error));
     }
   }
 
@@ -1428,7 +1436,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
     // Prevent moving an item into its own descendant
     if (targetPath.startsWith(draggedPath + '.')) {
-      notify.warning('Cannot move an item into its own descendant');
+      notify.warning(say('Cannot move an item into its own descendant', 'Ein Eintrag lässt sich nicht in einen seiner eigenen Untereinträge verschieben.'));
       return;
     }
 
@@ -1472,7 +1480,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       this.clearCourseCache(draggedData.courseId);
       this.onDidChangeTreeDataEmitter.fire(undefined);
     } catch (error: any) {
-      notify.error(`Failed to reorder: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to reorder', 'Die Reihenfolge konnte nicht geändert werden', error?.message || error));
     }
   }
 
@@ -1489,7 +1497,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
     // Prevent moving into own descendant
     if (targetParentPath.startsWith(draggedData.path + '.')) {
-      notify.warning('Cannot move an item into its own descendant');
+      notify.warning(say('Cannot move an item into its own descendant', 'Ein Eintrag lässt sich nicht in einen seiner eigenen Untereinträge verschieben.'));
       return;
     }
 
@@ -1518,7 +1526,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       this.clearCourseCache(courseId);
       this.onDidChangeTreeDataEmitter.fire(undefined);
     } catch (error: any) {
-      notify.error(`Failed to move: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to move', 'Das Verschieben ist fehlgeschlagen', error?.message || error));
     }
   }
 
@@ -1553,10 +1561,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       const intoLabel = target.courseContent.title || target.courseContent.path;
       const pick = await vscode.window.showQuickPick(
         [
-          { label: `$(arrow-up) At the start of "${intoLabel}"`, value: 'intoStart' as const },
-          { label: `$(arrow-down) At the end of "${intoLabel}"`, value: 'into' as const }
+          { label: `$(arrow-up) ${say(`At the start of "${intoLabel}"`, `Am Anfang von „${intoLabel}“`)}`, value: 'intoStart' as const },
+          { label: `$(arrow-down) ${say(`At the end of "${intoLabel}"`, `Am Ende von „${intoLabel}“`)}`, value: 'into' as const }
         ],
-        { title: 'Where inside the unit?' }
+        { title: say('Where inside the unit?', 'Wohin in der Einheit?') }
       );
       return pick ? pick.value : 'cancelled';
     }
@@ -1569,10 +1577,10 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
     const targetLabel = target.courseContent.title || target.courseContent.path;
     const choice = await vscode.window.showQuickPick(
       [
-        { label: `$(arrow-up) Place before "${targetLabel}"`, value: 'before' as const },
-        { label: `$(folder) Move into "${targetLabel}"`, value: 'into' as const }
+        { label: `$(arrow-up) ${say(`Place before "${targetLabel}"`, `Vor „${targetLabel}“ einfügen`)}`, value: 'before' as const },
+        { label: `$(folder) ${say(`Move into "${targetLabel}"`, `In „${targetLabel}“ verschieben`)}`, value: 'into' as const }
       ],
-      { title: 'Where should this unit go?' }
+      { title: say('Where should this unit go?', 'Wohin soll diese Einheit?') }
     );
     return choice ? choice.value : 'cancelled';
   }
@@ -1651,25 +1659,28 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Dropped on course - create at root level
       courseId = target.course.id;
       parentPath = undefined;
-      targetDescription = `in course "${target.course.title || target.course.path}"`;
+      targetDescription = say(`in course "${target.course.title || target.course.path}"`, `im Kurs „${target.course.title || target.course.path}“`);
     } else if (target instanceof CourseFolderTreeItem && target.folderType === 'contents') {
       // Dropped on "Contents" folder - create at root level of course contents
       courseId = target.course.id;
       parentPath = undefined;
-      targetDescription = `in course "${target.course.title || target.course.path}"`;
+      targetDescription = say(`in course "${target.course.title || target.course.path}"`, `im Kurs „${target.course.title || target.course.path}“`);
     } else if (target instanceof CourseContentTreeItem) {
       courseId = target.course.id;
       
       // Check if target is submittable - if yes, we might want to replace
       if (target.isSubmittable && hasExampleAssigned(target.courseContent)) {
+        const replace = say('Replace', 'Ersetzen');
+        const cancel = say('Cancel', 'Abbrechen');
         const choice = await notify.warning(
-          `Assignment "${target.courseContent.title}" already has an example. Do you want to replace it or create a new assignment?`,
-          'Replace', 'Create New', 'Cancel'
+          say(`Assignment "${target.courseContent.title}" already has an example. Do you want to replace it or create a new assignment?`,
+            `Die Aufgabe „${target.courseContent.title}“ hat bereits ein Beispiel. Möchtest du es ersetzen oder eine neue Aufgabe anlegen?`),
+          replace, say('Create New', 'Neu anlegen'), cancel
         );
         
-        if (choice === 'Cancel') {
+        if (choice === cancel) {
           return;
-        } else if (choice === 'Replace') {
+        } else if (choice === replace) {
           // Original behavior - assign to existing
           await this.assignExampleToExisting(target, exampleData);
           return;
@@ -1680,21 +1691,21 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // For non-submittable content or when creating new, use it as parent
       if (!target.isSubmittable) {
         parentPath = target.courseContent.path;
-        targetDescription = `under "${target.courseContent.title}"`;
+        targetDescription = say(`under "${target.courseContent.title}"`, `unter „${target.courseContent.title}“`);
       } else {
         // For submittable content when creating new, create as sibling
         const pathParts = target.courseContent.path.split('.');
         if (pathParts.length > 1) {
           pathParts.pop();
           parentPath = pathParts.join('.');
-          targetDescription = `as sibling of "${target.courseContent.title}"`;
+          targetDescription = say(`as sibling of "${target.courseContent.title}"`, `neben „${target.courseContent.title}“`);
         } else {
           parentPath = undefined;
-          targetDescription = `at root level`;
+          targetDescription = say('at root level', 'auf oberster Ebene');
         }
       }
     } else {
-      notify.error('Examples can only be dropped on courses or course contents');
+      notify.error(say('Examples can only be dropped on courses or course contents', 'Beispiele lassen sich nur auf Kurse oder Kursinhalte ziehen.'));
       return;
     }
 
@@ -1720,7 +1731,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         }
         
         if (!rawValue || rawValue === '') {
-          notify.error('No data received from drag operation. Please try again or use the context menu instead.');
+          notify.error(say('No data received from drag operation. Please try again or use the context menu instead.', 'Beim Ziehen kamen keine Daten an. Versuche es noch einmal oder verwende das Kontextmenü.'));
           return;
         }
         
@@ -1737,7 +1748,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       const example = draggedExamples[0];
 
       if (!example.exampleId) {
-        notify.error('Invalid example data - missing exampleId');
+        notify.error(say('Invalid example data - missing exampleId', 'Ungültige Beispieldaten: exampleId fehlt.'));
         return;
       }
 
@@ -1754,7 +1765,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      notify.error(`Failed to create assignment: ${errorMessage}`);
+      notify.error(sayFailed('Failed to create assignment', 'Die Aufgabe konnte nicht angelegt werden', errorMessage));
     }
   }
 
@@ -1780,7 +1791,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
         }
         
         if (!rawValue || rawValue === '') {
-          notify.error('No data received from drag operation.');
+          notify.error(say('No data received from drag operation.', 'Beim Ziehen kamen keine Daten an.'));
           return;
         }
         
@@ -1795,14 +1806,14 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       const example = draggedExamples[0];
       if (!example.exampleId) {
-        notify.error('Invalid example data');
+        notify.error(say('Invalid example data', 'Ungültige Beispieldaten.'));
         return;
       }
 
       // Get the example with versions to find the latest version ID
       const fullExample = await this.apiService.getExample(example.exampleId);
       if (!fullExample || !fullExample.versions || fullExample.versions.length === 0) {
-        throw new Error('Example has no versions available');
+        throw new Error(say('Example has no versions available', 'Das Beispiel hat keine Versionen.'));
       }
 
       // Use the latest version
@@ -1834,12 +1845,13 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       await this.forceRefreshCourse(target.course.id);
 
       notify.info(
-        `✅ Example "${example.title}" assigned to "${target.courseContent.title}" successfully!`
+        say(`✅ Example "${example.title}" assigned to "${target.courseContent.title}" successfully!`,
+          `✅ Das Beispiel „${example.title}“ ist jetzt „${target.courseContent.title}“ zugeordnet.`)
       );
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      notify.error(`Failed to assign example: ${errorMessage}`);
+      notify.error(sayFailed('Failed to assign example', 'Das Beispiel konnte nicht zugeordnet werden', errorMessage));
     }
   }
 
@@ -1871,7 +1883,8 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       if (submittableTypes.length === 0) {
         notify.error(
-          'No submittable content types (assignments, exercises) are configured for this course. Please create one first.'
+          say('No submittable content types (assignments, exercises) are configured for this course. Please create one first.',
+            'Für diesen Kurs gibt es keinen Inhaltstyp, der abgegeben werden kann (Aufgaben, Übungen). Lege zuerst einen an.')
         );
         return;
       }
@@ -1888,7 +1901,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
               id: t.id
             };
           }),
-          { placeHolder: 'Select content type' }
+          { placeHolder: say('Select content type', 'Inhaltstyp auswählen') }
         );
 
         if (!selected) {
@@ -1910,7 +1923,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       // Check if path already exists
       const existingContents = await this.getCourseContents(courseId);
       if (existingContents.some(c => c.path === path)) {
-        notify.error(`A content item with path '${path}' already exists.`);
+        notify.error(say(`A content item with path '${path}' already exists.`, `Ein Inhalt mit dem Pfad „${path}“ existiert bereits.`));
         return;
       }
 
@@ -1919,7 +1932,7 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
 
       // Ensure we have a content type (TypeScript safety)
       if (!contentType) {
-        notify.error('No content type selected');
+        notify.error(say('No content type selected', 'Kein Inhaltstyp ausgewählt.'));
         return;
       }
 
@@ -1957,11 +1970,13 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
             );
           } catch (assignError: any) {
             const assignMessage = assignError?.response?.data?.detail || assignError.message || 'Unknown error';
+            const remove = say('Delete', 'Löschen');
             const action = await notify.warning(
-              `Assignment "${example.title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`,
-              'Keep', 'Delete'
+              say(`Assignment "${example.title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`,
+                `Die Aufgabe „${example.title}“ wurde angelegt, aber das Beispiel konnte nicht zugeordnet werden. Möchtest du die Aufgabe ohne Beispiel behalten? Details: ${assignMessage}`),
+              say('Keep', 'Behalten'), remove
             );
-            if (action === 'Delete') {
+            if (action === remove) {
               await this.apiService.deleteCourseContent(courseId, createdContent.id);
             }
             this.apiService.clearCourseCache(courseId);
@@ -1975,12 +1990,12 @@ export class LecturerTreeDataProvider extends BaseTreeDataProvider<TreeItem> imp
       await this.forceRefreshCourse(courseId);
 
       notify.info(
-        `Created assignment "${example.title}" ${targetDescription}`
+        say(`Created assignment "${example.title}" ${targetDescription}`, `Aufgabe „${example.title}“ ${targetDescription} angelegt.`)
       );
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      notify.error(`Failed to create assignment: ${errorMessage}`);
+      notify.error(sayFailed('Failed to create assignment', 'Die Aufgabe konnte nicht angelegt werden', errorMessage));
     }
   }
 }

@@ -6,6 +6,7 @@ import { CourseContentStudentList, CourseContentStudentGet, CourseContentTypeLis
 import { copyToClipboard } from '../../utils/clipboard';
 import { notify } from '../../utils/notify';
 import { revealUri } from '../../utils/reveal';
+import { onDidChangeUiLanguage, say, sayFailed } from '../../utils/uiLanguage';
 
 export interface StudentContentDetailsViewState {
   course?: {
@@ -82,20 +83,33 @@ export interface StudentResultHistoryEntry {
 export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvider {
   constructor(context: vscode.ExtensionContext) {
     super(context, 'computor.student.contentDetails');
+    context.subscriptions?.push(onDidChangeUiLanguage(() => { void this.refreshLanguage(); }));
   }
 
   async showDetails(state: StudentContentDetailsViewState): Promise<void> {
+    await this.show(this.title(state), state);
+  }
+
+  /** The page reads its language once, from <html lang>: render it again, in place. */
+  async refreshLanguage(): Promise<void> {
+    const state = this.currentData as StudentContentDetailsViewState | undefined;
+    if (!this.panel || !state) return;
+    this.panel.title = this.title(state);
+    this.panel.webview.html = await this.getWebviewContent(state);
+  }
+
+  private title(state: StudentContentDetailsViewState): string {
     const title = state.content.title || state.content.path;
-    await this.show(`Content Details: ${title}`, state);
+    return say(`Content Details: ${title}`, `Details: ${title}`);
   }
 
   protected async getWebviewContent(data?: StudentContentDetailsViewState): Promise<string> {
     if (!this.panel) {
-      return this.getBaseHtml('Student Content Details', '<p>Loading…</p>');
+      return this.getBaseHtml(say('Content Details', 'Details'), `<p>${say('Loading…', 'Wird geladen …')}</p>`);
     }
 
     return this.renderPage({
-      title: 'Student Content Details',
+      title: say('Content Details', 'Details'),
       bodyHtml: '<div id="app" class="view-root"></div>',
       cssFiles: ['student/student-content-details.css'],
       scriptFiles: ['student/student-content-details.js'],
@@ -136,14 +150,14 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
 
   private async handleOpenFolder(folderPath?: string): Promise<void> {
     if (!folderPath) {
-      notify.warning('No local folder available for this content.');
+      notify.warning(say('No local folder available for this content.', 'Zu diesem Inhalt gibt es keinen lokalen Ordner.'));
       return;
     }
 
     try {
       const exists = fs.existsSync(folderPath);
       if (!exists) {
-        notify.warning('The local folder for this assignment could not be found.');
+        notify.warning(say('The local folder for this assignment could not be found.', 'Der lokale Ordner dieser Aufgabe wurde nicht gefunden.'));
         return;
       }
 
@@ -151,38 +165,38 @@ export class StudentCourseContentDetailsWebviewProvider extends BaseWebviewProvi
       const targetUri = vscode.Uri.file(stat.isDirectory() ? folderPath : path.dirname(folderPath));
       await revealUri(targetUri);
     } catch (error: any) {
-      notify.error(`Failed to open folder: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to open folder', 'Der Ordner konnte nicht geöffnet werden', error?.message || error));
     }
   }
 
   private async handleOpenRepository(url?: string): Promise<void> {
     if (!url) {
-      notify.warning('No repository URL available for this content.');
+      notify.warning(say('No repository URL available for this content.', 'Zu diesem Inhalt ist keine Repository-Adresse bekannt.'));
       return;
     }
 
     try {
       await vscode.env.openExternal(vscode.Uri.parse(url));
     } catch (error: any) {
-      notify.error(`Failed to open repository: ${error?.message || error}`);
+      notify.error(sayFailed('Failed to open repository', 'Das Repository konnte nicht geöffnet werden', error?.message || error));
     }
   }
 
   /** Named to match the tree's "Copy Path" — same action, same words. */
   private async handleCopyPath(folderPath?: string): Promise<void> {
     if (!folderPath) {
-      notify.warning('No local folder available for this content.');
+      notify.warning(say('No local folder available for this content.', 'Zu diesem Inhalt gibt es keinen lokalen Ordner.'));
       return;
     }
-    await copyToClipboard(folderPath, 'Path');
+    await copyToClipboard(folderPath, say('Path', 'Pfad'));
   }
 
   private async handleCopyCloneUrl(url?: string): Promise<void> {
     if (!url) {
-      notify.warning('No clone URL available for this content.');
+      notify.warning(say('No clone URL available for this content.', 'Zu diesem Inhalt ist keine Klon-Adresse bekannt.'));
       return;
     }
 
-    await copyToClipboard(url, 'Clone URL');
+    await copyToClipboard(url, say('Clone URL', 'Klon-Adresse'));
   }
 }

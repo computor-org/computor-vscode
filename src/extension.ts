@@ -18,7 +18,7 @@ import type { TrackedTree } from './ui/treeRestore';
 import { getTreeHandle, registerTreeHandle } from './ui/treeRegistry';
 import { findInTree } from './ui/tree/chat/chatJump';
 import { WorkspaceLaunchContextService, findWorkspaceLaunchTarget, validWorkspaceLaunchContext, workspaceLaunchContent, workspaceLaunchContentKind, workspaceLaunchIdentity } from './services/WorkspaceLaunchContextService';
-import { beginMarkdownPreviewRequest, MarkdownPreviewOptions } from './ui/webviews/markdownPreview';
+import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, readingPreviewGeneration } from './ui/webviews/markdownPreview';
 import { readingLanguage, isCourseWelcomeContent, openWorkspaceCourseLaunch, showCourseWelcomeGuideOnce, showWorkspaceCourseLanding, showWorkspaceCourseUnit } from './services/WorkspaceCourseLanding';
 import { WorkspaceDisplayLocale, workspaceLocaleFile } from './services/WorkspaceDisplayLocale';
 
@@ -30,7 +30,7 @@ import { registerPublicLearning } from './commands/PublicLearningCommands';
 
 import { BearerTokenHttpClient } from './http/BearerTokenHttpClient';
 import { ApiKeyHttpClient } from './http/ApiKeyHttpClient';
-import { WebSocketService } from './services/WebSocketService';
+import { WebSocketService, localizeMaintenanceMessage } from './services/WebSocketService';
 import { BackendConnectionService } from './services/BackendConnectionService';
 import { CredentialRecoveryService } from './services/CredentialRecoveryService';
 import { GitEnvironmentService } from './services/GitEnvironmentService';
@@ -39,7 +39,8 @@ import { watchInstalledUpdates } from './services/InstalledUpdateNotice';
 
 import { LecturerTreeDataProvider } from './ui/tree/lecturer/LecturerTreeDataProvider';
 import { notify } from './utils/notify';
-import { say, setUiCourseLanguage, setUiProfileLanguage } from './utils/uiLanguage';
+import { formatUiDateTime, onDidChangeUiLanguage, say, sayFailed, setUiAccount } from './utils/uiLanguage';
+import { UiLanguageSync } from './services/UiLanguageSync';
 import { revealUri } from './utils/reveal';
 import {
   OrganizationTreeItem as LecturerOrganizationTreeItem,
@@ -81,7 +82,12 @@ import { registerDocumentPreviewProviders } from './ui/panels/DocumentPreviewPan
 import { manageRepositoryTokens } from './commands/manageRepositoryTokens';
 import { configureGit } from './commands/configureGit';
 import { showGettingStarted } from './commands/showGettingStarted';
-import { ssoBrowserLogin, SsoLoginResult } from './authentication/SsoLoginService';
+import {
+  browserSignInUnavailableHint,
+  browserSignInAvailable,
+  ssoBrowserLogin,
+  SsoLoginResult
+} from './authentication/SsoLoginService';
 import { openMyProblemReports, reportProblem } from './commands/reportProblem';
 import { isWelcomeShownOnStartup, registerWelcomePage, WelcomeWebviewProvider } from './ui/webviews/WelcomeWebviewProvider';
 import { IssueReportStatusBarService } from './ui/IssueReportStatusBarService';
@@ -231,7 +237,7 @@ async function runSsoWithProgress(baseUrl: string): Promise<SsoLoginResult> {
     title: 'Computor',
     cancellable: true
   }, async (progress, token) => {
-    progress.report({ message: 'Waiting for browser sign-in…' });
+    progress.report({ message: say('Waiting for browser sign-in…', 'Warte auf die Anmeldung im Browser …') });
     return ssoBrowserLogin(baseUrl, { cancellationToken: token });
   });
 }
@@ -396,7 +402,7 @@ async function writeMarker(file: string, data: { backendUrl: string }): Promise<
  * secret storage so it survives restarts; Logout clears it.
  */
 async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void> {
-  if (isAuthenticating) { notify.info('Login already in progress.'); return; }
+  if (isAuthenticating) { notify.info(say('Login already in progress.', 'Die Anmeldung läuft bereits.')); return; }
   if (activeSession) {
     notify.info('Already signed in. Log out first to switch accounts.');
     return;
@@ -428,7 +434,7 @@ async function apiTokenLoginFlow(context: vscode.ExtensionContext): Promise<void
       title: 'Computor',
       cancellable: false
     }, async (progress) => {
-      progress.report({ message: 'Connecting to backend…' });
+      progress.report({ message: say('Connecting to backend…', 'Verbindung zum Server wird hergestellt …') });
       backendConnectionService.setBaseUrl(baseUrl);
       const status = await backendConnectionService.checkBackendConnection(baseUrl);
       if (!status.isReachable) {
@@ -528,14 +534,15 @@ async function restoreSession(
 }
 
 async function promptOpenWorkspaceFolder(): Promise<{ opened: boolean; hadExistingFolders: boolean }> {
-  const action = await notify.error('Login requires an open workspace.', 'Open Folder');
-  if (action !== 'Open Folder') return { opened: false, hadExistingFolders: false };
+  const openFolder = say('Open Folder', 'Ordner öffnen');
+  const action = await notify.error(say('Login requires an open workspace.', 'Für die Anmeldung muss ein Arbeitsbereich geöffnet sein.'), openFolder);
+  if (action !== openFolder) return { opened: false, hadExistingFolders: false };
 
   const folderUri = await vscode.window.showOpenDialog({
     canSelectFolders: true,
     canSelectFiles: false,
     canSelectMany: false,
-    openLabel: 'Select Workspace Folder'
+    openLabel: say('Select Workspace Folder', 'Arbeitsbereichsordner auswählen')
   });
   if (!folderUri || folderUri.length === 0) return { opened: false, hadExistingFolders: false };
 
@@ -586,11 +593,11 @@ async function handleComputorWorkspaceDetected(
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Connecting (workspace token)…' });
+        progress.report({ message: say('Connecting (workspace token)…', 'Verbindung wird hergestellt (Arbeitsbereich-Token) …') });
         backendConnectionService.setBaseUrl(baseUrl);
         const status = await backendConnectionService.checkBackendConnection(baseUrl);
         if (!status.isReachable) { return false; }
-        progress.report({ message: 'Authenticating…' });
+        progress.report({ message: say('Authenticating…', 'Anmeldung läuft …') });
         const client = new ApiKeyHttpClient(baseUrl, envToken, 'X-API-Token', '', 5000);
         if (!(await probeToken(client))) {
           console.error('Workspace API token is invalid');
@@ -611,7 +618,7 @@ async function handleComputorWorkspaceDetected(
         return;
       }
       console.warn('Workspace API token login failed, falling back to stored session');
-      void notify.warning('Automatic sign-in to this Computor workspace failed. Trying your stored session instead.');
+      void notify.warning(say('Automatic sign-in to this Computor workspace failed. Trying your stored session instead.', 'Die automatische Anmeldung in diesem Computor-Arbeitsbereich ist fehlgeschlagen. Deine gespeicherte Sitzung wird stattdessen versucht.'));
     }
 
     // Priority 2: silently restore a stored session (if auto-login is enabled)
@@ -621,16 +628,16 @@ async function handleComputorWorkspaceDetected(
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Connecting to backend…' });
+        progress.report({ message: say('Connecting to backend…', 'Verbindung zum Server wird hergestellt …') });
         backendConnectionService.setBaseUrl(baseUrl);
         const status = await backendConnectionService.checkBackendConnection(baseUrl);
         if (!status.isReachable) { return false; }
-        progress.report({ message: 'Restoring session…' });
+        progress.report({ message: say('Restoring session…', 'Sitzung wird wiederhergestellt …') });
         return restoreSession(context, baseUrl, (msg) => progress.report({ message: msg }));
       });
 
       if (restored) {
-        notify.info(`Logged in: ${baseUrl}`);
+        notify.info(say(`Logged in: ${baseUrl}`, `Angemeldet: ${baseUrl}`));
         return;
       }
     }
@@ -638,16 +645,24 @@ async function handleComputorWorkspaceDetected(
     isAuthenticating = false;
   }
 
-  // Priority 3: nothing stored (or session expired) — offer to sign in.
+  // Priority 3: nothing stored (or session expired) — offer to sign in. A
+  // hosted workspace lands here when its injected token stopped working, and
+  // there the browser sign-in cannot complete.
+  if (!browserSignInAvailable()) {
+    await explainBrowserSignInUnavailable(context);
+    return;
+  }
+  const signIn = say('Sign in', 'Anmelden');
+  const useToken = say('Use API Token', 'API-Token verwenden');
   const action = await notify.info(
-    'Computor workspace detected. Sign in to continue.',
-    'Sign in',
-    'Use API Token',
-    'Not Now'
+    say('Computor workspace detected. Sign in to continue.', 'Computor-Arbeitsbereich erkannt. Melde dich an, um weiterzumachen.'),
+    signIn,
+    useToken,
+    say('Not Now', 'Nicht jetzt')
   );
-  if (action === 'Sign in') {
+  if (action === signIn) {
     await unifiedLoginFlow(context);
-  } else if (action === 'Use API Token') {
+  } else if (action === useToken) {
     await apiTokenLoginFlow(context);
   }
 }
@@ -715,6 +730,7 @@ class UnifiedController {
         fetchLanguage: async () => {
           const account = await api.getUserAccount({ force: true });
           if (!account) throw new Error('Could not load the account language.');
+          setUiAccount(account);
           return account.profile?.language_code;
         },
         fetchLaunchContext: identity
@@ -722,8 +738,7 @@ class UnifiedController {
           : undefined,
         displayLanguage: vscode.env.language,
         state: this.context.globalState,
-        reload: () => vscode.commands.executeCommand('workbench.action.reloadWindow'),
-        onLanguage: setUiProfileLanguage
+        reload: () => vscode.commands.executeCommand('workbench.action.reloadWindow')
       });
       this.workspaceDisplayLocale = locale;
       this.disposables.push(locale, vscode.window.onDidChangeWindowState(state => {
@@ -732,6 +747,23 @@ class UnifiedController {
       locale.start();
       await locale.poll();
     }
+
+    // A language changed on the web reaches this window without a reload
+    // (computor-org/issues#553). The hosted workspace also polls (above).
+    const languageSync = new UiLanguageSync({ fetchAccount: options => api.getUserAccount(options) });
+    if (!argvFile) {
+      await languageSync.refresh(false);
+      this.disposables.push(vscode.window.onDidChangeWindowState(state => {
+        if (state.focused) void languageSync.refreshOnFocus();
+      }));
+    }
+    this.disposables.push(onDidChangeUiLanguage(() => {
+      IssueReportStatusBarService.refreshLanguage();
+      void welcomePage?.refresh().catch(err => console.warn('Welcome page could not be refreshed:', err));
+      this.messagesInputPanel?.refreshLanguage();
+      this.commentsInputPanel?.refreshLanguage();
+      this.artifactsPanel?.refreshLanguage();
+    }));
 
     this.profileWebviewProvider = new UserProfileWebviewProvider(this.context, api);
     const profileCommand = vscode.commands.registerCommand('computor.user.profile', async () => {
@@ -771,6 +803,10 @@ class UnifiedController {
     // whenever someone else grants or revokes a role/membership of this user.
     this.wsService.subscribe([], 'unified-controller-permissions', {
       onPermissionsUpdated: () => this.schedulePermissionsRefresh(),
+      onUserProfileUpdated: () => {
+        void languageSync.refresh(true);
+        void this.workspaceDisplayLocale?.poll();
+      },
     });
 
     // Check initial maintenance status (fire-and-forget)
@@ -926,11 +962,6 @@ class UnifiedController {
   ): Promise<void> {
     const report = onProgress || (() => {});
 
-    // The language of the extension's own rows and messages (uiLanguage).
-    if (!this.workspaceDisplayLocale) {
-      setUiProfileLanguage((await api.getUserAccount().catch(() => undefined))?.profile?.language_code);
-    }
-
     // Initialize student-specific components
     const repositoryManager = new StudentRepositoryManager(this.context, api);
 
@@ -986,10 +1017,7 @@ class UnifiedController {
     let lastSelectedAssignment: any | undefined;
     const commands = new StudentCommands(this.context, tree, api, repositoryManager, this.messagesInputPanel, this.wsService);
     // A unit description can carry one section per language (the course welcome item).
-    setDescriptionLanguageResolver(item => {
-      const content = (item as any).courseContent ?? (item as any).node?.courseContent;
-      return readingLanguage(api, content?.course_id ?? workspaceLaunchCourseId ?? '');
-    });
+    setDescriptionLanguageResolver(() => readingLanguage(api));
     const unavailableTarget = () => {
       void notify.info(say('This material is no longer available in this course.',
         'Dieses Material ist in diesem Kurs nicht mehr verfügbar.'));
@@ -1024,8 +1052,26 @@ class UnifiedController {
         const content = workspaceLaunchContent(item);
         if (content) await showWorkspaceCourseUnit(this.context, api, content, options);
       });
+    // The tree selection last shown in the reading tab, to show it again in a new language.
+    let shownDescription: { item: any; generation?: number } | undefined;
+    const showDescription = async (item: any, explicit?: boolean) => {
+      const before = readingPreviewGeneration();
+      await previewDescription(item, explicit);
+      const after = readingPreviewGeneration();
+      if (item && after !== undefined && after !== before) shownDescription = { item, generation: after };
+    };
+    this.disposables.push(onDidChangeUiLanguage(() => {
+      tree.refresh();
+      statusBar.refreshLanguage();
+      void courseSelectionService.refreshLanguage().catch(err => console.warn('Course title could not be refreshed:', err));
+      const shown = shownDescription;
+      if (shown && shown.generation === readingPreviewGeneration()) {
+        beginMarkdownPreviewRequest();
+        void showDescription(shown.item, true);
+      }
+    }));
     this.disposables.push(vscode.commands.registerCommand(PREVIEW_STUDENT_DESCRIPTION_COMMAND,
-      (item) => previewDescription(item, true)));
+      (item) => showDescription(item, true)));
     registerTreeView('computor.student.courses', {
       provider: tree,
       options: { showCollapseAll: true },
@@ -1037,7 +1083,7 @@ class UnifiedController {
       },
       onSelection: (event) => {
         const selected = event.selection[0];
-        void previewDescription(selected);
+        void showDescription(selected);
         if (!selected) return;
         if (selected.contextValue?.startsWith('studentCourseContent.assignment')) {
           lastSelectedAssignment = selected;
@@ -1082,12 +1128,12 @@ class UnifiedController {
       // Use external progress if available, otherwise show own popup
       const provisioning = new StudentRepositoryProvisioningService(this.context, api);
       const setupRepositories = async (progressReport: (msg: string) => void, cancellationToken?: vscode.CancellationToken) => {
-        progressReport('Preparing repositories...');
+        progressReport(say('Preparing repositories...', 'Repositorys werden vorbereitet …'));
         try {
           await repositoryManager.autoSetupRepositories(undefined, progressReport, expandedCourseIds, cancellationToken);
         } catch (e) {
           if (e instanceof GitCancelledError) {
-            notify.info('Repository setup was cancelled. Repositories will be set up when you expand a course.');
+            notify.info(say('Repository setup was cancelled. Repositories will be set up when you expand a course.', 'Die Einrichtung der Repositorys wurde abgebrochen. Sie werden eingerichtet, sobald du einen Kurs aufklappst.'));
           } else {
             console.error('[initializeStudentView] Repository auto-setup failed:', e);
           }
@@ -1107,7 +1153,7 @@ class UnifiedController {
       } else {
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
-          title: 'Preparing course repositories...',
+          title: say('Preparing course repositories...', 'Kurs-Repositorys werden vorbereitet …'),
           cancellable: true
         }, async (progress, token) => {
           await setupRepositories((msg) => progress.report({ message: msg }), token);
@@ -1136,9 +1182,6 @@ class UnifiedController {
       const selected = await courseSelectionService.selectCourse(courseId, { force: true, throwOnError: true });
       if (!selected) return false;
       if (!readingRequest.isCurrent()) return true;
-      const openedCourse = await api.getCourse(courseId).catch(() => undefined);
-      if (!readingRequest.isCurrent()) return true;
-      setUiCourseLanguage(openedCourse?.language_code);
       tree.setWorkspaceCourse(courseId);
       workspaceLaunchCourseId = courseId;
       // Initial launch runs before initializeViews enables its role contexts.
@@ -1355,6 +1398,7 @@ class UnifiedController {
     const tutorSettingsManager = new ComputorSettingsManager(this.context);
     const filterTree = new TutorFilterTreeProvider(api, selection, tutorSettingsManager);
     if (this.wsService) filterTree.setWebSocketService(this.wsService);
+    this.disposables.push(onDidChangeUiLanguage(() => filterTree.refresh()));
 
     // One way in for "the tutor is now looking at this course", shared by the
     // course node's click, its expand, and picking a member of another course.
@@ -1402,7 +1446,7 @@ class UnifiedController {
       // is thrown away.
       await selectTutorCourse(item.courseId);
       if (item.isNoGroup) {
-        await selection.selectGroup(NO_GROUP_SENTINEL, 'No Group');
+        await selection.selectGroup(NO_GROUP_SENTINEL, say('No Group', 'Ohne Gruppe'));
       } else {
         await selection.selectGroup(item.groupId, item.groupLabel);
       }
@@ -1425,6 +1469,8 @@ class UnifiedController {
     const { TutorStudentTreeProvider } = await import('./ui/tree/tutor/TutorStudentTreeProvider');
     const tree = new TutorStudentTreeProvider(api, selection);
     if (this.wsService) tree.setWebSocketService(this.wsService);
+    // Content and type titles are resolved per render from their language maps.
+    this.disposables.push(onDidChangeUiLanguage(() => tree.refresh()));
     registerTreeView('computor.tutor.courses', {
       provider: tree,
       options: { showCollapseAll: true },
@@ -1485,6 +1531,7 @@ class UnifiedController {
   private async initializeLecturerView(api: ComputorApiService): Promise<void> {
     const tree = new LecturerTreeDataProvider(this.context, api);
     if (this.wsService) tree.setWebSocketService(this.wsService);
+    this.disposables.push(onDidChangeUiLanguage(() => tree.refresh()));
 
     const breadcrumb = new LecturerBreadcrumbStatusBar();
     this.disposables.push(breadcrumb);
@@ -1522,6 +1569,7 @@ class UnifiedController {
     }, this.disposables);
 
     const exampleTree = new LecturerExampleTreeProvider(this.context, api);
+    this.disposables.push(onDidChangeUiLanguage(() => exampleTree.refresh()));
     const exampleTreeView = registerTreeView('computor.lecturer.examples', {
       provider: exampleTree,
       options: {
@@ -1604,6 +1652,7 @@ class UnifiedController {
     const { DocumentsTreeProvider } = await import('./ui/tree/lecturer-documents/DocumentsTreeProvider');
     const { DocumentsCommands } = await import('./commands/DocumentsCommands');
     const documentsTree = new DocumentsTreeProvider(api);
+    this.disposables.push(onDidChangeUiLanguage(() => documentsTree.refresh()));
     registerTreeView('computor.lecturer.documents', {
       provider: documentsTree,
       options: {
@@ -1665,6 +1714,7 @@ class UnifiedController {
     }
 
     const tree = new ChatInboxTreeProvider(this.context, api, messagesWebview);
+    this.disposables.push(onDidChangeUiLanguage(() => tree.redraw()));
     if (this.wsService) {
       tree.setWebSocketService(this.wsService);
     }
@@ -1924,14 +1974,15 @@ class UnifiedController {
     try {
       const status = await api.getMaintenanceStatus();
       if (!status || !this.wsService) return;
+      localizeMaintenanceMessage(status);
 
       if (status.active) {
         this.httpClient?.setMaintenanceMode(true, status.message);
         this.wsService.updateMaintenanceStatusBar('active', status.message);
-        notify.warning(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`);
+        notify.warning(say(`Maintenance Mode Active: ${status.message || 'System is under maintenance'}`, `Wartungsmodus aktiv: ${status.message || 'Das System wird gerade gewartet.'}`));
       } else if (status.scheduled_at) {
         this.wsService.updateMaintenanceStatusBar('scheduled', status.message, status.scheduled_at);
-        notify.info(`Maintenance Scheduled for ${new Date(status.scheduled_at).toLocaleString()}: ${status.message || 'Scheduled maintenance is planned'}`);
+        notify.info(say(`Maintenance Scheduled for ${formatUiDateTime(new Date(status.scheduled_at))}: ${status.message || 'Scheduled maintenance is planned'}`, `Wartung geplant für ${formatUiDateTime(new Date(status.scheduled_at))}: ${status.message || 'Eine Wartung ist geplant.'}`));
       }
     } catch (error) {
       // Non-critical — don't block startup
@@ -2032,8 +2083,21 @@ async function initializeOfflineMode(context: vscode.ExtensionContext): Promise<
   }
 }
 
+/** Browser sign-in cannot complete in this window; say what works instead. */
+async function explainBrowserSignInUnavailable(context: vscode.ExtensionContext): Promise<void> {
+  const useToken = say('Use API Token', 'API-Token verwenden');
+  const action = await notify.warning(browserSignInUnavailableHint(), useToken, say('Not Now', 'Nicht jetzt'));
+  if (action === useToken) {
+    await apiTokenLoginFlow(context);
+  }
+}
+
 async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void> {
-  if (isAuthenticating) { notify.info('Login already in progress.'); return; }
+  if (isAuthenticating) { notify.info(say('Login already in progress.', 'Die Anmeldung läuft bereits.')); return; }
+  if (!browserSignInAvailable()) {
+    await explainBrowserSignInUnavailable(context);
+    return;
+  }
   // Claim the in-flight guard synchronously, before any await, so a second
   // trigger (e.g. the auto-login prompt) can't race us into a duplicate
   // controller.activate().
@@ -2054,11 +2118,12 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
     // existing client's tokens rather than tearing down the session, so role
     // commands held on context.subscriptions aren't re-registered.
     if (activeSession) {
+      const reauthenticate = say('Re-authenticate', 'Erneut anmelden');
       const answer = await notify.warning(
-        `Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`,
-        'Re-authenticate', 'Cancel'
+        say(`Already logged in with views: ${activeSession.getActiveViews().join(', ')}. Re-authenticate?`, `Du bist bereits angemeldet (Ansichten: ${activeSession.getActiveViews().join(', ')}). Erneut anmelden?`),
+        reauthenticate, say('Cancel', 'Abbrechen')
       );
-      if (answer !== 'Re-authenticate') { return; }
+      if (answer !== reauthenticate) { return; }
 
       const existing = activeSession.getHttpClient?.();
       if (!(existing instanceof BearerTokenHttpClient)) {
@@ -2077,9 +2142,9 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
           userId: sso.userId
         });
         await persistSession(context, sessionAuthFromClient(existing));
-        notify.info(`Re-authenticated: ${baseUrl}`);
+        notify.info(say(`Re-authenticated: ${baseUrl}`, `Erneut angemeldet: ${baseUrl}`));
       } catch (error: any) {
-        notify.error(`Re-authentication failed: ${error?.message || error}`);
+        notify.error(sayFailed(`Re-authentication failed`, `Die erneute Anmeldung ist fehlgeschlagen`, error?.message || error));
       }
       return;
     }
@@ -2096,7 +2161,7 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
       sso = await runSsoWithProgress(baseUrl);
     } catch (error: any) {
       // Cancelled, timed out, or the browser handshake failed.
-      notify.warning(`Sign-in not completed: ${error?.message || error}`);
+      notify.warning(sayFailed(`Sign-in not completed`, `Die Anmeldung wurde nicht abgeschlossen`, error?.message || error));
       return;
     }
 
@@ -2107,19 +2172,19 @@ async function unifiedLoginFlow(context: vscode.ExtensionContext): Promise<void>
         title: 'Computor',
         cancellable: false
       }, async (progress) => {
-        progress.report({ message: 'Loading your courses…' });
+        progress.report({ message: say('Loading your courses…', 'Deine Kurse werden geladen …') });
         await activateSession(context, baseUrl, client, (m) => progress.report({ message: m }));
       });
     } catch (error: any) {
       console.error('Login failed:', error);
       backendConnectionService.stopHealthCheck();
-      notify.error(`Login failed: ${error?.message || error}`);
+      notify.error(sayFailed(`Login failed`, `Die Anmeldung ist fehlgeschlagen`, error?.message || error));
       return;
     }
 
     await persistSession(context, sessionAuthFromClient(client));
     notify.info(
-      sso.isNewUser ? 'Welcome to Computor! Your account has been set up.' : `Logged in: ${baseUrl}`
+      sso.isNewUser ? say('Welcome to Computor! Your account has been set up.', 'Willkommen bei Computor! Dein Konto ist eingerichtet.') : say(`Logged in: ${baseUrl}`, `Angemeldet: ${baseUrl}`)
     );
   } finally {
     isAuthenticating = false;

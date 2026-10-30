@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { escapeHtml } from './webviewHelpers';
+import { uiLanguage } from '../../../utils/uiLanguage';
 
 /**
  * The single message envelope used between extension host and webviews,
@@ -131,7 +132,7 @@ export function renderWebviewPage(
   const content = `${headerHtml}\n  ${bodyHtml}`;
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${uiLanguage()}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

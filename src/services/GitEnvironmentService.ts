@@ -4,6 +4,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { notify } from '../utils/notify';
+import { say, sayFailed } from '../utils/uiLanguage';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,7 +52,7 @@ export class GitEnvironmentService {
 
     if (!userName) {
       missing.push('user.name');
-      commands.push('git config --global user.name "Your Name"');
+      commands.push(say('git config --global user.name "Your Name"', 'git config --global user.name "Dein Name"'));
     }
 
     if (!userEmail) {
@@ -60,15 +61,19 @@ export class GitEnvironmentService {
     }
 
     if (missing.length > 0) {
-      const missingText = missing.join(' and ');
+      const missingText = missing.join(say(' and ', ' und '));
       const exampleCommands = commands.join('\n');
+      const configureNow = say('Configure Now', 'Jetzt einrichten');
       const action = await notify.warning(
-        `Git ${missingText} ${missing.length === 1 ? 'is' : 'are'} not configured. Configure them so commits have correct author information.\n${exampleCommands}`,
-        'Configure Now',
-        'Cancel'
+        say(
+          `Git ${missingText} ${missing.length === 1 ? 'is' : 'are'} not configured. Configure them so commits have correct author information.\n${exampleCommands}`,
+          `In Git ${missing.length === 1 ? 'ist' : 'sind'} ${missingText} nicht eingerichtet. Richte das ein, damit deine Commits die richtigen Autorenangaben tragen.\n${exampleCommands}`
+        ),
+        configureNow,
+        say('Cancel', 'Abbrechen')
       );
 
-      if (action === 'Configure Now') {
+      if (action === configureNow) {
         const configured = await this.promptAndConfigureGit();
         return configured;
       }
@@ -93,17 +98,17 @@ export class GitEnvironmentService {
 
     if (!name) {
       const inputName = await vscode.window.showInputBox({
-        title: 'Git Configuration',
-        prompt: 'Enter your full name for git commits',
-        placeHolder: 'John Doe',
+        title: say('Git Configuration', 'Git-Einrichtung'),
+        prompt: say('Enter your full name for git commits', 'Gib deinen vollständigen Namen für Git-Commits ein'),
+        placeHolder: say('John Doe', 'Erika Mustermann'),
         ignoreFocusOut: true,
         validateInput: (value) => {
           const trimmed = value.trim();
           if (trimmed.length === 0) {
-            return 'Name cannot be empty';
+            return say('Name cannot be empty', 'Der Name darf nicht leer sein');
           }
           if (trimmed.length < 2) {
-            return 'Name must be at least 2 characters';
+            return say('Name must be at least 2 characters', 'Der Name muss mindestens 2 Zeichen lang sein');
           }
           return undefined;
         }
@@ -117,18 +122,18 @@ export class GitEnvironmentService {
 
     if (!email) {
       const inputEmail = await vscode.window.showInputBox({
-        title: 'Git Configuration',
-        prompt: 'Enter your email address for git commits',
-        placeHolder: 'you@example.com',
+        title: say('Git Configuration', 'Git-Einrichtung'),
+        prompt: say('Enter your email address for git commits', 'Gib deine E-Mail-Adresse für Git-Commits ein'),
+        placeHolder: say('you@example.com', 'du@example.com'),
         ignoreFocusOut: true,
         validateInput: (value) => {
           const trimmed = value.trim();
           if (trimmed.length === 0) {
-            return 'Email cannot be empty';
+            return say('Email cannot be empty', 'Die E-Mail-Adresse darf nicht leer sein');
           }
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           if (!emailRegex.test(trimmed)) {
-            return 'Please enter a valid email address';
+            return say('Please enter a valid email address', 'Gib bitte eine gültige E-Mail-Adresse ein');
           }
           return undefined;
         }
@@ -149,10 +154,10 @@ export class GitEnvironmentService {
         await execFileAsync(gitBinary, ['config', '--global', 'user.email', email]);
       }
 
-      void notify.info('Git configuration updated successfully!');
+      void notify.info(say('Git configuration updated successfully!', 'Git ist jetzt eingerichtet.'));
       return true;
     } catch (error: any) {
-      void notify.error(`Failed to configure git: ${error.message}`);
+      void notify.error(sayFailed(`Failed to configure git`, `Git konnte nicht eingerichtet werden`, error.message));
       return false;
     }
   }
@@ -160,7 +165,10 @@ export class GitEnvironmentService {
   private async ensureGitBinary(): Promise<string | undefined> {
     const binary = await this.resolveGitBinary();
     if (!binary) {
-      void notify.error('Git is required but was not found. Install Git and ensure it is available on your PATH.');
+      void notify.error(say(
+        'Git is required but was not found. Install Git and ensure it is available on your PATH.',
+        'Git wird benötigt, wurde aber nicht gefunden. Installiere Git und sorge dafür, dass es über deinen PATH erreichbar ist.'
+      ));
       return undefined;
     }
 

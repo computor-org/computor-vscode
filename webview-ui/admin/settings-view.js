@@ -1,6 +1,7 @@
 (function () {
   var V = window.Validators;
   var escapeHtml = window.ComputorWebview.escapeHtml;
+  var say = window.ComputorWebview.say;
   var vscode = window.vscodeApi || acquireVsCodeApi();
 
   var state = {
@@ -44,7 +45,7 @@
       var err = urlValidator.validate();
       if (err) { return; }
     } else {
-      var error = V.url(state.backendUrl, { label: 'Server URL' });
+      var error = V.url(state.backendUrl, { label: say('Server URL', 'Server-URL') });
       if (error) {
         state.notice = { type: 'error', message: error };
         render();
@@ -74,7 +75,7 @@
   }
 
   function validateBackendUrl() {
-    var urlError = V.url(state.backendUrl, { label: 'Server URL' });
+    var urlError = V.url(state.backendUrl, { label: say('Server URL', 'Server-URL') });
     if (urlError) {
       state.backendUrlValidationStatus = 'invalid';
       state.backendUrlValidationMessage = urlError;
@@ -82,7 +83,7 @@
       return;
     }
     state.backendUrlValidationStatus = 'validating';
-    state.backendUrlValidationMessage = 'Checking...';
+    state.backendUrlValidationMessage = say('Checking…', 'Wird geprüft …');
     render();
     post('validateBackendUrl', { url: state.backendUrl.trim() });
   }
@@ -126,7 +127,7 @@
     var entry = state.providerEntries.find(function (e) { return e.id === entryId; });
     if (!entry) { return; }
 
-    var urlError = V.url(entry.url, { label: 'Provider URL' });
+    var urlError = V.url(entry.url, { label: say('Provider URL', 'Anbieter-URL') });
     if (urlError) {
       entry.validationStatus = 'invalid';
       entry.validationMessage = urlError;
@@ -136,13 +137,13 @@
 
     if (!entry.token || entry.token.length < 10) {
       entry.validationStatus = 'invalid';
-      entry.validationMessage = 'Token is too short';
+      entry.validationMessage = say('Token is too short', 'Das Token ist zu kurz');
       render();
       return;
     }
 
     entry.validationStatus = 'validating';
-    entry.validationMessage = 'Validating...';
+    entry.validationMessage = say('Validating…', 'Wird geprüft …');
     render();
 
     post('validateProviderToken', { url: normalizeUrl(entry.url), token: entry.token });
@@ -151,7 +152,7 @@
   function saveProviderEntry(entryId) {
     var entry = state.providerEntries.find(function (e) { return e.id === entryId; });
     if (!entry || entry.validationStatus !== 'valid') {
-      state.notice = { type: 'error', message: 'Validate the token before saving.' };
+      state.notice = { type: 'error', message: say('Validate the token before saving.', 'Prüfe das Token, bevor du es speicherst.') };
       render();
       return;
     }
@@ -175,13 +176,13 @@
 
     if (!entry.token || entry.token.length < 10) {
       entry.validationStatus = 'invalid';
-      entry.validationMessage = 'Token is too short';
+      entry.validationMessage = say('Token is too short', 'Das Token ist zu kurz');
       render();
       return;
     }
 
     entry.validationStatus = 'validating';
-    entry.validationMessage = 'Validating...';
+    entry.validationMessage = say('Validating…', 'Wird geprüft …');
     render();
 
     post('validateProviderToken', { url: url, token: entry.token });
@@ -190,7 +191,7 @@
   function saveUpdateToken(url) {
     var entry = updatingTokens[url];
     if (!entry || entry.validationStatus !== 'valid') {
-      state.notice = { type: 'error', message: 'Validate the token before saving.' };
+      state.notice = { type: 'error', message: say('Validate the token before saving.', 'Prüfe das Token, bevor du es speicherst.') };
       render();
       return;
     }
@@ -199,17 +200,17 @@
 
   function renderStoredTokens() {
     if (!state.storedProviderTokens || state.storedProviderTokens.length === 0) {
-      return '<p class="section-description" style="margin-top: 4px;">No stored tokens yet.</p>';
+      return '<p class="section-description" style="margin-top: 4px;">' + say('No stored tokens yet.', 'Noch keine gespeicherten Tokens.') + '</p>';
     }
     var items = state.storedProviderTokens.map(function (t) {
       var isUpdating = !!updatingTokens[t.url];
       var html = '<div class="provider-stored-item">' +
         '<span class="provider-stored-url">' + escapeHtml(t.url) + '</span>' +
-        '<span class="provider-stored-status">' + (t.hasToken ? 'Token stored' : 'No token') + '</span>' +
+        '<span class="provider-stored-status">' + (t.hasToken ? say('Token stored', 'Token gespeichert') : say('No token', 'Kein Token')) + '</span>' +
         '<button type="button" class="btn btn-secondary btn-sm provider-update-stored-btn" data-url="' + escapeHtml(t.url) + '">' +
-          (isUpdating ? 'Cancel' : 'Update') +
+          (isUpdating ? say('Cancel', 'Abbrechen') : say('Update', 'Ersetzen')) +
         '</button>' +
-        '<button type="button" class="btn btn-danger btn-sm provider-remove-stored-btn" data-url="' + escapeHtml(t.url) + '">Remove</button>' +
+        '<button type="button" class="btn btn-danger btn-sm provider-remove-stored-btn" data-url="' + escapeHtml(t.url) + '">' + say('Remove', 'Entfernen') + '</button>' +
       '</div>';
 
       if (isUpdating) {
@@ -217,24 +218,24 @@
         var statusClass = entry.validationStatus;
         var statusText = '';
         switch (entry.validationStatus) {
-          case 'valid':      statusText = entry.validationMessage || 'Valid'; break;
-          case 'invalid':    statusText = entry.validationMessage || 'Invalid'; break;
-          case 'validating': statusText = 'Validating...'; break;
+          case 'valid':      statusText = entry.validationMessage || say('Valid', 'Gültig'); break;
+          case 'invalid':    statusText = entry.validationMessage || say('Invalid', 'Ungültig'); break;
+          case 'validating': statusText = say('Validating…', 'Wird geprüft …'); break;
           default:           statusText = ''; break;
         }
         var canSave = entry.validationStatus === 'valid';
 
         html += '<div class="provider-update-panel" data-url="' + escapeHtml(t.url) + '">' +
           '<div class="form-field">' +
-            '<label>New Personal Access Token</label>' +
+            '<label>' + say('New Personal Access Token', 'Neues persönliches Zugriffstoken') + '</label>' +
             '<input type="password" class="provider-update-token-input" data-url="' + escapeHtml(t.url) + '" ' +
               'value="' + escapeHtml(entry.token) + '" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx">' +
             '<span class="field-error"></span>' +
           '</div>' +
           '<div class="provider-entry-actions">' +
-            '<button type="button" class="btn btn-secondary btn-sm provider-validate-update-btn" data-url="' + escapeHtml(t.url) + '">Validate</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm provider-validate-update-btn" data-url="' + escapeHtml(t.url) + '">' + say('Validate', 'Prüfen') + '</button>' +
             '<button type="button" class="btn sm provider-save-update-btn" data-url="' + escapeHtml(t.url) + '"' +
-              (canSave ? '' : ' disabled') + '>Save Token</button>' +
+              (canSave ? '' : ' disabled') + '>' + say('Save Token', 'Token speichern') + '</button>' +
             (statusText ? '<span class="provider-validation-status ' + statusClass + '">' + escapeHtml(statusText) + '</span>' : '') +
           '</div>' +
         '</div>';
@@ -249,36 +250,36 @@
     var statusClass = entry.validationStatus;
     var statusText = '';
     switch (entry.validationStatus) {
-      case 'valid':      statusText = entry.validationMessage || 'Valid'; break;
-      case 'invalid':    statusText = entry.validationMessage || 'Invalid'; break;
-      case 'validating': statusText = 'Validating...'; break;
-      default:           statusText = 'Not validated'; break;
+      case 'valid':      statusText = entry.validationMessage || say('Valid', 'Gültig'); break;
+      case 'invalid':    statusText = entry.validationMessage || say('Invalid', 'Ungültig'); break;
+      case 'validating': statusText = say('Validating…', 'Wird geprüft …'); break;
+      default:           statusText = say('Not validated', 'Nicht geprüft'); break;
     }
     var canSave = entry.validationStatus === 'valid';
 
     return '<div class="provider-entry" data-entry-id="' + entry.id + '">' +
       '<div class="provider-entry-header">' +
-        '<span>New Provider Instance</span>' +
+        '<span>' + say('New Provider Instance', 'Neuer Git-Anbieter') + '</span>' +
       '</div>' +
       '<div class="provider-entry-fields">' +
         '<div class="form-field">' +
-          '<label>Provider URL</label>' +
+          '<label>' + say('Provider URL', 'Anbieter-URL') + '</label>' +
           '<input type="url" class="provider-url-input" data-entry-id="' + entry.id + '" ' +
             'value="' + escapeHtml(entry.url) + '" placeholder="https://provider.example.com">' +
           '<span class="field-error"></span>' +
         '</div>' +
         '<div class="form-field">' +
-          '<label>Personal Access Token</label>' +
+          '<label>' + say('Personal Access Token', 'Persönliches Zugriffstoken') + '</label>' +
           '<input type="password" class="provider-token-input" data-entry-id="' + entry.id + '" ' +
             'value="' + escapeHtml(entry.token) + '" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx">' +
           '<span class="field-error"></span>' +
         '</div>' +
       '</div>' +
       '<div class="provider-entry-actions">' +
-        '<button type="button" class="btn btn-secondary btn-sm provider-validate-btn" data-entry-id="' + entry.id + '">Validate</button>' +
+        '<button type="button" class="btn btn-secondary btn-sm provider-validate-btn" data-entry-id="' + entry.id + '">' + say('Validate', 'Prüfen') + '</button>' +
         '<button type="button" class="btn sm provider-save-btn" data-entry-id="' + entry.id + '"' +
-          (canSave ? '' : ' disabled') + '>Save Token</button>' +
-        '<button type="button" class="btn btn-danger btn-sm provider-remove-btn" data-entry-id="' + entry.id + '">Cancel</button>' +
+          (canSave ? '' : ' disabled') + '>' + say('Save Token', 'Token speichern') + '</button>' +
+        '<button type="button" class="btn btn-danger btn-sm provider-remove-btn" data-entry-id="' + entry.id + '">' + say('Cancel', 'Abbrechen') + '</button>' +
         '<span class="provider-validation-status ' + statusClass + '">' + escapeHtml(statusText) + '</span>' +
       '</div>' +
     '</div>';
@@ -301,17 +302,17 @@
 
     root.innerHTML =
       '<div class="header">' +
-        '<h1>Computor Settings</h1>' +
-        '<p>Manage your environment configuration.</p>' +
+        '<h1>' + say('Computor Settings', 'Computor-Einstellungen') + '</h1>' +
+        '<p>' + say('Manage your environment configuration.', 'Hier richtest du deine Umgebung ein.') + '</p>' +
       '</div>' +
       noticeHtml +
 
       '<div class="settings-grid">' +
         '<div class="section stack tight">' +
-          '<div class="section-header"><h2>Backend URL</h2></div>' +
-          '<p class="section-description">The URL of your institution\'s Computor server.</p>' +
+          '<div class="section-header"><h2>' + say('Backend URL', 'Server-Adresse') + '</h2></div>' +
+          '<p class="section-description">' + say('The URL of your institution\'s Computor server.', 'Die URL des Computor-Servers deiner Hochschule.') + '</p>' +
           '<div class="form-field">' +
-            '<label for="backend-url">Server URL</label>' +
+            '<label for="backend-url">' + say('Server URL', 'Server-URL') + '</label>' +
             '<input type="url" id="backend-url" value="' + escapeHtml(state.backendUrl) + '" placeholder="http://localhost:8000">' +
             '<span class="field-error"></span>' +
           '</div>' +
@@ -319,46 +320,48 @@
             var cls = state.backendUrlValidationStatus;
             var txt = '';
             switch (state.backendUrlValidationStatus) {
-              case 'valid':      txt = 'Reachable'; break;
-              case 'invalid':    txt = state.backendUrlValidationMessage || 'Unreachable'; break;
-              case 'validating': txt = 'Checking...'; break;
+              case 'valid':      txt = say('Reachable', 'Erreichbar'); break;
+              case 'invalid':    txt = state.backendUrlValidationMessage || say('Unreachable', 'Nicht erreichbar'); break;
+              case 'validating': txt = say('Checking…', 'Wird geprüft …'); break;
               default:           txt = ''; break;
             }
             return txt ? '<span class="provider-validation-status ' + cls + '">' + escapeHtml(txt) + '</span>' : '';
           })() +
           '<div class="actions end section-actions">' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="validate-backend-url-btn">Validate</button>' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="cancel-backend-url-btn">Cancel</button>' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="save-backend-url-btn">Save URL</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="validate-backend-url-btn">' + say('Validate', 'Prüfen') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="cancel-backend-url-btn">' + say('Cancel', 'Abbrechen') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="save-backend-url-btn">' + say('Save URL', 'URL speichern') + '</button>' +
           '</div>' +
         '</div>' +
 
         '<div class="section stack tight">' +
-          '<div class="section-header"><h2>Git Configuration</h2></div>' +
-          '<p class="section-description">Your name and email for git commits.</p>' +
+          '<div class="section-header"><h2>' + say('Git Configuration', 'Git-Einrichtung') + '</h2></div>' +
+          '<p class="section-description">' + say('Your name and email for git commits.', 'Dein Name und deine E-Mail-Adresse für Git-Commits.') + '</p>' +
           '<div class="form-field">' +
             '<label for="git-name">Name</label>' +
-            '<input type="text" id="git-name" value="' + escapeHtml(state.gitName) + '" placeholder="John Doe">' +
+            '<input type="text" id="git-name" value="' + escapeHtml(state.gitName) + '" placeholder="' + say('John Doe', 'Erika Mustermann') + '">' +
             '<span class="field-error"></span>' +
           '</div>' +
           '<div class="form-field">' +
-            '<label for="git-email">Email</label>' +
-            '<input type="email" id="git-email" value="' + escapeHtml(state.gitEmail) + '" placeholder="you@example.com">' +
+            '<label for="git-email">' + say('Email', 'E-Mail-Adresse') + '</label>' +
+            '<input type="email" id="git-email" value="' + escapeHtml(state.gitEmail) + '" placeholder="' + say('you@example.com', 'du@example.com') + '">' +
             '<span class="field-error"></span>' +
           '</div>' +
           '<div class="actions end section-actions">' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="cancel-git-config-btn">Cancel</button>' +
-            '<button type="button" class="btn btn-secondary btn-sm" id="save-git-config-btn">Save Git Config</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="cancel-git-config-btn">' + say('Cancel', 'Abbrechen') + '</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="save-git-config-btn">' + say('Save Git Config', 'Git-Einrichtung speichern') + '</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
 
       '<div class="section stack tight">' +
         '<div class="section-header">' +
-          '<h2>Git Providers</h2>' +
-          '<button type="button" class="btn btn-secondary btn-sm" id="add-provider-btn">+ Add</button>' +
+          '<h2>' + say('Git Providers', 'Git-Anbieter') + '</h2>' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="add-provider-btn">+ ' + say('Add', 'Hinzufügen') + '</button>' +
         '</div>' +
-        '<p class="section-description">Store access tokens for your git providers (GitLab, Forgejo, ...). Each token needs repository read/write access on its instance.</p>' +
+        '<p class="section-description">' + say(
+          'Store access tokens for your git providers (GitLab, Forgejo, ...). Each token needs repository read/write access on its instance.',
+          'Hier speicherst du Zugriffstokens für deine Git-Anbieter (GitLab, Forgejo …). Jedes Token braucht auf seinem Server Lese- und Schreibzugriff auf die Repositories.') + '</p>' +
         renderStoredTokens() +
         '<div id="provider-entries">' + providerEntriesHtml + '</div>' +
       '</div>';
@@ -470,7 +473,7 @@
 
   function attachValidation() {
     attachLive('backend-url', function (v) {
-      return V.url(v, { label: 'Server URL' });
+      return V.url(v, { label: say('Server URL', 'Server-URL') });
     });
 
     attachLive('git-name', function (v) {
@@ -483,7 +486,7 @@
 
     document.querySelectorAll('.provider-url-input').forEach(function (input) {
       liveValidators.push(V.attachLiveValidation(input, function (v) {
-        return V.url(v, { label: 'Provider URL' });
+        return V.url(v, { label: say('Provider URL', 'Anbieter-URL') });
       }));
     });
 
@@ -618,7 +621,7 @@
 
   function handleBackendUrlValidationResult(data) {
     state.backendUrlValidationStatus = data.valid ? 'valid' : 'invalid';
-    state.backendUrlValidationMessage = data.valid ? 'Reachable' : (data.error || 'Unreachable');
+    state.backendUrlValidationMessage = data.valid ? say('Reachable', 'Erreichbar') : (data.error || say('Unreachable', 'Nicht erreichbar'));
     render();
   }
 
@@ -628,20 +631,19 @@
     var btnId = null;
     var msg = data.message || '';
 
-    if (msg.indexOf('Backend URL saved') !== -1) {
+    // Matched on the code: the message is in the reading language.
+    if (data.code === 'backendUrl') {
       btnId = 'save-backend-url-btn';
       if (data.type === 'success') { initialValues.backendUrl = state.backendUrl; }
-    } else if (msg.indexOf('Git configuration saved') !== -1) {
+    } else if (data.code === 'gitConfig') {
       btnId = 'save-git-config-btn';
       if (data.type === 'success') { initialValues.gitName = state.gitName; initialValues.gitEmail = state.gitEmail; }
-    } else if (msg.indexOf('Provider token saved') !== -1) {
-      btnId = null;
     }
 
     if (btnId) {
       var btn = document.getElementById(btnId);
       if (btn) {
-        V.showSaveIndicator(btn, { message: data.type === 'success' ? 'Saved' : msg, type: data.type });
+        V.showSaveIndicator(btn, { message: data.type === 'success' ? say('Saved', 'Gespeichert') : msg, type: data.type });
         return;
       }
     }
@@ -653,8 +655,8 @@
   }
 
   function handleValidationResult(data) {
-    var validMsg = 'Authenticated as ' + (data.name || data.username || 'unknown');
-    var invalidMsg = data.error || 'Validation failed';
+    var validMsg = say('Authenticated as ', 'Angemeldet als ') + (data.name || data.username || say('unknown', 'unbekannt'));
+    var invalidMsg = data.error || say('Validation failed', 'Prüfung fehlgeschlagen');
 
     // Check new Provider entries
     var entry = state.providerEntries.find(function (e) {
@@ -683,7 +685,7 @@
     render();
     var addBtn = document.getElementById('add-provider-btn');
     if (addBtn) {
-      V.showSaveIndicator(addBtn, { message: 'Token saved' });
+      V.showSaveIndicator(addBtn, { message: say('Token saved', 'Token gespeichert') });
     }
   }
 

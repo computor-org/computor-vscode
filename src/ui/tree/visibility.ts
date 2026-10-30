@@ -16,6 +16,8 @@
 //   lecturer  every row arrives, hidden ones marked and toggleable
 //   tutor     every row arrives, hidden ones marked
 
+import { say } from '../../utils/uiLanguage';
+
 /** Anything carrying resolved visibility from the API. */
 export interface VisibilitySource {
     /** Resolved against ancestors and the course. Absent on older payloads. */
@@ -33,7 +35,9 @@ export interface VisibilitySource {
  * the decision was made still drives behaviour — see `isHiddenHere` — it just
  * does not need its own label.
  */
-export const INVISIBLE_BADGE = '👁 invisible';
+export function invisibleBadge(): string {
+    return say('👁 invisible', '👁 unsichtbar');
+}
 
 /**
  * Whether students can currently see this content.
@@ -64,7 +68,7 @@ export function isHiddenHere(content: VisibilitySource | null | undefined): bool
 
 /** The badge for a hidden row, or undefined when it is visible. */
 export function hiddenBadge(content: VisibilitySource | null | undefined): string | undefined {
-    return isHidden(content) ? INVISIBLE_BADGE : undefined;
+    return isHidden(content) ? invisibleBadge() : undefined;
 }
 
 /**

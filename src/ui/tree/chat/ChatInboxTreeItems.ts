@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { MessageList } from '../../../types/generated';
+import { formatUiDateTime, say, uiLocale } from '../../../utils/uiLanguage';
 
 export type MessageScope =
   | 'user'
@@ -43,16 +44,16 @@ export interface ChatThread {
 // Human names for scopes, used in tooltips, toasts and the flat DM
 // sections. The old system names ("Submission Groups", "Course Content")
 // told users nothing about who reads such a message (issue #322 §3).
-const SCOPE_LABELS: Record<MessageScope, string> = {
-  user: 'Direct Messages',
-  course_member: 'Course Member DMs',
-  submission_group: 'Assignment conversation',
-  course_group: 'Group announcement',
-  course_content: 'Assignment announcement',
-  course: 'Course announcement',
-  course_family: 'Course family announcement',
-  organization: 'Organization announcement',
-  global: 'System announcement'
+const SCOPE_LABELS: Record<MessageScope, [string, string]> = {
+  user: ['Direct Messages', 'Direktnachrichten'],
+  course_member: ['Course Member DMs', 'Direktnachrichten an Kursmitglieder'],
+  submission_group: ['Assignment conversation', 'Gespräch zur Aufgabe'],
+  course_group: ['Group announcement', 'Ankündigung an die Gruppe'],
+  course_content: ['Assignment announcement', 'Ankündigung zur Aufgabe'],
+  course: ['Course announcement', 'Ankündigung im Kurs'],
+  course_family: ['Course family announcement', 'Ankündigung an die Kursfamilie'],
+  organization: ['Organization announcement', 'Ankündigung an die Organisation'],
+  global: ['System announcement', 'Systemankündigung']
 };
 
 // Announcement rows carry their origin's icon so a course notice, a group
@@ -71,7 +72,7 @@ const SCOPE_ICONS: Record<MessageScope, string> = {
 };
 
 export function scopeLabel(scope: MessageScope): string {
-  return SCOPE_LABELS[scope];
+  return say(...SCOPE_LABELS[scope]);
 }
 
 export class ChatScopeItem extends vscode.TreeItem {
@@ -96,10 +97,9 @@ export class ChatScopeItem extends vscode.TreeItem {
     const muted = options?.muted === true;
     const isCourseGrouped = courseChildCount !== undefined;
     const childCount = isCourseGrouped ? courseChildCount! : threads.length;
-    const childKind = isCourseGrouped ? 'course' : 'thread';
     // Prefix the label (not the description) with the muted bell so the
     // glyph sits at the same column on every muted row, vertically aligned.
-    const baseLabel = SCOPE_LABELS[scope];
+    const baseLabel = scopeLabel(scope);
     const label = muted ? `🔕 ${baseLabel}` : baseLabel;
     super(
       label,
@@ -118,11 +118,14 @@ export class ChatScopeItem extends vscode.TreeItem {
     if (muted) { suffixes.push('muted'); }
     this.contextValue = ['chatScope', scope, ...suffixes].join('.');
     this.iconPath = new vscode.ThemeIcon(SCOPE_ICONS[scope]);
-    this.description = unreadCount > 0 ? `${unreadCount} unread · ${childCount}` : `${childCount}`;
+    this.description = unreadCount > 0 ? `${unreadCount} ${say('unread', 'ungelesen')} · ${childCount}` : `${childCount}`;
+    const children = isCourseGrouped
+      ? say(`${childCount} course(s)`, `${childCount} Kurs(e)`)
+      : say(`${childCount} thread(s)`, `${childCount} Unterhaltung(en)`);
     const baseTooltip = unreadCount > 0
-      ? `${baseLabel}: ${unreadCount} unread of ${childCount} ${childKind}(s)`
-      : `${baseLabel}: ${childCount} ${childKind}(s)`;
-    this.tooltip = muted ? `${baseTooltip}\nNotifications muted for this scope.` : baseTooltip;
+      ? `${baseLabel}: ${say(`${unreadCount} unread of ${children}`, `${unreadCount} ungelesen von ${children}`)}`
+      : `${baseLabel}: ${children}`;
+    this.tooltip = muted ? `${baseTooltip}\n${say('Notifications muted for this scope.', 'Benachrichtigungen für diesen Bereich stummgeschaltet.')}` : baseTooltip;
 
     // A scope with children expands on click — that is what the arrow is for.
     // A childless one (Global before anyone has posted) would otherwise do
@@ -189,7 +192,7 @@ export class ChatThreadItem extends vscode.TreeItem {
 }
 
 export class ChatEmptyItem extends vscode.TreeItem {
-  constructor(message: string = 'No messages.') {
+  constructor(message: string = say('No messages.', 'Keine Nachrichten.')) {
     super(message, vscode.TreeItemCollapsibleState.None);
     this.id = 'chat-empty';
     this.iconPath = new vscode.ThemeIcon('inbox');
@@ -199,7 +202,7 @@ export class ChatEmptyItem extends vscode.TreeItem {
 
 export class ChatLoadingItem extends vscode.TreeItem {
   constructor() {
-    super('Loading…', vscode.TreeItemCollapsibleState.None);
+    super(say('Loading…', 'Wird geladen …'), vscode.TreeItemCollapsibleState.None);
     this.id = 'chat-loading';
     this.iconPath = new vscode.ThemeIcon('loading~spin');
     this.contextValue = 'chatLoading';
@@ -230,9 +233,9 @@ export type ChatSectionKind = 'announcements' | 'assignments';
  *  (messages and unread messages, never child-node counts — issue #322 §2). */
 export function formatCountsDescription(counts: ChatCounts | undefined): string {
   if (!counts) { return ''; }
-  if (counts.unread > 0) { return `${counts.unread} unread · ${counts.total}`; }
+  if (counts.unread > 0) { return `${counts.unread} ${say('unread', 'ungelesen')} · ${counts.total}`; }
   if (counts.total > 0) { return `${counts.total}`; }
-  return 'no messages';
+  return say('no messages', 'keine Nachrichten');
 }
 
 /** Root "Announcements" node: global + organization + course_family notices. */
@@ -244,7 +247,8 @@ export class ChatTopAnnouncementsItem extends vscode.TreeItem {
     expanded: boolean,
     muted: boolean
   ) {
-    const label = muted ? '🔕 Announcements' : 'Announcements';
+    const announcements = say('Announcements', 'Ankündigungen');
+    const label = muted ? `🔕 ${announcements}` : announcements;
     const canExpand = threads.length > 0;
     super(
       label,
@@ -259,8 +263,8 @@ export class ChatTopAnnouncementsItem extends vscode.TreeItem {
     this.contextValue = ['chatTop', 'announcements', ...suffixes].join('.');
     this.iconPath = new vscode.ThemeIcon('megaphone');
     this.description = formatCountsDescription(counts);
-    const baseTooltip = 'System, organization and course-family announcements';
-    this.tooltip = muted ? `${baseTooltip}\nNotifications muted.` : baseTooltip;
+    const baseTooltip = say('System, organization and course-family announcements', 'Ankündigungen des Systems, der Organisation und der Kursfamilie');
+    this.tooltip = muted ? `${baseTooltip}\n${say('Notifications muted.', 'Benachrichtigungen stummgeschaltet.')}` : baseTooltip;
     // A childless row would otherwise do nothing on click — open the global
     // announcements panel instead (also the only route to posting the first).
     if (!canExpand) {
@@ -295,9 +299,9 @@ export class ChatCourseItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('mortar-board');
     this.description = formatCountsDescription(counts);
     const baseTooltip = counts
-      ? `${courseLabel}: ${counts.unread} unread of ${counts.total} message(s)`
+      ? `${courseLabel}: ${unreadOf(counts)}`
       : courseLabel;
-    this.tooltip = muted ? `${baseTooltip}\nNotifications muted for this course.` : baseTooltip;
+    this.tooltip = muted ? `${baseTooltip}\n${say('Notifications muted for this course.', 'Benachrichtigungen für diesen Kurs stummgeschaltet.')}` : baseTooltip;
   }
 }
 
@@ -311,7 +315,7 @@ export class ChatCourseSectionItem extends vscode.TreeItem {
     counts: ChatCounts | undefined,
     expanded: boolean
   ) {
-    const label = kind === 'announcements' ? 'Announcements' : 'Assignments';
+    const label = kind === 'announcements' ? say('Announcements', 'Ankündigungen') : say('Assignments', 'Aufgaben');
     // A section the counts endpoint says is empty renders as a leaf with
     // "no messages" — never the dead "click to load" (issue #322 §4). With
     // unknown counts it stays expandable and loads lazily on expand.
@@ -327,7 +331,7 @@ export class ChatCourseSectionItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon(kind === 'announcements' ? 'megaphone' : 'comment-discussion');
     this.description = formatCountsDescription(counts);
     this.tooltip = counts
-      ? `${courseLabel} · ${label}: ${counts.unread} unread of ${counts.total} message(s)`
+      ? `${courseLabel} · ${label}: ${unreadOf(counts)}`
       : `${courseLabel} · ${label}`;
     // An empty section still needs a way in — to read nothing is pointless,
     // but to write the first message is exactly what an empty section is for.
@@ -349,16 +353,16 @@ export class ChatLoadMoreItem extends vscode.TreeItem {
     public readonly courseId?: string
   ) {
     const remaining = Math.max(total - loaded, 0);
-    super(`Load more (${loaded} of ${total})`, vscode.TreeItemCollapsibleState.None);
+    super(say(`Load more (${loaded} of ${total})`, `Mehr laden (${loaded} von ${total})`), vscode.TreeItemCollapsibleState.None);
     this.id = courseId
       ? `chat-load-more-${scope}-${courseId}`
       : `chat-load-more-${scope}`;
     this.iconPath = new vscode.ThemeIcon('ellipsis');
     this.contextValue = 'chatLoadMore';
-    this.description = remaining > 0 ? `${remaining} more` : '';
+    this.description = remaining > 0 ? say(`${remaining} more`, `${remaining} weitere`) : '';
     this.tooltip = remaining > 0
-      ? `Click to fetch the next batch (${remaining} more available).`
-      : 'No more messages to load.';
+      ? say(`Click to fetch the next batch (${remaining} more available).`, `Klicke, um die nächsten zu laden (${remaining} weitere vorhanden).`)
+      : say('No more messages to load.', 'Keine weiteren Nachrichten.');
     this.command = {
       command: 'computor.chat.loadMore',
       title: 'Load More Messages',
@@ -390,28 +394,32 @@ function formatByline(message?: MessageList): string {
   let when = '';
   if (message.created_at) {
     try {
-      when = new Date(message.created_at).toLocaleDateString();
+      when = new Date(message.created_at).toLocaleDateString(uiLocale());
     } catch { /* ignore parse errors */ }
   }
   return [author, when].filter(Boolean).join(' · ');
 }
 
+function unreadOf(counts: { unread: number; total: number }): string {
+  return say(`${counts.unread} unread of ${counts.total} message(s)`, `${counts.unread} ungelesen von ${counts.total} Nachricht(en)`);
+}
+
 function buildTooltip(thread: ChatThread): string {
   const parts: string[] = [thread.title];
   if (thread.subtitle) { parts.push(thread.subtitle); }
-  parts.push(`Scope: ${scopeLabel(thread.scope)}`);
+  parts.push(`${say('Scope', 'Bereich')}: ${scopeLabel(thread.scope)}`);
   if (thread.anchorMessageId) {
     // One announcement — a message count would always read "1".
-    parts.push(thread.unreadCount > 0 ? 'Unread' : 'Read');
+    parts.push(thread.unreadCount > 0 ? say('Unread', 'Ungelesen') : say('Read', 'Gelesen'));
   } else if (thread.unreadCount > 0) {
-    parts.push(`Unread: ${thread.unreadCount} of ${thread.messageCount}`);
+    parts.push(say(`Unread: ${thread.unreadCount} of ${thread.messageCount}`, `Ungelesen: ${thread.unreadCount} von ${thread.messageCount}`));
   } else {
-    parts.push(`Messages: ${thread.messageCount}`);
+    parts.push(`${say('Messages', 'Nachrichten')}: ${thread.messageCount}`);
   }
   if (thread.lastMessage?.created_at) {
-    const label = thread.anchorMessageId ? 'Posted' : 'Last activity';
+    const label = thread.anchorMessageId ? say('Posted', 'Veröffentlicht') : say('Last activity', 'Zuletzt aktiv');
     try {
-      parts.push(`${label}: ${new Date(thread.lastMessage.created_at).toLocaleString()}`);
+      parts.push(`${label}: ${formatUiDateTime(new Date(thread.lastMessage.created_at))}`);
     } catch { /* ignore parse errors */ }
   }
   return parts.join('\n');

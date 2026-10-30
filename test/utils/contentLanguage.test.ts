@@ -2,12 +2,26 @@ import { expect } from 'chai';
 import {
   descriptionHeading,
   descriptionInLanguage,
+  localizedText,
+  localizedTitle,
   localizedUnitTitle,
-  resolveContentLanguage,
   withoutLeadingHeading
 } from '../../src/utils/contentLanguage';
 
 describe('contentLanguage', () => {
+  describe('localizedText', () => {
+    it('takes the entry for the language, else the source text; a blank entry is missing', () => {
+      const map = { de: 'Woche 1', en: '  ' };
+      expect(localizedText(map, 'de', 'Week 1')).to.equal('Woche 1');
+      expect(localizedText(map, 'en', 'Woche 1')).to.equal('Woche 1');
+      expect(localizedText(map, 'fr', 'Woche 1')).to.equal('Woche 1');
+      expect(localizedText(null, 'de', 'Week 1')).to.equal('Week 1');
+      expect(localizedTitle({ title: 'Aufgabe', title_i18n: { en: 'Assignment' } }, 'en')).to.equal('Assignment');
+      expect(localizedTitle(undefined, 'en')).to.equal(undefined);
+    });
+  });
+
+
   describe('descriptionInLanguage', () => {
     const both = 'Gemeinsam\n<!-- lang: de -->\nDeutsch **du**\n\n<!-- LANG: en -->\nEnglish\n';
 
@@ -23,21 +37,6 @@ describe('contentLanguage', () => {
 
     it('leaves a description without markers unchanged', () => {
       expect(descriptionInLanguage('# Woche 1\n\n<!-- note -->', 'en')).to.equal('# Woche 1\n\n<!-- note -->');
-    });
-  });
-
-  describe('resolveContentLanguage', () => {
-    it('uses the language the learner chose', () => {
-      expect(resolveContentLanguage('en', 'de')).to.equal('en');
-    });
-
-    it('uses the course language when the learner chose none', () => {
-      expect(resolveContentLanguage(null, 'de')).to.equal('de');
-      expect(resolveContentLanguage('  ', 'DE')).to.equal('de');
-    });
-
-    it('falls back to English when neither is known', () => {
-      expect(resolveContentLanguage(undefined, null)).to.equal('en');
     });
   });
 

@@ -15,8 +15,7 @@ import { MessagesWebviewProvider, MessageTargetContext } from '../ui/webviews/Me
 import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '../services/MessagePermissions';
 import { StudentCourseContentDetailsWebviewProvider, StudentContentDetailsViewState, StudentGradingHistoryEntry, StudentResultHistoryEntry } from '../ui/webviews/StudentCourseContentDetailsWebviewProvider';
 import { beginMarkdownPreviewRequest, MarkdownPreviewOptions, revealMarkdownPreview, showMarkdownPreview, showMarkdownTextPreview } from '../ui/webviews/markdownPreview';
-import { readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
-import { resolveContentLanguage } from '../utils/contentLanguage';
+import { readingLanguage, readStudentDescription, studentDescriptionImages } from '../services/WorkspaceCourseLanding';
 import { downloadFileInBrowser } from '../ui/webviews/browserDownload';
 import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel';
 import type { WebSocketService } from '../services/WebSocketService';
@@ -29,14 +28,15 @@ import { listStudentRepositories } from '../services/ForgejoCredentialFanout';
 import { execAsyncWithTimeout } from '../utils/exec';
 import { buildCourseExportZip, sanitizeContentDirName, type CourseExportFormat } from '../utils/courseExportZip';
 import { runLockedWithProgress } from '../utils/progressLock';
-import { say, uiLanguage } from '../utils/uiLanguage';
+import { say, sayFailed, uiLanguage } from '../utils/uiLanguage';
+import { localizedTitle } from '../utils/contentLanguage';
 import { notify } from '../utils/notify';
 import { getTreeHandle } from '../ui/treeRegistry';
 import { assignmentForFile, assignmentFromSelection, AssignmentItem, confirmationPrompt, NO_ASSIGNMENT_HINT, submittedMessage } from '../utils/assignmentTarget';
 import { revealUri } from '../utils/reveal';
 import { submissionBudget, testBudget, type Budget } from '../ui/tree/limitFormatting';
 import { isHidden } from '../ui/tree/visibility';
-import { helpPageFor } from '../utils/studentHelpPages';
+import { helpPageFor, helpPagePath } from '../utils/studentHelpPages';
 import { isSubmittablePath } from '../utils/submittableFiles';
 import { HttpError } from '../exceptions/errors/HttpError';
 import {
@@ -65,7 +65,15 @@ interface StudentDescriptionPreviewOptions extends MarkdownPreviewOptions {
 /** A few paths for a toast, with a count instead of a wall of text. */
 function summarizePaths(paths: string[], shown = 3): string {
   const head = paths.slice(0, shown).join(', ');
-  return paths.length > shown ? `${head} and ${paths.length - shown} more` : head;
+  return paths.length > shown ? say(`${head} and ${paths.length - shown} more`, `${head} und ${paths.length - shown} weitere`) : head;
+}
+
+/** A course whose repository modes the extension cannot set up yet. */
+function unsupportedModesMessage(modes: string[]): string {
+  return say(
+    `This course offers: ${modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`,
+    `Dieser Kurs bietet: ${modes.join(', ') || 'keine Git-Varianten'}. Diese Einrichtung ist in der Erweiterung noch nicht verfügbar.`
+  );
 }
 
 export class StudentCommands {
@@ -150,7 +158,7 @@ export class StudentCommands {
       }
     }
 
-    notify.warning(NO_ASSIGNMENT_HINT(action));
+    notify.warning(NO_ASSIGNMENT_HINT(action, uiLanguage()));
     return undefined;
   }
 
@@ -239,8 +247,10 @@ export class StudentCommands {
    * same backend rule, that a submit-triggered run is paid for with a submission.
    */
   private static testBudgetSpendsSubmissionMessage(tests: Budget, submissions: Budget): string {
-    const opening = `You have used all ${tests.max} test runs for this assignment. `
-      + 'Submitting still runs a test, and that run spends a submission';
+    const opening = say(`You have used all ${tests.max} test runs for this assignment. `
+      + 'Submitting still runs a test, and that run spends a submission',
+      `Du hast alle ${tests.max} Testläufe dieser Aufgabe verbraucht. `
+      + 'Beim Abgeben läuft trotzdem ein Test, und dieser Lauf kostet eine Abgabe');
 
     // An uncapped submission budget has no remaining count to quote, and the
     // arithmetic used to render it as "0 submissions left" — the opposite of
@@ -250,7 +260,7 @@ export class StudentCommands {
     }
 
     const remaining = Math.max(submissions.max - submissions.used, 0);
-    return `${opening} — you have ${remaining} left.`;
+    return say(`${opening} — you have ${remaining} left.`, `${opening}. Dir bleiben noch ${remaining}.`);
   }
 
   /**
@@ -272,7 +282,7 @@ export class StudentCommands {
       return true;
     }
 
-    const proceed = 'Submit';
+    const proceed = say('Submit', 'Abgeben');
     const choice = await vscode.window.showWarningMessage(
       StudentCommands.testBudgetSpendsSubmissionMessage(tests, submissions),
       { modal: true },
@@ -320,12 +330,13 @@ export class StudentCommands {
     const submissions = submissionBudget(content, group);
 
     if (kind === 'test' && !submissions.exhausted) {
+      const submitInstead = say('Submit instead', 'Stattdessen abgeben');
       const choice = await vscode.window.showWarningMessage(
         StudentCommands.testBudgetSpendsSubmissionMessage(tests, submissions),
-        'Submit instead',
-        'Cancel'
+        submitInstead,
+        say('Cancel', 'Abbrechen')
       );
-      if (choice === 'Submit instead') {
+      if (choice === submitInstead) {
         // This *was* the confirmation that a submission gets spent, so submit
         // must not ask the same question a second time.
         await vscode.commands.executeCommand(
@@ -341,10 +352,14 @@ export class StudentCommands {
     // was advice about a thing that could not be done at all.
     notify.warning(
       kind === 'test'
-        ? `You have used all ${tests.max} test runs and all ${submissions.max} submissions `
-          + 'for this assignment. Ask your tutor or lecturer if you need another attempt.'
-        : `You have used all ${submissions.max} submissions for this assignment. `
-          + 'Ask your tutor or lecturer if you need another attempt.'
+        ? say(`You have used all ${tests.max} test runs and all ${submissions.max} submissions `
+          + 'for this assignment. Ask your tutor or lecturer if you need another attempt.',
+          `Du hast alle ${tests.max} Testläufe und alle ${submissions.max} Abgaben dieser Aufgabe verbraucht. `
+          + 'Wenn du noch einen Versuch brauchst, frag deine Tutor:innen oder Lehrenden.')
+        : say(`You have used all ${submissions.max} submissions for this assignment. `
+          + 'Ask your tutor or lecturer if you need another attempt.',
+          `Du hast alle ${submissions.max} Abgaben dieser Aufgabe verbraucht. `
+          + 'Wenn du noch einen Versuch brauchst, frag deine Tutor:innen oder Lehrenden.')
     );
     return true;
   }
@@ -380,9 +395,11 @@ export class StudentCommands {
     }
 
     notify.warning(
-      'This assignment is not currently available — your lecturer has hidden it. '
+      say('This assignment is not currently available — your lecturer has hidden it. '
       + 'Your files, tests and submissions are untouched and will reappear if it '
-      + 'is made visible again.'
+      + 'is made visible again.',
+      'Diese Aufgabe ist derzeit nicht verfügbar, weil deine Lehrenden sie ausgeblendet haben. '
+      + 'Deine Dateien, Tests und Abgaben bleiben erhalten und erscheinen wieder, sobald die Aufgabe sichtbar ist.')
     );
     return true;
   }
@@ -432,32 +449,12 @@ export class StudentCommands {
   }
 
   /** Profile language if the learner chose one, else the course's, else English. */
-  private async contentLanguage(courseId?: string | null): Promise<string> {
-    let userLanguage: string | null | undefined;
-    let courseLanguage: string | null | undefined;
-    try {
-      userLanguage = (await this.apiService.getUserAccount())?.profile?.language_code;
-    } catch (error) {
-      console.warn('[contentLanguage] Failed to fetch the profile language:', error);
-    }
-    if (!userLanguage && courseId) {
-      try {
-        courseLanguage = (await this.apiService.getCourse(courseId))?.language_code;
-      } catch (error) {
-        console.warn('[contentLanguage] Failed to fetch the course language:', error);
-      }
-    }
-    return resolveContentLanguage(userLanguage, courseLanguage);
-  }
-
   private async openReadmeIfExists(dir: string, silent: boolean = false, options: MarkdownPreviewOptions = {}, courseId?: string): Promise<boolean> {
     const request = options.request ?? beginMarkdownPreviewRequest();
     options = { studentReading: true, ...options, request };
     try {
       let readmePath: string | undefined;
-      const preferredLanguage = await this.contentLanguage(
-        courseId ?? CourseSelectionService.getInstance().getCurrentCourseId()
-      );
+      const preferredLanguage = await readingLanguage(this.apiService);
 
       if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return true;
       const chosen = pickDescriptionFile(fs.readdirSync(dir), preferredLanguage);
@@ -490,12 +487,12 @@ export class StudentCommands {
       }
 
       if (!silent) {
-        notify.info('No README.md found in this assignment');
+        notify.info(say('No README.md found in this assignment', 'Diese Aufgabe hat keine README.md.'));
       }
       return false;
     } catch (e) {
       console.error('openReadmeIfExists failed:', e);
-      if (!silent) notify.error('Failed to open README.md');
+      if (!silent) notify.error(say('Failed to open README.md', 'Die README.md konnte nicht geöffnet werden.'));
       return false;
     }
   }
@@ -507,7 +504,7 @@ export class StudentCommands {
     const archive = await this.apiService.downloadStudentCourseContentDescription(content.id);
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
     if (!archive) {
-      if (!options.silent) notify.info('This assignment has no published description.');
+      if (!options.silent) notify.info(say('This assignment has no published description.', 'Für diese Aufgabe ist keine Anleitung veröffentlicht.'));
       return;
     }
 
@@ -522,7 +519,7 @@ export class StudentCommands {
       }).map(file => file.name);
       const descriptions = listDescriptionFiles(files);
       if (descriptions.length === 0) {
-        notify.info('This assignment has no description.');
+        notify.info(say('This assignment has no description.', 'Diese Aufgabe hat keine Anleitung.'));
         return;
       }
       const names = await this.languageNames();
@@ -534,23 +531,24 @@ export class StudentCommands {
       const defaultFile = descriptions.find(description => description.language === undefined);
       if (defaultFile) {
         picks.push({
-          label: 'Default',
-          description: 'the description as written, without a language suffix',
+          label: say('Default', 'Standard'),
+          description: say('the description as written, without a language suffix', 'die Anleitung im Original, ohne Sprachkennung im Dateinamen'),
           file: defaultFile.file
         });
       }
-      const chosen = await vscode.window.showQuickPick(picks, { title: 'Preview description in another language' });
+      const chosen = await vscode.window.showQuickPick(picks, { title: say('Preview description in another language', 'Anleitung in einer anderen Sprache anzeigen') });
       if (!chosen) return;
       markdown = await zip.file(chosen.file)?.async('string');
     } else {
-      markdown = await readStudentDescription(archive, await this.contentLanguage(content.course_id));
+      markdown = await readStudentDescription(archive, await readingLanguage(this.apiService));
     }
     if (!markdown) {
-      if (!options.silent) notify.info('This assignment has no description.');
+      if (!options.silent) notify.info(say('This assignment has no description.', 'Diese Aufgabe hat keine Anleitung.'));
       return;
     }
     if (!request.isCurrent() || (options.isCurrent && !options.isCurrent())) return;
-    await showMarkdownTextPreview(this.context, markdown, content.title || content.path, {
+    // The row may predate a language switch; its map still gives the new title.
+    await showMarkdownTextPreview(this.context, markdown, localizedTitle(content, uiLanguage()) || content.path, {
       ...options,
       inlineImages: await studentDescriptionImages(archive)
     });
@@ -633,7 +631,7 @@ export class StudentCommands {
    * pick one, then runs the provisioning flow (Mode A / Forgejo for now).
    */
   private async setupCourseRepository(arg?: any): Promise<void> {
-    const courseId = await this.resolveCourseIdArg(arg, 'Set up repository — pick a course');
+    const courseId = await this.resolveCourseIdArg(arg, say('Set up repository — pick a course', 'Repository einrichten: Kurs auswählen'));
     if (!courseId) { return; }
 
     const cid = courseId;
@@ -647,25 +645,23 @@ export class StudentCommands {
       if (!existing) {
         const descriptor = await this.provisioningService.getDescriptor(cid);
         if (!descriptor.configured) {
-          notify.info('This course has no git repository configured yet.');
+          notify.info(say('This course has no git repository configured yet.', 'Für diesen Kurs ist noch kein Git-Repository eingerichtet.'));
           return;
         }
         const supported = descriptor.student_repo_modes.filter(
           m => m === 'managed' || m === 'external'
         );
         if (supported.length === 0) {
-          notify.info(
-            `This course offers: ${descriptor.student_repo_modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`
-          );
+          notify.info(unsupportedModesMessage(descriptor.student_repo_modes));
           return;
         }
         if (supported.length > 1) {
           const pick = await vscode.window.showQuickPick(
             [
-              { label: '$(server) Institution-hosted', description: 'We host your repository — recommended, no extra setup', mode: 'managed' },
-              { label: '$(repo-forked) Your own repository', description: 'Bring your own repo on any git provider (needs a token)', mode: 'external' }
+              { label: say('$(server) Institution-hosted', '$(server) Bei der Hochschule'), description: say('We host your repository — recommended, no extra setup', 'Wir hosten dein Repository – empfohlen, ohne weitere Einrichtung'), mode: 'managed' },
+              { label: say('$(repo-forked) Your own repository', '$(repo-forked) Eigenes Repository'), description: say('Bring your own repo on any git provider (needs a token)', 'Dein eigenes Repository bei einem beliebigen Git-Anbieter (braucht ein Token)'), mode: 'external' }
             ].filter(o => supported.includes(o.mode)),
-            { title: 'Where should your repository live?', ignoreFocusOut: true }
+            { title: say('Where should your repository live?', 'Wo soll dein Repository liegen?'), ignoreFocusOut: true }
           );
           if (!pick) { return; }
           preferredMode = pick.mode;
@@ -697,7 +693,7 @@ export class StudentCommands {
         // credential-embedded clone URL — keep the token out of logs and the toast.
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Repository setup failed:', message);
-        notify.error(`Repository setup failed: ${message}`);
+        notify.error(sayFailed(`Repository setup failed`, `Das Repository konnte nicht eingerichtet werden`, message));
       }
     });
   }
@@ -712,16 +708,16 @@ export class StudentCommands {
    * (computor-org/issues#353).
    */
   private async commitCourse(arg?: any): Promise<void> {
-    const courseId = await this.resolveCourseIdArg(arg, 'Commit course — pick a course');
+    const courseId = await this.resolveCourseIdArg(arg, say('Commit course — pick a course', 'Kurs sichern: Kurs auswählen'));
     if (!courseId) { return; }
 
     const courseTitle: string = typeof arg?.title === 'string' && arg.title.trim().length > 0
       ? arg.title
-      : 'course';
+      : say('course', 'Kurs');
 
     const repoPath = await this.provisioningService.localRepoPath(courseId);
     if (!repoPath || !fs.existsSync(repoPath)) {
-      notify.warning('This course has no local repository yet. Use "Set up Repository" first.');
+      notify.warning(say('This course has no local repository yet. Use "Set up Repository" first.', 'Für diesen Kurs gibt es noch kein lokales Repository. Wähle zuerst „Repository einrichten“.'));
       return;
     }
 
@@ -729,7 +725,7 @@ export class StudentCommands {
       await this.saveAllFilesInDirectory(repoPath);
 
       if (!(await this.gitService.hasChanges(repoPath))) {
-        notify.info('No changes to commit in this course.');
+        notify.info(say('No changes to commit in this course.', 'In diesem Kurs gibt es keine Änderungen zu sichern.'));
         return;
       }
 
@@ -738,31 +734,31 @@ export class StudentCommands {
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Committing and pushing ${courseTitle}...`,
+        title: say(`Committing and pushing ${courseTitle}...`, `${courseTitle}: Änderungen werden gesichert und hochgeladen …`),
         cancellable: false
       }, async (progress) => {
-        progress.report({ increment: 0, message: 'Staging changes...' });
+        progress.report({ increment: 0, message: say('Staging changes...', 'Änderungen werden vorgemerkt …') });
         await this.gitService.stageAll(repoPath);
 
         if (!(await this.gitService.hasStagedFiles(repoPath))) {
-          throw new Error('No changes to commit in this course');
+          throw new Error(say('No changes to commit in this course', 'In diesem Kurs gibt es keine Änderungen zu sichern'));
         }
 
-        progress.report({ increment: 40, message: 'Committing changes...' });
+        progress.report({ increment: 40, message: say('Committing changes...', 'Änderungen werden gesichert …') });
         await this.gitService.commitChanges(repoPath, commitMessage);
 
-        progress.report({ increment: 60, message: 'Pushing to remote...' });
+        progress.report({ increment: 60, message: say('Pushing to remote...', 'Änderungen werden hochgeladen …') });
         await this.pushWithAuthRetry(repoPath);
 
-        progress.report({ increment: 100, message: 'Done' });
+        progress.report({ increment: 100, message: say('Done', 'Fertig') });
       });
 
-      notify.info(`Successfully committed and pushed ${courseTitle}`);
+      notify.info(say(`Successfully committed and pushed ${courseTitle}`, `${courseTitle}: Änderungen wurden gesichert und hochgeladen.`));
       this.treeDataProvider.refreshNode(arg);
     } catch (error: any) {
       const message = redactGitCredentials(error?.message || String(error));
       console.error('[StudentCommands] Failed to commit course:', message);
-      notify.error(`Failed to commit course: ${message}`);
+      notify.error(sayFailed(`Failed to commit course`, `Der Kurs konnte nicht gesichert werden`, message));
     }
   }
 
@@ -849,7 +845,7 @@ export class StudentCommands {
       } catch (error: any) {
         const message = redactGitCredentials(error?.message || String(error));
         console.error('[StudentCommands] Template update failed:', message);
-        notify.error(say(`Template update failed: ${message}`, 'Das Repository konnte nicht aus der Kursvorlage aktualisiert werden. Versuche es bitte erneut.'));
+        notify.error(sayFailed('Template update failed', 'Das Repository konnte nicht aus der Kursvorlage aktualisiert werden. Versuche es bitte erneut', message));
       }
     });
   }
@@ -857,32 +853,32 @@ export class StudentCommands {
   private async reportSetupOutcome(outcome: SetUpOutcome): Promise<void> {
     switch (outcome.status) {
       case 'cloned':
-        notify.info(`Repository ready at ${outcome.path}`);
+        notify.info(say(`Repository ready at ${outcome.path}`, `Dein Repository ist eingerichtet: ${outcome.path}`));
         break;
       case 'already-cloned':
-        notify.info(`Repository already set up at ${outcome.path}`);
+        notify.info(say(`Repository already set up at ${outcome.path}`, `Dein Repository ist bereits eingerichtet: ${outcome.path}`));
         break;
       case 'forgejo-login-required': {
         const target = outcome.repo.server_url || outcome.repo.web_url || undefined;
+        const openInBrowser = say('Open in Browser', 'Im Browser öffnen');
         const choice = await notify.warning(
-          'Sign in to your repository provider once in your browser to finish setting up your repository, then run "Set up repository" again.',
-          ...(target ? ['Open in Browser'] : [])
+          say('Sign in to your repository provider once in your browser to finish setting up your repository, then run "Set up repository" again.',
+            'Melde dich einmal im Browser bei deinem Repository-Anbieter an und wähle danach erneut „Repository einrichten“, um die Einrichtung abzuschließen.'),
+          ...(target ? [openInBrowser] : [])
         );
-        if (choice === 'Open in Browser' && target) {
+        if (choice === openInBrowser && target) {
           void vscode.env.openExternal(vscode.Uri.parse(target));
         }
         break;
       }
       case 'unsupported-mode':
-        notify.info(
-          `This course offers: ${outcome.modes.join(', ') || 'no git modes'}. That setup isn't available from the extension yet.`
-        );
+        notify.info(unsupportedModesMessage(outcome.modes));
         break;
       case 'cancelled':
         // Student backed out of a prompt — nothing to report.
         break;
       case 'not-configured':
-        notify.info('This course has no git repository configured yet.');
+        notify.info(say('This course has no git repository configured yet.', 'Für diesen Kurs ist noch kein Git-Repository eingerichtet.'));
         break;
     }
   }
@@ -906,16 +902,16 @@ export class StudentCommands {
    * needs no git credentials.
    */
   private async downloadCourseTemplate(arg?: any): Promise<void> {
-    const courseId = await this.resolveCourseIdArg(arg, 'Download template — pick a course');
+    const courseId = await this.resolveCourseIdArg(arg, say('Download template — pick a course', 'Kursvorlage herunterladen: Kurs auswählen'));
     if (!courseId) { return; }
     const cid = courseId;
 
     const how = await vscode.window.showQuickPick(
       [
-        { label: '$(folder) Download and extract to a folder', value: 'extract' as const },
-        { label: '$(file-zip) Download as ZIP', value: 'zip' as const }
+        { label: say('$(folder) Download and extract to a folder', '$(folder) Herunterladen und in einen Ordner entpacken'), value: 'extract' as const },
+        { label: say('$(file-zip) Download as ZIP', '$(file-zip) Als ZIP herunterladen'), value: 'zip' as const }
       ],
-      { title: 'Download course template', ignoreFocusOut: true }
+      { title: say('Download course template', 'Kursvorlage herunterladen'), ignoreFocusOut: true }
     );
     if (!how) { return; }
 
@@ -923,12 +919,12 @@ export class StudentCommands {
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Computor', cancellable: false },
       async (progress) => {
-        progress.report({ message: 'Downloading template…' });
+        progress.report({ message: say('Downloading template…', 'Kursvorlage wird heruntergeladen …') });
         let buffer: Buffer;
         try {
           buffer = await this.apiService.downloadTemplateArchive(cid);
         } catch (err: any) {
-          notify.error(`Could not download the template: ${err?.message || String(err)}`);
+          notify.error(sayFailed(`Could not download the template`, `Die Kursvorlage konnte nicht heruntergeladen werden`, err?.message || String(err)));
           return;
         }
 
@@ -936,31 +932,34 @@ export class StudentCommands {
           const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
           const dest = await vscode.window.showSaveDialog({
             ...(wsRoot ? { defaultUri: vscode.Uri.file(path.join(wsRoot, `${slug}-template.zip`)) } : {}),
-            filters: { 'ZIP Archives': ['zip'] },
-            saveLabel: 'Save'
+            filters: { [say('ZIP Archives', 'ZIP-Archive')]: ['zip'] },
+            saveLabel: say('Save', 'Speichern')
           });
           if (!dest) { return; }
           await fs.promises.writeFile(dest.fsPath, buffer);
-          void notify.info(`Template saved to ${dest.fsPath}`, 'Reveal').then(c => {
-            if (c === 'Reveal') { void revealUri(dest); }
+          const reveal = say('Reveal', 'Im Explorer zeigen');
+          void notify.info(say(`Template saved to ${dest.fsPath}`, `Kursvorlage gespeichert unter ${dest.fsPath}`), reveal).then(c => {
+            if (c === reveal) { void revealUri(dest); }
           });
           return;
         }
 
         const folder = await vscode.window.showOpenDialog({
           canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
-          openLabel: 'Extract here', title: 'Choose a folder to extract the template into'
+          openLabel: say('Extract here', 'Hier entpacken'), title: say('Choose a folder to extract the template into', 'Wähle den Ordner, in den die Kursvorlage entpackt wird')
         });
         if (!folder || !folder[0]) { return; }
         const destDir = path.join(folder[0].fsPath, `${slug}-template`);
-        progress.report({ message: 'Extracting…' });
+        progress.report({ message: say('Extracting…', 'Wird entpackt …') });
         const count = await extractZipBuffer(buffer, destDir);
+        const openFolder = say('Open Folder', 'Ordner öffnen');
+        const reveal = say('Reveal', 'Im Explorer zeigen');
         void notify.info(
-          `Extracted ${count} file(s) to ${destDir}`, 'Open Folder', 'Reveal'
+          say(`Extracted ${count} file(s) to ${destDir}`, `${count} Datei(en) entpackt nach ${destDir}`), openFolder, reveal
         ).then(c => {
-          if (c === 'Open Folder') {
+          if (c === openFolder) {
             void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(destDir), { forceNewWindow: true });
-          } else if (c === 'Reveal') {
+          } else if (c === reveal) {
             void revealUri(vscode.Uri.file(destDir));
           }
         });
@@ -1086,7 +1085,7 @@ export class StudentCommands {
         // this picker from metadata and download only the selected archive.
         const courseId = CourseSelectionService.getInstance().getCurrentCourseId();
         if (!courseId) {
-          notify.warning('No course selected. Select a course then try again.');
+          notify.warning(say('No course selected. Select a course then try again.', 'Kein Kurs ausgewählt. Wähle einen Kurs aus und versuche es noch einmal.'));
           return;
         }
         const contents = await this.apiService.getStudentCourseContents(courseId);
@@ -1101,13 +1100,13 @@ export class StudentCommands {
               || content.deployment?.deployment_status === 'deployed' || Boolean(content.deployment?.deployed_at)));
 
         if (assignables.length === 0) {
-          notify.info('No released assignment descriptions are available for this course.');
+          notify.info(say('No released assignment descriptions are available for this course.', 'In diesem Kurs sind noch keine Anleitungen zu Aufgaben freigegeben.'));
           return;
         }
 
         const pick = await vscode.window.showQuickPick(
           assignables.map(a => ({ label: a.content.title || a.content.path, description: a.directory, a })),
-          { title: 'Select assignment to preview its description' }
+          { title: say('Select assignment to preview its description', 'Wähle die Aufgabe, deren Anleitung du sehen willst') }
         );
         if (!pick || !options.request.isCurrent()) return;
         if (pick.a.directory && fs.existsSync(pick.a.directory)
@@ -1115,7 +1114,7 @@ export class StudentCommands {
         await this.openRemoteDescription(pick.a.content, false, options);
       } catch (error: any) {
         console.error('Failed to show README preview:', error);
-        notify.error(`Failed to show README preview: ${error.message || error}`);
+        notify.error(sayFailed(`Failed to show README preview`, `Die Anleitung konnte nicht angezeigt werden`, error.message || error));
       }
     });
 
@@ -1130,7 +1129,7 @@ export class StudentCommands {
           if (item?.courseContent?.id) {
             await this.openRemoteDescription(item.courseContent, true, options);
           } else {
-            notify.warning('Select an assignment to preview its description.');
+            notify.warning(say('Select an assignment to preview its description.', 'Wähle eine Aufgabe aus, um ihre Anleitung zu sehen.'));
           }
           return;
         }
@@ -1151,20 +1150,20 @@ export class StudentCommands {
         }));
         if (hasDefault) {
           picks.push({
-            label: 'Default',
-            description: 'the description as written, without a language suffix',
+            label: say('Default', 'Standard'),
+            description: say('the description as written, without a language suffix', 'die Anleitung im Original, ohne Sprachkennung im Dateinamen'),
             file: listDescriptionFiles(files).find((entry) => entry.language === undefined)!.file
           });
         }
 
         const chosen = await vscode.window.showQuickPick(picks, {
-          title: 'Preview description in another language'
+          title: say('Preview description in another language', 'Anleitung in einer anderen Sprache anzeigen')
         });
         if (!chosen || !options.request.isCurrent()) { return; }
         await showMarkdownPreview(this.context, path.join(directory, chosen.file), options);
       } catch (error: any) {
         console.error('Failed to preview description language:', error);
-        notify.error(`Failed to open the description: ${error?.message || error}`);
+        notify.error(sayFailed(`Failed to open the description`, `Die Anleitung konnte nicht geöffnet werden`, error?.message || error));
       }
     });
 
@@ -1176,7 +1175,7 @@ export class StudentCommands {
       
       // The item is a CourseContentItem from StudentCourseContentTreeProvider
       if (!item || !item.submissionGroup || !item.submissionGroup.repository) {
-        notify.error('No repository available for this assignment');
+        notify.error(say('No repository available for this assignment', 'Für diese Aufgabe gibt es kein Repository.'));
         return;
       }
 
@@ -1190,7 +1189,7 @@ export class StudentCommands {
         
         if (!courseId) {
           console.error('[CloneRepo] Course ID is missing from submission group and no course selected:', submissionGroup);
-          notify.error('No course selected. Please select a course first.');
+          notify.error(say('No course selected. Please select a course first.', 'Kein Kurs ausgewählt. Wähle zuerst einen Kurs aus.'));
           return;
         }
         
@@ -1199,28 +1198,28 @@ export class StudentCommands {
       
       try {
         if (!this.repositoryManager) {
-          notify.error('Repository manager not available');
+          notify.error(say('Repository manager not available', 'Die Repository-Verwaltung ist nicht verfügbar.'));
           return;
         }
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
-          title: `Cloning repository for ${submissionGroup.course_content_title}...`,
+          title: say(`Cloning repository for ${submissionGroup.course_content_title}...`, `Repository für ${submissionGroup.course_content_title} wird geklont …`),
           cancellable: false
         }, async () => {
           await this.repositoryManager!.autoSetupRepositories(courseId!);
         });
 
         this.treeDataProvider.refresh();
-        notify.info('Repository cloned/updated. Expand the assignment to see files.');
+        notify.info(say('Repository cloned/updated. Expand the assignment to see files.', 'Das Repository ist geklont und aktuell. Klappe die Aufgabe auf, um ihre Dateien zu sehen.'));
       } catch (error: any) {
-        notify.error(`Failed to clone repository: ${error?.message || error}`);
+        notify.error(sayFailed(`Failed to clone repository`, `Das Repository konnte nicht geklont werden`, error?.message || error));
       }
     });
 
     // Open course in browser (if GitLab URL exists)
     register('computor.student.openInBrowser', async (item: any) => {
       if (!item || !item.course.repository) {
-        notify.error('No repository URL available');
+        notify.error(say('No repository URL available', 'Für diesen Kurs ist keine Repository-Adresse bekannt.'));
         return;
       }
 
@@ -1231,26 +1230,26 @@ export class StudentCommands {
     // Clone submission group repository
     register('computor.student.cloneSubmissionGroupRepository', async (submissionGroup: SubmissionGroupStudentList, courseId: string) => {
       if (!submissionGroup || !submissionGroup.repository) {
-        notify.error('No repository available for this submission group');
+        notify.error(say('No repository available for this submission group', 'Für diese Abgabegruppe gibt es kein Repository.'));
         return;
       }
 
       try {
         if (!this.repositoryManager) {
-          notify.error('Repository manager not available');
+          notify.error(say('Repository manager not available', 'Die Repository-Verwaltung ist nicht verfügbar.'));
           return;
         }
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification,
-          title: `Cloning repository for ${submissionGroup.course_content_title}...`,
+          title: say(`Cloning repository for ${submissionGroup.course_content_title}...`, `Repository für ${submissionGroup.course_content_title} wird geklont …`),
           cancellable: false
         }, async () => {
           await this.repositoryManager!.autoSetupRepositories(courseId);
         });
         this.treeDataProvider.refresh();
-        notify.info('Repository cloned/updated for the submission group.');
+        notify.info(say('Repository cloned/updated for the submission group.', 'Das Repository der Abgabegruppe ist geklont und aktuell.'));
       } catch (error: any) {
-        notify.error(`Failed to clone repository: ${error?.message || error}`);
+        notify.error(sayFailed(`Failed to clone repository`, `Das Repository konnte nicht geklont werden`, error?.message || error));
       }
     });
 
@@ -1271,7 +1270,7 @@ export class StudentCommands {
       try {
         let itemOrSubmissionGroup: any = arg;
         if (!arg) {
-          const resolved = await this.resolveAssignmentTarget(arg, 'Submit');
+          const resolved = await this.resolveAssignmentTarget(arg, say('Submit', 'Abgeben'));
           if (!resolved) {
             return;
           }
@@ -1418,7 +1417,7 @@ export class StudentCommands {
 
             const currentBranch = await this.gitService.getCurrentBranch(repoPath);
             if (!currentBranch) {
-              throw new Error('Could not determine current branch.');
+              throw new Error(say('Could not determine current branch.', 'Der aktuelle Branch des Repositorys wurde nicht gefunden.'));
             }
 
             progress.report({ message: say(`Pushing ${currentBranch}...`, `${currentBranch} wird hochgeladen …`) });
@@ -1428,7 +1427,7 @@ export class StudentCommands {
 
         const currentCommitHash = await this.gitService.getLatestCommitHash(repoPath);
         if (!currentCommitHash) {
-          throw new Error('Failed to get current commit hash');
+          throw new Error(say('Failed to get current commit hash', 'Die aktuelle Version des Repositorys wurde nicht gefunden.'));
         }
 
         // Get the most recent *tested* artifact. Both halves matter: ask the
@@ -1711,15 +1710,7 @@ export class StudentCommands {
               });
 
               if (courseId) {
-                // Clear cache and fetch fresh data with course_id filter
-                this.apiService.clearStudentCourseContentsCache(courseId);
-                this.apiService.clearStudentCourseContentCache(courseContentId);
-
-                // This will make: GET /students/course-contents?course_id=...
-                await this.apiService.getStudentCourseContents(courseId, { force: true });
-
-                // Now refresh the tree item with the fresh data
-                await this.treeDataProvider.refreshContentItem(courseContentId);
+                await this.treeDataProvider.refreshContentItem(courseContentId, courseId);
                 console.log('[submitAssignment] Tree refresh complete');
               } else {
                 console.warn('[submitAssignment] No courseId available, doing full refresh');
@@ -1758,7 +1749,7 @@ export class StudentCommands {
         // title and severity of e.g. SUBMIT_009 "Maximum Submissions Reached".
         notify.error(
           error instanceof Error ? error : new Error(
-            typeof error === 'string' ? error : 'Failed to submit assignment.'
+            typeof error === 'string' ? error : say('Failed to submit assignment.', 'Die Aufgabe konnte nicht abgegeben werden.')
           )
         );
       }
@@ -1847,11 +1838,10 @@ export class StudentCommands {
 
         notify.info(say(`Successfully committed and pushed ${assignmentTitle}`, `Änderungen für ${assignmentTitle} wurden gespeichert und hochgeladen.`));
 
-        // Optionally refresh the tree to update any status indicators
-        this.treeDataProvider.refreshNode(item);
+        await this.treeDataProvider.refreshContentItem(item.courseContent.id);
       } catch (error: any) {
         console.error('Failed to commit assignment:', error);
-        notify.error(say(`Failed to commit assignment: ${error.message}`, 'Die Änderungen konnten nicht gespeichert und hochgeladen werden. Versuche es bitte erneut.'));
+        notify.error(sayFailed('Failed to commit assignment', 'Die Änderungen konnten nicht gespeichert und hochgeladen werden. Versuche es bitte erneut', error.message));
       }
     });
 
@@ -1866,7 +1856,7 @@ export class StudentCommands {
       // A tree row or its icon passes the item; the Command Palette passes
       // nothing, so the target comes from the selection or the open file and
       // the student confirms it before anything is committed or uploaded.
-      const resolved = await this.resolveAssignmentTarget(arg, 'Test Assignment');
+      const resolved = await this.resolveAssignmentTarget(arg, say('Test Assignment', 'Aufgabe testen'));
       if (!resolved) {
         return;
       }
@@ -1963,7 +1953,8 @@ export class StudentCommands {
               progress.report({ message: say('Successfully pushed to remote.', 'Änderungen wurden hochgeladen.') });
             } catch (pushError) {
               console.error('[TestAssignment] Git push failed:', pushError);
-              throw new Error(`Failed to push changes to remote: ${pushError instanceof Error ? pushError.message : String(pushError)}`);
+              const reason = pushError instanceof Error ? pushError.message : String(pushError);
+              throw new Error(sayFailed(`Failed to push changes to remote`, `Deine Änderungen konnten nicht hochgeladen werden`, reason));
             }
 
             progress.report({ message: say('Getting commit hash...', 'Version wird ermittelt …') });
@@ -1994,7 +1985,8 @@ export class StudentCommands {
               // asked for above. This used to read a `result` field the endpoint
               // never returns, so the already-tested guard never fired.
               if (existingArtifacts.some(candidate => !!candidate.latest_result)) {
-                throw new Error('This commit has already been tested. Make new changes to test again.');
+                throw new Error(say('This commit has already been tested. Make new changes to test again.',
+                  'Diese Version wurde bereits getestet. Ändere deine Lösung, bevor du sie erneut testest.'));
               }
 
               // Artifact exists but not tested yet - reuse it
@@ -2041,17 +2033,14 @@ export class StudentCommands {
           testSucceeded = true;
         } else if (currentCommitHash && courseContentId) {
           console.error('[TestAssignment] No artifact ID available, cannot submit test');
-          throw new Error('Failed to create or retrieve submission artifact');
+          throw new Error(say('Failed to create or retrieve submission artifact', 'Deine Dateien konnten nicht für den Test hochgeladen werden.'));
         } else {
           notify.warning(say('Could not determine commit hash or content ID for testing', 'Die Version oder Aufgabe für den Test wurde nicht gefunden. Lade den Kurs erneut.'));
         }
 
         // Only refresh if test completed successfully
-        if (testSucceeded) {
-          // Clear the cache for this specific content to ensure fresh data
-          this.apiService.clearStudentCourseContentCache(courseContentId);
-          // Use full refresh to ensure tree updates properly
-          this.treeDataProvider.refresh();
+        if (testSucceeded && courseContentId) {
+          await this.treeDataProvider.refreshContentItem(courseContentId);
         }
       } catch (error: any) {
         console.error('Failed to test assignment:', error);
@@ -2069,7 +2058,7 @@ export class StudentCommands {
             return;
           }
           notify.error(
-            error instanceof Error ? error : new Error(`Could not run the test: ${String(error)}`)
+            error instanceof Error ? error : new Error(sayFailed(`Could not run the test`, `Der Test konnte nicht gestartet werden`, String(error)))
           );
         }
       }
@@ -2119,10 +2108,10 @@ export class StudentCommands {
   private async showHelp(item?: any): Promise<void> {
     try {
       const helpFileName = helpPageFor(item?.contextValue);
-      const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
+      const helpPath = helpPagePath(this.context.extensionPath, helpFileName);
 
       if (!fs.existsSync(helpPath)) {
-        notify.warning(`Help file not found: ${helpFileName}`);
+        notify.warning(say(`Help file not found: ${helpFileName}`, `Die Hilfeseite fehlt: ${helpFileName}`));
         return;
       }
 
@@ -2141,11 +2130,11 @@ export class StudentCommands {
         helpItem = helpItem.parent;
       }
       this.courseHelpCourseId = helpCourseId ?? CourseSelectionService.getInstance().getCurrentCourseId();
-      await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
+      await showMarkdownPreview(this.context, helpPath, { title: say('Computor Help', 'Computor-Hilfe') });
 
     } catch (error) {
       console.error('[showHelp] Failed to show help:', error);
-      notify.error('Failed to open help documentation');
+      notify.error(say('Failed to open help documentation', 'Die Hilfe konnte nicht geöffnet werden.'));
     }
   }
 
@@ -2153,20 +2142,20 @@ export class StudentCommands {
     const courseId: string | undefined = typeof item?.courseId === 'string' ? item.courseId : undefined;
     const courseTitle: string = typeof item?.title === 'string' && item.title.trim().length > 0
       ? item.title
-      : 'Course';
+      : say('Course', 'Kurs');
     if (!courseId) {
-      notify.warning('No course selected for export.');
+      notify.warning(say('No course selected for export.', 'Kein Kurs für den Export ausgewählt.'));
       return;
     }
 
     const formatPick = await vscode.window.showQuickPick(
       [
-        { label: 'Tree (default)', description: 'Mirror the course content tree, named by content titles', value: 'tree' as CourseExportFormat },
-        { label: 'Flat', description: 'One folder per assignment, named by example identifier', value: 'flat' as CourseExportFormat }
+        { label: say('Tree (default)', 'Baum (Standard)'), description: say('Mirror the course content tree, named by content titles', 'Bildet die Kursgliederung nach, Ordner tragen die Titel der Inhalte'), value: 'tree' as CourseExportFormat },
+        { label: say('Flat', 'Flach'), description: say('One folder per assignment, named by example identifier', 'Ein Ordner je Aufgabe, benannt nach der Kennung ihres Beispiels'), value: 'flat' as CourseExportFormat }
       ],
       {
-        title: `Export ${courseTitle}: choose archive layout`,
-        placeHolder: 'Tree (recommended)',
+        title: say(`Export ${courseTitle}: choose archive layout`, `${courseTitle} exportieren: Aufbau des Archivs wählen`),
+        placeHolder: say('Tree (recommended)', 'Baum (empfohlen)'),
         ignoreFocusOut: true
       }
     );
@@ -2174,7 +2163,7 @@ export class StudentCommands {
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceRoot) {
-      notify.warning('Open a workspace folder before exporting.');
+      notify.warning(say('Open a workspace folder before exporting.', 'Öffne vor dem Export einen Arbeitsbereichsordner.'));
       return;
     }
 
@@ -2185,14 +2174,14 @@ export class StudentCommands {
     await runLockedWithProgress(
       {
         key: `student-export:${courseId}`,
-        title: `Exporting ${courseTitle}…`,
-        duplicateMessage: 'Export already in progress for this course.',
+        title: say(`Exporting ${courseTitle}…`, `${courseTitle} wird exportiert …`),
+        duplicateMessage: say('Export already in progress for this course.', 'Dieser Kurs wird bereits exportiert.'),
         timeoutMs: 300_000
       },
       async () => {
         const contents = (await this.apiService.getStudentCourseContents(courseId)) ?? [];
         if (contents.length === 0) {
-          notify.info('No course contents found to export.');
+          notify.info(say('No course contents found to export.', 'Dieser Kurs hat keine Inhalte zum Exportieren.'));
           return;
         }
 
@@ -2205,11 +2194,13 @@ export class StudentCommands {
         if (result.packaged === 0) {
           console.warn('[exportCourseExamples] Nothing packaged. Probed paths:', result.probedPaths);
           const sample = result.probedPaths.slice(0, 3).join('\n');
+          const openConsole = say('Open Console', 'Konsole öffnen');
           const choice = await notify.warning(
-            `Nothing was exported. Probed ${result.probedPaths.length} path(s).${sample ? `\nFirst: ${sample}` : ''}`,
-            'Open Console'
+            say(`Nothing was exported. Probed ${result.probedPaths.length} path(s).${sample ? `\nFirst: ${sample}` : ''}`,
+              `Es wurde nichts exportiert. Geprüfte Pfade: ${result.probedPaths.length}.${sample ? `\nErste: ${sample}` : ''}`),
+            openConsole
           );
-          if (choice === 'Open Console') {
+          if (choice === openConsole) {
             void vscode.commands.executeCommand('workbench.action.toggleDevTools');
           }
           return;
@@ -2224,8 +2215,9 @@ export class StudentCommands {
         await fs.promises.writeFile(dest.fsPath, buffer);
 
         const summary = result.missing.length > 0
-          ? `Exported ${result.packaged} assignment(s); skipped ${result.missing.length} not on disk.`
-          : `Exported ${result.packaged} assignment(s).`;
+          ? say(`Exported ${result.packaged} assignment(s); skipped ${result.missing.length} not on disk.`,
+            `${result.packaged} Aufgabe(n) exportiert; ${result.missing.length} fehlen auf dem Datenträger und wurden ausgelassen.`)
+          : say(`Exported ${result.packaged} assignment(s).`, `${result.packaged} Aufgabe(n) exportiert.`);
         // Fire-and-forget: awaiting this would keep the "Exporting…" progress
         // popup open until the user dismisses the success toast.
         void this.deliverExport(dest, summary);
@@ -2251,16 +2243,17 @@ export class StudentCommands {
     }
     return vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file(path.join(workspaceRoot, defaultFile)),
-      filters: { 'ZIP Archives': ['zip'] },
-      saveLabel: 'Export'
+      filters: { [say('ZIP Archives', 'ZIP-Archive')]: ['zip'] },
+      saveLabel: say('Export', 'Exportieren')
     });
   }
 
   /** Get the finished archive to the student, browser sandbox included. */
   private async deliverExport(dest: vscode.Uri, summary: string): Promise<void> {
     if (vscode.env.uiKind !== vscode.UIKind.Web) {
-      const choice = await notify.info(summary, 'Reveal');
-      if (choice === 'Reveal') {
+      const reveal = say('Reveal', 'Im Explorer zeigen');
+      const choice = await notify.info(summary, reveal);
+      if (choice === reveal) {
         void revealUri(dest);
       }
       return;
@@ -2268,7 +2261,7 @@ export class StudentCommands {
 
     const name = path.basename(dest.fsPath);
     if (await downloadFileInBrowser(this.context.extensionUri, dest.fsPath, 'application/zip')) {
-      void notify.info(`${summary} ${name} is downloading to your computer.`);
+      void notify.info(say(`${summary} ${name} is downloading to your computer.`, `${summary} ${name} wird auf deinen Computer heruntergeladen.`));
       return;
     }
 
@@ -2276,24 +2269,26 @@ export class StudentCommands {
     // is still on disk, and the Explorer's own Download action can fetch it.
     await revealUri(dest);
     void notify.info(
-      `${summary} The archive is saved in your workspace at ${EXPORT_DIR_NAME}/${name}. `
-      + 'To keep a copy on your own computer, right-click it in the Explorer and choose "Download…".'
+      say(`${summary} The archive is saved in your workspace at ${EXPORT_DIR_NAME}/${name}. `
+      + 'To keep a copy on your own computer, right-click it in the Explorer and choose "Download…".',
+      `${summary} Das Archiv liegt in deinem Arbeitsbereich unter ${EXPORT_DIR_NAME}/${name}. `
+      + 'Um eine Kopie auf deinem eigenen Computer zu behalten, klicke es im Explorer mit der rechten Maustaste an und wähle „Herunterladen…“.')
     );
   }
 
   private async fixRepositoryAuth(): Promise<void> {
     const manager = this.repositoryManager;
     if (!manager) {
-      notify.warning('Repository management is not available in this session.');
+      notify.warning(say('Repository management is not available in this session.', 'In dieser Sitzung lassen sich keine Repositorys verwalten.'));
       return;
     }
     const repoPaths = await listStudentRepositories();
     if (repoPaths.length === 0) {
-      notify.info('No cloned course repositories found.');
+      notify.info(say('No cloned course repositories found.', 'Es wurden keine geklonten Kurs-Repositorys gefunden.'));
       return;
     }
 
-    await notify.progress('Fixing repository authentication…', async (progress) => {
+    await notify.progress(say('Fixing repository authentication…', 'Anmeldung am Repository wird repariert …'), async (progress) => {
       // One refresh per git server: a managed-Forgejo refresh re-provisions
       // (rotating the per-user-per-server token) and fans the fresh credential
       // out to the server's other clones — refreshing every repo individually
@@ -2313,18 +2308,19 @@ export class StudentCommands {
 
       let fixed = 0;
       for (const [host, repoPath] of repoByHost) {
-        progress.report({ message: `Refreshing credentials for ${host}…` });
+        progress.report({ message: say(`Refreshing credentials for ${host}…`, `Zugangsdaten für ${host} werden erneuert …`) });
         if (await manager.refreshRepositoryAuth(repoPath)) {
           fixed++;
         }
       }
 
       if (fixed > 0 && fixed === repoByHost.size) {
-        void notify.info('Repository authentication refreshed. Retry your push.');
+        void notify.info(say('Repository authentication refreshed. Retry your push.', 'Die Anmeldung am Repository ist erneuert. Lade deine Änderungen noch einmal hoch.'));
       } else if (fixed > 0) {
-        void notify.warning(`Refreshed credentials for ${fixed} of ${repoByHost.size} git server(s). Check the logs for the rest.`);
+        void notify.warning(say(`Refreshed credentials for ${fixed} of ${repoByHost.size} git server(s). Check the logs for the rest.`,
+          `Die Zugangsdaten für ${fixed} von ${repoByHost.size} Git-Servern wurden erneuert. Die übrigen findest du im Protokoll.`));
       } else {
-        void notify.warning('Could not refresh repository credentials. Check the logs for details.');
+        void notify.warning(say('Could not refresh repository credentials. Check the logs for details.', 'Die Zugangsdaten für das Repository konnten nicht erneuert werden. Einzelheiten stehen im Protokoll.'));
       }
     });
   }
@@ -2358,13 +2354,13 @@ export class StudentCommands {
         courseId = content.course_id || courseId;
 
         if (!courseId) {
-          notify.warning('No course selected.');
+          notify.warning(say('No course selected.', 'Kein Kurs ausgewählt.'));
           return;
         }
 
         const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
-        const contentTitle: string = content.title || content.path || 'Course content';
-        const courseLabel = courseInfo?.title || courseInfo?.path || 'Course';
+        const contentTitle: string = content.title || content.path || say('Course content', 'Kursinhalt');
+        const courseLabel = courseInfo?.title || courseInfo?.path || say('Course', 'Kurs');
         const subtitle = courseLabel ? `${courseLabel} › ${content.path || contentTitle}` : undefined;
 
         let query: Record<string, string>;
@@ -2417,12 +2413,12 @@ export class StudentCommands {
 
       if (!target) {
         if (!courseId) {
-          notify.warning('No course selected.');
+          notify.warning(say('No course selected.', 'Kein Kurs ausgewählt.'));
           return;
         }
 
-        const courseLabel = courseInfo?.title || courseInfo?.path || 'Course messages';
-        const subtitle = courseInfo?.path ? `Course • ${courseInfo.path}` : undefined;
+        const courseLabel = courseInfo?.title || courseInfo?.path || say('Course messages', 'Kursnachrichten');
+        const subtitle = courseInfo?.path ? say(`Course • ${courseInfo.path}`, `Kurs • ${courseInfo.path}`) : undefined;
 
         // Course announcements: lecturer+ writes, everyone in the course
         // reads. Scope is pinned so the list stays announcements rather than
@@ -2445,7 +2441,7 @@ export class StudentCommands {
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      notify.error(`Failed to open messages: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to open messages`, `Die Nachrichten konnten nicht geöffnet werden`, error?.message || error));
     }
   }
 
@@ -2506,7 +2502,7 @@ export class StudentCommands {
           }
         } catch (e: any) {
           console.error('[StudentCommands] Submit without git failed:', e);
-          notify.error(say(`Submit failed: ${e?.message || String(e)}`, 'Deine Lösung konnte nicht abgegeben werden. Versuche es bitte erneut.'));
+          notify.error(sayFailed('Submit failed', 'Deine Lösung konnte nicht abgegeben werden. Versuche es bitte erneut', e?.message || String(e)));
         }
       }
     );
@@ -2628,7 +2624,7 @@ export class StudentCommands {
       }
 
       if (!courseContentSummary) {
-        notify.warning('No detailed information available for this content yet.');
+        notify.warning(say('No detailed information available for this content yet.', 'Zu diesem Inhalt gibt es noch keine Details.'));
         return;
       }
 
@@ -2758,7 +2754,7 @@ export class StudentCommands {
       await this.contentDetailsWebviewProvider.showDetails(viewState);
     } catch (error: any) {
       console.error('Failed to show course content details:', error);
-      notify.error(`Failed to open details: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to open details`, `Die Details konnten nicht geöffnet werden`, error?.message || error));
     }
   }
   

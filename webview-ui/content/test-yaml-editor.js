@@ -1,5 +1,6 @@
 (function() {
   var vscode = window.vscodeApi || acquireVsCodeApi();
+  var say = window.ComputorWebview.say;
   var state = window.__INITIAL_STATE__ || {};
 
   var app = document.getElementById('app');
@@ -75,11 +76,11 @@
     collections.forEach(function(col, ci) {
       var tests = col.tests || [];
       if (tests.length === 0) {
-        errors.push({ type: 'collection', ci: ci, message: 'Collection has no tests' });
+        errors.push({ type: 'collection', ci: ci, message: say('Collection has no tests', 'Die Sammlung enthält keine Tests') });
       }
       tests.forEach(function(test, ti) {
         if (!test.name || !test.name.trim()) {
-          errors.push({ type: 'test', ci: ci, ti: ti, field: 'name', message: 'Test name is required' });
+          errors.push({ type: 'test', ci: ci, ti: ti, field: 'name', message: say('Test name is required', 'Der Testname ist erforderlich') });
         }
       });
     });
@@ -449,13 +450,13 @@
 
     // Toolbar
     html += '<div class="toolbar">';
-    html += '<button data-action="save">Save</button>';
-    html += '<button data-action="openRaw" class="btn-secondary btn-sm">Open Raw YAML</button>';
-    html += '<span class="dirty-indicator ' + (isDirty ? '' : 'hidden') + '" title="Unsaved changes"></span>';
+    html += '<button data-action="save">' + say('Save', 'Speichern') + '</button>';
+    html += '<button data-action="openRaw" class="btn-secondary btn-sm">' + say('Open Raw YAML', 'YAML-Rohtext öffnen') + '</button>';
+    html += '<span class="dirty-indicator ' + (isDirty ? '' : 'hidden') + '" title="' + say('Unsaved changes', 'Nicht gespeicherte Änderungen') + '"></span>';
     html += '<div class="toolbar-spacer"></div>';
-    html += '<label style="font-size:12px;color:var(--vscode-descriptionForeground)">Language:</label>';
+    html += '<label style="font-size:12px;color:var(--vscode-descriptionForeground)">' + say('Language:', 'Sprache:') + '</label>';
     html += '<select id="lang-select" style="width:150px">';
-    html += '<option value="">Select language...</option>';
+    html += '<option value="">' + say('Select language...', 'Sprache auswählen …') + '</option>';
     registry.languages.forEach(function(l) {
       html += '<option value="' + esc(l.id) + '"' + (l.id === currentLangId ? ' selected' : '') + '>' + esc(l.name) + '</option>';
     });
@@ -464,31 +465,31 @@
 
     // Suite metadata
     html += '<div class="section">';
-    html += '<h2>Suite Properties</h2>';
+    html += '<h2>' + say('Suite Properties', 'Eigenschaften der Testsuite') + '</h2>';
     html += '<div class="suite-meta">';
-    html += fgHint('Name', '<input type="text" id="suite-name" value="' + esc(suite.name || '') + '" placeholder="Test suite name">', 'Display name for the test suite');
-    html += fgHint('Version', '<input type="text" id="suite-version" value="' + esc(suite.version || '1.0') + '" placeholder="1.0">', 'Suite version number');
-    html += fgHint('Description', '<input type="text" id="suite-description" value="' + esc(suite.description || '') + '" placeholder="Description">', 'Brief description of what this suite tests', true);
-    html += fgHint('Timeout (s)', '<input type="number" id="suite-timeout" value="' + esc(np(suite, 'properties.timeout', '')) + '" placeholder="30" step="1" min="1">', 'Global timeout for all tests in seconds');
-    html += fgHint('Relative Tolerance', '<input type="number" id="suite-relativeTolerance" value="' + esc(np(suite, 'properties.relativeTolerance', '')) + '" placeholder="1e-12" step="any">', 'Global relative tolerance for numeric comparisons');
-    html += fgHint('Absolute Tolerance', '<input type="number" id="suite-absoluteTolerance" value="' + esc(np(suite, 'properties.absoluteTolerance', '')) + '" placeholder="0.0001" step="any">', 'Global absolute tolerance for numeric comparisons');
+    html += fgHint('Name', '<input type="text" id="suite-name" value="' + esc(suite.name || '') + '" placeholder="' + say('Test suite name', 'Name der Testsuite') + '">', say('Display name for the test suite', 'Angezeigter Name der Testsuite'));
+    html += fgHint('Version', '<input type="text" id="suite-version" value="' + esc(suite.version || '1.0') + '" placeholder="1.0">', say('Suite version number', 'Versionsnummer der Testsuite'));
+    html += fgHint(say('Description', 'Beschreibung'), '<input type="text" id="suite-description" value="' + esc(suite.description || '') + '" placeholder="' + say('Description', 'Beschreibung') + '">', say('Brief description of what this suite tests', 'Kurze Beschreibung dessen, was diese Testsuite prüft'), true);
+    html += fgHint(say('Timeout (s)', 'Zeitlimit (s)'), '<input type="number" id="suite-timeout" value="' + esc(np(suite, 'properties.timeout', '')) + '" placeholder="30" step="1" min="1">', say('Global timeout for all tests in seconds', 'Gemeinsames Zeitlimit für alle Tests in Sekunden'));
+    html += fgHint(say('Relative Tolerance', 'Relative Toleranz'), '<input type="number" id="suite-relativeTolerance" value="' + esc(np(suite, 'properties.relativeTolerance', '')) + '" placeholder="1e-12" step="any">', say('Global relative tolerance for numeric comparisons', 'Gemeinsame relative Toleranz für numerische Vergleiche'));
+    html += fgHint(say('Absolute Tolerance', 'Absolute Toleranz'), '<input type="number" id="suite-absoluteTolerance" value="' + esc(np(suite, 'properties.absoluteTolerance', '')) + '" placeholder="0.0001" step="any">', say('Global absolute tolerance for numeric comparisons', 'Gemeinsame absolute Toleranz für numerische Vergleiche'));
     html += '</div></div>';
 
     // Test collections
     html += '<div class="section">';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
-    html += '<h2 style="margin:0;flex:1">Test Collections</h2>';
+    html += '<h2 style="margin:0;flex:1">' + say('Test Collections', 'Testsammlungen') + '</h2>';
     if (lang) {
       html += renderTestTypeSelect(lang);
-      html += '<button data-action="addCollection" class="btn-sm">+ Add Collection</button>';
+      html += '<button data-action="addCollection" class="btn-sm">+ ' + say('Add Collection', 'Sammlung hinzufügen') + '</button>';
     }
     html += '</div>';
 
     if (collections.length === 0) {
       if (!lang) {
-        html += '<div class="empty-collections">Select a language above to add test collections.</div>';
+        html += '<div class="empty-collections">' + say('Select a language above to add test collections.', 'Wähle oben eine Sprache, um Testsammlungen hinzuzufügen.') + '</div>';
       } else {
-        html += '<div class="empty-collections">No test collections yet. Select a test type and click "+ Add Collection".</div>';
+        html += '<div class="empty-collections">' + say('No test collections yet. Select a test type and click "+ Add Collection".', 'Noch keine Testsammlungen. Wähle einen Testtyp und klicke auf „+ Sammlung hinzufügen“.') + '</div>';
       }
     } else {
       collections.forEach(function(col, ci) {
@@ -501,7 +502,7 @@
     html += '<div class="section yaml-preview">';
     html += '<div class="yaml-preview-header" data-action="toggleYamlPreview">';
     html += '<span class="chevron' + (yamlPreviewOpen ? ' open' : '') + '" id="yaml-preview-chevron">&#9654;</span>';
-    html += '<h2>YAML Preview</h2>';
+    html += '<h2>' + say('YAML Preview', 'YAML-Vorschau') + '</h2>';
     html += '</div>';
     html += '<div class="yaml-preview-content' + (yamlPreviewOpen ? '' : ' collapsed') + '" id="yaml-preview-content">';
     html += '<code id="yaml-preview-code"></code>';
@@ -583,13 +584,13 @@
 
     html += '<div class="collection-header" data-action="toggleCollection">';
     html += '<span class="chevron' + (isCollapsed ? '' : ' open') + '" id="chevron-' + index + '">&#9654;</span>';
-    html += '<span class="title">' + esc(col.name || 'Collection ' + (index + 1)) + '</span>';
+    html += '<span class="title">' + esc(col.name || say('Collection ', 'Sammlung ') + (index + 1)) + '</span>';
     html += '<span class="type-badge">' + esc(typeName) + '</span>';
     if (tt && tt.category) { html += '<span class="cat-badge">' + esc(tt.category) + '</span>'; }
-    html += '<span style="font-size:11px;color:var(--vscode-descriptionForeground)">' + tests.length + ' test' + (tests.length !== 1 ? 's' : '') + '</span>';
-    if (index > 0) { html += '<button class="move-btn" data-action="moveCollectionUp" data-ci="' + index + '" title="Move up">&#9650;</button>'; }
-    if (index < totalCollections - 1) { html += '<button class="move-btn" data-action="moveCollectionDown" data-ci="' + index + '" title="Move down">&#9660;</button>'; }
-    html += '<button class="remove-btn" data-action="removeCollection" data-ci="' + index + '" title="Remove collection">&#10005;</button>';
+    html += '<span style="font-size:11px;color:var(--vscode-descriptionForeground)">' + tests.length + ' ' + (tests.length !== 1 ? say('tests', 'Tests') : say('test', 'Test')) + '</span>';
+    if (index > 0) { html += '<button class="move-btn" data-action="moveCollectionUp" data-ci="' + index + '" title="' + say('Move up', 'Nach oben') + '">&#9650;</button>'; }
+    if (index < totalCollections - 1) { html += '<button class="move-btn" data-action="moveCollectionDown" data-ci="' + index + '" title="' + say('Move down', 'Nach unten') + '">&#9660;</button>'; }
+    html += '<button class="remove-btn" data-action="removeCollection" data-ci="' + index + '" title="' + say('Remove collection', 'Sammlung entfernen') + '">&#10005;</button>';
     html += '</div>';
 
     html += '<div class="collection-body' + (isCollapsed ? ' collapsed' : '') + '" id="col-body-' + index + '">';
@@ -600,14 +601,14 @@
     }
 
     html += '<div class="collection-fields">';
-    html += fgHint('Name', '<input type="text" data-col-field="name" value="' + esc(col.name || '') + '" placeholder="Collection name">', 'Display name for this test collection');
+    html += fgHint('Name', '<input type="text" data-col-field="name" value="' + esc(col.name || '') + '" placeholder="' + say('Collection name', 'Name der Sammlung') + '">', say('Display name for this test collection', 'Angezeigter Name dieser Testsammlung'));
     html += renderCollectionField('entryPoint', col, tt);
     html += renderCollectionField('timeout', col, tt);
-    html += fgHint('ID', '<input type="text" data-col-field="id" value="' + esc(col.id || '') + '" placeholder="Unique ID">', 'Optional unique identifier for referencing this collection');
+    html += fgHint('ID', '<input type="text" data-col-field="id" value="' + esc(col.id || '') + '" placeholder="' + say('Unique ID', 'Eindeutige ID') + '">', say('Optional unique identifier for referencing this collection', 'Optionale eindeutige Kennung, über die andere auf diese Sammlung verweisen'));
 
-    html += renderArrayFieldWithHint('inputAnswers', 'Input Answers', col.inputAnswers || [], 'Input lines to send to stdin during execution');
-    html += renderArrayFieldWithHint('setUpCode', 'Setup Code', col.setUpCode || [], 'Code to run before each test in this collection');
-    html += renderArrayFieldWithHint('successDependency', 'Success Dependency', col.successDependency || [], 'IDs of collections that must pass before this one runs');
+    html += renderArrayFieldWithHint('inputAnswers', say('Input Answers', 'Eingaben'), col.inputAnswers || [], say('Input lines to send to stdin during execution', 'Zeilen, die bei der Ausführung an stdin gehen'));
+    html += renderArrayFieldWithHint('setUpCode', say('Setup Code', 'Vorbereitungscode'), col.setUpCode || [], say('Code to run before each test in this collection', 'Code, der vor jedem Test dieser Sammlung läuft'));
+    html += renderArrayFieldWithHint('successDependency', say('Success Dependency', 'Erfolgsabhängigkeit'), col.successDependency || [], say('IDs of collections that must pass before this one runs', 'IDs der Sammlungen, die bestanden sein müssen, bevor diese läuft'));
 
     if (tt && tt.collection_fields) {
       tt.collection_fields.forEach(function(f) {
@@ -638,8 +639,8 @@
     html += '</div>';
 
     html += '<div class="tests-header">';
-    html += '<h3>Tests (' + tests.length + ')</h3>';
-    html += '<button class="btn-sm" data-action="addTest" data-ci="' + index + '">+ Add Test</button>';
+    html += '<h3>' + say('Tests', 'Tests') + ' (' + tests.length + ')</h3>';
+    html += '<button class="btn-sm" data-action="addTest" data-ci="' + index + '">+ ' + say('Add Test', 'Test hinzufügen') + '</button>';
     html += '</div>';
 
     var qualifications = (tt && tt.qualifications) || [];
@@ -649,7 +650,7 @@
     });
 
     if (tests.length === 0) {
-      html += '<div style="text-align:center;padding:12px;color:var(--vscode-descriptionForeground);font-size:12px">No tests yet. Click "+ Add Test" to add one.</div>';
+      html += '<div style="text-align:center;padding:12px;color:var(--vscode-descriptionForeground);font-size:12px">' + say('No tests yet. Click "+ Add Test" to add one.', 'Noch keine Tests. Klicke auf „+ Test hinzufügen“, um einen anzulegen.') + '</div>';
     }
 
     html += '</div></div>';
@@ -662,14 +663,14 @@
       fieldDef = tt.collection_fields.find(function(f) { return f.name === fieldName; });
     }
     if (fieldName === 'entryPoint') {
-      var ph = (fieldDef && fieldDef.placeholder) ? fieldDef.placeholder : 'e.g., main.py';
-      var hint = (fieldDef && fieldDef.description) ? fieldDef.description : 'Main file to execute';
-      return fgHint('Entry Point', '<input type="text" data-col-field="entryPoint" value="' + esc(col.entryPoint || '') + '" placeholder="' + esc(ph) + '">', hint);
+      var ph = (fieldDef && fieldDef.placeholder) ? fieldDef.placeholder : say('e.g., main.py', 'z. B. main.py');
+      var hint = (fieldDef && fieldDef.description) ? fieldDef.description : say('Main file to execute', 'Auszuführende Hauptdatei');
+      return fgHint(say('Entry Point', 'Einstiegspunkt'), '<input type="text" data-col-field="entryPoint" value="' + esc(col.entryPoint || '') + '" placeholder="' + esc(ph) + '">', hint);
     }
     if (fieldName === 'timeout') {
       var defVal = (fieldDef && fieldDef.default != null) ? fieldDef.default : 30;
-      var hint2 = (fieldDef && fieldDef.description) ? fieldDef.description : 'Maximum execution time in seconds';
-      return fgHint('Timeout (s)', '<input type="number" data-col-field="timeout" value="' + esc(col.timeout || '') + '" placeholder="' + defVal + '" step="1" min="1">', hint2);
+      var hint2 = (fieldDef && fieldDef.description) ? fieldDef.description : say('Maximum execution time in seconds', 'Höchste Ausführungszeit in Sekunden');
+      return fgHint(say('Timeout (s)', 'Zeitlimit (s)'), '<input type="number" data-col-field="timeout" value="' + esc(col.timeout || '') + '" placeholder="' + defVal + '" step="1" min="1">', hint2);
     }
     return '';
   }
@@ -689,10 +690,10 @@
     items.forEach(function(item) {
       html += '<div class="array-item">';
       html += '<input type="text" value="' + esc(String(item)) + '">';
-      html += '<button class="remove-btn" data-action="removeArrayItem" title="Remove">&#10005;</button>';
+      html += '<button class="remove-btn" data-action="removeArrayItem" title="' + say('Remove', 'Entfernen') + '">&#10005;</button>';
       html += '</div>';
     });
-    html += '<button class="btn-add btn-sm" data-action="addArrayItem" style="width:auto">+ Add</button>';
+    html += '<button class="btn-add btn-sm" data-action="addArrayItem" style="width:auto">+ ' + say('Add', 'Hinzufügen') + '</button>';
     html += '</div></div>';
     return html;
   }
@@ -700,16 +701,16 @@
   function renderTestRow(test, colIndex, testIndex, qualifications, testType, totalTests, lang) {
     var html = '<div class="test-row" data-col="' + colIndex + '" data-test="' + testIndex + '">';
     html += '<div class="test-order-btns">';
-    if (testIndex > 0) { html += '<button class="move-btn move-btn-sm" data-action="moveTestUp" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move up">&#9650;</button>'; }
-    if (testIndex < totalTests - 1) { html += '<button class="move-btn move-btn-sm" data-action="moveTestDown" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Move down">&#9660;</button>'; }
+    if (testIndex > 0) { html += '<button class="move-btn move-btn-sm" data-action="moveTestUp" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="' + say('Move up', 'Nach oben') + '">&#9650;</button>'; }
+    if (testIndex < totalTests - 1) { html += '<button class="move-btn move-btn-sm" data-action="moveTestDown" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="' + say('Move down', 'Nach unten') + '">&#9660;</button>'; }
     html += '</div>';
     html += '<div class="test-fields">';
 
-    html += '<input type="text" class="field-name" data-test-field="name" value="' + esc(test.name || '') + '" placeholder="Test name (required)" title="Test name displayed in results">';
+    html += '<input type="text" class="field-name" data-test-field="name" value="' + esc(test.name || '') + '" placeholder="' + say('Test name (required)', 'Testname (erforderlich)') + '" title="' + say('Test name displayed in results', 'Testname, wie er in den Ergebnissen erscheint') + '">';
 
     if (qualifications.length > 0) {
-      html += '<select class="field-qual" data-test-field="qualification" title="Comparison method">';
-      html += '<option value="">Default</option>';
+      html += '<select class="field-qual" data-test-field="qualification" title="' + say('Comparison method', 'Vergleichsmethode') + '">';
+      html += '<option value="">' + say('Default', 'Standard') + '</option>';
       qualifications.forEach(function(qId) {
         var qual = getQualification(lang, qId);
         var qLabel = qual ? qual.name : qId;
@@ -727,31 +728,31 @@
     var showTolerance = selectedQual ? selectedQual.uses_tolerance === true : false;
 
     if (showValue) {
-      html += '<input type="text" class="field-value" data-test-field="value" value="' + esc(test.value != null ? String(test.value) : '') + '" placeholder="Expected value" title="Expected value to compare against">';
+      html += '<input type="text" class="field-value" data-test-field="value" value="' + esc(test.value != null ? String(test.value) : '') + '" placeholder="' + say('Expected value', 'Erwarteter Wert') + '" title="' + say('Expected value to compare against', 'Erwarteter Wert für den Vergleich') + '">';
     }
 
     if (showPattern) {
-      html += '<input type="text" class="field-value" data-test-field="pattern" value="' + esc(test.pattern || '') + '" placeholder="Pattern" title="Pattern for matching (string or regex)">';
+      html += '<input type="text" class="field-value" data-test-field="pattern" value="' + esc(test.pattern || '') + '" placeholder="' + say('Pattern', 'Muster') + '" title="' + say('Pattern for matching (string or regex)', 'Muster für den Abgleich (Text oder regulärer Ausdruck)') + '">';
     }
 
     if (showTolerance || test.relativeTolerance != null) {
-      html += '<input type="number" class="field-small" data-test-field="relativeTolerance" value="' + esc(test.relativeTolerance != null ? String(test.relativeTolerance) : '') + '" placeholder="relTol" step="any" title="Relative tolerance for numeric comparison">';
+      html += '<input type="number" class="field-small" data-test-field="relativeTolerance" value="' + esc(test.relativeTolerance != null ? String(test.relativeTolerance) : '') + '" placeholder="relTol" step="any" title="' + say('Relative tolerance for numeric comparison', 'Relative Toleranz für den numerischen Vergleich') + '">';
     }
     if (showTolerance || test.absoluteTolerance != null) {
-      html += '<input type="number" class="field-small" data-test-field="absoluteTolerance" value="' + esc(test.absoluteTolerance != null ? String(test.absoluteTolerance) : '') + '" placeholder="absTol" step="any" title="Absolute tolerance for numeric comparison">';
+      html += '<input type="number" class="field-small" data-test-field="absoluteTolerance" value="' + esc(test.absoluteTolerance != null ? String(test.absoluteTolerance) : '') + '" placeholder="absTol" step="any" title="' + say('Absolute tolerance for numeric comparison', 'Absolute Toleranz für den numerischen Vergleich') + '">';
     }
 
     if (test.allowedOccuranceRange) {
-      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMin" value="' + (test.allowedOccuranceRange[0] || 0) + '" placeholder="min" title="Minimum allowed occurrences">';
-      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMax" value="' + (test.allowedOccuranceRange[1] || 0) + '" placeholder="max" title="Maximum allowed occurrences">';
+      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMin" value="' + (test.allowedOccuranceRange[0] || 0) + '" placeholder="min" title="' + say('Minimum allowed occurrences', 'Mindestzahl erlaubter Vorkommen') + '">';
+      html += '<input type="number" class="field-small" data-test-field="allowedOccuranceMax" value="' + (test.allowedOccuranceRange[1] || 0) + '" placeholder="max" title="' + say('Maximum allowed occurrences', 'Höchstzahl erlaubter Vorkommen') + '">';
     }
 
     if (test.evalString != null) {
-      html += '<input type="text" class="field-value" data-test-field="evalString" value="' + esc(test.evalString) + '" placeholder="Eval expression" title="Expression to evaluate before comparison">';
+      html += '<input type="text" class="field-value" data-test-field="evalString" value="' + esc(test.evalString) + '" placeholder="' + say('Eval expression', 'Auszuwertender Ausdruck') + '" title="' + say('Expression to evaluate before comparison', 'Ausdruck, der vor dem Vergleich ausgewertet wird') + '">';
     }
 
     html += '</div>';
-    html += '<button class="remove-btn" data-action="removeTest" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="Remove test">&#10005;</button>';
+    html += '<button class="remove-btn" data-action="removeTest" data-ci="' + colIndex + '" data-ti="' + testIndex + '" title="' + say('Remove test', 'Test entfernen') + '">&#10005;</button>';
     html += '</div>';
     return html;
   }

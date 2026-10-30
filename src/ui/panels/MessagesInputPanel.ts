@@ -6,7 +6,7 @@ import { WebSocketService } from '../../services/WebSocketService';
 import { UiStateService } from '../../services/UiStateService';
 import { renderWebviewPage } from '../webviews/shared/webviewPage';
 import { notify } from '../../utils/notify';
-import { say } from '../../utils/uiLanguage';
+import { say, sayFailed, uiLanguage } from '../../utils/uiLanguage';
 import { deriveScopeFromCreatePayload, scopeHasSubject } from '../../services/MessagePermissions';
 import { MESSAGE_TARGET_FIELDS } from '../../types/generated/constants';
 import { resolveTutorAgent, TutorAgentInfo } from '../../services/TutorAgentInfo';
@@ -383,6 +383,22 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  /** The placeholders and notices travel with the state; the draft stays. */
+  /**
+   * Relabels the composer in place. An updateState would reset it and throw
+   * away a half-written message.
+   */
+  public refreshLanguage(): void {
+    void this.view?.webview.postMessage({
+      command: 'setLanguage',
+      data: {
+        language: uiLanguage(),
+        editorPlaceholders: this.editorPlaceholders(),
+        tutorRoutingNotice: this.tutorRoutingNotice() ?? null
+      }
+    });
+  }
+
   private postState(): void {
     if (!this.view) {
       return;
@@ -416,11 +432,11 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
   private async handleCreateMessage(data: { title?: string; content: string; parent_id?: string }): Promise<void> {
     const target = this.state.target;
     if (!target) {
-      notify.warning('Unable to post message: target context missing.');
+      notify.warning(say('Unable to post message: target context missing.', 'Die Nachricht kann nicht gesendet werden, weil ihr Ziel fehlt.'));
       return;
     }
     if (target.readOnly) {
-      notify.warning(target.readOnlyReason || 'You do not have permission to post messages here.');
+      notify.warning(target.readOnlyReason || say('You do not have permission to post messages here.', 'Du darfst hier keine Nachrichten schreiben.'));
       return;
     }
 
@@ -451,7 +467,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      notify.error(`Failed to send message: ${errorMessage}`);
+      notify.error(sayFailed('Failed to send message', 'Die Nachricht konnte nicht gesendet werden', errorMessage));
     } finally {
       this.postLoading(false);
     }
@@ -484,7 +500,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      notify.error(`Failed to update message: ${errorMessage}`);
+      notify.error(sayFailed('Failed to update message', 'Die Nachricht konnte nicht geändert werden', errorMessage));
     } finally {
       this.postLoading(false);
     }
@@ -501,7 +517,7 @@ export class MessagesInputPanelProvider implements vscode.WebviewViewProvider {
     }
 
     this.view.webview.html = renderWebviewPage(this.view.webview, this.extensionUri, {
-      title: 'New Message',
+      title: say('New Message', 'Neue Nachricht'),
       initialState: { editorPlaceholders: this.editorPlaceholders() },
       bodyHtml: '<div id="app"></div>',
       cssFiles: ['shared/chat-shared.css', 'messaging/messages-input.css'],

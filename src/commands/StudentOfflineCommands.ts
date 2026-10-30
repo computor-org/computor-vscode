@@ -6,6 +6,7 @@ import { OfflineRepositoryManager } from '../services/OfflineRepositoryManager';
 import { commandRegistrar } from './commandHelpers';
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 import { notify } from '../utils/notify';
+import { say, sayFailed } from '../utils/uiLanguage';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 
 /**
@@ -78,7 +79,7 @@ export class StudentOfflineCommands {
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to add course:', error);
-            notify.error(`Failed to add course: ${error.message}`);
+            notify.error(sayFailed(`Failed to add course`, `Der Kurs konnte nicht hinzugefügt werden`, error.message));
         }
     }
 
@@ -90,7 +91,7 @@ export class StudentOfflineCommands {
         console.log('[StudentOfflineCommands] Save assignment:', item);
 
         if (!item || !item.assignmentPath || !item.repoPath) {
-            notify.error('No assignment selected');
+            notify.error(say('No assignment selected', 'Keine Aufgabe ausgewählt.'));
             return;
         }
 
@@ -105,7 +106,7 @@ export class StudentOfflineCommands {
             // Check if there are any changes to commit
             const hasChanges = await this.gitService.hasChanges(repoPath);
             if (!hasChanges) {
-                notify.info('No changes to save in this assignment.');
+                notify.info(say('No changes to save in this assignment.', 'In dieser Aufgabe gibt es keine Änderungen zu speichern.'));
                 return;
             }
 
@@ -117,39 +118,39 @@ export class StudentOfflineCommands {
             // Show progress while saving
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: `Saving ${assignmentName}...`,
+                title: say(`Saving ${assignmentName}...`, `${assignmentName} wird gespeichert …`),
                 cancellable: false
             }, async (progress) => {
-                progress.report({ increment: 0, message: 'Preparing to save...' });
+                progress.report({ increment: 0, message: say('Preparing to save...', 'Speichern wird vorbereitet …') });
 
                 // Stage the assignment directory
-                progress.report({ increment: 30, message: 'Staging changes...' });
+                progress.report({ increment: 30, message: say('Staging changes...', 'Änderungen werden vorgemerkt …') });
                 await this.gitService.stagePath(repoPath, assignmentPath);
 
                 // Check if something is staged
                 const hasStagedFiles = await this.gitService.hasStagedFiles(repoPath);
                 if (!hasStagedFiles) {
-                    throw new Error('No changes to save in the assignment folder');
+                    throw new Error(say('No changes to save in the assignment folder', 'Im Aufgabenordner gibt es keine Änderungen zu speichern'));
                 }
 
                 // Commit changes
-                progress.report({ increment: 50, message: 'Committing changes...' });
+                progress.report({ increment: 50, message: say('Committing changes...', 'Änderungen werden gesichert …') });
                 await this.gitService.commitChanges(repoPath, commitMessage);
 
                 // Push to remote
-                progress.report({ increment: 70, message: 'Pushing to remote...' });
+                progress.report({ increment: 70, message: say('Pushing to remote...', 'Änderungen werden hochgeladen …') });
                 await this.gitService.pushCurrentBranch(repoPath);
 
-                progress.report({ increment: 100, message: 'Successfully saved!' });
+                progress.report({ increment: 100, message: say('Successfully saved!', 'Gespeichert.') });
             });
 
-            notify.info(`✓ Successfully saved ${assignmentName}`);
+            notify.info(say(`✓ Successfully saved ${assignmentName}`, `✓ ${assignmentName} gespeichert.`));
 
             // Refresh tree to update git status
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to save assignment:', error);
-            notify.error(`Failed to save assignment: ${error.message}`);
+            notify.error(sayFailed(`Failed to save assignment`, `Die Aufgabe konnte nicht gespeichert werden`, error.message));
         }
     }
 
@@ -166,12 +167,12 @@ export class StudentOfflineCommands {
         if (item.repoPath) {
             repoPath = item.repoPath;
         } else {
-            notify.error('No repository selected');
+            notify.error(say('No repository selected', 'Kein Repository ausgewählt.'));
             return;
         }
 
         if (!repoPath) {
-            notify.error('Repository path not found');
+            notify.error(say('Repository path not found', 'Der Ordner des Repositorys wurde nicht gefunden.'));
             return;
         }
 
@@ -180,24 +181,24 @@ export class StudentOfflineCommands {
         try {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: `Updating ${repoName}...`,
+                title: say(`Updating ${repoName}...`, `${repoName} wird aktualisiert …`),
                 cancellable: false
             }, async (progress) => {
-                progress.report({ message: 'Fetching from origin...' });
+                progress.report({ message: say('Fetching from origin...', 'Änderungen werden abgerufen …') });
 
                 // Pull from origin first
                 const { GitWrapper } = await import('../git/GitWrapper');
                 const gitWrapper = new GitWrapper();
                 await gitWrapper.pull(repoPath!);
 
-                progress.report({ message: 'Checking for upstream...' });
+                progress.report({ message: say('Checking for upstream...', 'Kursvorlage wird gesucht …') });
 
                 // Check if upstream remote exists
                 const remotes = await gitWrapper.getRemotes(repoPath!);
                 const upstreamRemote = remotes.find(r => r.name === 'upstream');
 
                 if (upstreamRemote) {
-                    progress.report({ message: 'Syncing fork with upstream...' });
+                    progress.report({ message: say('Syncing fork with upstream...', 'Änderungen aus der Kursvorlage werden übernommen …') });
 
                     // Use CTGit.forkUpdate() for robust fork syncing
                     // This matches the implementation in StudentRepositoryManager.syncForkWithUpstream()
@@ -212,14 +213,14 @@ export class StudentOfflineCommands {
                         });
 
                         if (result.updated) {
-                            progress.report({ message: 'Pushing merged changes to origin...' });
+                            progress.report({ message: say('Pushing merged changes to origin...', 'Zusammengeführte Änderungen werden hochgeladen …') });
                             try {
                                 await gitWrapper.push(repoPath!, 'origin');
                                 console.log('[StudentOfflineCommands] Successfully pushed fork update to origin');
                             } catch (pushError) {
                                 console.warn('[StudentOfflineCommands] Failed to push fork update to origin:', pushError);
                                 notify.warning(
-                                    'Fork updated locally, but failed to push to origin. You may need to push manually.'
+                                    say('Fork updated locally, but failed to push to origin. You may need to push manually.', 'Dein Repository wurde lokal aktualisiert, konnte aber nicht hochgeladen werden. Lade die Änderungen gegebenenfalls selbst hoch (Push).')
                                 );
                             }
                         } else {
@@ -232,14 +233,15 @@ export class StudentOfflineCommands {
                         const errorMessage = forkUpdateError.message || String(forkUpdateError);
                         if (errorMessage.includes('merge-unresolved')) {
                             notify.error(
-                                'Fork update failed due to conflicts that could not be resolved automatically. ' +
-                                'Please resolve conflicts manually using your Git client.'
+                                say('Fork update failed due to conflicts that could not be resolved automatically. ' +
+                                'Please resolve conflicts manually using your Git client.', 'Die Aktualisierung ist an Konflikten gescheitert, die sich nicht automatisch lösen ließen. ' +
+                                'Löse die Konflikte bitte selbst mit deinem Git-Programm.')
                             );
                         } else if (errorMessage.includes('merge-abort')) {
-                            notify.info('Fork update was cancelled.');
+                            notify.info(say('Fork update was cancelled.', 'Die Aktualisierung wurde abgebrochen.'));
                         } else if (errorMessage.includes('merge-editor')) {
                             notify.info(
-                                'Please resolve conflicts in the merge editor, then commit and push manually.'
+                                say('Please resolve conflicts in the merge editor, then commit and push manually.', 'Löse die Konflikte im Merge-Editor, sichere sie dann mit einem Commit und lade sie hoch (Push).')
                             );
                         } else {
                             throw forkUpdateError;
@@ -247,19 +249,19 @@ export class StudentOfflineCommands {
                         return;
                     }
 
-                    progress.report({ message: 'Done!' });
+                    progress.report({ message: say('Done!', 'Fertig.') });
                 } else {
-                    progress.report({ message: 'Done! (no upstream configured)' });
+                    progress.report({ message: say('Done! (no upstream configured)', 'Fertig (keine Kursvorlage eingetragen).') });
                 }
             });
 
-            notify.info(`✓ Successfully updated ${repoName}`);
+            notify.info(say(`✓ Successfully updated ${repoName}`, `✓ ${repoName} aktualisiert.`));
 
             // Refresh tree to update git status
             this.treeProvider.refresh();
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to pull changes:', error);
-            notify.error(`Failed to update: ${error.message}`);
+            notify.error(sayFailed(`Failed to update`, `Die Aktualisierung ist fehlgeschlagen`, error.message));
         }
     }
 
@@ -268,12 +270,12 @@ export class StudentOfflineCommands {
      */
     private async openInTerminal(item: any): Promise<void> {
         if (!item || !item.assignmentPath) {
-            notify.error('No assignment selected');
+            notify.error(say('No assignment selected', 'Keine Aufgabe ausgewählt.'));
             return;
         }
 
         const terminal = vscode.window.createTerminal({
-            name: `Assignment: ${item.assignmentName}`,
+            name: say(`Assignment: ${item.assignmentName}`, `Aufgabe: ${item.assignmentName}`),
             cwd: item.assignmentPath
         });
 
@@ -285,12 +287,12 @@ export class StudentOfflineCommands {
      */
     private async openRepoInTerminal(item: any): Promise<void> {
         if (!item || !item.repoPath) {
-            notify.error('No repository selected');
+            notify.error(say('No repository selected', 'Kein Repository ausgewählt.'));
             return;
         }
 
         const terminal = vscode.window.createTerminal({
-            name: `Course: ${item.courseName}`,
+            name: say(`Course: ${item.courseName}`, `Kurs: ${item.courseName}`),
             cwd: item.repoPath
         });
 
@@ -313,12 +315,12 @@ export class StudentOfflineCommands {
         } else if (item.repoPath) {
             directoryPath = item.repoPath;
         } else {
-            notify.error('No directory selected');
+            notify.error(say('No directory selected', 'Kein Ordner ausgewählt.'));
             return;
         }
 
         if (!directoryPath) {
-            notify.error('Directory path not found');
+            notify.error(say('Directory path not found', 'Der Ordner wurde nicht gefunden.'));
             return;
         }
 
@@ -326,7 +328,7 @@ export class StudentOfflineCommands {
             const readmePath = await this.findReadmeFile(directoryPath);
 
             if (!readmePath) {
-                notify.info('No README file found in this directory');
+                notify.info(say('No README file found in this directory', 'In diesem Ordner gibt es keine README-Datei.'));
                 return;
             }
 
@@ -335,7 +337,7 @@ export class StudentOfflineCommands {
             await showMarkdownPreview(this.context, readmePath);
         } catch (error: any) {
             console.error('[StudentOfflineCommands] Failed to show README preview:', error);
-            notify.error(`Failed to show README preview: ${error.message}`);
+            notify.error(sayFailed(`Failed to show README preview`, `Die Anleitung konnte nicht angezeigt werden`, error.message));
         }
     }
 

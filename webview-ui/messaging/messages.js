@@ -1,7 +1,7 @@
 (function () {
   // Shared runtime (base.js). formatDateTime matches the old local
   // formatDate (toLocaleString, i.e. date + time).
-  const { vscode, escapeHtml, formatDateTime: formatDate, el, createStore } = window.ComputorWebview;
+  const { vscode, escapeHtml, formatDateTime: formatDate, el, createStore, say } = window.ComputorWebview;
 
   const { state, setState } = createStore({
     target: undefined,
@@ -197,7 +197,7 @@
       displayFromAuthorName ||
       authorNameFromParts ||
       message.author_id ||
-      'Unknown'
+      say('Unknown', 'Unbekannt')
     );
   }
 
@@ -229,9 +229,9 @@
   function getAuthorRoleLabel(courseRoleId) {
     if (!courseRoleId) return null;
     const roleLabels = {
-      '_student': 'Student',
+      '_student': say('Student', 'Studierende'),
       '_tutor': 'Tutor',
-      '_lecturer': 'Lecturer',
+      '_lecturer': say('Lecturer', 'Lehrende'),
       '_admin': 'Admin'
     };
     return roleLabels[courseRoleId] || null;
@@ -350,7 +350,7 @@
         className: `badge xs author-role-badge role-${roleClass}`,
         textContent: roleLabel,
         attributes: {
-          title: `Course Role: ${roleLabel}`
+          title: say(`Course Role: ${roleLabel}`, `Rolle im Kurs: ${roleLabel}`)
         }
       });
       metaLeftChildren.push(roleBadge);
@@ -371,7 +371,7 @@
     const repliesAllowed = state.target?.allowReplies !== false;
     if (repliesAllowed) {
       metaRight.appendChild(
-        button('Reply', 'btn secondary xs message-reply-button', () =>
+        button(say('Reply', 'Antworten'), 'btn secondary xs message-reply-button', () =>
           vscode.postMessage({ command: 'replyTo', data: message })
         )
       );
@@ -390,7 +390,7 @@
     const title = announcement
       ? createElement('h3', {
           className: 'message-title',
-          textContent: message.title || '(no subject)'
+          textContent: message.title || say('(no subject)', '(ohne Betreff)')
         })
       : message.title
         ? createElement('h3', {
@@ -412,14 +412,14 @@
     // computor-org/issues#288 look like it had failed.
     if (message.can_edit) {
       actions.appendChild(
-        button('Edit', 'btn secondary sm', () =>
+        button(say('Edit', 'Bearbeiten'), 'btn secondary sm', () =>
           vscode.postMessage({ command: 'editMessage', data: message })
         )
       );
     }
     if (message.can_delete) {
       actions.appendChild(
-        button('Delete', 'btn ghost sm', () =>
+        button(say('Delete', 'Löschen'), 'btn ghost sm', () =>
           vscode.postMessage({
             command: 'confirmDeleteMessage',
             data: { messageId: message.id, title: message.title }
@@ -444,7 +444,7 @@
       const parentAuthor = parentMsg ? getAuthorDisplay(parentMsg) : null;
       const replyContext = createElement('div', {
         className: 'reply-context-line',
-        innerHTML: `&#8627; ${escapeHtml(parentAuthor ? 'replying to ' + parentAuthor : 'reply')}`
+        innerHTML: `&#8627; ${escapeHtml(parentAuthor ? say('replying to ', 'Antwort an ') + parentAuthor : say('reply', 'Antwort'))}`
       });
       card.appendChild(replyContext);
     }
@@ -477,7 +477,7 @@
    */
   function readToggle(message, card) {
     const unread = isUnread(message);
-    return button(unread ? 'Mark read' : 'Mark unread', 'btn ghost sm message-read-toggle', () => {
+    return button(unread ? say('Mark read', 'Als gelesen markieren') : say('Mark unread', 'Als ungelesen markieren'), 'btn ghost sm message-read-toggle', () => {
       if (unread) {
         setReadState(card, message, { is_read: true, manually_unread: false });
         vscode.postMessage({ command: 'markRead', data: { messageIds: [message.id], explicit: true } });
@@ -520,7 +520,7 @@
       container.appendChild(
         createElement('div', {
           className: 'empty-state',
-          textContent: 'Loading messages…'
+          textContent: say('Loading messages…', 'Nachrichten werden geladen …')
         })
       );
       return;
@@ -580,12 +580,14 @@
   function emptyStateText() {
     if (isAnnouncement()) {
       return state.target?.readOnly
-        ? 'No announcements yet.'
-        : 'No announcements yet. Post one from the input panel below.';
+        ? say('No announcements yet.', 'Noch keine Ankündigungen.')
+        : say('No announcements yet. Post one from the input panel below.',
+          'Noch keine Ankündigungen. Veröffentliche eine im Eingabefeld darunter.');
     }
     return state.target?.readOnly
-      ? 'No messages yet.'
-      : 'No messages yet. Use the input panel below to start the discussion.';
+      ? say('No messages yet.', 'Noch keine Nachrichten.')
+      : say('No messages yet. Use the input panel below to start the discussion.',
+        'Noch keine Nachrichten. Beginne die Unterhaltung im Eingabefeld darunter.');
   }
 
   function renderTypingIndicator() {
@@ -593,11 +595,13 @@
     let text = '';
 
     if (users.length === 1) {
-      text = `${users[0].userName} is typing…`;
+      text = say(`${users[0].userName} is typing…`, `${users[0].userName} schreibt …`);
     } else if (users.length === 2) {
-      text = `${users[0].userName} and ${users[1].userName} are typing…`;
+      text = say(`${users[0].userName} and ${users[1].userName} are typing…`,
+        `${users[0].userName} und ${users[1].userName} schreiben …`);
     } else if (users.length > 2) {
-      text = `${users[0].userName} and ${users.length - 1} others are typing…`;
+      text = say(`${users[0].userName} and ${users.length - 1} others are typing…`,
+        `${users[0].userName} und ${users.length - 1} weitere schreiben …`);
     }
 
     return createElement('div', {
@@ -616,22 +620,22 @@
     const filterChip = (selected) => `btn xs${selected ? '' : ' secondary'}`;
 
     quickFilters.appendChild(
-      button('All', filterChip(state.filters.unread === null), () => {
+      button(say('All', 'Alle'), filterChip(state.filters.unread === null), () => {
         state.filters.unread = null;
         applyFilters();
       })
     );
     quickFilters.appendChild(
-      button('Unread', filterChip(state.filters.unread === true), () => {
+      button(say('Unread', 'Ungelesen'), filterChip(state.filters.unread === true), () => {
         state.filters.unread = true;
         applyFilters();
       })
     );
 
     for (const [preset, label] of [
-      ['today', 'Today'],
-      ['week', 'This Week'],
-      ['month', 'This Month']
+      ['today', say('Today', 'Heute')],
+      ['week', say('This Week', 'Diese Woche')],
+      ['month', say('This Month', 'Dieser Monat')]
     ]) {
       quickFilters.appendChild(
         button(label, filterChip(state.filters.datePreset === preset), () => {
@@ -643,7 +647,7 @@
 
     if (hasActiveFilters()) {
       quickFilters.appendChild(
-        button('Clear Filters', 'btn ghost xs clear-filters-btn', clearFilters)
+        button(say('Clear Filters', 'Filter zurücksetzen'), 'btn ghost xs clear-filters-btn', clearFilters)
       );
     }
 
@@ -652,7 +656,7 @@
     // Advanced filters toggle
     filterBar.appendChild(
       button(
-        state.filtersExpanded ? '▼ Advanced Filters' : '▶ Advanced Filters',
+        (state.filtersExpanded ? '▼ ' : '▶ ') + say('Advanced Filters', 'Weitere Filter'),
         'btn ghost xs advanced-toggle',
         () => setState({ filtersExpanded: !state.filtersExpanded })
       )
@@ -669,13 +673,13 @@
 
       // Custom date range row
       const dateRow = createElement('div', { className: 'filter-row' });
-      dateRow.appendChild(createElement('label', { textContent: 'Custom date range:' }));
+      dateRow.appendChild(createElement('label', { textContent: say('Custom date range:', 'Eigener Zeitraum:') }));
 
       const fromInput = createElement('input', {
         className: 'filter-input date-input',
         attributes: {
           type: 'date',
-          placeholder: 'From'
+          placeholder: say('From', 'Von')
         }
       });
       if (state.filters.created_after && !state.filters.datePreset) {
@@ -687,13 +691,13 @@
       });
       dateRow.appendChild(fromInput);
 
-      dateRow.appendChild(createElement('span', { textContent: ' to ', className: 'date-separator' }));
+      dateRow.appendChild(createElement('span', { textContent: say(' to ', ' bis '), className: 'date-separator' }));
 
       const toInput = createElement('input', {
         className: 'filter-input date-input',
         attributes: {
           type: 'date',
-          placeholder: 'To'
+          placeholder: say('To', 'Bis')
         }
       });
       if (state.filters.created_before && !state.filters.datePreset) {
@@ -710,7 +714,7 @@
       // Apply button for advanced filters
       const applyRow = createElement('div', { className: 'filter-row filter-actions' });
       applyRow.appendChild(
-        button('Apply Filters', 'btn sm', applyFilters)
+        button(say('Apply Filters', 'Filter anwenden'), 'btn sm', applyFilters)
       );
       advancedPanel.appendChild(applyRow);
 
@@ -738,12 +742,12 @@
     const headerTop = createElement('div', { className: 'view-header-top' });
 
     const titleEl = createElement('h1', {
-      textContent: state.target?.title || 'Messages'
+      textContent: state.target?.title || say('Messages', 'Nachrichten')
     });
     headerTop.appendChild(titleEl);
 
     headerTop.appendChild(
-      button('Refresh', 'btn secondary sm refresh-button', () => {
+      button(say('Refresh', 'Aktualisieren'), 'btn secondary sm refresh-button', () => {
         setState({ loading: true });
         vscode.postMessage({ command: 'refreshMessages' });
       })
@@ -768,6 +772,10 @@
 
     mount.appendChild(view);
   }
+
+  // The list redraws from state and keeps its scroll, so a new language
+  // loses nothing that is loaded.
+  window.ComputorWebview.onLanguageChange(() => render());
 
   window.addEventListener('message', (event) => {
     const message = event.data;

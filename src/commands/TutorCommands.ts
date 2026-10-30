@@ -17,11 +17,13 @@ import { COURSE_ANNOUNCEMENT_DENIED_REASON, canPostCourseAnnouncement } from '..
 import { MessageCreate, CourseContentStudentList, SubmissionGroupStudentList } from '../types/generated';
 import { TutorGradeCreate, GradingStatus } from '../types/generated/common';
 import { notify } from '../utils/notify';
-import { resolveContentLanguage } from '../utils/contentLanguage';
+import { readingLanguage } from '../services/WorkspaceCourseLanding';
 import { pickDescriptionFile } from '../utils/descriptionLanguage';
 import { pickLatestSubmissionArtifactId, sortSubmissionArtifactsByRecency } from '../utils/submissionArtifacts';
 import { tutorTestTargetFor } from '../ui/tree/tutor/tutorTestTarget';
 import { tutorHelpPageFor } from '../utils/tutorHelpPages';
+import { helpPagePath } from '../utils/studentHelpPages';
+import { say, sayFailed } from '../utils/uiLanguage';
 interface TutorFilterRefreshable {
   refreshFilters(): void;
 }
@@ -133,13 +135,13 @@ export class TutorCommands {
     // Show Course Progress (uses current selected course from filters)
     register('computor.tutor.showCourseProgress', async () => {
       if (!(await this.hasLecturerView())) {
-        notify.info('Grading and progress views are available to lecturers only.');
+        notify.info(say('Grading and progress views are available to lecturers only.', 'Bewertungs- und Fortschrittsansichten stehen nur Lehrenden zur Verfügung.'));
         return;
       }
       const sel = TutorSelectionService.getInstance();
       const courseId = sel.getCurrentCourseId();
       if (!courseId) {
-        notify.warning('Please select a course first.');
+        notify.warning(say('Please select a course first.', 'Wähle zuerst einen Kurs aus.'));
         return;
       }
       await vscode.commands.executeCommand('computor.lecturer.showCourseProgressOverview', courseId);
@@ -148,14 +150,14 @@ export class TutorCommands {
     // Show Member Progress (uses current selected member from filters)
     register('computor.tutor.showMemberProgress', async () => {
       if (!(await this.hasLecturerView())) {
-        notify.info('Grading and progress views are available to lecturers only.');
+        notify.info(say('Grading and progress views are available to lecturers only.', 'Bewertungs- und Fortschrittsansichten stehen nur Lehrenden zur Verfügung.'));
         return;
       }
       const sel = TutorSelectionService.getInstance();
       const memberId = sel.getCurrentMemberId();
       const memberName = sel.getCurrentMemberLabel();
       if (!memberId) {
-        notify.warning('Please select a member first.');
+        notify.warning(say('Please select a member first.', 'Wähle zuerst eine Person aus.'));
         return;
       }
       await vscode.commands.executeCommand('computor.lecturer.showCourseMemberProgress', memberId, memberName);
@@ -185,8 +187,8 @@ export class TutorCommands {
         let memberId = sel.getCurrentMemberId() || '';
         if (!courseId || !memberId) {
           // Fallback prompts only if selection is missing
-          if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
-          if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+          if (!courseId) courseId = (await vscode.window.showInputBox({ title: say('Course ID', 'Kurs-ID'), prompt: say('Enter course ID', 'Gib die Kurs-ID ein'), ignoreFocusOut: true })) || '';
+          if (!memberId) memberId = (await vscode.window.showInputBox({ title: say('Course Member ID', 'ID der Kursteilnahme'), prompt: say('Enter course member ID', 'Gib die ID der Kursteilnahme ein'), ignoreFocusOut: true })) || '';
         }
         if (!courseId || !memberId) { return; }
 
@@ -206,7 +208,7 @@ export class TutorCommands {
           remoteUrl = repoMeta?.remote_url;
         }
         if (!remoteUrl) {
-          notify.error('No repository URL found for this student assignment.');
+          notify.error(say('No repository URL found for this student assignment.', 'Für diese Aufgabe der Person ist keine Repository-Adresse bekannt.'));
           return;
         }
 
@@ -231,7 +233,7 @@ export class TutorCommands {
         // Git clone into the destination if empty
         const exists = await fs.promises.readdir(dir).then(list => list.length > 0).catch(() => false);
         if (exists) {
-          notify.warning(`Directory not empty: ${dir}. Skipping clone.`);
+          notify.warning(say(`Directory not empty: ${dir}. Skipping clone.`, `Der Ordner ist nicht leer: ${dir}. Es wird nicht geklont.`));
         } else {
           const origin = (() => { try { const u = new URL(remoteUrl!); return u.origin; } catch { return undefined; } })();
           const tokenManager = RepositoryTokenManager.getInstance(this.context);
@@ -243,10 +245,10 @@ export class TutorCommands {
             }
           }
           try {
-            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: say('Cloning student repository...', 'Repository der Person wird geklont …'), cancellable: false }, async () => {
               await createSimpleGit().clone(authUrl, dir);
             });
-            notify.info(`Student repository cloned to ${dir}`);
+            notify.info(say(`Student repository cloned to ${dir}`, `Repository der Person geklont nach ${dir}`));
             this.treeDataProvider.refresh();
           } catch (e: any) {
             const msg = String(e?.message || e || '');
@@ -254,8 +256,8 @@ export class TutorCommands {
               const newToken = await (async () => {
                 // Reuse token manager's prompt behavior
                 const t = await vscode.window.showInputBox({
-                  title: `GitLab Authentication for ${origin}`,
-                  prompt: `Enter your GitLab Personal Access Token for ${origin}`,
+                  title: say(`GitLab Authentication for ${origin}`, `GitLab-Anmeldung für ${origin}`),
+                  prompt: say(`Enter your GitLab Personal Access Token for ${origin}`, `Gib dein persönliches GitLab-Zugriffstoken für ${origin} ein`),
                   placeHolder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
                   password: true,
                   ignoreFocusOut: true
@@ -265,10 +267,10 @@ export class TutorCommands {
               })();
               if (!newToken) throw e;
               authUrl = tokenManager.buildAuthenticatedCloneUrl(remoteUrl!, newToken);
-              await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Cloning student repository...', cancellable: false }, async () => {
+              await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: say('Cloning student repository...', 'Repository der Person wird geklont …'), cancellable: false }, async () => {
                 await createSimpleGit().clone(authUrl, dir);
               });
-              notify.info(`Student repository cloned to ${dir}`);
+              notify.info(say(`Student repository cloned to ${dir}`, `Repository der Person geklont nach ${dir}`));
               this.treeDataProvider.refresh();
             } else {
               throw e;
@@ -277,7 +279,7 @@ export class TutorCommands {
         }
         // Directory is already inside the current workspace; no need to add a new folder
       } catch (e: any) {
-        notify.error(`Failed to clone student repository: ${e?.message || e}`);
+        notify.error(sayFailed(`Failed to clone student repository`, `Das Repository der Person konnte nicht geklont werden`, e?.message || e));
       }
     });
 
@@ -294,8 +296,8 @@ export class TutorCommands {
         let memberId = sel.getCurrentMemberId();
 
         if (!courseId || !memberId) {
-          if (!courseId) courseId = (await vscode.window.showInputBox({ title: 'Course ID', prompt: 'Enter course ID', ignoreFocusOut: true })) || '';
-          if (!memberId) memberId = (await vscode.window.showInputBox({ title: 'Course Member ID', prompt: 'Enter course member ID', ignoreFocusOut: true })) || '';
+          if (!courseId) courseId = (await vscode.window.showInputBox({ title: say('Course ID', 'Kurs-ID'), prompt: say('Enter course ID', 'Gib die Kurs-ID ein'), ignoreFocusOut: true })) || '';
+          if (!memberId) memberId = (await vscode.window.showInputBox({ title: say('Course Member ID', 'ID der Kursteilnahme'), prompt: say('Enter course member ID', 'Gib die ID der Kursteilnahme ein'), ignoreFocusOut: true })) || '';
         }
         if (!courseId || !memberId) { return; }
 
@@ -326,13 +328,13 @@ export class TutorCommands {
 
         // Check if repository exists
         if (!fs.existsSync(gitDir)) {
-          notify.error('Repository not found. Please clone it first.');
+          notify.error(say('Repository not found. Please clone it first.', 'Das Repository wurde nicht gefunden. Klone es zuerst.'));
           return;
         }
 
         // Update the repository
         await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: 'Updating student repository...', cancellable: false },
+          { location: vscode.ProgressLocation.Notification, title: say('Updating student repository...', 'Repository der Person wird aktualisiert …'), cancellable: false },
           async () => {
             const git = createSimpleGit({ baseDir: dir });
             await git.fetch(['--all']);
@@ -340,10 +342,10 @@ export class TutorCommands {
           }
         );
 
-        notify.info('Repository updated successfully.');
+        notify.info(say('Repository updated successfully.', 'Das Repository ist aktualisiert.'));
         this.treeDataProvider.refresh();
       } catch (e: any) {
-        notify.error(`Failed to update repository: ${e?.message || e}`);
+        notify.error(sayFailed(`Failed to update repository`, `Das Repository konnte nicht aktualisiert werden`, e?.message || e));
       }
     });
 
@@ -351,11 +353,11 @@ export class TutorCommands {
     register('computor.tutor.assignment.grading', async (item: { content?: CourseContentStudentList; courseContent?: CourseContentStudentList }) => {
       const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
       const contentId = content?.id;
-      if (!content || !contentId) { notify.error('No course content selected.'); return; }
+      if (!content || !contentId) { notify.error(say('No course content selected.', 'Kein Kursinhalt ausgewählt.')); return; }
 
       const sel = TutorSelectionService.getInstance();
       const memberId = sel.getCurrentMemberId();
-      if (!memberId) { notify.error('No course member selected.'); return; }
+      if (!memberId) { notify.error(say('No course member selected.', 'Keine Person ausgewählt.')); return; }
 
       // Get the latest submitted artifact to ensure grade is applied correctly
       const submissionGroup: SubmissionGroupStudentList | undefined | null = content.submission_group;
@@ -372,19 +374,19 @@ export class TutorCommands {
       const prevStatus: string | undefined = content.status ?? undefined;
 
       const gradingInput = await vscode.window.showInputBox({
-        title: 'Grading',
-        prompt: 'Enter grade between 0.00 and 1.00 (max 2 decimal places)',
-        placeHolder: 'e.g., 0.85',
+        title: say('Grading', 'Bewertung'),
+        prompt: say('Enter grade between 0.00 and 1.00 (max 2 decimal places)', 'Gib eine Bewertung zwischen 0.00 und 1.00 ein (höchstens 2 Nachkommastellen)'),
+        placeHolder: say('e.g., 0.85', 'z. B. 0.85'),
         value: prevGrade != null ? prevGrade.toFixed(2) : undefined,
         ignoreFocusOut: true,
         validateInput: (v) => {
-          if (!v || !v.trim()) return 'Enter a value between 0 and 1';
+          if (!v || !v.trim()) return say('Enter a value between 0 and 1', 'Gib einen Wert zwischen 0 und 1 ein');
           const trimmed = v.trim();
           if (!/^(?:0(?:\.\d{1,2})?|1(?:\.0{1,2})?|\.\d{1,2})$/.test(trimmed)) {
-            return 'Value must be between 0 and 1 with at most 2 decimal places';
+            return say('Value must be between 0 and 1 with at most 2 decimal places', 'Der Wert muss zwischen 0 und 1 liegen und darf höchstens 2 Nachkommastellen haben');
           }
           const n = Number(trimmed);
-          if (!isFinite(n) || n < 0 || n > 1) return 'Value must be between 0 and 1';
+          if (!isFinite(n) || n < 0 || n > 1) return say('Value must be between 0 and 1', 'Der Wert muss zwischen 0 und 1 liegen');
           return undefined;
         }
       });
@@ -392,14 +394,14 @@ export class TutorCommands {
       const grade = Math.max(0, Math.min(1, Number(gradingInput.trim())));
 
       const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
-        { label: 'corrected', description: 'Mark as corrected', value: 1 as GradingStatus },
-        { label: 'correction_necessary', description: 'Correction necessary', value: 2 as GradingStatus },
-        { label: 'improvement_possible', description: 'Improvement possible', value: 3 as GradingStatus },
-        { label: 'not_reviewed', description: 'Not reviewed', value: 0 as GradingStatus },
+        { label: say('corrected', 'Bewertet'), description: say('Mark as corrected', 'corrected'), value: 1 as GradingStatus },
+        { label: say('correction_necessary', 'Korrektur nötig'), description: say('Correction necessary', 'correction_necessary'), value: 2 as GradingStatus },
+        { label: say('improvement_possible', 'Verbesserung möglich'), description: say('Improvement possible', 'improvement_possible'), value: 3 as GradingStatus },
+        { label: say('not_reviewed', 'Nicht bewertet'), description: say('Not reviewed', 'not_reviewed'), value: 0 as GradingStatus },
       ];
       const statusPick = await vscode.window.showQuickPick(statusOptions, {
         title: 'Status',
-        placeHolder: prevStatus ? `Current: ${prevStatus}` : 'Choose status',
+        placeHolder: prevStatus ? say(`Current: ${prevStatus}`, `Aktuell: ${prevStatus}`) : say('Choose status', 'Status wählen'),
         canPickMany: false,
         ignoreFocusOut: true
       });
@@ -427,7 +429,7 @@ export class TutorCommands {
         this.treeDataProvider.refresh();
         this.filterProvider?.refreshFilters();
 
-        notify.info(`Updated: ${grade.toFixed(2)} • ${statusPick.label}`);
+        notify.info(say(`Updated: ${grade.toFixed(2)} • ${statusPick.label}`, `Gespeichert: ${grade.toFixed(2)} • ${statusPick.label}`));
 
         // Both verdicts ask the student to act, and students can't know what
         // to change unless the tutor says so — open the conversation for this
@@ -436,7 +438,7 @@ export class TutorCommands {
           await this.showMessages(item);
         }
       } catch (e: any) {
-        notify.error(`Failed to update grading: ${e?.message || e}`);
+        notify.error(sayFailed(`Failed to update grading`, `Die Bewertung konnte nicht gespeichert werden`, e?.message || e));
       }
     });
 
@@ -494,17 +496,17 @@ export class TutorCommands {
   private async showHelp(item?: any): Promise<void> {
     try {
       const helpFileName = tutorHelpPageFor(item?.contextValue);
-      const helpPath = path.join(this.context.extensionPath, 'docs', 'help', helpFileName);
+      const helpPath = helpPagePath(this.context.extensionPath, helpFileName);
 
       if (!fs.existsSync(helpPath)) {
-        notify.warning(`Help file not found: ${helpFileName}`);
+        notify.warning(say(`Help file not found: ${helpFileName}`, `Die Hilfeseite fehlt: ${helpFileName}`));
         return;
       }
 
-      await showMarkdownPreview(this.context, helpPath, { title: 'Computor Help' });
+      await showMarkdownPreview(this.context, helpPath, { title: say('Computor Help', 'Computor-Hilfe') });
     } catch (error) {
       console.error('[showHelp] Failed to show help:', error);
-      notify.error('Failed to open help documentation');
+      notify.error(say('Failed to open help documentation', 'Die Hilfe konnte nicht geöffnet werden.'));
     }
   }
 
@@ -530,31 +532,34 @@ export class TutorCommands {
     const content: CourseContentStudentList | undefined = item?.content || item?.courseContent;
     const submissionGroup: SubmissionGroupStudentList | undefined | null = content?.submission_group;
 
-    if (!content) { notify.error('No assignment selected.'); return; }
+    if (!content) { notify.error(say('No assignment selected.', 'Keine Aufgabe ausgewählt.')); return; }
     if (!submissionGroup?.id) {
       notify.warning(
-        'This student has no submission group for the assignment yet, so there is nothing to grant. '
-        + 'A group appears once the assignment is deployed to them.'
+        say('This student has no submission group for the assignment yet, so there is nothing to grant. '
+        + 'A group appears once the assignment is deployed to them.', 'Diese Person hat für die Aufgabe noch keine Abgabegruppe, daher gibt es nichts freizugeben. '
+        + 'Die Gruppe entsteht, sobald die Aufgabe für sie bereitgestellt ist.')
       );
       return;
     }
 
     const isTestRuns = field === 'max_test_runs';
-    const label = isTestRuns ? 'Max Test Runs' : 'Max Submissions';
-    const noun = isTestRuns ? 'test runs' : 'submissions';
+    const label = isTestRuns ? say('Max Test Runs', 'Höchstzahl der Testläufe') : say('Max Submissions', 'Höchstzahl der Abgaben');
+    const noun = isTestRuns ? say('test runs', 'Testläufe') : say('submissions', 'Abgaben');
     const current = (isTestRuns ? content.max_test_runs : content.max_submissions) ?? null;
-    const who = submissionGroup.members?.[0]?.full_name || 'this student';
+    const who = submissionGroup.members?.[0]?.full_name || say('this student', 'diese Person');
 
     const answer = await vscode.window.showInputBox({
-      title: `Set ${label} for ${who}`,
-      prompt: `How many ${noun} may ${who} use for "${content.title || content.path}"? `
+      title: say(`Set ${label} for ${who}`, `${label} für ${who} festlegen`),
+      prompt: say(`How many ${noun} may ${who} use for "${content.title || content.path}"? `
         + `Leave empty to follow the assignment's limit.`,
+        `Wie viele ${noun} darf ${who} für „${content.title || content.path}“ nutzen? `
+        + 'Lass das Feld leer, um die Grenze der Aufgabe zu übernehmen.'),
       value: current === null ? '' : String(current),
       ignoreFocusOut: true,
       validateInput: (value) => {
         const trimmed = value.trim();
         if (trimmed.length === 0) { return undefined; }
-        if (!/^\d+$/.test(trimmed)) { return "Enter a whole number, or leave empty to follow the assignment."; }
+        if (!/^\d+$/.test(trimmed)) { return say('Enter a whole number, or leave empty to follow the assignment.', 'Gib eine ganze Zahl ein oder lass das Feld leer, um die Grenze der Aufgabe zu übernehmen.'); }
         return undefined;
       }
     });
@@ -581,14 +586,14 @@ export class TutorCommands {
       this.treeDataProvider.refresh();
 
       const effective = isTestRuns ? updated.max_test_runs : updated.max_submissions;
-      const resolved = effective === null || effective === undefined ? 'unlimited' : String(effective);
+      const resolved = effective === null || effective === undefined ? say('unlimited', 'unbegrenzt') : String(effective);
       notify.info(
         value === null
-          ? `${label} for ${who}: following the assignment (${resolved})`
-          : `${label} for ${who}: ${resolved}`
+          ? say(`${label} for ${who}: following the assignment (${resolved})`, `${label} für ${who}: wie in der Aufgabe (${resolved})`)
+          : say(`${label} for ${who}: ${resolved}`, `${label} für ${who}: ${resolved}`)
       );
     } catch (error: any) {
-      notify.error(`Failed to set ${label}: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to set ${label}`, `${label} konnte nicht gespeichert werden`, error?.message || error));
     }
   }
 
@@ -631,7 +636,7 @@ export class TutorCommands {
       const selection = TutorSelectionService.getInstance();
       const memberId = selection.getCurrentMemberId();
       if (!memberId) {
-        notify.warning('No course member selected.');
+        notify.warning(say('No course member selected.', 'Keine Person ausgewählt.'));
         return;
       }
 
@@ -647,7 +652,7 @@ export class TutorCommands {
       const title = segments.length > 0 ? segments.join(' — ') : memberId;
       await this.commentsWebviewProvider.showComments(memberId, title, opts);
     } catch (error: any) {
-      notify.error(`Failed to open comments: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to open comments`, `Die Kommentare konnten nicht geöffnet werden`, error?.message || error));
     }
   }
 
@@ -656,13 +661,13 @@ export class TutorCommands {
       const selection = TutorSelectionService.getInstance();
       const courseId = selection.getCurrentCourseId();
       if (!courseId) {
-        notify.warning('Select a course before viewing messages.');
+        notify.warning(say('Select a course before viewing messages.', 'Wähle einen Kurs aus, bevor du Nachrichten ansiehst.'));
         return;
       }
 
       const memberId = selection.getCurrentMemberId();
       if (!memberId) {
-        notify.warning('Select a course member before viewing messages.');
+        notify.warning(say('Select a course member before viewing messages.', 'Wähle eine Person aus, bevor du Nachrichten ansiehst.'));
         return;
       }
 
@@ -686,7 +691,7 @@ export class TutorCommands {
       let target: MessageTargetContext | undefined;
 
       if (content) {
-        const contentTitle = content.title || content.path || 'Course content';
+        const contentTitle = content.title || content.path || say('Course content', 'Kursinhalt');
 
         let query: Record<string, string>;
         let createPayload: Partial<MessageCreate>;
@@ -753,7 +758,7 @@ export class TutorCommands {
           courseId
         );
         target = {
-          title: memberName ? `${memberName} — Course messages` : 'Course member messages',
+          title: memberName ? say(`${memberName} — Course messages`, `${memberName} — Kursnachrichten`) : say('Course member messages', 'Nachrichten der Person'),
           subtitle,
           query: { course_id: courseId, scope: 'course' },
           createPayload: { course_id: courseId },
@@ -767,7 +772,7 @@ export class TutorCommands {
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      notify.error(`Failed to open messages: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to open messages`, `Die Nachrichten konnten nicht geöffnet werden`, error?.message || error));
     }
   }
 
@@ -776,13 +781,13 @@ export class TutorCommands {
       const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
 
       if (!content) {
-        notify.error('No course content information available');
+        notify.error(say('No course content information available', 'Zu diesem Kursinhalt liegen keine Angaben vor.'));
         return;
       }
 
       const deployment = content.deployment;
       if (!deployment || !deployment.example_version_id) {
-        notify.error('No reference available for this assignment');
+        notify.error(say('No reference available for this assignment', 'Für diese Aufgabe gibt es keine Musterlösung.'));
         return;
       }
 
@@ -793,11 +798,11 @@ export class TutorCommands {
       const exists = await this.workspaceStructure.directoryExists(referencePath);
       if (exists) {
         const choice = await notify.warning(
-          `Reference for this assignment already exists. The example version may have been updated. Re-download?`,
-          'Re-download',
-          'Cancel'
+          say(`Reference for this assignment already exists. The example version may have been updated. Re-download?`, `Die Musterlösung dieser Aufgabe ist bereits vorhanden. Die Beispielversion hat sich vielleicht geändert. Erneut herunterladen?`),
+          say('Re-download', 'Erneut herunterladen'),
+          say('Cancel', 'Abbrechen')
         );
-        if (choice !== 'Re-download') {
+        if (choice !== say('Re-download', 'Erneut herunterladen')) {
           return;
         }
         // Remove existing directory
@@ -808,13 +813,13 @@ export class TutorCommands {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Downloading reference...',
+          title: say('Downloading reference...', 'Musterlösung wird heruntergeladen …'),
           cancellable: false
         },
         async () => {
           const buffer = await this.apiService.downloadCourseContentReference(content.id, true);
           if (!buffer) {
-            throw new Error('Failed to download reference');
+            throw new Error(say('Failed to download reference', 'Die Musterlösung konnte nicht heruntergeladen werden'));
           }
 
           // Extract ZIP to reference path
@@ -834,10 +839,10 @@ export class TutorCommands {
         }
       );
 
-      notify.info(`Reference downloaded to ${referencePath}`);
+      notify.info(say(`Reference downloaded to ${referencePath}`, `Musterlösung heruntergeladen nach ${referencePath}`));
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to download reference: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to download reference`, `Die Musterlösung konnte nicht heruntergeladen werden`, error?.message || error));
     }
   }
 
@@ -852,7 +857,7 @@ export class TutorCommands {
       if (!artifactId || !submissionGroupId) {
         const content: CourseContentStudentList = item?.content || item?.courseContent;
         if (!content || !content.submission_group?.id) {
-          notify.error('No submission group available for this assignment');
+          notify.error(say('No submission group available for this assignment', 'Für diese Aufgabe gibt es keine Abgabegruppe.'));
           return;
         }
 
@@ -862,7 +867,7 @@ export class TutorCommands {
         // TODO: Add API method to list artifacts for a submission group
         // For now, prompt user to select from tree instead
         notify.info(
-          'Please expand the Submissions folder and right-click on a specific submission to download it.'
+          say('Please expand the Submissions folder and right-click on a specific submission to download it.', 'Klappe den Ordner „Submissions“ auf und lade eine Abgabe über ihr Kontextmenü (Rechtsklick) herunter.')
         );
         return;
       }
@@ -873,11 +878,11 @@ export class TutorCommands {
       const exists = await this.workspaceStructure.directoryExists(submissionPath);
       if (exists) {
         const choice = await notify.warning(
-          `Submission artifact already exists. Re-download?`,
-          'Re-download',
-          'Cancel'
+          say(`Submission artifact already exists. Re-download?`, `Diese Abgabe ist bereits heruntergeladen. Erneut herunterladen?`),
+          say('Re-download', 'Erneut herunterladen'),
+          say('Cancel', 'Abbrechen')
         );
-        if (choice !== 'Re-download') {
+        if (choice !== say('Re-download', 'Erneut herunterladen')) {
           return;
         }
         // Remove existing directory
@@ -888,13 +893,13 @@ export class TutorCommands {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Downloading submission artifact...',
+          title: say('Downloading submission artifact...', 'Abgabe wird heruntergeladen …'),
           cancellable: false
         },
         async () => {
           const buffer = await this.apiService.downloadSubmissionArtifact(artifactId);
           if (!buffer) {
-            throw new Error('Failed to download submission artifact');
+            throw new Error(say('Failed to download submission artifact', 'Die Abgabe konnte nicht heruntergeladen werden'));
           }
 
           // Extract ZIP to submission path
@@ -914,10 +919,10 @@ export class TutorCommands {
         }
       );
 
-      notify.info(`Submission artifact downloaded to ${submissionPath}`);
+      notify.info(say(`Submission artifact downloaded to ${submissionPath}`, `Abgabe heruntergeladen nach ${submissionPath}`));
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to download submission artifact: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to download submission artifact`, `Die Abgabe konnte nicht heruntergeladen werden`, error?.message || error));
     }
   }
 
@@ -926,7 +931,7 @@ export class TutorCommands {
       // Get the file path from the submission
       const submissionFilePath = item?.fsPath || item?.resourceUri?.fsPath;
       if (!submissionFilePath) {
-        notify.error('No file selected for comparison');
+        notify.error(say('No file selected for comparison', 'Keine Datei zum Vergleichen ausgewählt.'));
         return;
       }
 
@@ -937,7 +942,7 @@ export class TutorCommands {
       const parts = relativePath.split(path.sep);
 
       if (parts.length < 3) {
-        notify.error('Invalid submission file path');
+        notify.error(say('Invalid submission file path', 'Der Pfad der abgegebenen Datei ist ungültig.'));
         return;
       }
 
@@ -946,7 +951,7 @@ export class TutorCommands {
       // Get course content to find example version
       const content = item?.content || item?.courseContent;
       if (!content || !content.deployment || !content.deployment.example_version_id) {
-        notify.error('No reference available for comparison');
+        notify.error(say('No reference available for comparison', 'Zum Vergleichen gibt es keine Musterlösung.'));
         return;
       }
 
@@ -957,15 +962,15 @@ export class TutorCommands {
       // Check if reference exists
       if (!fs.existsSync(referenceFilePath)) {
         const choice = await notify.warning(
-          'Reference file not found. Download reference first?',
-          'Download Reference',
-          'Cancel'
+          say('Reference file not found. Download reference first?', 'Die Datei der Musterlösung fehlt. Zuerst die Musterlösung herunterladen?'),
+          say('Download Reference', 'Musterlösung herunterladen'),
+          say('Cancel', 'Abbrechen')
         );
-        if (choice === 'Download Reference') {
+        if (choice === say('Download Reference', 'Musterlösung herunterladen')) {
           await this.downloadReference({ content });
           // Try again after download
           if (!fs.existsSync(referenceFilePath)) {
-            notify.error('Reference file still not found after download');
+            notify.error(say('Reference file still not found after download', 'Die Datei der Musterlösung fehlt auch nach dem Herunterladen.'));
             return;
           }
         } else {
@@ -980,7 +985,7 @@ export class TutorCommands {
 
       await vscode.commands.executeCommand('vscode.diff', referenceUri, submissionUri, title);
     } catch (error: any) {
-      notify.error(`Failed to compare with reference: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to compare with reference`, `Der Vergleich mit der Musterlösung ist fehlgeschlagen`, error?.message || error));
     }
   }
 
@@ -992,7 +997,7 @@ export class TutorCommands {
       const artifactId = item?.artifactId;
       if (!artifactId) {
         console.log('[TutorCommands] No artifactId in item');
-        notify.warning('No submission artifact ID found.');
+        notify.warning(say('No submission artifact ID found.', 'Zu dieser Abgabe wurde keine ID gefunden.'));
         return;
       }
 
@@ -1003,7 +1008,7 @@ export class TutorCommands {
       console.log('[TutorCommands] Test results fetched:', testResults.length, 'results');
 
       if (!testResults || testResults.length === 0) {
-        notify.warning('No test results available for this submission.');
+        notify.warning(say('No test results available for this submission.', 'Zu dieser Abgabe gibt es keine Testergebnisse.'));
         return;
       }
 
@@ -1017,7 +1022,7 @@ export class TutorCommands {
 
       if (!resultJson) {
         console.log('[TutorCommands] No result_json in latest result');
-        notify.warning('No detailed test results available for this submission.');
+        notify.warning(say('No detailed test results available for this submission.', 'Zu dieser Abgabe gibt es keine ausführlichen Testergebnisse.'));
         return;
       }
 
@@ -1029,7 +1034,7 @@ export class TutorCommands {
 
     } catch (error: any) {
       console.error('[TutorCommands] Error in showSubmissionTestResults:', error);
-      notify.error(`Failed to show test results: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to show test results`, `Die Testergebnisse konnten nicht angezeigt werden`, error?.message || error));
     }
   }
 
@@ -1039,13 +1044,13 @@ export class TutorCommands {
       const content: CourseContentStudentList = itemAny?.content || itemAny?.courseContent || itemAny?.course_content;
 
       if (!content) {
-        notify.error('No course content information available');
+        notify.error(say('No course content information available', 'Zu diesem Kursinhalt liegen keine Angaben vor.'));
         return;
       }
 
       const deployment = content.deployment;
       if (!deployment || !deployment.example_version_id) {
-        notify.error('No reference available for this assignment');
+        notify.error(say('No reference available for this assignment', 'Für diese Aufgabe gibt es keine Musterlösung.'));
         return;
       }
 
@@ -1079,11 +1084,11 @@ export class TutorCommands {
       if (hasSubmission && referenceExists && submissionExists) {
         if (confirmRedownload) {
           const choice = await notify.warning(
-            'Reference and latest submission already exist locally. Re-download?',
-            'Re-download',
-            'Cancel'
+            say('Reference and latest submission already exist locally. Re-download?', 'Musterlösung und neueste Abgabe sind bereits lokal vorhanden. Erneut herunterladen?'),
+            say('Re-download', 'Erneut herunterladen'),
+            say('Cancel', 'Abbrechen')
           );
-          if (choice !== 'Re-download') {
+          if (choice !== say('Re-download', 'Erneut herunterladen')) {
             // Still expand the folders even if not re-downloading
             this.treeDataProvider.markForVirtualFolderExpansion(content.id);
             this.treeDataProvider.refresh();
@@ -1095,11 +1100,11 @@ export class TutorCommands {
       } else if (!hasSubmission && referenceExists) {
         if (confirmRedownload) {
           const choice = await notify.warning(
-            'Reference already exists locally. Re-download?',
-            'Re-download',
-            'Cancel'
+            say('Reference already exists locally. Re-download?', 'Die Musterlösung ist bereits lokal vorhanden. Erneut herunterladen?'),
+            say('Re-download', 'Erneut herunterladen'),
+            say('Cancel', 'Abbrechen')
           );
-          if (choice !== 'Re-download') {
+          if (choice !== say('Re-download', 'Erneut herunterladen')) {
             // Still expand the folders even if not re-downloading
             this.treeDataProvider.markForVirtualFolderExpansion(content.id);
             this.treeDataProvider.refresh();
@@ -1110,8 +1115,8 @@ export class TutorCommands {
       }
 
       const progressTitle = hasSubmission
-        ? 'Checking out reference and submission...'
-        : 'Checking out reference...';
+        ? say('Checking out reference and submission...', 'Musterlösung und Abgabe werden ausgecheckt …')
+        : say('Checking out reference...', 'Musterlösung wird ausgecheckt …');
 
       await vscode.window.withProgress(
         {
@@ -1123,10 +1128,10 @@ export class TutorCommands {
           const JSZip = require('jszip');
 
           // Download reference
-          progress.report({ message: 'Downloading reference...' });
+          progress.report({ message: say('Downloading reference...', 'Musterlösung wird heruntergeladen …') });
           const referenceBuffer = await this.apiService.downloadCourseContentReference(content.id, true);
           if (!referenceBuffer) {
-            throw new Error('Failed to download reference');
+            throw new Error(say('Failed to download reference', 'Die Musterlösung konnte nicht heruntergeladen werden'));
           }
 
           await fs.promises.mkdir(referencePath, { recursive: true });
@@ -1143,10 +1148,10 @@ export class TutorCommands {
 
           // Download latest submission if available
           if (hasSubmission && latestArtifact && submissionPath) {
-            progress.report({ message: 'Downloading latest submission...' });
+            progress.report({ message: say('Downloading latest submission...', 'Neueste Abgabe wird heruntergeladen …') });
             const submissionBuffer = await this.apiService.downloadSubmissionArtifact(latestArtifact.id);
             if (!submissionBuffer) {
-              throw new Error('Failed to download submission artifact');
+              throw new Error(say('Failed to download submission artifact', 'Die Abgabe konnte nicht heruntergeladen werden'));
             }
 
             await fs.promises.mkdir(submissionPath, { recursive: true });
@@ -1165,15 +1170,15 @@ export class TutorCommands {
       );
 
       const successMessage = hasSubmission
-        ? 'Reference and latest submission checked out successfully'
-        : 'Reference checked out successfully (no submission available)';
+        ? say('Reference and latest submission checked out successfully', 'Musterlösung und neueste Abgabe sind ausgecheckt.')
+        : say('Reference checked out successfully (no submission available)', 'Die Musterlösung ist ausgecheckt (es gibt keine Abgabe).');
       notify.info(successMessage);
 
       // Mark this content to be expanded when the tree refreshes
       this.treeDataProvider.markForVirtualFolderExpansion(content.id);
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to checkout: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to checkout`, `Das Auschecken ist fehlgeschlagen`, error?.message || error));
     }
   }
 
@@ -1185,7 +1190,7 @@ export class TutorCommands {
     try {
       const content: CourseContentStudentList | undefined = item?.content;
       if (!content) {
-        notify.error('No course content found');
+        notify.error(say('No course content found', 'Kein Kursinhalt gefunden.'));
         return;
       }
 
@@ -1200,13 +1205,13 @@ export class TutorCommands {
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: 'Downloading README...',
+            title: say('Downloading README...', 'Anleitung wird heruntergeladen …'),
             cancellable: false
           },
           async () => {
             const buffer = await this.apiService.downloadCourseContentDescription(courseContentId);
             if (!buffer) {
-              throw new Error('No README available for this assignment');
+              throw new Error(say('No README available for this assignment', 'Für diese Aufgabe gibt es keine Anleitung'));
             }
 
             // Extract ZIP to description path
@@ -1230,7 +1235,7 @@ export class TutorCommands {
       // Find and open README file
       await this.openReadmeFromDirectory(descriptionPath, content.course_id);
     } catch (error: any) {
-      notify.error(`Failed to show README: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to show README`, `Die Anleitung konnte nicht angezeigt werden`, error?.message || error));
     }
   }
 
@@ -1240,18 +1245,7 @@ export class TutorCommands {
    * Searches recursively in case files are in subdirectories.
    */
   private async openReadmeFromDirectory(dir: string, courseId?: string): Promise<void> {
-    // Profile language, else the course's own language, else English.
-    let userLanguage: string | null | undefined;
-    let courseLanguage: string | null | undefined;
-    try {
-      userLanguage = (await this.apiService.getUserAccount())?.profile?.language_code;
-      if (!userLanguage && courseId) {
-        courseLanguage = (await this.apiService.getCourse(courseId))?.language_code;
-      }
-    } catch {
-      // Ignore language preference errors
-    }
-    const preferredLanguage = resolveContentLanguage(userLanguage, courseLanguage);
+    const preferredLanguage = await readingLanguage(this.apiService);
 
     // Matches README.md, README_en.md, index.md, index_de.md, etc.
     const descriptionPattern = /^(README|index)(_[a-z]{2})?\.md$/i;
@@ -1282,7 +1276,7 @@ export class TutorCommands {
       // Firefox/Safari where the built-in preview stays blank, #267)
       await showMarkdownPreview(this.context, descriptionPath);
     } else {
-      notify.info('No description found for this assignment');
+      notify.info(say('No description found for this assignment', 'Für diese Aufgabe wurde keine Anleitung gefunden.'));
     }
   }
 
@@ -1295,17 +1289,17 @@ export class TutorCommands {
       // Get course content information
       const content: CourseContentStudentList = item?.content || item?.courseContent || item?.course_content;
       if (!content) {
-        notify.error('No course content information available');
+        notify.error(say('No course content information available', 'Zu diesem Kursinhalt liegen keine Angaben vor.'));
         return;
       }
 
       const courseContentId = content.id;
       if (!courseContentId) {
-        notify.error('No course content ID available');
+        notify.error(say('No course content ID available', 'Zu diesem Kursinhalt ist keine ID bekannt.'));
         return;
       }
 
-      const assignmentTitle = content.title || 'Assignment';
+      const assignmentTitle = content.title || say('Assignment', 'Aufgabe');
 
       // "Run Test" hangs off five different nodes. On References the point is
       // to check that the assignment still passes its own tests, so go there
@@ -1324,12 +1318,12 @@ export class TutorCommands {
       if (!submissionPath) {
         // No submission found, offer to test the reference instead
         const choice = await notify.warning(
-          'No student submission found. Would you like to test the reference solution instead?',
-          'Test Reference',
-          'Cancel'
+          say('No student submission found. Would you like to test the reference solution instead?', 'Es gibt keine Abgabe der Person. Stattdessen die Musterlösung testen?'),
+          say('Test Reference', 'Musterlösung testen'),
+          say('Cancel', 'Abbrechen')
         );
 
-        if (choice !== 'Test Reference') {
+        if (choice !== say('Test Reference', 'Musterlösung testen')) {
           return;
         }
 
@@ -1342,7 +1336,7 @@ export class TutorCommands {
       await this.runTutorTestAndOpenResults(courseContentId, submissionPath, assignmentTitle);
     } catch (error: any) {
       console.error('[TutorCommands] Error running test:', error);
-      notify.error(`Failed to run test: ${error?.message || error}`);
+      notify.error(sayFailed(`Failed to run test`, `Der Test konnte nicht ausgeführt werden`, error?.message || error));
     }
   }
 
@@ -1367,7 +1361,7 @@ export class TutorCommands {
   private async resolveReferencePath(content: CourseContentStudentList): Promise<string | undefined> {
     const exampleVersionId = content.deployment?.example_version_id;
     if (!exampleVersionId) {
-      notify.error('No reference available for this assignment');
+      notify.error(say('No reference available for this assignment', 'Für diese Aufgabe gibt es keine Musterlösung.'));
       return undefined;
     }
 
@@ -1377,17 +1371,17 @@ export class TutorCommands {
     }
 
     const choice = await notify.warning(
-      'Reference not downloaded. Download it now?',
-      'Download Reference',
-      'Cancel'
+      say('Reference not downloaded. Download it now?', 'Die Musterlösung ist noch nicht heruntergeladen. Jetzt herunterladen?'),
+      say('Download Reference', 'Musterlösung herunterladen'),
+      say('Cancel', 'Abbrechen')
     );
-    if (choice !== 'Download Reference') {
+    if (choice !== say('Download Reference', 'Musterlösung herunterladen')) {
       return undefined;
     }
 
     await this.downloadReference({ content });
     if (!await this.workspaceStructure.directoryExists(referencePath)) {
-      notify.error('Reference still not found after download');
+      notify.error(say('Reference still not found after download', 'Die Musterlösung fehlt auch nach dem Herunterladen.'));
       return undefined;
     }
     return referencePath;

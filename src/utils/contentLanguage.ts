@@ -1,24 +1,8 @@
 /**
- * Which language a learner reads a course in, and the titles that follow it.
- *
- * The learner's explicit profile language wins, followed by a managed web
- * workspace's validated launch language, the course's language, then English.
- * Outside a managed workspace, the course remains the Automatic fallback.
+ * Course text in the reading language (see uiLanguage), and the titles that
+ * follow it. A course's own language is only the fallback for a text without
+ * a version in the reading language.
  */
-
-let workspaceLaunchLanguage: 'de' | 'en' | undefined;
-
-/** Set only by the managed workspace locale service after validating its launch. */
-export function setWorkspaceLaunchLanguage(language: 'de' | 'en' | undefined): void {
-  workspaceLaunchLanguage = language;
-}
-
-export function resolveContentLanguage(
-  userLanguage?: string | null,
-  courseLanguage?: string | null
-): string {
-  return userLanguage?.trim().toLowerCase() || workspaceLaunchLanguage || courseLanguage?.trim().toLowerCase() || 'en';
-}
 
 const HEADING = /^#\s+(.+?)\s*#*\s*$/m;
 
@@ -48,6 +32,42 @@ export function withoutLeadingHeading(markdown: string): string {
     }
   }
   return markdown;
+}
+
+/** Per-language texts from the API (`title_i18n`, `description_i18n`). */
+export type TextMap = Record<string, string> | null | undefined;
+
+/**
+ * The entry of `map` for `language`, else `source`. A blank entry is a missing
+ * translation, the same rule as the backend's `?localize=` and the web.
+ */
+export function localizedText(map: TextMap, language: string, source: string | null | undefined): string | undefined {
+  const entry = map?.[language];
+  return typeof entry === 'string' && entry.trim() ? entry : source ?? undefined;
+}
+
+/** A course, content or content type title in `language`, for endpoints without `?localize=`. */
+export function localizedTitle(
+  item: { title?: string | null; title_i18n?: TextMap } | null | undefined, language: string
+): string | undefined {
+  return item ? localizedText(item.title_i18n, language, item.title) : undefined;
+}
+
+// The backend seeds these two kinds with English titles only.
+const KIND_TITLES: Record<string, { en: string; de: string }> = {
+  assignment: { en: 'Assignment', de: 'Aufgabe' },
+  unit: { en: 'Unit', de: 'Einheit' }
+};
+
+/** A content kind's title in `language`; an unknown kind keeps the title it was sent with. */
+export function localizedKindTitle(
+  kindId: string | null | undefined, title: string | null | undefined, language: string
+): string | undefined {
+  const known = kindId ? KIND_TITLES[kindId] : undefined;
+  if (known && (language === 'de' || language === 'en')) {
+    return known[language];
+  }
+  return title || kindId || undefined;
 }
 
 const UNIT_TITLE = /^(?:Week|Woche)\s+(\d+)$/i;

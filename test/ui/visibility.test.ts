@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 
 import {
-    INVISIBLE_BADGE,
+    invisibleBadge,
     filterVisible,
     hiddenBadge,
     isHidden,
@@ -74,13 +74,13 @@ describe('tree visibility', () => {
             // made still drives behaviour via isHiddenHere, not the label.
             assert.strictEqual(
                 hiddenBadge({ visible: false, visible_effective: false }),
-                INVISIBLE_BADGE,
+                invisibleBadge(),
             );
             assert.strictEqual(
                 hiddenBadge({ visible: null, visible_effective: false }),
-                INVISIBLE_BADGE,
+                invisibleBadge(),
             );
-            assert.strictEqual(INVISIBLE_BADGE, '\u{1F441} invisible');
+            assert.strictEqual(invisibleBadge(), '\u{1F441} invisible');
         });
     });
 
@@ -123,7 +123,7 @@ describe('course-level visibility on the Contents folder', () => {
 
     it('marks the folder when the whole course is hidden', () => {
         const item = folder(false);
-        assert.strictEqual(item.description, INVISIBLE_BADGE);
+        assert.strictEqual(item.description, invisibleBadge());
         assert.strictEqual(item.contextValue, 'course.contents.hidden');
     });
 

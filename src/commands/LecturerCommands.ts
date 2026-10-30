@@ -58,6 +58,8 @@ import type { MessagesInputPanelProvider } from '../ui/panels/MessagesInputPanel
 import type { WebSocketService } from '../services/WebSocketService';
 import { commandRegistrar } from './commandHelpers';
 import { notify } from '../utils/notify';
+import { say, uiLanguage, uiLocale } from '../utils/uiLanguage';
+import { localizedKindTitle } from '../utils/contentLanguage';
 import { revealUri } from '../utils/reveal';
 import {
   computeInsertPosition,
@@ -89,6 +91,16 @@ interface ReleaseScope {
   all?: boolean;
 }
 
+
+/** German noun forms for the `kind` the delete prompts name in English. */
+function kindDe(kind: string): { noun: string; the: string; this: string; ofThis: string } {
+  switch (kind) {
+    case 'course': return { noun: 'Kurs', the: 'den Kurs', this: 'Dieser Kurs', ofThis: 'dieses Kurses' };
+    case 'course family': return { noun: 'Kursfamilie', the: 'die Kursfamilie', this: 'Diese Kursfamilie', ofThis: 'dieser Kursfamilie' };
+    case 'organization': return { noun: 'Organisation', the: 'die Organisation', this: 'Diese Organisation', ofThis: 'dieser Organisation' };
+    default: return { noun: 'Element', the: 'das Element', this: 'Dieses Element', ofThis: 'dieses Elements' };
+  }
+}
 export class LecturerCommands {
   private apiService: ComputorApiService;
   private courseWebviewProvider: CourseWebviewProvider;
@@ -157,12 +169,12 @@ export class LecturerCommands {
       try {
         const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
         const mgr = new LecturerRepositoryManager(this.context, this.apiService);
-        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Syncing assignments repositories...', cancellable: false }, async (progress) => {
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: say('Syncing assignments repositories...', 'Aufgaben-Repositorys werden synchronisiert …'), cancellable: false }, async (progress) => {
           await mgr.syncAllAssignments((m) => progress.report({ message: m }));
         });
-        notify.info('Assignments repositories synced.');
+        notify.info(say('Assignments repositories synced.', 'Aufgaben-Repositorys sind synchronisiert.'));
       } catch (e) {
-        notify.error(`Failed to sync assignments: ${e}`);
+        notify.error(say(`Failed to sync assignments: ${e}`, `Die Aufgaben konnten nicht synchronisiert werden: ${e}`));
       }
     });
 
@@ -194,14 +206,14 @@ export class LecturerCommands {
     // so instead of throwing on `item.organization`.
     register('computor.lecturer.deleteOrganization', async (item?: OrganizationTreeItem) => {
       if (!item?.organization) {
-        notify.info('Right-click an organization in the Lecturer tree to delete it.');
+        notify.info(say('Right-click an organization in the Lecturer tree to delete it.', 'Klicke in der Lehrenden-Ansicht mit der rechten Maustaste auf eine Organisation, um sie zu löschen.'));
         return;
       }
       await this.deleteOrganization(item);
     });
     register('computor.lecturer.deleteCourseFamily', async (item?: CourseFamilyTreeItem) => {
       if (!item?.courseFamily) {
-        notify.info('Right-click a course family in the Lecturer tree to delete it.');
+        notify.info(say('Right-click a course family in the Lecturer tree to delete it.', 'Klicke in der Lehrenden-Ansicht mit der rechten Maustaste auf eine Kursfamilie, um sie zu löschen.'));
         return;
       }
       await this.deleteCourseFamily(item);
@@ -215,14 +227,14 @@ export class LecturerCommands {
     });
     register('computor.lecturer.archiveCourse', async (item?: CourseTreeItem) => {
       if (!item?.course) {
-        notify.info('Right-click a course in the Lecturer tree to archive it.');
+        notify.info(say('Right-click a course in the Lecturer tree to archive it.', 'Klicke in der Lehrenden-Ansicht mit der rechten Maustaste auf einen Kurs, um ihn zu archivieren.'));
         return;
       }
       await this.archiveCourse(item.course);
     });
     register('computor.lecturer.unarchiveCourse', async (item?: CourseTreeItem) => {
       if (!item?.course) {
-        notify.info('Right-click an archived course in the Lecturer tree to unarchive it.');
+        notify.info(say('Right-click an archived course in the Lecturer tree to unarchive it.', 'Klicke in der Lehrenden-Ansicht mit der rechten Maustaste auf einen archivierten Kurs, um ihn aus dem Archiv zu holen.'));
         return;
       }
       await this.unarchiveCourse(item.course);
@@ -434,13 +446,13 @@ export class LecturerCommands {
     // called "Open Assignment Folder", which read like an editing entry point
     // for a folder that is only ever pulled (computor-org/issues#356).
     register('computor.lecturer.openAssignmentFolder', async (item: CourseContentTreeItem) => {
-      if (!item || !item.courseContent?.id || !item.course?.id) { notify.warning('Select an assignment'); return; }
+      if (!item || !item.courseContent?.id || !item.course?.id) { notify.warning(say('Select an assignment', 'Wähle eine Aufgabe aus.')); return; }
       try {
         const course = await this.apiService.getCourse(item.course.id);
         const content = await this.apiService.getCourseContent(item.courseContent.id, true);
         const deploymentPath = (content as any)?.deployment?.deployment_path || (content as any)?.deployment?.example_identifier || '';
         if (!course || !deploymentPath) {
-          notify.warning('Nothing is deployed for this assignment yet, so there are no files to reveal.');
+          notify.warning(say('Nothing is deployed for this assignment yet, so there are no files to reveal.', 'Für diese Aufgabe ist noch nichts bereitgestellt, daher gibt es keine Dateien zum Anzeigen.'));
           return;
         }
         const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
@@ -448,15 +460,15 @@ export class LecturerCommands {
         const folder = mgr.getAssignmentFolderPath(course, deploymentPath);
         if (!folder || !fs.existsSync(folder)) {
           const choice = await notify.warning(
-            'The local copy of the assignments repository does not have this assignment yet. Sync it now?',
-            'Sync', 'Cancel'
+            say('The local copy of the assignments repository does not have this assignment yet. Sync it now?', 'Die lokale Kopie des Aufgaben-Repositorys enthält diese Aufgabe noch nicht. Jetzt synchronisieren?'),
+            say('Sync', 'Synchronisieren'), say('Cancel', 'Abbrechen')
           );
-          if (choice === 'Sync') { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
+          if (choice === say('Sync', 'Synchronisieren')) { await vscode.commands.executeCommand('computor.lecturer.syncAssignments'); }
           return;
         }
         await revealUri(vscode.Uri.file(folder));
       } catch (e) {
-        notify.error(`Failed to reveal the deployed files: ${e}`);
+        notify.error(say(`Failed to reveal the deployed files: ${e}`, `Die bereitgestellten Dateien konnten nicht angezeigt werden: ${e}`));
       }
     });
 
@@ -487,12 +499,12 @@ export class LecturerCommands {
 
   private async createOrganization(): Promise<void> {
     const orgPath = await vscode.window.showInputBox({
-      prompt: 'Enter organization path (lowercase identifier)',
-      placeHolder: 'e.g., my-university, research-lab',
+      prompt: say('Enter organization path (lowercase identifier)', 'Pfad der Organisation eingeben (Kennung in Kleinbuchstaben)'),
+      placeHolder: say('e.g., my-university, research-lab', 'z. B. my-university, research-lab'),
       validateInput: (value) => {
-        if (!value) { return 'Organization path is required'; }
+        if (!value) { return say('Organization path is required', 'Der Pfad der Organisation ist erforderlich.'); }
         if (!/^[a-z0-9]+([.\-][a-z0-9]+)*$/.test(value)) {
-          return 'Path must be lowercase alphanumeric with hyphens and dots';
+          return say('Path must be lowercase alphanumeric with hyphens and dots', 'Der Pfad darf nur Kleinbuchstaben, Ziffern, Bindestriche und Punkte enthalten.');
         }
         return null;
       }
@@ -500,8 +512,8 @@ export class LecturerCommands {
     if (!orgPath) { return; }
 
     const orgTitle = await vscode.window.showInputBox({
-      prompt: 'Enter organization title',
-      placeHolder: 'e.g., My University',
+      prompt: say('Enter organization title', 'Titel der Organisation eingeben'),
+      placeHolder: say('e.g., My University', 'z. B. Meine Universität'),
       value: orgPath.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     });
     if (!orgTitle) { return; }
@@ -514,10 +526,10 @@ export class LecturerCommands {
         title: orgTitle,
         organization_type: 'organization'
       });
-      notify.info(`Organization "${orgTitle}" created successfully!`);
+      notify.info(say(`Organization "${orgTitle}" created successfully!`, `Die Organisation „${orgTitle}“ wurde angelegt.`));
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to create organization: ${error.message || error}`);
+      notify.error(say(`Failed to create organization: ${error.message || error}`, `Die Organisation konnte nicht angelegt werden: ${error.message || error}`));
     }
   }
 
@@ -525,12 +537,12 @@ export class LecturerCommands {
     const organization = item.organization;
 
     const familyPath = await vscode.window.showInputBox({
-      prompt: `Enter course family path under "${organization.title || organization.path}"`,
-      placeHolder: 'e.g., computer-science, mathematics',
+      prompt: say(`Enter course family path under "${organization.title || organization.path}"`, `Pfad der Kursfamilie unter „${organization.title || organization.path}“ eingeben`),
+      placeHolder: say('e.g., computer-science, mathematics', 'z. B. computer-science, mathematics'),
       validateInput: (value) => {
-        if (!value) { return 'Course family path is required'; }
+        if (!value) { return say('Course family path is required', 'Der Pfad der Kursfamilie ist erforderlich.'); }
         if (!/^[a-z0-9]+([.\-][a-z0-9]+)*$/.test(value)) {
-          return 'Path must be lowercase alphanumeric with hyphens and dots';
+          return say('Path must be lowercase alphanumeric with hyphens and dots', 'Der Pfad darf nur Kleinbuchstaben, Ziffern, Bindestriche und Punkte enthalten.');
         }
         return null;
       }
@@ -538,8 +550,8 @@ export class LecturerCommands {
     if (!familyPath) { return; }
 
     const familyTitle = await vscode.window.showInputBox({
-      prompt: 'Enter course family title',
-      placeHolder: 'e.g., Computer Science',
+      prompt: say('Enter course family title', 'Titel der Kursfamilie eingeben'),
+      placeHolder: say('e.g., Computer Science', 'z. B. Informatik'),
       value: familyPath.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     });
     if (!familyTitle) { return; }
@@ -552,10 +564,10 @@ export class LecturerCommands {
         title: familyTitle,
         organization_id: organization.id
       });
-      notify.info(`Course family "${familyTitle}" created successfully!`);
+      notify.info(say(`Course family "${familyTitle}" created successfully!`, `Die Kursfamilie „${familyTitle}“ wurde angelegt.`));
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to create course family: ${error.message || error}`);
+      notify.error(say(`Failed to create course family: ${error.message || error}`, `Die Kursfamilie konnte nicht angelegt werden: ${error.message || error}`));
     }
   }
 
@@ -569,7 +581,7 @@ export class LecturerCommands {
     } else {
       const organizations = await this.apiService.getOrganizations();
       if (!organizations || organizations.length === 0) {
-        notify.error('No organizations available');
+        notify.error(say('No organizations available', 'Keine Organisationen verfügbar.'));
         return;
       }
 
@@ -579,13 +591,13 @@ export class LecturerCommands {
           description: org.path,
           organization: org
         })),
-        { placeHolder: 'Select organization' }
+        { placeHolder: say('Select organization', 'Organisation auswählen') }
       );
       if (!selectedOrg) { return; }
 
       const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
       if (!families || families.length === 0) {
-        notify.error('No course families available in this organization');
+        notify.error(say('No course families available in this organization', 'In dieser Organisation gibt es keine Kursfamilien.'));
         return;
       }
 
@@ -595,7 +607,7 @@ export class LecturerCommands {
           description: family.path,
           family: family
         })),
-        { placeHolder: 'Select course family' }
+        { placeHolder: say('Select course family', 'Kursfamilie auswählen') }
       );
       if (!selectedFamily) { return; }
 
@@ -604,12 +616,12 @@ export class LecturerCommands {
     }
 
     const coursePath = await vscode.window.showInputBox({
-      prompt: 'Enter course path (URL-friendly identifier)',
-      placeHolder: 'e.g., cs101-2024, intro-programming-fall',
+      prompt: say('Enter course path (URL-friendly identifier)', 'Pfad des Kurses eingeben (URL-taugliche Kennung)'),
+      placeHolder: say('e.g., cs101-2024, intro-programming-fall', 'z. B. cs101-2024, intro-programming-fall'),
       validateInput: (value) => {
-        if (!value) { return 'Course path is required'; }
+        if (!value) { return say('Course path is required', 'Der Pfad des Kurses ist erforderlich.'); }
         if (!/^[a-z0-9]+([.\-][a-z0-9]+)*$/.test(value)) {
-          return 'Path must be lowercase alphanumeric with hyphens and dots';
+          return say('Path must be lowercase alphanumeric with hyphens and dots', 'Der Pfad darf nur Kleinbuchstaben, Ziffern, Bindestriche und Punkte enthalten.');
         }
         return null;
       }
@@ -617,8 +629,8 @@ export class LecturerCommands {
     if (!coursePath) { return; }
 
     const courseTitle = await vscode.window.showInputBox({
-      prompt: 'Enter course title',
-      placeHolder: 'e.g., Introduction to Computer Science',
+      prompt: say('Enter course title', 'Titel des Kurses eingeben'),
+      placeHolder: say('e.g., Introduction to Computer Science', 'z. B. Einführung in die Informatik'),
       value: coursePath.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     });
     if (!courseTitle) { return; }
@@ -638,19 +650,19 @@ export class LecturerCommands {
       const taskResponse = await this.apiService.deployCourse(request);
 
       const result = await pollTaskUntilComplete(this.apiService, taskResponse.task_id, {
-        title: `Creating course "${courseTitle}"...`
+        title: say(`Creating course "${courseTitle}"...`, `Kurs „${courseTitle}“ wird angelegt …`)
       });
 
       if (result.status === 'SUCCESS') {
-        notify.info(`Course "${courseTitle}" created successfully in ${familyLabel}!`);
+        notify.info(say(`Course "${courseTitle}" created successfully in ${familyLabel}!`, `Der Kurs „${courseTitle}“ wurde in ${familyLabel} angelegt.`));
         this.treeDataProvider.refresh();
       } else if (result.status === 'FAILED') {
-        notify.error(`Failed to create course: ${result.error || 'Unknown error'}`);
+        notify.error(say(`Failed to create course: ${result.error || 'Unknown error'}`, `Der Kurs konnte nicht angelegt werden: ${result.error || 'unbekannter Fehler'}`));
       } else if (result.status === 'TIMEOUT') {
-        notify.warning(`Course creation for "${courseTitle}" is still in progress. Check back later.`);
+        notify.warning(say(`Course creation for "${courseTitle}" is still in progress. Check back later.`, `Der Kurs „${courseTitle}“ wird noch angelegt. Sieh später noch einmal nach.`));
       }
     } catch (error: any) {
-      notify.error(`Failed to create course: ${error.message || error}`);
+      notify.error(say(`Failed to create course: ${error.message || error}`, `Der Kurs konnte nicht angelegt werden: ${error.message || error}`));
     }
   }
 
@@ -668,7 +680,7 @@ export class LecturerCommands {
     } else {
       const organizations = await this.apiService.getOrganizations();
       if (!organizations || organizations.length === 0) {
-        notify.error('No organizations available');
+        notify.error(say('No organizations available', 'Keine Organisationen verfügbar.'));
         return;
       }
 
@@ -678,13 +690,13 @@ export class LecturerCommands {
           description: org.path,
           organization: org
         })),
-        { placeHolder: 'Select organization' }
+        { placeHolder: say('Select organization', 'Organisation auswählen') }
       );
       if (!selectedOrg) { return; }
 
       const families = await this.apiService.getCourseFamilies(selectedOrg.organization.id);
       if (!families || families.length === 0) {
-        notify.error('No course families available in this organization');
+        notify.error(say('No course families available in this organization', 'In dieser Organisation gibt es keine Kursfamilien.'));
         return;
       }
 
@@ -694,7 +706,7 @@ export class LecturerCommands {
           description: family.path,
           family: family
         })),
-        { placeHolder: 'Select course family' }
+        { placeHolder: say('Select course family', 'Kursfamilie auswählen') }
       );
       if (!selectedFamily) { return; }
 
@@ -709,7 +721,7 @@ export class LecturerCommands {
       filters: {
         'YAML': ['yaml', 'yml']
       },
-      title: 'Select course_deployment.yaml to deploy'
+      title: say('Select course_deployment.yaml to deploy', 'course_deployment.yaml zum Bereitstellen auswählen')
     });
     if (!fileUri || fileUri.length === 0) { return; }
     const firstFile = fileUri[0];
@@ -719,7 +731,7 @@ export class LecturerCommands {
     try {
       text = await fs.promises.readFile(firstFile.fsPath, 'utf8');
     } catch (error: any) {
-      notify.error(`Failed to read file: ${error.message || error}`);
+      notify.error(say(`Failed to read file: ${error.message || error}`, `Die Datei konnte nicht gelesen werden: ${error.message || error}`));
       return;
     }
 
@@ -727,12 +739,12 @@ export class LecturerCommands {
       // Validate first — surface fatal errors and abort before applying.
       const validation = await this.apiService.deployCourseFromFile(courseFamilyId, text, true);
       if (!validation) {
-        notify.error('Course deployment validation returned no result.');
+        notify.error(say('Course deployment validation returned no result.', 'Die Prüfung der Kursbereitstellung hat kein Ergebnis geliefert.'));
         return;
       }
 
       if (validation.errors && validation.errors.length > 0) {
-        notify.error(`Course deployment cannot proceed: ${validation.errors.join('; ')}`);
+        notify.error(say(`Course deployment cannot proceed: ${validation.errors.join('; ')}`, `Der Kurs kann nicht bereitgestellt werden: ${validation.errors.join('; ')}`));
         return;
       }
 
@@ -744,8 +756,8 @@ export class LecturerCommands {
           return loc ? `• ${loc}: ${w.reason}` : `• ${w.reason}`;
         }).join('\n');
         const proceed = await notify.confirm(
-          `Deploying "${courseLabel}" produced ${validation.warnings.length} warning(s). Deploy anyway?`,
-          'Deploy anyway',
+          say(`Deploying "${courseLabel}" produced ${validation.warnings.length} warning(s). Deploy anyway?`, `Die Bereitstellung von „${courseLabel}“ ergab ${validation.warnings.length} Warnung(en). Trotzdem bereitstellen?`),
+          say('Deploy anyway', 'Trotzdem bereitstellen'),
           warningLines
         );
         if (!proceed) { return; }
@@ -754,26 +766,26 @@ export class LecturerCommands {
       // Apply.
       const result = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Deploying course "${courseLabel}"...`,
+        title: say(`Deploying course "${courseLabel}"...`, `Kurs „${courseLabel}“ wird bereitgestellt …`),
         cancellable: false
       }, async () => this.apiService.deployCourseFromFile(courseFamilyId, text, false));
 
       if (!result || !result.applied) {
         const errs = result?.errors?.join('; ');
-        notify.error(`Course deployment failed${errs ? `: ${errs}` : '.'}`);
+        notify.error(say(`Course deployment failed${errs ? `: ${errs}` : '.'}`, `Die Bereitstellung des Kurses ist fehlgeschlagen${errs ? `: ${errs}` : '.'}`));
         return;
       }
 
       const s = result.summary;
       const summaryText = s
-        ? ` — ${s.content_types ?? 0} content type(s), ${s.units ?? 0} unit(s), ${s.assignments ?? 0} assignment(s), ${s.examples_assigned ?? 0} example(s) assigned`
+        ? say(` — ${s.content_types ?? 0} content type(s), ${s.units ?? 0} unit(s), ${s.assignments ?? 0} assignment(s), ${s.examples_assigned ?? 0} example(s) assigned`, ` – ${s.content_types ?? 0} Inhaltstyp(en), ${s.units ?? 0} Einheit(en), ${s.assignments ?? 0} Aufgabe(n), ${s.examples_assigned ?? 0} Beispiel(e) zugewiesen`)
         : '';
       notify.info(
-        `Course "${result.course_title || result.course_path}" deployed to ${familyLabel}${summaryText}.`
+        say(`Course "${result.course_title || result.course_path}" deployed to ${familyLabel}${summaryText}.`, `Der Kurs „${result.course_title || result.course_path}“ wurde in ${familyLabel} bereitgestellt${summaryText}.`)
       );
       this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to deploy course: ${error.message || error}`);
+      notify.error(say(`Failed to deploy course: ${error.message || error}`, `Der Kurs konnte nicht bereitgestellt werden: ${error.message || error}`));
     }
   }
 
@@ -790,31 +802,31 @@ export class LecturerCommands {
     try {
       servers = await this.apiService.getGitServers();
     } catch (err: any) {
-      notify.error(`Could not load git servers: ${err?.message || String(err)}`);
+      notify.error(say(`Could not load git servers: ${err?.message || String(err)}`, `Die Git-Server konnten nicht geladen werden: ${err?.message || String(err)}`));
       return null;
     }
     const managed = servers.filter(s => s.managed && s.has_token);
     if (managed.length === 0) {
       if (opts.allowSkip) {
-        notify.warning('No managed git server is registered — creating the course unbound. An administrator can register one, then configure the course git later.');
+        notify.warning(say('No managed git server is registered — creating the course unbound. An administrator can register one, then configure the course git later.', 'Es ist kein verwalteter Git-Server registriert, daher wird der Kurs ohne Git-Anbindung angelegt. Eine Administratorin oder ein Administrator kann einen registrieren; danach kannst du Git für den Kurs konfigurieren.'));
         return undefined;
       }
-      notify.warning('No managed git server is registered. Ask an administrator to register one first.');
+      notify.warning(say('No managed git server is registered. Ask an administrator to register one first.', 'Es ist kein verwalteter Git-Server registriert. Bitte zuerst die Administration, einen zu registrieren.'));
       return null;
     }
 
     type ServerPick = vscode.QuickPickItem & { server?: GitServerGet; skip?: boolean };
     const items: ServerPick[] = managed.map(s => ({
       label: s.name || s.base_url,
-      description: `${s.type}${s.parent_group_id ? ` · group ${s.parent_group_id}` : ''}`,
+      description: `${s.type}${s.parent_group_id ? say(` · group ${s.parent_group_id}`, ` · Gruppe ${s.parent_group_id}`) : ''}`,
       server: s,
     }));
     if (opts.allowSkip) {
-      items.push({ label: '$(circle-slash) Skip for now', description: 'Create the course unbound; configure git later', skip: true });
+      items.push({ label: say('$(circle-slash) Skip for now', '$(circle-slash) Vorerst überspringen'), description: say('Create the course unbound; configure git later', 'Kurs ohne Git anlegen und Git später konfigurieren'), skip: true });
     }
 
     const serverPick = await vscode.window.showQuickPick(items, {
-      title: 'Course git — choose the host server',
+      title: say('Course git — choose the host server', 'Git für den Kurs: Server auswählen'),
       ignoreFocusOut: true,
     });
     if (!serverPick) { return null; }
@@ -822,12 +834,12 @@ export class LecturerCommands {
     const server = serverPick.server;
 
     const modeOptions = [
-      { label: `$(server) Managed (${server.type})`, description: 'We host each student repository', mode: 'managed', picked: true },
-      { label: '$(repo-forked) External', description: 'Students bring their own repository (any provider)', mode: 'external', picked: false },
-      { label: '$(cloud-download) Download', description: 'Students download the template + submit without git', mode: 'download', picked: false },
+      { label: say(`$(server) Managed (${server.type})`, `$(server) Verwaltet (${server.type})`), description: say('We host each student repository', 'Wir hosten das Repository jeder und jedes Studierenden'), mode: 'managed', picked: true },
+      { label: say('$(repo-forked) External', '$(repo-forked) Extern'), description: say('Students bring their own repository (any provider)', 'Studierende bringen ein eigenes Repository mit (beliebiger Anbieter)'), mode: 'external', picked: false },
+      { label: say('$(cloud-download) Download', '$(cloud-download) Herunterladen'), description: say('Students download the template + submit without git', 'Studierende laden die Vorlage herunter und geben ohne Git ab'), mode: 'download', picked: false },
     ];
     const modePicks = await vscode.window.showQuickPick(modeOptions, {
-      title: 'Which student-repo modes should this course offer?',
+      title: say('Which student-repo modes should this course offer?', 'Welche Repository-Varianten soll dieser Kurs den Studierenden anbieten?'),
       canPickMany: true,
       ignoreFocusOut: true,
     });
@@ -853,7 +865,7 @@ export class LecturerCommands {
     const course = item?.course;
     const courseId = course?.id;
     if (!courseId) {
-      notify.warning('Open "Configure Course Git" from a course in the lecturer tree.');
+      notify.warning(say('Open "Configure Course Git" from a course in the lecturer tree.', 'Öffne „Git für den Kurs konfigurieren“ über einen Kurs in der Lehrenden-Ansicht.'));
       return;
     }
 
@@ -861,14 +873,14 @@ export class LecturerCommands {
     if (!binding) { return; }  // null = cancelled / no managed server
 
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Configuring course git…', cancellable: false },
+      { location: vscode.ProgressLocation.Notification, title: say('Configuring course git…', 'Git für den Kurs wird konfiguriert …'), cancellable: false },
       async () => {
         try {
           await this.apiService.setCourseGitBinding(courseId, binding);
-          notify.info(`Course git configured (${(binding.student_repo_modes || []).join(', ')}).`);
+          notify.info(say(`Course git configured (${(binding.student_repo_modes || []).join(', ')}).`, `Git für den Kurs ist konfiguriert (${(binding.student_repo_modes || []).join(', ')}).`));
         } catch (err: any) {
           const detail = err?.response?.data?.detail || err?.message || String(err);
-          notify.error(`Could not configure course git: ${detail}`);
+          notify.error(say(`Could not configure course git: ${detail}`, `Git für den Kurs konnte nicht konfiguriert werden: ${detail}`));
         }
       }
     );
@@ -891,7 +903,7 @@ export class LecturerCommands {
   private async toggleVisibility(item?: CourseContentTreeItem): Promise<void> {
     const content = item?.courseContent as any;
     if (!content?.id) {
-      notify.error('No course content selected');
+      notify.error(say('No course content selected', 'Kein Kursinhalt ausgewählt.'));
       return;
     }
 
@@ -906,15 +918,15 @@ export class LecturerCommands {
       );
       notify.info(
         hidingNow
-          ? `“${label}” is now hidden from students, along with anything under it.`
-          : `“${label}” is visible to students again.`
+          ? say(`“${label}” is now hidden from students, along with anything under it.`, `„${label}“ ist jetzt samt allem darunter für Studierende verborgen.`)
+          : say(`“${label}” is visible to students again.`, `„${label}“ ist für Studierende wieder sichtbar.`)
       );
       // Students are told over the course channel by the backend; this
       // refreshes the lecturer's own tree so the badge updates immediately.
       await this.treeDataProvider.forceRefreshCourse(String(content.course_id));
     } catch (error) {
       notify.error(
-        `Could not change visibility: ${error instanceof Error ? error.message : String(error)}`
+        say(`Could not change visibility: ${error instanceof Error ? error.message : String(error)}`, `Die Sichtbarkeit konnte nicht geändert werden: ${error instanceof Error ? error.message : String(error)}`)
       );
     }
   }
@@ -932,7 +944,7 @@ export class LecturerCommands {
   private async toggleCourseVisibility(item?: CourseFolderTreeItem): Promise<void> {
     const course = item?.course;
     if (!course?.id) {
-      notify.error('No course selected');
+      notify.error(say('No course selected', 'Kein Kurs ausgewählt.'));
       return;
     }
 
@@ -941,17 +953,17 @@ export class LecturerCommands {
 
     if (hidingNow) {
       const choice = await vscode.window.showWarningMessage(
-        `Hide all content of “${label}” from students?`,
+        say(`Hide all content of “${label}” from students?`, `Alle Inhalte von „${label}“ vor den Studierenden verbergen?`),
         {
           modal: true,
-          detail: 'Every unit and assignment in the course disappears from the '
-            + 'student tree, and students cannot test or submit. Their files, '
-            + 'tests and submissions are untouched and come back when you make '
-            + 'the course visible again.',
+          detail: say('Every unit and assignment in the course disappears from the ', 'Alle Einheiten und Aufgaben des Kurses verschwinden aus dem ')
+            + say('student tree, and students cannot test or submit. Their files, ', 'Baum der Studierenden, die dann weder testen noch abgeben können. Ihre Dateien, ')
+            + say('tests and submissions are untouched and come back when you make ', 'Tests und Abgaben bleiben unangetastet und sind wieder da, sobald du ')
+            + say('the course visible again.', 'den Kurs wieder sichtbar machst.'),
         },
-        'Hide from students'
+        say('Hide from students', 'Vor Studierenden verbergen')
       );
-      if (choice !== 'Hide from students') {
+      if (choice !== say('Hide from students', 'Vor Studierenden verbergen')) {
         return;
       }
     }
@@ -962,13 +974,13 @@ export class LecturerCommands {
       } as any);
       notify.info(
         hidingNow
-          ? `Students now see no content in “${label}”.`
-          : `Students can see “${label}” again.`
+          ? say(`Students now see no content in “${label}”.`, `Studierende sehen jetzt keine Inhalte von „${label}“.`)
+          : say(`Students can see “${label}” again.`, `Studierende sehen „${label}“ wieder.`)
       );
       await this.treeDataProvider.forceRefreshCourse(String(course.id));
     } catch (error) {
       notify.error(
-        `Could not change course visibility: ${error instanceof Error ? error.message : String(error)}`
+        say(`Could not change course visibility: ${error instanceof Error ? error.message : String(error)}`, `Die Sichtbarkeit des Kurses konnte nicht geändert werden: ${error instanceof Error ? error.message : String(error)}`)
       );
     }
   }
@@ -982,7 +994,7 @@ export class LecturerCommands {
       // If no item provided, ask user to select a course
       const courses = await this.getAllCourses();
       if (!courses || courses.length === 0) {
-        notify.info('No courses available');
+        notify.info(say('No courses available', 'Keine Kurse verfügbar.'));
         return;
       }
 
@@ -992,7 +1004,7 @@ export class LecturerCommands {
           description: `${c.organization?.title || ''} > ${c.course_family?.title || ''}`,
           course: c
         })),
-        { placeHolder: 'Select course to manage' }
+        { placeHolder: say('Select course to manage', 'Kurs zum Verwalten auswählen') }
       );
 
       if (!selected) {
@@ -1003,11 +1015,11 @@ export class LecturerCommands {
 
     // Show management options
     const action = await vscode.window.showQuickPick([
-      { label: '$(edit) Edit Course Details', value: 'edit' },
-      { label: '$(gear) Course Settings', value: 'settings' },
-      { label: '$(trash) Delete Course', value: 'delete' }
+      { label: say('$(edit) Edit Course Details', '$(edit) Kursdetails bearbeiten'), value: 'edit' },
+      { label: say('$(gear) Course Settings', '$(gear) Kurseinstellungen'), value: 'settings' },
+      { label: say('$(trash) Delete Course', '$(trash) Kurs löschen'), value: 'delete' }
     ], {
-      placeHolder: `Manage: ${course.title || course.path}`
+      placeHolder: say(`Manage: ${course.title || course.path}`, `Verwalten: ${course.title || course.path}`)
     });
 
     if (!action) {
@@ -1048,7 +1060,7 @@ export class LecturerCommands {
 
   private async editCourseDetails(course: any): Promise<void> {
     const newTitle = await vscode.window.showInputBox({
-      prompt: 'Enter new course title',
+      prompt: say('Enter new course title', 'Neuen Titel des Kurses eingeben'),
       value: course.title || course.path
     });
 
@@ -1058,10 +1070,10 @@ export class LecturerCommands {
 
     try {
       await this.apiService.updateCourse(course.id, { title: newTitle });
-      notify.info('Course updated successfully');
+      notify.info(say('Course updated successfully', 'Der Kurs wurde aktualisiert.'));
       this.treeDataProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to update course: ${error}`);
+      notify.error(say(`Failed to update course: ${error}`, `Der Kurs konnte nicht aktualisiert werden: ${error}`));
     }
   }
 
@@ -1070,7 +1082,7 @@ export class LecturerCommands {
     // For now, just show the course details webview
     if (course) {
       await this.courseWebviewProvider.show(
-        `Course Settings: ${course.title || course.path}`,
+        say(`Course Settings: ${course.title || course.path}`, `Kurseinstellungen: ${course.title || course.path}`),
         {
           course: course,
           courseFamily: course.course_family,
@@ -1094,14 +1106,14 @@ export class LecturerCommands {
     const label = course.title || course.path;
     const ctx = await this.buildScopeContext();
     if (!canDeleteCourse(course.id, ctx)) {
-      await notify.modal('info', `Only an owner of this course can delete it.`, {
-        detail: `"${label}" can be deleted by a course owner or an administrator. Ask one of them, or ask to be made an owner.`
+      await notify.modal('info', say(`Only an owner of this course can delete it.`, `Nur wer diesen Kurs besitzt, kann ihn löschen.`), {
+        detail: say(`"${label}" can be deleted by a course owner or an administrator. Ask one of them, or ask to be made an owner.`, `„${label}“ können nur Kursbesitzer:innen oder die Administration löschen. Frag eine dieser Personen oder bitte darum, selbst Besitzer:in zu werden.`)
       });
       return;
     }
 
     const preview = await this.previewCascadeDelete(
-      `Checking what deleting "${label}" would remove…`,
+      say(`Checking what deleting "${label}" would remove…`, `Es wird geprüft, was das Löschen von „${label}“ entfernen würde …`),
       () => this.apiService.deleteCourse(course.id, { dryRun: true })
     );
     if (preview === undefined) {
@@ -1115,21 +1127,21 @@ export class LecturerCommands {
       const needsArchive = ctx.scopes?.is_admin === true
         && !course.archived_at
         && /archive/i.test(preview.blocked_reason);
-      const picked = await notify.modal('warning', `Cannot delete "${label}" yet`, {
+      const picked = await notify.modal('warning', say(`Cannot delete "${label}" yet`, `„${label}“ kann noch nicht gelöscht werden`), {
         detail: preview.blocked_reason,
-        actions: needsArchive ? ['Archive course'] : []
+        actions: needsArchive ? [say('Archive course', 'Kurs archivieren')] : []
       });
-      if (picked === 'Archive course') {
+      if (picked === say('Archive course', 'Kurs archivieren')) {
         await this.archiveCourse(course);
       }
       return;
     }
 
-    const proceed = await notify.modal('warning', `Delete course "${label}"?`, {
+    const proceed = await notify.modal('warning', say(`Delete course "${label}"?`, `Kurs „${label}“ löschen?`), {
       detail: formatCascadePreview(preview, { kind: 'course' }),
-      actions: ['Continue']
+      actions: [say('Continue', 'Weiter')]
     });
-    if (proceed !== 'Continue') {
+    if (proceed !== say('Continue', 'Weiter')) {
       return;
     }
     if (!(await this.confirmByTypingPath('course', label, course.path))) {
@@ -1137,14 +1149,14 @@ export class LecturerCommands {
     }
 
     try {
-      const result = await notify.progress(`Deleting course "${label}"…`, () =>
+      const result = await notify.progress(say(`Deleting course "${label}"…`, `Kurs „${label}“ wird gelöscht …`), () =>
         this.apiService.deleteCourse(course.id)
       );
-      this.reportCascadeResult(`Course "${label}" deleted.`, result);
+      this.reportCascadeResult(say(`Course "${label}" deleted.`, `Der Kurs „${label}“ wurde gelöscht.`), result);
       await this.forgetDeletedCourseSelection(course.id);
       this.treeDataProvider.refresh();
     } catch (error) {
-      this.showDeleteError(error, `Failed to delete course "${label}"`, 'course');
+      this.showDeleteError(error, say(`Failed to delete course "${label}"`, `Der Kurs „${label}“ konnte nicht gelöscht werden`), 'course');
     }
   }
 
@@ -1153,29 +1165,29 @@ export class LecturerCommands {
     const label = family.title || family.path;
     const ctx = await this.buildScopeContext();
     if (!canDeleteScope('course_family', family.id, ctx)) {
-      await notify.modal('info', `Only an owner of this course family can delete it.`, {
-        detail: `"${label}" can be deleted by a course family owner or an administrator.`
+      await notify.modal('info', say(`Only an owner of this course family can delete it.`, `Nur wer diese Kursfamilie besitzt, kann sie löschen.`), {
+        detail: say(`"${label}" can be deleted by a course family owner or an administrator.`, `„${label}“ können nur Besitzer:innen der Kursfamilie oder die Administration löschen.`)
       });
       return;
     }
 
     const preview = await this.previewCascadeDelete(
-      `Checking what deleting "${label}" would remove…`,
+      say(`Checking what deleting "${label}" would remove…`, `Es wird geprüft, was das Löschen von „${label}“ entfernen würde …`),
       () => this.apiService.deleteCourseFamily(family.id, { dryRun: true })
     );
     if (preview === undefined) {
       return;
     }
     if (preview.blocked_reason) {
-      await notify.modal('warning', `Cannot delete "${label}" yet`, { detail: preview.blocked_reason });
+      await notify.modal('warning', say(`Cannot delete "${label}" yet`, `„${label}“ kann noch nicht gelöscht werden`), { detail: preview.blocked_reason });
       return;
     }
 
-    const proceed = await notify.modal('warning', `Delete course family "${label}"?`, {
+    const proceed = await notify.modal('warning', say(`Delete course family "${label}"?`, `Kursfamilie „${label}“ löschen?`), {
       detail: formatCascadePreview(preview, { kind: 'course_family' }),
-      actions: ['Continue']
+      actions: [say('Continue', 'Weiter')]
     });
-    if (proceed !== 'Continue') {
+    if (proceed !== say('Continue', 'Weiter')) {
       return;
     }
     if (!(await this.confirmByTypingPath('course family', label, family.path))) {
@@ -1183,13 +1195,13 @@ export class LecturerCommands {
     }
 
     try {
-      const result = await notify.progress(`Deleting course family "${label}"…`, () =>
+      const result = await notify.progress(say(`Deleting course family "${label}"…`, `Kursfamilie „${label}“ wird gelöscht …`), () =>
         this.apiService.deleteCourseFamily(family.id)
       );
-      this.reportCascadeResult(`Course family "${label}" deleted.`, result);
+      this.reportCascadeResult(say(`Course family "${label}" deleted.`, `Die Kursfamilie „${label}“ wurde gelöscht.`), result);
       this.treeDataProvider.refresh();
     } catch (error) {
-      this.showDeleteError(error, `Failed to delete course family "${label}"`, 'course family');
+      this.showDeleteError(error, say(`Failed to delete course family "${label}"`, `Die Kursfamilie „${label}“ konnte nicht gelöscht werden`), 'course family');
     }
   }
 
@@ -1198,29 +1210,29 @@ export class LecturerCommands {
     const label = org.title || org.path;
     const ctx = await this.buildScopeContext();
     if (!canDeleteScope('organization', org.id, ctx)) {
-      await notify.modal('info', `Only an owner of this organization can delete it.`, {
-        detail: `"${label}" can be deleted by an organization owner or an administrator.`
+      await notify.modal('info', say(`Only an owner of this organization can delete it.`, `Nur wer diese Organisation besitzt, kann sie löschen.`), {
+        detail: say(`"${label}" can be deleted by an organization owner or an administrator.`, `„${label}“ können nur Besitzer:innen der Organisation oder die Administration löschen.`)
       });
       return;
     }
 
     const preview = await this.previewCascadeDelete(
-      `Checking what deleting "${label}" would remove…`,
+      say(`Checking what deleting "${label}" would remove…`, `Es wird geprüft, was das Löschen von „${label}“ entfernen würde …`),
       () => this.apiService.deleteOrganization(org.id, { dryRun: true })
     );
     if (preview === undefined) {
       return;
     }
     if (preview.blocked_reason) {
-      await notify.modal('warning', `Cannot delete "${label}" yet`, { detail: preview.blocked_reason });
+      await notify.modal('warning', say(`Cannot delete "${label}" yet`, `„${label}“ kann noch nicht gelöscht werden`), { detail: preview.blocked_reason });
       return;
     }
 
-    const proceed = await notify.modal('warning', `Delete organization "${label}"?`, {
+    const proceed = await notify.modal('warning', say(`Delete organization "${label}"?`, `Organisation „${label}“ löschen?`), {
       detail: formatCascadePreview(preview, { kind: 'organization' }),
-      actions: ['Continue']
+      actions: [say('Continue', 'Weiter')]
     });
-    if (proceed !== 'Continue') {
+    if (proceed !== say('Continue', 'Weiter')) {
       return;
     }
     if (!(await this.confirmByTypingPath('organization', label, org.path))) {
@@ -1228,13 +1240,13 @@ export class LecturerCommands {
     }
 
     try {
-      const result = await notify.progress(`Deleting organization "${label}"…`, () =>
+      const result = await notify.progress(say(`Deleting organization "${label}"…`, `Organisation „${label}“ wird gelöscht …`), () =>
         this.apiService.deleteOrganization(org.id)
       );
-      this.reportCascadeResult(`Organization "${label}" deleted.`, result);
+      this.reportCascadeResult(say(`Organization "${label}" deleted.`, `Die Organisation „${label}“ wurde gelöscht.`), result);
       this.treeDataProvider.refresh();
     } catch (error) {
-      this.showDeleteError(error, `Failed to delete organization "${label}"`, 'organization');
+      this.showDeleteError(error, say(`Failed to delete organization "${label}"`, `Die Organisation „${label}“ konnte nicht gelöscht werden`), 'organization');
     }
   }
 
@@ -1242,13 +1254,13 @@ export class LecturerCommands {
     const label = course.title || course.path;
     const ctx = await this.buildScopeContext();
     if (!canDeleteCourse(course.id, ctx)) {
-      await notify.modal('info', `Only an owner of this course can archive it.`);
+      await notify.modal('info', say(`Only an owner of this course can archive it.`, `Nur wer diesen Kurs besitzt, kann ihn archivieren.`));
       return;
     }
     const confirmed = await notify.confirm(
-      `Archive course "${label}"?`,
-      'Archive',
-      'Students and tutors will no longer see the course, and submissions and test runs are closed. It stays in your tree marked "Archived"; use Unarchive to reopen it.'
+      say(`Archive course "${label}"?`, `Kurs „${label}“ archivieren?`),
+      say('Archive', 'Archivieren'),
+      say('Students and tutors will no longer see the course, and submissions and test runs are closed. It stays in your tree marked "Archived"; use Unarchive to reopen it.', 'Studierende und Tutor:innen sehen den Kurs nicht mehr, Abgaben und Testläufe sind geschlossen. Er bleibt in deinem Baum, als „Archiviert“ markiert; mit „Aus dem Archiv holen“ öffnest du ihn wieder.')
     );
     if (!confirmed) {
       return;
@@ -1256,11 +1268,11 @@ export class LecturerCommands {
     try {
       await this.apiService.archiveCourse(course.id);
       this.treeDataProvider.refresh();
-      notify.info(`"${label}" is archived: hidden from students, submissions closed. Use Unarchive to reopen it.`);
+      notify.info(say(`"${label}" is archived: hidden from students, submissions closed. Use Unarchive to reopen it.`, `„${label}“ ist archiviert: für Studierende verborgen, Abgaben geschlossen. Mit „Aus dem Archiv holen“ öffnest du ihn wieder.`));
     } catch (error) {
       showErrorWithSeverity(
         error instanceof Error ? error : new Error(String(error)),
-        `Failed to archive course "${label}"`
+        say(`Failed to archive course "${label}"`, `Der Kurs „${label}“ konnte nicht archiviert werden`)
       );
     }
   }
@@ -1269,13 +1281,13 @@ export class LecturerCommands {
     const label = course.title || course.path;
     const ctx = await this.buildScopeContext();
     if (!canDeleteCourse(course.id, ctx)) {
-      await notify.modal('info', `Only an owner of this course can unarchive it.`);
+      await notify.modal('info', say(`Only an owner of this course can unarchive it.`, `Nur wer diesen Kurs besitzt, kann ihn aus dem Archiv holen.`));
       return;
     }
     const confirmed = await notify.confirm(
-      `Unarchive course "${label}"?`,
-      'Unarchive',
-      'The course becomes visible to its students and tutors again, and submissions and test runs reopen.'
+      say(`Unarchive course "${label}"?`, `Kurs „${label}“ aus dem Archiv holen?`),
+      say('Unarchive', 'Aus dem Archiv holen'),
+      say('The course becomes visible to its students and tutors again, and submissions and test runs reopen.', 'Der Kurs wird für seine Studierenden und Tutor:innen wieder sichtbar, Abgaben und Testläufe sind wieder offen.')
     );
     if (!confirmed) {
       return;
@@ -1283,11 +1295,11 @@ export class LecturerCommands {
     try {
       await this.apiService.unarchiveCourse(course.id);
       this.treeDataProvider.refresh();
-      notify.info(`"${label}" is open again for its students.`);
+      notify.info(say(`"${label}" is open again for its students.`, `„${label}“ ist für die Studierenden wieder offen.`));
     } catch (error) {
       showErrorWithSeverity(
         error instanceof Error ? error : new Error(String(error)),
-        `Failed to unarchive course "${label}"`
+        say(`Failed to unarchive course "${label}"`, `Der Kurs „${label}“ konnte nicht aus dem Archiv geholt werden`)
       );
     }
   }
@@ -1300,7 +1312,7 @@ export class LecturerCommands {
     try {
       return await notify.progress(title, () => run());
     } catch (error) {
-      this.showDeleteError(error, 'Could not check what the delete would remove', 'item');
+      this.showDeleteError(error, say('Could not check what the delete would remove', 'Es konnte nicht geprüft werden, was das Löschen entfernen würde'), 'item');
       return undefined;
     }
   }
@@ -1308,13 +1320,16 @@ export class LecturerCommands {
   /** The typed gate: the entity's own `path`, exactly. Empty input cancels. */
   private async confirmByTypingPath(kind: string, label: string, path: string): Promise<boolean> {
     const typed = await vscode.window.showInputBox({
-      title: `Delete ${kind} "${label}"`,
-      prompt: `This permanently deletes the ${kind} and everything listed. There is no undo. Type "${path}" to confirm.`,
+      title: say(`Delete ${kind} "${label}"`, `${kindDe(kind).noun} „${label}“ löschen`),
+      prompt: say(
+        `This permanently deletes the ${kind} and everything listed. There is no undo. Type "${path}" to confirm.`,
+        `Das löscht ${kindDe(kind).the} und alles Aufgeführte endgültig und lässt sich nicht rückgängig machen. Gib „${path}“ ein, um zu bestätigen.`
+      ),
       placeHolder: path,
       ignoreFocusOut: true,
       validateInput: (value) => value === path || value.length === 0
         ? undefined
-        : `Type "${path}" exactly, or leave empty to cancel.`
+        : say(`Type "${path}" exactly, or leave empty to cancel.`, `Gib genau „${path}“ ein oder lass das Feld leer, um abzubrechen.`)
     });
     return typed === path;
   }
@@ -1327,7 +1342,7 @@ export class LecturerCommands {
     }
     // The database part is done; what failed is on the git server side
     // (template/reference repos) or in storage. Say so instead of hiding it.
-    void notify.modal('warning', `${headline} Some clean-up did not complete.`, {
+    void notify.modal('warning', say(`${headline} Some clean-up did not complete.`, `${headline} Ein Teil der Aufräumarbeiten wurde nicht abgeschlossen.`), {
       detail: errors.join('\n')
     });
   }
@@ -1338,13 +1353,16 @@ export class LecturerCommands {
       // submissions, not archived). It arrives as CONFLICT_001, whose catalog
       // title ("Resource Already Exists") is wrong for it — the server's own
       // sentence is the message.
-      void notify.modal('warning', `Cannot delete this ${kind} yet`, {
+      void notify.modal('warning', say(`Cannot delete this ${kind} yet`, `${kindDe(kind).this} kann noch nicht gelöscht werden`), {
         detail: error.serverDetail || fallback
       });
       return;
     }
     if (error instanceof HttpError && error.status === 403) {
-      void notify.modal('info', `Only an owner of this ${kind} (or an administrator) can delete it.`, {
+      void notify.modal('info', say(
+        `Only an owner of this ${kind} (or an administrator) can delete it.`,
+        `Löschen können nur Besitzer:innen ${kindDe(kind).ofThis} oder die Administration.`
+      ), {
         detail: error.serverDetail
       });
       return;
@@ -1393,7 +1411,7 @@ export class LecturerCommands {
         parentPath: item.courseContent.path
       };
     }
-    notify.error('Course contents can only be created under the Contents folder or another content item.');
+    notify.error(say('Course contents can only be created under the Contents folder or another content item.', 'Kursinhalte lassen sich nur im Ordner „Inhalte“ oder unter einem anderen Inhalt anlegen.'));
     return undefined;
   }
 
@@ -1403,7 +1421,7 @@ export class LecturerCommands {
   ): Promise<CourseContentTypeList | undefined> {
     const types = await this.apiService.getCourseContentTypes(courseId);
     if (types.length === 0) {
-      notify.warning('No content types available. Please create a content type first.');
+      notify.warning(say('No content types available. Please create a content type first.', 'Keine Inhaltstypen verfügbar. Lege zuerst einen Inhaltstyp an.'));
       return undefined;
     }
 
@@ -1432,10 +1450,10 @@ export class LecturerCommands {
     const picked = await vscode.window.showQuickPick(
       matching.map(t => ({
         label: t.title || t.slug,
-        description: t.course_content_kind?.title || t.course_content_kind_id || '',
+        description: localizedKindTitle(t.course_content_kind_id, t.course_content_kind?.title, uiLanguage()) || '',
         contentType: t
       })),
-      { placeHolder: 'Select content type' }
+      { placeHolder: say('Select content type', 'Inhaltstyp auswählen') }
     );
     return picked?.contentType;
   }
@@ -1451,13 +1469,13 @@ export class LecturerCommands {
 
     const contentType = await this.pickContentType(target.course.id, {
       submittable: false,
-      noneMessage: 'No non-submittable content types are configured for this course. Create one first.'
+      noneMessage: say('No non-submittable content types are configured for this course. Create one first.', 'Für diesen Kurs ist kein Inhaltstyp ohne Abgabe konfiguriert. Lege zuerst einen an.')
     });
     if (!contentType) { return; }
 
     const title = await vscode.window.showInputBox({
-      prompt: 'Enter unit title',
-      placeHolder: 'e.g., Week 1: Introduction'
+      prompt: say('Enter unit title', 'Titel der Einheit eingeben'),
+      placeHolder: say('e.g., Week 1: Introduction', 'z. B. Woche 1: Einführung')
     });
     if (!title) { return; }
 
@@ -1475,7 +1493,7 @@ export class LecturerCommands {
     );
     if (!created) { return; }
 
-    notify.info(`Created unit "${title}"`);
+    notify.info(say(`Created unit "${title}"`, `Die Einheit „${title}“ wurde angelegt.`));
   }
 
   private async createAssignment(item: CourseFolderTreeItem | CourseContentTreeItem): Promise<void> {
@@ -1484,16 +1502,16 @@ export class LecturerCommands {
 
     const contentType = await this.pickContentType(target.course.id, {
       submittable: true,
-      noneMessage: 'No submittable content types (assignments, exercises) are configured for this course. Create one first.'
+      noneMessage: say('No submittable content types (assignments, exercises) are configured for this course. Create one first.', 'Für diesen Kurs ist kein Inhaltstyp mit Abgabe (Aufgaben, Übungen) konfiguriert. Lege zuerst einen an.')
     });
     if (!contentType) { return; }
 
     const examples = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Loading examples...' },
+      { location: vscode.ProgressLocation.Notification, title: say('Loading examples...', 'Beispiele werden geladen …') },
       () => this.apiService.getAvailableExamples()
     );
     if (!examples || examples.length === 0) {
-      notify.warning('No examples available. Upload examples in the Examples view first.');
+      notify.warning(say('No examples available. Upload examples in the Examples view first.', 'Keine Beispiele verfügbar. Lade zuerst Beispiele in der Ansicht „Beispiele“ hoch.'));
       return;
     }
 
@@ -1507,7 +1525,7 @@ export class LecturerCommands {
         exampleTitle: ex.title
       })),
       {
-        placeHolder: 'Select example to assign',
+        placeHolder: say('Select example to assign', 'Beispiel zum Zuweisen auswählen'),
         matchOnDescription: true,
         matchOnDetail: true
       }
@@ -1515,11 +1533,11 @@ export class LecturerCommands {
     if (!selectedExample) { return; }
 
     const versions = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Loading versions...' },
+      { location: vscode.ProgressLocation.Notification, title: say('Loading versions...', 'Versionen werden geladen …') },
       () => this.apiService.getExampleVersions(selectedExample.id)
     );
     if (!versions || versions.length === 0) {
-      notify.warning('No versions available for this example.');
+      notify.warning(say('No versions available for this example.', 'Für dieses Beispiel gibt es keine Versionen.'));
       return;
     }
 
@@ -1530,17 +1548,17 @@ export class LecturerCommands {
       : await vscode.window.showQuickPick(
           sortedVersions.map(v => ({
             label: v.version_tag,
-            description: `Created: ${new Date(v.created_at).toLocaleDateString()}`,
+            description: say(`Created: ${new Date(v.created_at).toLocaleDateString(uiLocale())}`, `Erstellt: ${new Date(v.created_at).toLocaleDateString(uiLocale())}`),
             versionTag: v.version_tag
           })),
-          { placeHolder: 'Select version (latest first)' }
+          { placeHolder: say('Select version (latest first)', 'Version auswählen (neueste zuerst)') }
         );
     if (!selectedVersion) { return; }
 
     const title = await vscode.window.showInputBox({
-      prompt: 'Enter assignment title',
+      prompt: say('Enter assignment title', 'Titel der Aufgabe eingeben'),
       value: selectedExample.exampleTitle,
-      placeHolder: 'Assignment title'
+      placeHolder: say('Assignment title', 'Titel der Aufgabe')
     });
     if (!title) { return; }
 
@@ -1561,12 +1579,12 @@ export class LecturerCommands {
           version_tag: selectedVersion.versionTag
         });
       } catch (assignError: any) {
-        const assignMessage = assignError?.response?.data?.detail || assignError.message || 'Unknown error';
+        const assignMessage = assignError?.response?.data?.detail || assignError.message || say('Unknown error', 'unbekannter Fehler');
         const action = await notify.warning(
-          `Assignment "${title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`,
-          'Keep', 'Delete'
+          say(`Assignment "${title}" was created but the example could not be assigned: ${assignMessage}. Keep the assignment without an example?`, `Die Aufgabe „${title}“ wurde angelegt, aber das Beispiel konnte nicht zugewiesen werden: ${assignMessage}. Aufgabe ohne Beispiel behalten?`),
+          say('Keep', 'Behalten'), say('Delete', 'Löschen')
         );
-        if (action === 'Delete') {
+        if (action === say('Delete', 'Löschen')) {
           await this.apiService.deleteCourseContent(target.course.id, createdContent.id);
         }
         this.apiService.clearCourseCache(target.course.id);
@@ -1576,17 +1594,17 @@ export class LecturerCommands {
 
       await this.treeDataProvider.forceRefreshCourse(target.course.id);
       notify.info(
-        `Created assignment "${title}" with example "${selectedExample.label}" ${selectedVersion.versionTag}`
+        say(`Created assignment "${title}" with example "${selectedExample.label}" ${selectedVersion.versionTag}`, `Die Aufgabe „${title}“ wurde mit dem Beispiel „${selectedExample.label}“ ${selectedVersion.versionTag} angelegt.`)
       );
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-      notify.error(`Failed to create assignment: ${errorMessage}`);
+      const errorMessage = error?.response?.data?.detail || error.message || say('Unknown error', 'unbekannter Fehler');
+      notify.error(say(`Failed to create assignment: ${errorMessage}`, `Die Aufgabe konnte nicht angelegt werden: ${errorMessage}`));
     }
   }
 
   private async changeCourseContentType(item: CourseContentTreeItem): Promise<void> {
     if (!item || !item.courseContent) {
-      notify.error('Invalid course content item');
+      notify.error(say('Invalid course content item', 'Ungültiger Kursinhalt.'));
       return;
     }
 
@@ -1595,7 +1613,7 @@ export class LecturerCommands {
       const contentTypes = await this.apiService.getCourseContentTypes(item.course.id);
       
       if (contentTypes.length === 0) {
-        notify.warning('No content types available in this course.');
+        notify.warning(say('No content types available in this course.', 'In diesem Kurs gibt es keine Inhaltstypen.'));
         return;
       }
 
@@ -1618,20 +1636,20 @@ export class LecturerCommands {
         .map(ct => ({
           label: ct.title || ct.slug,
           description: ct.course_content_kind_id === currentKind
-            ? (ct.course_content_kind_id || 'unknown')
-            : `$(warning) ${ct.course_content_kind_id || 'unknown'} — changes the kind; only possible while the content is empty`,
+            ? (localizedKindTitle(ct.course_content_kind_id, undefined, uiLanguage()) || say('unknown', 'unbekannt'))
+            : say(`$(warning) ${localizedKindTitle(ct.course_content_kind_id, undefined, uiLanguage()) || 'unknown'} — changes the kind; only possible while the content is empty`, `$(warning) ${localizedKindTitle(ct.course_content_kind_id, undefined, uiLanguage()) || 'unbekannt'} – ändert die Art; nur möglich, solange der Inhalt leer ist`),
           id: ct.id,
           contentType: ct
         }));
 
       if (availableTypes.length === 0) {
-        notify.info('No other content types available to switch to.');
+        notify.info(say('No other content types available to switch to.', 'Es gibt keinen anderen Inhaltstyp, zu dem du wechseln kannst.'));
         return;
       }
 
       const selectedType = await vscode.window.showQuickPick(availableTypes, {
-        placeHolder: `Change from "${currentTypeLabel}" to...`,
-        title: 'Select New Content Type'
+        placeHolder: say(`Change from "${currentTypeLabel}" to...`, `Von „${currentTypeLabel}“ wechseln zu …`),
+        title: say('Select New Content Type', 'Neuen Inhaltstyp auswählen')
       });
 
       if (!selectedType) {
@@ -1650,7 +1668,7 @@ export class LecturerCommands {
       );
 
       notify.info(
-        `Changed content type from "${currentTypeLabel}" to "${selectedType.label}"`
+        say(`Changed content type from "${currentTypeLabel}" to "${selectedType.label}"`, `Inhaltstyp von „${currentTypeLabel}“ zu „${selectedType.label}“ geändert.`)
       );
 
       // Clear cache and refresh the tree
@@ -1659,7 +1677,7 @@ export class LecturerCommands {
 
     } catch (error) {
       console.error('Failed to change course content type:', error);
-      showErrorWithSeverity(error as Error, 'Failed to change content type');
+      showErrorWithSeverity(error as Error, say('Failed to change content type', 'Der Inhaltstyp konnte nicht geändert werden'));
     }
   }
 
@@ -1676,22 +1694,22 @@ export class LecturerCommands {
     field: 'max_test_runs' | 'max_submissions'
   ): Promise<void> {
     if (!item?.courseContent?.id || !item.course?.id) {
-      notify.warning('Select an assignment first.');
+      notify.warning(say('Select an assignment first.', 'Wähle zuerst eine Aufgabe aus.'));
       return;
     }
 
-    const label = field === 'max_test_runs' ? 'Max Test Runs' : 'Max Submissions';
+    const label = field === 'max_test_runs' ? say('Max Test Runs', 'Höchstzahl der Testläufe') : say('Max Submissions', 'Höchstzahl der Abgaben');
     const current = (item.courseContent as any)[field] as number | null | undefined;
 
     const answer = await vscode.window.showInputBox({
-      title: `Set ${label}`,
-      prompt: `How many ${field === 'max_test_runs' ? 'test runs' : 'submissions'} may a student use for "${item.courseContent.title || item.courseContent.path}"? Leave empty for unlimited.`,
+      title: say(`Set ${label}`, `${label} festlegen`),
+      prompt: say(`How many ${field === 'max_test_runs' ? 'test runs' : 'submissions'} may a student use for "${item.courseContent.title || item.courseContent.path}"? Leave empty for unlimited.`, `Wie viele ${field === 'max_test_runs' ? 'Testläufe' : 'Abgaben'} stehen Studierenden für „${item.courseContent.title || item.courseContent.path}“ zur Verfügung? Leer lassen bedeutet unbegrenzt.`),
       value: typeof current === 'number' ? String(current) : '',
       ignoreFocusOut: true,
       validateInput: (value) => {
         const trimmed = value.trim();
         if (trimmed.length === 0) { return undefined; }
-        if (!/^\d+$/.test(trimmed)) { return 'Enter a whole number, or leave empty for unlimited.'; }
+        if (!/^\d+$/.test(trimmed)) { return say('Enter a whole number, or leave empty for unlimited.', 'Gib eine ganze Zahl ein oder lass das Feld leer für unbegrenzt.'); }
         return undefined;
       }
     });
@@ -1705,9 +1723,9 @@ export class LecturerCommands {
     try {
       await this.treeDataProvider.updateCourseContent(item, { [field]: value } as any);
       await this.treeDataProvider.refresh();
-      notify.info(value === null ? `${label}: unlimited` : `${label}: ${value}`);
+      notify.info(value === null ? say(`${label}: unlimited`, `${label}: unbegrenzt`) : `${label}: ${value}`);
     } catch (error: any) {
-      notify.error(`Failed to set ${label}: ${error?.message || error}`);
+      notify.error(say(`Failed to set ${label}: ${error?.message || error}`, `${label} konnte nicht festgelegt werden: ${error?.message || error}`));
     }
   }
 
@@ -1725,25 +1743,25 @@ export class LecturerCommands {
     field: 'max_test_runs' | 'max_submissions'
   ): Promise<void> {
     if (!item?.course?.id) {
-      notify.warning('Select a course first.');
+      notify.warning(say('Select a course first.', 'Wähle zuerst einen Kurs aus.'));
       return;
     }
 
-    const label = field === 'max_test_runs' ? 'Max Test Runs' : 'Max Submissions';
-    const noun = field === 'max_test_runs' ? 'test runs' : 'submissions';
+    const label = field === 'max_test_runs' ? say('Max Test Runs', 'Höchstzahl der Testläufe') : say('Max Submissions', 'Höchstzahl der Abgaben');
+    const noun = field === 'max_test_runs' ? say('test runs', 'Testläufe') : say('submissions', 'Abgaben');
     const current = (item.course as any)[field] as number | null | undefined;
 
     const answer = await vscode.window.showInputBox({
-      title: `Set Course Default: ${label}`,
-      prompt: `How many ${noun} may a student use for an assignment in `
-        + `"${item.course.title || item.course.path}" that does not set its own limit? `
-        + `Leave empty for unlimited.`,
+      title: say(`Set Course Default: ${label}`, `Kursstandard festlegen: ${label}`),
+      prompt: say(`How many ${noun} may a student use for an assignment in `, `Wie viele ${noun} stehen Studierenden für eine Aufgabe in `)
+        + say(`"${item.course.title || item.course.path}" that does not set its own limit? `, `„${item.course.title || item.course.path}“ zur Verfügung, die kein eigenes Limit festlegt? `)
+        + say(`Leave empty for unlimited.`, `Leer lassen bedeutet unbegrenzt.`),
       value: typeof current === 'number' ? String(current) : '',
       ignoreFocusOut: true,
       validateInput: (value) => {
         const trimmed = value.trim();
         if (trimmed.length === 0) { return undefined; }
-        if (!/^\d+$/.test(trimmed)) { return 'Enter a whole number, or leave empty for unlimited.'; }
+        if (!/^\d+$/.test(trimmed)) { return say('Enter a whole number, or leave empty for unlimited.', 'Gib eine ganze Zahl ein oder lass das Feld leer für unbegrenzt.'); }
         return undefined;
       }
     });
@@ -1759,11 +1777,11 @@ export class LecturerCommands {
       await this.treeDataProvider.refresh();
       notify.info(
         value === null
-          ? `Course default ${label}: unlimited`
-          : `Course default ${label}: ${value} (assignments that set their own limit are unaffected)`
+          ? say(`Course default ${label}: unlimited`, `Kursstandard für ${label}: unbegrenzt`)
+          : say(`Course default ${label}: ${value} (assignments that set their own limit are unaffected)`, `Kursstandard für ${label}: ${value} (Aufgaben mit eigenem Limit bleiben unverändert)`)
       );
     } catch (error: any) {
-      notify.error(`Failed to set ${label}: ${error?.message || error}`);
+      notify.error(say(`Failed to set ${label}: ${error?.message || error}`, `${label} konnte nicht festgelegt werden: ${error?.message || error}`));
     }
   }
 
@@ -1786,26 +1804,26 @@ export class LecturerCommands {
         const canPost = canPostToOrganization(scopes, item.organization.id);
         target = {
           title: item.organization.title || item.organization.path,
-          subtitle: 'Organization',
+          subtitle: say('Organization', 'Organisation'),
           query: { scope: 'organization', organization_id: item.organization.id },
           createPayload: { organization_id: item.organization.id },
           sourceRole: 'lecturer',
           wsChannel: `organization:${item.organization.id}`,
           readOnly: !canPost,
-          readOnlyReason: canPost ? undefined : 'Posting to this organization requires manager or owner role.'
+          readOnlyReason: canPost ? undefined : say('Posting to this organization requires manager or owner role.', 'Um in dieser Organisation zu schreiben, brauchst du die Rolle Manager oder Owner.')
         };
       } else if (item instanceof CourseFamilyTreeItem) {
         const scopes = await this.apiService.getUserScopes();
         const canPost = canPostToCourseFamily(scopes, item.courseFamily.id);
         target = {
           title: item.courseFamily.title || item.courseFamily.path,
-          subtitle: `${item.organization.title || item.organization.path} › Course Family`,
+          subtitle: say(`${item.organization.title || item.organization.path} › Course Family`, `${item.organization.title || item.organization.path} › Kursfamilie`),
           query: { scope: 'course_family', course_family_id: item.courseFamily.id },
           createPayload: { course_family_id: item.courseFamily.id },
           sourceRole: 'lecturer',
           wsChannel: `course_family:${item.courseFamily.id}`,
           readOnly: !canPost,
-          readOnlyReason: canPost ? undefined : 'Posting to this course family requires manager or owner role.'
+          readOnlyReason: canPost ? undefined : say('Posting to this course family requires manager or owner role.', 'Um in dieser Kursfamilie zu schreiben, brauchst du die Rolle Manager oder Owner.')
         };
       } else if (item instanceof CourseTreeItem) {
         const scopes = await this.apiService.getUserScopes();
@@ -1828,8 +1846,8 @@ export class LecturerCommands {
         const scopes = await this.apiService.getUserScopes();
         const canPost = canPostCourseAnnouncement(scopes, item.course.id);
         target = {
-          title: item.group.title || `Group ${item.group.id.slice(0, 8)}`,
-          subtitle: `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › Group`,
+          title: item.group.title || say(`Group ${item.group.id.slice(0, 8)}`, `Gruppe ${item.group.id.slice(0, 8)}`),
+          subtitle: say(`${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › Group`, `${this.buildCourseSubtitle(item.course, item.courseFamily, item.organization)} › Gruppe`),
           query: { scope: 'course_group', course_group_id: item.group.id },
           createPayload: { course_group_id: item.group.id },
           sourceRole: 'lecturer',
@@ -1856,13 +1874,13 @@ export class LecturerCommands {
       }
 
       if (!target) {
-        notify.warning('Messages are not available for this item.');
+        notify.warning(say('Messages are not available for this item.', 'Für dieses Element gibt es keine Nachrichten.'));
         return;
       }
 
       await this.messagesWebviewProvider.showMessages(target);
     } catch (error: any) {
-      notify.error(`Failed to open messages: ${error?.message || error}`);
+      notify.error(say(`Failed to open messages: ${error?.message || error}`, `Die Nachrichten konnten nicht geöffnet werden: ${error?.message || error}`));
     }
   }
 
@@ -1873,11 +1891,11 @@ export class LecturerCommands {
       const fullName = [given, family].filter(Boolean).join(' ').trim();
       const displayName = fullName
         || item.member.user?.email
-        || `Member ${item.member.id.slice(0, 8)}`;
+        || say(`Member ${item.member.id.slice(0, 8)}`, `Mitglied ${item.member.id.slice(0, 8)}`);
       const title = `${displayName} — ${item.course.title || item.course.path}`;
       await this.commentsWebviewProvider.showComments(item.member.id, title);
     } catch (error: any) {
-      notify.error(`Failed to open comments: ${error?.message || error}`);
+      notify.error(say(`Failed to open comments: ${error?.message || error}`, `Die Kommentare konnten nicht geöffnet werden: ${error?.message || error}`));
     }
   }
 
@@ -1890,14 +1908,14 @@ export class LecturerCommands {
       const fullName = [given, family].filter(Boolean).join(' ').trim();
       const displayName = fullName
         || item.member.user?.email
-        || `Member ${item.member.id.slice(0, 8)}`;
+        || say(`Member ${item.member.id.slice(0, 8)}`, `Mitglied ${item.member.id.slice(0, 8)}`);
 
       // Get the course's GitLab token (GLPAT)
       const gitlabToken = await this.treeDataProvider.getGitLabTokenForCourse(item.course);
 
       if (!gitlabToken) {
         notify.error(
-          'No GitLab token configured for this course. Please configure the GitLab token first.'
+          say('No GitLab token configured for this course. Please configure the GitLab token first.', 'Für diesen Kurs ist kein GitLab-Token konfiguriert. Konfiguriere zuerst das GitLab-Token.')
         );
         return;
       }
@@ -1906,21 +1924,21 @@ export class LecturerCommands {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `Syncing GitLab permissions for ${displayName}`,
+          title: say(`Syncing GitLab permissions for ${displayName}`, `GitLab-Berechtigungen für ${displayName} werden synchronisiert`),
           cancellable: false
         },
         async (progress) => {
-          progress.report({ increment: 0, message: 'Contacting server...' });
+          progress.report({ increment: 0, message: say('Contacting server...', 'Server wird kontaktiert …') });
 
           const result = await this.apiService.syncMemberGitlabPermissions(
             item.member.id,
             { access_token: gitlabToken }
           );
 
-          progress.report({ increment: 100, message: 'Done' });
+          progress.report({ increment: 100, message: say('Done', 'Fertig') });
 
           // Show success message with the result
-          const message = result.message || 'GitLab permissions synced successfully';
+          const message = result.message || say('GitLab permissions synced successfully', 'GitLab-Berechtigungen wurden synchronisiert.');
           const status = result.sync_status || 'completed';
 
           if (status === 'success' || status === 'completed') {
@@ -1934,7 +1952,7 @@ export class LecturerCommands {
       );
     } catch (error: any) {
       const errorMessage = error?.message || String(error);
-      notify.error(`Failed to sync GitLab permissions: ${errorMessage}`);
+      notify.error(say(`Failed to sync GitLab permissions: ${errorMessage}`, `Die GitLab-Berechtigungen konnten nicht synchronisiert werden: ${errorMessage}`));
       console.error('Error syncing GitLab permissions:', error);
     }
   }
@@ -1955,8 +1973,8 @@ export class LecturerCommands {
   private async renameCourseContent(item: CourseContentTreeItem): Promise<void> {
     const currentTitle = item.courseContent.title || '';
     const newTitle = await vscode.window.showInputBox({
-      title: 'Rename Title',
-      prompt: 'New title shown in the tree. The path, the deployment folder and meta.yaml stay as they are.',
+      title: say('Rename Title', 'Titel ändern'),
+      prompt: say('New title shown in the tree. The path, the deployment folder and meta.yaml stay as they are.', 'Neuer Titel im Baum. Pfad, Bereitstellungsordner und meta.yaml bleiben unverändert.'),
       value: currentTitle
     });
 
@@ -1966,12 +1984,12 @@ export class LecturerCommands {
 
     try {
       await this.treeDataProvider.updateCourseContent(item, { title: newTitle });
-      notify.info(`Content renamed to "${newTitle}"`);
+      notify.info(say(`Content renamed to "${newTitle}"`, `Inhalt umbenannt in „${newTitle}“.`));
       
       // Force a full refresh to ensure the tree updates
       await this.treeDataProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to rename content: ${error}`);
+      notify.error(say(`Failed to rename content: ${error}`, `Der Inhalt konnte nicht umbenannt werden: ${error}`));
     }
   }
 
@@ -2006,7 +2024,7 @@ export class LecturerCommands {
       await this.treeDataProvider.forceRefreshCourse(courseId);
     } catch (error: any) {
       const detail = error?.response?.detail || error?.message || error;
-      notify.error(`Failed to move "${content.title || content.path}": ${detail}`);
+      notify.error(say(`Failed to move "${content.title || content.path}": ${detail}`, `„${content.title || content.path}“ konnte nicht verschoben werden: ${detail}`));
     }
   }
 
@@ -2036,7 +2054,7 @@ export class LecturerCommands {
         .sort((a, b) => a.path.localeCompare(b.path));
 
       const picks: Array<vscode.QuickPickItem & { unitPath: string }> = [
-        { label: '$(root-folder) Course root', description: 'not inside any unit', unitPath: '' },
+        { label: say('$(root-folder) Course root', '$(root-folder) Oberste Ebene des Kurses'), description: say('not inside any unit', 'in keiner Einheit'), unitPath: '' },
         ...units.map((unit) => ({
           label: unit.title || unit.path,
           description: unit.path,
@@ -2046,8 +2064,8 @@ export class LecturerCommands {
 
       const chosen = await vscode.window.showQuickPick(picks, {
         title: mode === 'prepend'
-          ? `Move "${content.title || content.path}" to the start of…`
-          : `Move "${content.title || content.path}" to the end of…`
+          ? say(`Move "${content.title || content.path}" to the start of…`, `„${content.title || content.path}“ an den Anfang verschieben von …`)
+          : say(`Move "${content.title || content.path}" to the end of…`, `„${content.title || content.path}“ an das Ende verschieben von …`)
       });
       if (!chosen) {
         return;
@@ -2071,8 +2089,8 @@ export class LecturerCommands {
       const clash = contents.find((c) => c.path === targetPath && c.id !== content.id);
       if (clash) {
         notify.error(
-          `"${chosen.label}" already contains something at "${slug}" (${clash.title || clash.path}). ` +
-          'Rename one of them first.'
+          say(`"${chosen.label}" already contains something at "${slug}" (${clash.title || clash.path}). `, `„${chosen.label}“ enthält unter „${slug}“ bereits etwas (${clash.title || clash.path}). `) +
+          say('Rename one of them first.', 'Benenne zuerst eines davon um.')
         );
         return;
       }
@@ -2080,11 +2098,11 @@ export class LecturerCommands {
       await this.apiService.moveCourseContent(courseId, content.id, targetPath, position);
       await this.treeDataProvider.forceRefreshCourse(courseId);
       notify.info(
-        `Moved "${content.title || content.path}" to the ${mode === 'prepend' ? 'start' : 'end'} of ${chosen.label}`
+        say(`Moved "${content.title || content.path}" to the ${mode === 'prepend' ? 'start' : 'end'} of ${chosen.label}`, `„${content.title || content.path}“ wurde an ${mode === 'prepend' ? 'den Anfang' : 'das Ende'} von ${chosen.label} verschoben.`)
       );
     } catch (error: any) {
       const detail = error?.response?.detail || error?.message || error;
-      notify.error(`Failed to move "${content.title || content.path}": ${detail}`);
+      notify.error(say(`Failed to move "${content.title || content.path}": ${detail}`, `„${content.title || content.path}“ konnte nicht verschoben werden: ${detail}`));
     }
   }
 
@@ -2102,7 +2120,7 @@ export class LecturerCommands {
   private async renameCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
     const currentTitle = item.contentType.title || '';
     const newTitle = await vscode.window.showInputBox({
-      prompt: 'Enter new title for content type',
+      prompt: say('Enter new title for content type', 'Neuen Titel für den Inhaltstyp eingeben'),
       value: currentTitle
     });
 
@@ -2112,52 +2130,52 @@ export class LecturerCommands {
 
     try {
       await this.apiService.updateCourseContentType(item.contentType.id, { title: newTitle });
-      notify.info(`Content type renamed to "${newTitle}"`);
+      notify.info(say(`Content type renamed to "${newTitle}"`, `Inhaltstyp umbenannt in „${newTitle}“.`));
       await this.treeDataProvider.refresh();
     } catch (error) {
-      showErrorWithSeverity(error as Error, 'Failed to rename content type');
+      showErrorWithSeverity(error as Error, say('Failed to rename content type', 'Der Inhaltstyp konnte nicht umbenannt werden'));
     }
   }
 
   private async deleteCourseContent(item: CourseContentTreeItem): Promise<void> {
     if (!item.courseContent || !item.courseContent.id) {
-      notify.error('Invalid course content item - missing required data');
+      notify.error(say('Invalid course content item - missing required data', 'Ungültiger Kursinhalt: erforderliche Daten fehlen.'));
       return;
     }
 
     const title = item.courseContent.title || item.courseContent.path;
     const confirmation = await notify.warning(
-      `Are you sure you want to delete "${title}"?`,
-      'Yes',
-      'No'
+      say(`Are you sure you want to delete "${title}"?`, `Möchtest du „${title}“ wirklich löschen?`),
+      say('Yes', 'Ja'),
+      say('No', 'Nein')
     );
 
-    if (confirmation !== 'Yes') { return; }
+    if (confirmation !== say('Yes', 'Ja')) { return; }
 
     try {
       await this.apiService.deleteCourseContent(item.course.id, item.courseContent.id);
       this.apiService.clearCourseCache(item.course.id);
       this.treeDataProvider.refresh();
-      notify.info(`Deleted "${title}" successfully`);
+      notify.info(say(`Deleted "${title}" successfully`, `„${title}“ wurde gelöscht.`));
     } catch (error: any) {
       if (error instanceof HttpError && (error.errorCode === 'CONTENT_006' || error.errorCode === 'CONTENT_007')) {
         const archiveChoice = await notify.warning(
-          `Cannot delete "${title}" because it has student submissions. Would you like to archive it instead?`,
-          'Archive',
-          'Cancel'
+          say(`Cannot delete "${title}" because it has student submissions. Would you like to archive it instead?`, `„${title}“ kann nicht gelöscht werden, weil es Abgaben von Studierenden gibt. Möchtest du es stattdessen archivieren?`),
+          say('Archive', 'Archivieren'),
+          say('Cancel', 'Abbrechen')
         );
-        if (archiveChoice === 'Archive') {
+        if (archiveChoice === say('Archive', 'Archivieren')) {
           await this.archiveCourseContent(item);
         }
       } else {
-        notify.error(`Failed to delete "${title}": ${error.message || error}`);
+        notify.error(say(`Failed to delete "${title}": ${error.message || error}`, `„${title}“ konnte nicht gelöscht werden: ${error.message || error}`));
       }
     }
   }
 
   private async archiveCourseContent(item: CourseContentTreeItem): Promise<void> {
     if (!item.courseContent?.id || !item.course?.id) {
-      notify.error('Invalid course content item');
+      notify.error(say('Invalid course content item', 'Ungültiger Kursinhalt.'));
       return;
     }
 
@@ -2171,16 +2189,16 @@ export class LecturerCommands {
       // it goes nowhere: it stays right here, marked, and vanishes for students
       // (computor-org/issues#356).
       notify.info(
-        `"${title}" is no longer visible to students. It stays in your tree marked "Archived" — use Unarchive to bring it back.`
+        say(`"${title}" is no longer visible to students. It stays in your tree marked "Archived" — use Unarchive to bring it back.`, `„${title}“ ist für Studierende nicht mehr sichtbar. Es bleibt in deinem Baum, als „Archiviert“ markiert; mit „Aus dem Archiv holen“ holst du es zurück.`)
       );
     } catch (error: any) {
-      notify.error(`Failed to archive "${title}": ${error.message || error}`);
+      notify.error(say(`Failed to archive "${title}": ${error.message || error}`, `„${title}“ konnte nicht archiviert werden: ${error.message || error}`));
     }
   }
 
   private async unarchiveCourseContent(item: CourseContentTreeItem): Promise<void> {
     if (!item.courseContent?.id || !item.course?.id) {
-      notify.error('Invalid course content item');
+      notify.error(say('Invalid course content item', 'Ungültiger Kursinhalt.'));
       return;
     }
 
@@ -2190,9 +2208,9 @@ export class LecturerCommands {
       await this.apiService.unarchiveCourseContent(item.course.id, item.courseContent.id);
       this.apiService.clearCourseCache(item.course.id);
       this.treeDataProvider.refresh();
-      notify.info(`Unarchived "${title}" successfully`);
+      notify.info(say(`Unarchived "${title}" successfully`, `„${title}“ wurde aus dem Archiv geholt.`));
     } catch (error: any) {
-      notify.error(`Failed to unarchive "${title}": ${error.message || error}`);
+      notify.error(say(`Failed to unarchive "${title}": ${error.message || error}`, `„${title}“ konnte nicht aus dem Archiv geholt werden: ${error.message || error}`));
     }
   }
 
@@ -2216,12 +2234,12 @@ export class LecturerCommands {
       if (!exampleInfo?.id) {
         const deployment = await this.apiService.lecturerGetDeployment(contentId);
         if (!deployment?.example_id) {
-          notify.warning('No example assigned to this assignment');
+          notify.warning(say('No example assigned to this assignment', 'Dieser Aufgabe ist kein Beispiel zugewiesen.'));
           return;
         }
         const example = await this.apiService.getExample(deployment.example_id);
         if (!example) {
-          notify.warning('Could not load example information');
+          notify.warning(say('Could not load example information', 'Die Beispielinformationen konnten nicht geladen werden.'));
           return;
         }
         exampleInfo = { id: example.id, title: example.title, identifier: example.identifier };
@@ -2230,25 +2248,25 @@ export class LecturerCommands {
 
       const versions = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Loading available versions...',
+        title: say('Loading available versions...', 'Verfügbare Versionen werden geladen …'),
         cancellable: false
       }, async () => {
         return await this.apiService.getExampleVersions(exampleInfo!.id);
       });
 
       if (!versions || versions.length === 0) {
-        notify.warning('No versions available for this example');
+        notify.warning(say('No versions available for this example', 'Für dieses Beispiel gibt es keine Versionen.'));
         return;
       }
 
       const selectedVersion = await vscode.window.showQuickPick(
         versions.map(v => ({
           label: v.version_tag,
-          description: v.version_tag === currentVersionTag ? '(current)' : `Created: ${new Date(v.created_at).toLocaleDateString()}`,
+          description: v.version_tag === currentVersionTag ? say('(current)', '(aktuell)') : say(`Created: ${new Date(v.created_at).toLocaleDateString(uiLocale())}`, `Erstellt: ${new Date(v.created_at).toLocaleDateString(uiLocale())}`),
           versionTag: v.version_tag
         })),
         {
-          placeHolder: `Select version (current: ${currentVersionTag || 'unknown'})`
+          placeHolder: say(`Select version (current: ${currentVersionTag || 'unknown'})`, `Version auswählen (aktuell: ${currentVersionTag || 'unbekannt'})`)
         }
       );
 
@@ -2257,23 +2275,23 @@ export class LecturerCommands {
       }
 
       if (selectedVersion.versionTag === currentVersionTag) {
-        notify.info('Already on this version');
+        notify.info(say('Already on this version', 'Diese Version ist bereits eingestellt.'));
         return;
       }
 
       const confirm = await notify.info(
-        `Update "${exampleInfo.title}" from v${currentVersionTag} to v${selectedVersion.versionTag}?`,
-        'Update',
-        'Cancel'
+        say(`Update "${exampleInfo.title}" from v${currentVersionTag} to v${selectedVersion.versionTag}?`, `„${exampleInfo.title}“ von v${currentVersionTag} auf v${selectedVersion.versionTag} aktualisieren?`),
+        say('Update', 'Aktualisieren'),
+        say('Cancel', 'Abbrechen')
       );
 
-      if (confirm !== 'Update') {
+      if (confirm !== say('Update', 'Aktualisieren')) {
         return;
       }
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Updating example version...',
+        title: say('Updating example version...', 'Beispielversion wird aktualisiert …'),
         cancellable: false
       }, async () => {
         await this.apiService.lecturerAssignExample(
@@ -2286,7 +2304,7 @@ export class LecturerCommands {
       });
 
       notify.info(
-        `Example version updated to v${selectedVersion.versionTag}`
+        say(`Example version updated to v${selectedVersion.versionTag}`, `Beispielversion auf v${selectedVersion.versionTag} aktualisiert.`)
       );
 
       this.apiService.clearCourseCache(courseId);
@@ -2294,8 +2312,8 @@ export class LecturerCommands {
 
     } catch (error: any) {
       console.error('Failed to update example version:', error);
-      const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-      notify.error(`Failed to update example version: ${errorMessage}`);
+      const errorMessage = error?.response?.data?.detail || error.message || say('Unknown error', 'unbekannter Fehler');
+      notify.error(say(`Failed to update example version: ${errorMessage}`, `Die Beispielversion konnte nicht aktualisiert werden: ${errorMessage}`));
     }
   }
 
@@ -2307,7 +2325,7 @@ export class LecturerCommands {
     try {
       const updatableItems = await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Scanning for updatable assignments...',
+        title: say('Scanning for updatable assignments...', 'Aufgaben mit neueren Beispielversionen werden gesucht …'),
         cancellable: false
       }, async () => {
         const [contents, batch] = await Promise.all([
@@ -2345,8 +2363,8 @@ export class LecturerCommands {
       });
 
       if (updatableItems.length === 0) {
-        const scopeText = scope?.label ? ` under "${scope.label}"` : '';
-        notify.info(`All assignments${scopeText} are already on their latest example versions.`);
+        const scopeText = scope?.label ? say(` under "${scope.label}"`, ` unter „${scope.label}“`) : '';
+        notify.info(say(`All assignments${scopeText} are already on their latest example versions.`, `Alle Aufgaben${scopeText} verwenden bereits die neueste Beispielversion.`));
         return;
       }
 
@@ -2363,8 +2381,8 @@ export class LecturerCommands {
 
       const selected = await vscode.window.showQuickPick(items, {
         canPickMany: true,
-        title: `Update example versions${scope?.label ? ` — ${scope.label}` : ''}`,
-        placeHolder: `${updatableItems.length} assignment(s) have newer versions available`
+        title: say(`Update example versions${scope?.label ? ` — ${scope.label}` : ''}`, `Beispielversionen aktualisieren${scope?.label ? ` – ${scope.label}` : ''}`),
+        placeHolder: say(`${updatableItems.length} assignment(s) have newer versions available`, `Für ${updatableItems.length} Aufgabe(n) gibt es neuere Versionen`)
       });
 
       if (!selected || selected.length === 0) { return; }
@@ -2373,16 +2391,16 @@ export class LecturerCommands {
 
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: 'Updating example versions...',
+        title: say('Updating example versions...', 'Beispielversionen werden aktualisiert …'),
         cancellable: false
       }, async () => {
         const contentIds = [...selectedIds];
         const result = await this.apiService.lecturerBatchUpgradeVersions(courseId, contentIds);
 
         if (result.total_failed === 0) {
-          notify.info(`Updated ${result.total_upgraded} assignment(s) to latest example versions.`);
+          notify.info(say(`Updated ${result.total_upgraded} assignment(s) to latest example versions.`, `${result.total_upgraded} Aufgabe(n) auf die neueste Beispielversion aktualisiert.`));
         } else {
-          notify.warning(`Updated ${result.total_upgraded} assignment(s), ${result.total_failed} failed.`);
+          notify.warning(say(`Updated ${result.total_upgraded} assignment(s), ${result.total_failed} failed.`, `${result.total_upgraded} Aufgabe(n) aktualisiert, ${result.total_failed} fehlgeschlagen.`));
         }
       });
 
@@ -2391,8 +2409,8 @@ export class LecturerCommands {
 
     } catch (error: any) {
       console.error('Failed to batch update example versions:', error);
-      const errorMessage = error?.response?.data?.detail || error.message || 'Unknown error';
-      notify.error(`Failed to update example versions: ${errorMessage}`);
+      const errorMessage = error?.response?.data?.detail || error.message || say('Unknown error', 'unbekannter Fehler');
+      notify.error(say(`Failed to update example versions: ${errorMessage}`, `Die Beispielversionen konnten nicht aktualisiert werden: ${errorMessage}`));
     }
   }
 
@@ -2404,7 +2422,7 @@ export class LecturerCommands {
 
       if (item instanceof CourseMemberTreeItem) {
         // For course members, we need to fetch the full member data to get the GitLab project URL
-        itemType = 'member project';
+        itemType = say('member project', 'Projekt des Mitglieds');
         const memberData = await this.apiService.getCourseMember(item.member.id);
 
         if (memberData?.properties?.gitlab?.url && memberData.properties.gitlab.full_path) {
@@ -2414,12 +2432,12 @@ export class LecturerCommands {
           webUrl = `${gitlabHost}/${projectPath}`;
         } else {
           notify.warning(
-            'No repository is recorded for this course member yet — it is created when they first open the course.'
+            say('No repository is recorded for this course member yet — it is created when they first open the course.', 'Für dieses Kursmitglied ist noch kein Repository hinterlegt. Es entsteht, wenn die Person den Kurs zum ersten Mal öffnet.')
           );
           return;
         }
       } else {
-        itemType = 'course repositories';
+        itemType = say('course repositories', 'Kurs-Repositorys');
         webUrl = await this.courseGitNamespaceUrl(item.course);
         if (!webUrl) {
           return;
@@ -2434,10 +2452,10 @@ export class LecturerCommands {
 
         // Open the URL in the default browser
         await vscode.env.openExternal(vscode.Uri.parse(webUrl));
-        notify.info(`Opening ${itemType} in browser`);
+        notify.info(say(`Opening ${itemType} in browser`, `Im Browser wird geöffnet: ${itemType}`));
       }
     } catch (error) {
-      notify.error(`Failed to open repository: ${error}`);
+      notify.error(say(`Failed to open repository: ${error}`, `Das Repository konnte nicht geöffnet werden: ${error}`));
     }
   }
 
@@ -2482,15 +2500,15 @@ export class LecturerCommands {
 
     if (binding && binding.delivery === 'download') {
       notify.warning(
-        'This course hands out assignments as downloads, so it has no git repositories to open.'
+        say('This course hands out assignments as downloads, so it has no git repositories to open.', 'Dieser Kurs gibt Aufgaben als Download aus und hat daher keine Git-Repositorys zum Öffnen.')
       );
     } else if (binding) {
       notify.warning(
-        'This course has a git binding, but no student-template location is recorded for it yet.'
+        say('This course has a git binding, but no student-template location is recorded for it yet.', 'Dieser Kurs ist an Git angebunden, aber für ihn ist noch kein Ort der Studierendenvorlage hinterlegt.')
       );
     } else {
       notify.warning(
-        'This course is not connected to a git server yet. Use "Configure Course Git" on the course to set it up.'
+        say('This course is not connected to a git server yet. Use "Configure Course Git" on the course to set it up.', 'Dieser Kurs ist noch mit keinem Git-Server verbunden. Richte das über „Git für den Kurs konfigurieren“ am Kurs ein.')
       );
     }
     return undefined;
@@ -2504,7 +2522,7 @@ export class LecturerCommands {
     // Get available content kinds
     const contentKinds = await this.apiService.getCourseContentKinds();
     if (contentKinds.length === 0) {
-      notify.error('No content kinds available in the system');
+      notify.error(say('No content kinds available in the system', 'Im System sind keine Inhaltsarten verfügbar.'));
       return;
     }
 
@@ -2513,17 +2531,17 @@ export class LecturerCommands {
     // the category a *type* belongs to — a lecturer in issues#387 created a
     // type called "Unit 1" believing it had created a unit.
     const kindItems = contentKinds.map(k => ({
-      label: k.title || k.id,
-      description: k.submittable ? 'submittable' : 'not submittable',
+      label: localizedKindTitle(k.id, k.title, uiLanguage()) || k.id,
+      description: k.submittable ? say('submittable', 'mit Abgabe') : say('not submittable', 'ohne Abgabe'),
       detail: k.has_descendants
-        ? 'Groups other content; students do not submit to it (e.g. a week or a chapter)'
-        : 'Students submit work to content of this kind',
+        ? say('Groups other content; students do not submit to it (e.g. a week or a chapter)', 'Fasst andere Inhalte zusammen; Studierende geben dazu nichts ab (z. B. eine Woche oder ein Kapitel)')
+        : say('Students submit work to content of this kind', 'Zu Inhalten dieser Art geben Studierende Arbeiten ab'),
       kindData: k
     }));
 
     const selectedKind = await vscode.window.showQuickPick(
       kindItems,
-      { placeHolder: 'Which kind of content will this type describe?' }
+      { placeHolder: say('Which kind of content will this type describe?', 'Welche Art von Inhalt soll dieser Typ beschreiben?') }
     );
 
     if (!selectedKind) {
@@ -2539,11 +2557,11 @@ export class LecturerCommands {
       .replace(/^_|_$/g, '');
 
     const title = await vscode.window.showInputBox({
-      prompt: `Name this ${kindLabel.toLowerCase()} type. This creates a label you can put on content — it does not create a ${kindLabel.toLowerCase()}.`,
-      placeHolder: 'e.g., Lecture Notes, Homework, Bonus Task',
+      prompt: say(`Name this ${kindLabel.toLowerCase()} type. This creates a label you can put on content — it does not create a ${kindLabel.toLowerCase()}.`, `Benenne diesen Typ der Art „${kindLabel}“. Damit legst du eine Kennzeichnung für Inhalte an, aber keinen Inhalt der Art „${kindLabel}“.`),
+      placeHolder: say('e.g., Lecture Notes, Homework, Bonus Task', 'z. B. Vorlesungsnotizen, Hausübung, Bonusaufgabe'),
       validateInput: value => deriveSlug(value || '')
         ? undefined
-        : 'Use at least one letter or digit — the slug is derived from this name.'
+        : say('Use at least one letter or digit — the slug is derived from this name.', 'Verwende mindestens einen Buchstaben oder eine Ziffer; daraus wird der Slug abgeleitet.')
     });
 
     if (!title) {
@@ -2553,8 +2571,8 @@ export class LecturerCommands {
     const slug = deriveSlug(title);
 
     const color = await vscode.window.showInputBox({
-      prompt: 'Enter color (optional)',
-      placeHolder: 'e.g., #FF5733, blue, rgb(255,87,51)',
+      prompt: say('Enter color (optional)', 'Farbe eingeben (optional)'),
+      placeHolder: say('e.g., #FF5733, blue, rgb(255,87,51)', 'z. B. #FF5733, blue, rgb(255,87,51)'),
       value: 'green'
     });
 
@@ -2562,10 +2580,10 @@ export class LecturerCommands {
     // type "Unit 1" believing they had created a unit, and only found out when
     // deleting it failed.
     const proceed = await notify.confirm(
-      `Create content type "${title}"?`,
-      'Create',
-      `Kind: ${kindLabel}\nSlug: ${slug}\nColor: ${color || 'green'}\n\n`
-      + `This adds a type you can assign to course content. It does not create any content.`
+      say(`Create content type "${title}"?`, `Inhaltstyp „${title}“ anlegen?`),
+      say('Create', 'Anlegen'),
+      say(`Kind: ${kindLabel}\nSlug: ${slug}\nColor: ${color || 'green'}\n\n`, `Art: ${kindLabel}\nSlug: ${slug}\nFarbe: ${color || 'green'}\n\n`)
+      + say(`This adds a type you can assign to course content. It does not create any content.`, `Damit entsteht ein Typ, den du Kursinhalten zuweisen kannst. Es wird kein Inhalt angelegt.`)
     );
 
     if (!proceed) {
@@ -2583,15 +2601,15 @@ export class LecturerCommands {
 
       // Clear cache and refresh
       this.treeDataProvider.refreshNode(item);
-      notify.info(`Content type "${title}" created successfully (slug: ${slug})`);
+      notify.info(say(`Content type "${title}" created successfully (slug: ${slug})`, `Der Inhaltstyp „${title}“ wurde angelegt (Slug: ${slug}).`));
     } catch (error) {
-      showErrorWithSeverity(error as Error, `Failed to create content type "${title}"`);
+      showErrorWithSeverity(error as Error, say(`Failed to create content type "${title}"`, `Der Inhaltstyp „${title}“ konnte nicht angelegt werden`));
     }
   }
 
   private async editCourseContentType(item: CourseContentTypeTreeItem): Promise<void> {
     const title = await vscode.window.showInputBox({
-      prompt: 'Enter new title',
+      prompt: say('Enter new title', 'Neuen Titel eingeben'),
       value: item.contentType.title || item.contentType.slug
     });
 
@@ -2600,7 +2618,7 @@ export class LecturerCommands {
     }
 
     const color = await vscode.window.showInputBox({
-      prompt: 'Enter new color',
+      prompt: say('Enter new color', 'Neue Farbe eingeben'),
       value: item.contentType.color
     });
 
@@ -2613,9 +2631,9 @@ export class LecturerCommands {
       // Refresh parent folder
       const parent = new CourseFolderTreeItem('contentTypes', item.course, item.courseFamily, item.organization);
       this.treeDataProvider.refreshNode(parent);
-      notify.info('Content type updated successfully');
+      notify.info(say('Content type updated successfully', 'Der Inhaltstyp wurde aktualisiert.'));
     } catch (error) {
-      showErrorWithSeverity(error as Error, 'Failed to update content type');
+      showErrorWithSeverity(error as Error, say('Failed to update content type', 'Der Inhaltstyp konnte nicht aktualisiert werden'));
     }
   }
 
@@ -2632,7 +2650,7 @@ export class LecturerCommands {
       const contents = await this.apiService.getCourseContents(item.course.id, true);
       const blocking = findContentsUsingType(contents, item.contentType.id);
       if (blocking.length > 0) {
-        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+        await notify.modal('warning', say(`Cannot delete content type "${label}"`, `Der Inhaltstyp „${label}“ kann nicht gelöscht werden`), {
           detail: formatContentTypeInUseDetail(label, blocking)
         });
         return;
@@ -2643,8 +2661,8 @@ export class LecturerCommands {
     }
 
     const confirmed = await notify.confirm(
-      `Are you sure you want to delete content type "${label}"?`,
-      'Delete'
+      say(`Are you sure you want to delete content type "${label}"?`, `Möchtest du den Inhaltstyp „${label}“ wirklich löschen?`),
+      say('Delete', 'Löschen')
     );
 
     if (!confirmed) {
@@ -2653,21 +2671,21 @@ export class LecturerCommands {
 
     try {
       await this.apiService.deleteCourseContentType(item.contentType.id);
-      notify.info('Content type deleted successfully');
+      notify.info(say('Content type deleted successfully', 'Der Inhaltstyp wurde gelöscht.'));
 
       // Refresh the tree to show the changes
       await this.treeDataProvider.refresh();
     } catch (error) {
       if (error instanceof HttpError && error.errorCode === 'CONTENT_010') {
-        await notify.modal('warning', `Cannot delete content type "${label}"`, {
+        await notify.modal('warning', say(`Cannot delete content type "${label}"`, `Der Inhaltstyp „${label}“ kann nicht gelöscht werden`), {
           detail: error.serverDetail
-            || 'Course content still uses this type. Change those contents to another content type of the same kind, or delete them first.'
+            || say('Course content still uses this type. Change those contents to another content type of the same kind, or delete them first.', 'Kursinhalte verwenden diesen Typ noch. Stelle diese Inhalte auf einen anderen Inhaltstyp derselben Art um oder lösche sie zuerst.')
         });
         return;
       }
       showErrorWithSeverity(
         error instanceof Error ? error : new Error(String(error)),
-        `Failed to delete content type "${label}"`
+        say(`Failed to delete content type "${label}"`, `Der Inhaltstyp „${label}“ konnte nicht gelöscht werden`)
       );
     }
   }
@@ -2678,7 +2696,7 @@ export class LecturerCommands {
       if (!scopeInfo) { return; }
       await this.startReleaseWorkflow(scopeInfo.courseId, scopeInfo.scope);
     } catch (error) {
-      notify.error(`Failed to release course content: ${error}`);
+      notify.error(say(`Failed to release course content: ${error}`, `Der Kursinhalt konnte nicht freigegeben werden: ${error}`));
     }
   }
 
@@ -2686,7 +2704,7 @@ export class LecturerCommands {
     try {
       const courseId = courseData?.id || courseData;
       if (!courseId) {
-        notify.error('Invalid course data: missing course ID');
+        notify.error(say('Invalid course data: missing course ID', 'Ungültige Kursdaten: Die Kurs-ID fehlt.'));
         return;
       }
 
@@ -2696,7 +2714,7 @@ export class LecturerCommands {
 
       await this.startReleaseWorkflow(courseId, { all: true, label });
     } catch (error) {
-      notify.error(`Failed to release course content: ${error}`);
+      notify.error(say(`Failed to release course content: ${error}`, `Der Kursinhalt konnte nicht freigegeben werden: ${error}`));
     }
   }
 
@@ -2713,7 +2731,7 @@ export class LecturerCommands {
 
     if (item instanceof CourseFolderTreeItem) {
       if (item.folderType !== 'contents') {
-        notify.warning('Release is only available from the course contents folder.');
+        notify.warning(say('Release is only available from the course contents folder.', 'Freigeben ist nur im Ordner der Kursinhalte möglich.'));
         return undefined;
       }
 
@@ -2721,7 +2739,7 @@ export class LecturerCommands {
         courseId: item.course.id,
         scope: {
           all: true,
-          label: `${item.course.title || item.course.path} contents`
+          label: say(`${item.course.title || item.course.path} contents`, `Inhalte von ${item.course.title || item.course.path}`)
         }
       };
     }
@@ -2749,7 +2767,7 @@ export class LecturerCommands {
       };
     }
 
-    notify.warning('Select a course or an assignment in the Lecturer view to release.');
+    notify.warning(say('Select a course or an assignment in the Lecturer view to release.', 'Wähle in der Lehrenden-Ansicht einen Kurs oder eine Aufgabe zum Freigeben aus.'));
     return undefined;
   }
 
@@ -2757,7 +2775,7 @@ export class LecturerCommands {
     // Step 1: Pre-flight validation
     const validationResult = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: 'Validating course for release...',
+      title: say('Validating course for release...', 'Kurs wird für die Freigabe geprüft …'),
       cancellable: false
     }, async () => {
       try {
@@ -2765,7 +2783,7 @@ export class LecturerCommands {
       } catch (error: any) {
         return {
           valid: false,
-          error: 'Validation failed',
+          error: say('Validation failed', 'Prüfung fehlgeschlagen'),
           validation_errors: [],
           total_issues: 0
         };
@@ -2775,7 +2793,7 @@ export class LecturerCommands {
     // Step 2: If validation fails, show errors
     if (!validationResult.valid) {
       const course = await this.apiService.getCourse(courseId);
-      const courseTitle = course?.title || course?.path || 'Unknown Course';
+      const courseTitle = course?.title || course?.path || say('Unknown Course', 'Unbekannter Kurs');
 
       await this.releaseValidationWebviewProvider.showValidationErrors(
         validationResult,
@@ -2790,7 +2808,7 @@ export class LecturerCommands {
 
     const candidates = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: 'Checking for releasable content...',
+      title: say('Checking for releasable content...', 'Freigebbare Inhalte werden gesucht …'),
       cancellable: false
     }, () => this.getPendingReleaseContents(courseId, scope));
 
@@ -2851,12 +2869,12 @@ export class LecturerCommands {
 
     const withExamples = filtered?.filter(c => hasExampleAssigned(c)) || [];
 
-    const scopeText = scope?.label ? ` under "${scope.label}"` : '';
+    const scopeText = scope?.label ? say(` under "${scope.label}"`, ` unter „${scope.label}“`) : '';
 
     if (withExamples.length > 0) {
-      notify.info(`No pending content to release${scopeText}. All ${withExamples.length} assigned item(s) are up to date.`);
+      notify.info(say(`No pending content to release${scopeText}. All ${withExamples.length} assigned item(s) are up to date.`, `Keine Inhalte zum Freigeben${scopeText}. Alle ${withExamples.length} zugewiesenen Elemente sind aktuell.`));
     } else {
-      notify.info(`No pending content to release${scopeText}. Assign examples to course contents first.`);
+      notify.info(say(`No pending content to release${scopeText}. Assign examples to course contents first.`, `Keine Inhalte zum Freigeben${scopeText}. Weise den Kursinhalten zuerst Beispiele zu.`));
     }
   }
   
@@ -2866,7 +2884,7 @@ export class LecturerCommands {
     }
 
     const iconMap = { new: '$(cloud-upload)', update: '$(sync)', failed: '$(error)' };
-    const descriptionMap = { new: 'new', update: 'update available', failed: 'failed — retry' };
+    const descriptionMap = { new: say('new', 'neu'), update: say('update available', 'Aktualisierung verfügbar'), failed: say('failed — retry', 'fehlgeschlagen, erneut versuchen') };
 
     const items: ReleaseQuickPickItem[] = candidates.map(candidate => ({
       label: `${iconMap[candidate.reason]} ${candidate.content.title || candidate.content.path}`,
@@ -2876,13 +2894,13 @@ export class LecturerCommands {
     }));
 
     const title = scope?.label
-      ? `Release content under "${scope.label}"`
-      : 'Release content to students';
+      ? say(`Release content under "${scope.label}"`, `Inhalte unter „${scope.label}“ freigeben`)
+      : say('Release content to students', 'Inhalte für Studierende freigeben');
 
     const selected = await vscode.window.showQuickPick(items, {
       canPickMany: true,
       title,
-      placeHolder: 'Select items to release (new and updated are pre-selected)'
+      placeHolder: say('Select items to release (new and updated are pre-selected)', 'Elemente zum Freigeben auswählen (neue und aktualisierte sind vorausgewählt)')
     });
 
     if (!selected || selected.length === 0) { return undefined; }
@@ -2892,19 +2910,19 @@ export class LecturerCommands {
   private async executeRelease(courseId: string, scope: ReleaseScope | undefined, selectedCandidates: ReleaseCandidate[]): Promise<void> {
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
-      title: 'Releasing course content',
+      title: say('Releasing course content', 'Kursinhalte werden freigegeben'),
       cancellable: false
     }, async (progress) => {
-      progress.report({ increment: 0, message: 'Preparing release...' });
+      progress.report({ increment: 0, message: say('Preparing release...', 'Freigabe wird vorbereitet …') });
 
       const updateCandidates = selectedCandidates.filter(c => c.reason === 'update');
       if (updateCandidates.length > 0) {
-        progress.report({ message: `Updating ${updateCandidates.length} example version(s) to latest...` });
+        progress.report({ message: say(`Updating ${updateCandidates.length} example version(s) to latest...`, `${updateCandidates.length} Beispielversion(en) werden auf den neuesten Stand gebracht …`) });
         const updateIds = updateCandidates.map(c => c.content.id);
         const upgradeResult = await this.apiService.lecturerBatchUpgradeVersions(courseId, updateIds);
         if (upgradeResult.total_failed > 0) {
           notify.warning(
-            `${upgradeResult.total_failed} of ${updateIds.length} version upgrade(s) failed. The release will continue with the items that did upgrade.`
+            say(`${upgradeResult.total_failed} of ${updateIds.length} version upgrade(s) failed. The release will continue with the items that did upgrade.`, `${upgradeResult.total_failed} von ${updateIds.length} Versionsaktualisierung(en) sind fehlgeschlagen. Die Freigabe läuft mit den aktualisierten Elementen weiter.`)
           );
         }
       }
@@ -2912,7 +2930,7 @@ export class LecturerCommands {
       const selectedContentIds = selectedCandidates.map(c => c.content.id);
 
       try {
-        progress.report({ message: `Syncing assignments for ${selectedContentIds.length} item(s)...` });
+        progress.report({ message: say(`Syncing assignments for ${selectedContentIds.length} item(s)...`, `Aufgaben für ${selectedContentIds.length} Element(e) werden synchronisiert …`) });
         await this.apiService.generateAssignments(courseId, {
           course_content_ids: selectedContentIds,
           overwrite_strategy: 'skip_if_exists',
@@ -2921,24 +2939,24 @@ export class LecturerCommands {
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
         const choice = await notify.confirm(
-          `Failed to sync assignments before release: ${detail}. Continue with student-template release anyway?`,
-          'Continue'
+          say(`Failed to sync assignments before release: ${detail}. Continue with student-template release anyway?`, `Die Aufgaben konnten vor der Freigabe nicht synchronisiert werden: ${detail}. Die Studierendenvorlage trotzdem freigeben?`),
+          say('Continue', 'Weiter')
         );
         if (!choice) {
-          throw new Error('Release cancelled after assignments sync failure');
+          throw new Error(say('Release cancelled after assignments sync failure', 'Freigabe abgebrochen, weil die Aufgaben nicht synchronisiert werden konnten'));
         }
       }
 
-      progress.report({ message: 'Starting student-template release...' });
+      progress.report({ message: say('Starting student-template release...', 'Freigabe der Studierendenvorlage wird gestartet …') });
       const result = await this.apiService.generateStudentTemplate(courseId, {
         release: { course_content_ids: selectedContentIds }
       });
 
       const items = typeof result?.contents_to_process === 'number' ? result.contents_to_process : undefined;
-      const scopeSuffix = scope?.label ? ` for ${scope.label}` : '';
+      const scopeSuffix = scope?.label ? say(` for ${scope.label}`, ` für ${scope.label}`) : '';
       const msg = items && items > 0
-        ? `Release started for ${items} item(s)${scopeSuffix}. This runs in background.`
-        : `Release started${scopeSuffix}. This runs in background.`;
+        ? say(`Release started for ${items} item(s)${scopeSuffix}. This runs in background.`, `Freigabe für ${items} Element(e)${scopeSuffix} gestartet. Sie läuft im Hintergrund.`)
+        : say(`Release started${scopeSuffix}. This runs in background.`, `Freigabe${scopeSuffix} gestartet. Sie läuft im Hintergrund.`);
       notify.info(msg);
 
       this.apiService.clearCourseCache(courseId);
@@ -2953,7 +2971,7 @@ export class LecturerCommands {
     const freshCourse = await this.apiService.getCourse(item.course.id) || item.course;
     
     await this.courseWebviewProvider.show(
-      `Course: ${freshCourse.title || freshCourse.path}`,
+      say(`Course: ${freshCourse.title || freshCourse.path}`, `Kurs: ${freshCourse.title || freshCourse.path}`),
       {
         course: freshCourse,
         courseFamily: item.courseFamily,
@@ -2993,7 +3011,7 @@ export class LecturerCommands {
     }
 
     if (!contentKind) {
-      notify.error('Unable to determine content kind for this item');
+      notify.error(say('Unable to determine content kind for this item', 'Die Inhaltsart dieses Elements lässt sich nicht bestimmen.'));
       return;
     }
 
@@ -3025,7 +3043,7 @@ export class LecturerCommands {
     const freshOrganization = await this.apiService.getOrganization(item.organization.id) || item.organization;
     
     await this.organizationWebviewProvider.show(
-      `Organization: ${freshOrganization.title || freshOrganization.path}`,
+      say(`Organization: ${freshOrganization.title || freshOrganization.path}`, `Organisation: ${freshOrganization.title || freshOrganization.path}`),
       {
         organization: freshOrganization
       }
@@ -3037,7 +3055,7 @@ export class LecturerCommands {
     const freshCourseFamily = await this.apiService.getCourseFamily(item.courseFamily.id) || item.courseFamily;
     
     await this.courseFamilyWebviewProvider.show(
-      `Course Family: ${freshCourseFamily.title || freshCourseFamily.path}`,
+      say(`Course Family: ${freshCourseFamily.title || freshCourseFamily.path}`, `Kursfamilie: ${freshCourseFamily.title || freshCourseFamily.path}`),
       {
         courseFamily: freshCourseFamily,
         organization: item.organization
@@ -3059,7 +3077,7 @@ export class LecturerCommands {
     }
 
     await this.courseContentTypeWebviewProvider.show(
-      `Content Type: ${freshContentType.title || freshContentType.slug}`,
+      say(`Content Type: ${freshContentType.title || freshContentType.slug}`, `Inhaltstyp: ${freshContentType.title || freshContentType.slug}`),
       {
         contentType: freshContentType,
         course: item.course,
@@ -3073,7 +3091,7 @@ export class LecturerCommands {
       // Get detailed group information
       const detailedGroup = await this.apiService.getCourseGroup(item.group.id);
       if (!detailedGroup) {
-        notify.error('Failed to load group details');
+        notify.error(say('Failed to load group details', 'Die Gruppendetails konnten nicht geladen werden.'));
         return;
       }
 
@@ -3081,7 +3099,7 @@ export class LecturerCommands {
       const members = await this.apiService.getCourseMembers(item.course.id, item.group.id);
 
       await this.courseGroupWebviewProvider.show(
-        `Group: ${item.group.title || item.group.id}`,
+        say(`Group: ${item.group.title || item.group.id}`, `Gruppe: ${item.group.title || item.group.id}`),
         {
           group: detailedGroup,
           members: members,
@@ -3090,7 +3108,7 @@ export class LecturerCommands {
         }
       );
     } catch (error) {
-      notify.error(`Failed to show group details: ${error}`);
+      notify.error(say(`Failed to show group details: ${error}`, `Die Gruppendetails konnten nicht angezeigt werden: ${error}`));
     }
   }
 
@@ -3124,7 +3142,7 @@ export class LecturerCommands {
     const role = availableRoles.find(r => r.id === freshMember.course_role_id);
 
     await this.courseMemberWebviewProvider.show(
-      `Member: ${freshMember.user?.email || 'Unknown'}`,
+      say(`Member: ${freshMember.user?.email || 'Unknown'}`, `Mitglied: ${freshMember.user?.email || 'unbekannt'}`),
       {
         member: freshMember,
         course: item.course,
@@ -3139,7 +3157,7 @@ export class LecturerCommands {
   private async renameCourseGroup(item: CourseGroupTreeItem): Promise<void> {
     const currentTitle = item.group.title || '';
     const newTitle = await vscode.window.showInputBox({
-      prompt: 'Enter new title for the group',
+      prompt: say('Enter new title for the group', 'Neuen Titel für die Gruppe eingeben'),
       value: currentTitle
     });
 
@@ -3149,12 +3167,12 @@ export class LecturerCommands {
 
     try {
       await this.apiService.updateCourseGroup(item.group.id, { title: newTitle });
-      notify.info(`Group renamed to "${newTitle}"`);
+      notify.info(say(`Group renamed to "${newTitle}"`, `Gruppe umbenannt in „${newTitle}“.`));
 
       // Refresh the tree to show the changes
       await this.treeDataProvider.refresh();
     } catch (error) {
-      notify.error(`Failed to rename group: ${error}`);
+      notify.error(say(`Failed to rename group: ${error}`, `Die Gruppe konnte nicht umbenannt werden: ${error}`));
     }
   }
 
@@ -3163,8 +3181,8 @@ export class LecturerCommands {
 
     // Confirm deletion
     const confirmation = await notify.confirm(
-      `Are you sure you want to delete the group "${groupTitle}"?\n\nMembers will be moved to "No Group".`,
-      'Delete'
+      say(`Are you sure you want to delete the group "${groupTitle}"?\n\nMembers will be moved to "No Group".`, `Möchtest du die Gruppe „${groupTitle}“ wirklich löschen?\n\nIhre Mitglieder kommen unter „Keine Gruppe“.`),
+      say('Delete', 'Löschen')
     );
 
     if (!confirmation) {
@@ -3173,12 +3191,12 @@ export class LecturerCommands {
 
     try {
       await this.apiService.deleteCourseGroup(item.group.id);
-      notify.info(`Group "${groupTitle}" deleted`);
+      notify.info(say(`Group "${groupTitle}" deleted`, `Die Gruppe „${groupTitle}“ wurde gelöscht.`));
 
       // Refresh the tree to show the changes
       await this.treeDataProvider.refresh();
     } catch (error: any) {
-      notify.error(`Failed to delete group: ${error?.message || error}`);
+      notify.error(say(`Failed to delete group: ${error?.message || error}`, `Die Gruppe konnte nicht gelöscht werden: ${error?.message || error}`));
     }
   }
 
@@ -3193,7 +3211,7 @@ export class LecturerCommands {
       }
 
       if (!courseId) {
-        notify.error('Please select a course or groups folder to show members.');
+        notify.error(say('Please select a course or groups folder to show members.', 'Wähle einen Kurs oder einen Gruppenordner aus, um die Mitglieder zu sehen.'));
         return;
       }
 
@@ -3202,7 +3220,7 @@ export class LecturerCommands {
     } catch (error: any) {
       console.error('Failed to show course members:', error);
       notify.error(
-        `Failed to show course members: ${error?.message || error}`
+        say(`Failed to show course members: ${error?.message || error}`, `Die Kursmitglieder konnten nicht angezeigt werden: ${error?.message || error}`)
       );
     }
   }
@@ -3210,7 +3228,7 @@ export class LecturerCommands {
   async manageCourseMembers(item: CourseTreeItem): Promise<void> {
     try {
       if (!(item instanceof CourseTreeItem) || !item.course?.id) {
-        notify.error('Please select a course to manage its members.');
+        notify.error(say('Please select a course to manage its members.', 'Wähle einen Kurs aus, um seine Mitglieder zu verwalten.'));
         return;
       }
       await this.manageCourseMembersWebviewProvider.open(
@@ -3220,7 +3238,7 @@ export class LecturerCommands {
     } catch (error: any) {
       console.error('Failed to open course member management:', error);
       notify.error(
-        `Failed to open course member management: ${error?.message || error}`
+        say(`Failed to open course member management: ${error?.message || error}`, `Die Mitgliederverwaltung des Kurses konnte nicht geöffnet werden: ${error?.message || error}`)
       );
     }
   }
@@ -3280,19 +3298,19 @@ export class LecturerCommands {
     await runLockedWithProgress(
       {
         key: `course-progress:${item.course.id}`,
-        title: `Loading course progress: ${courseLabel}`,
-        duplicateMessage: 'Course progress is already loading…'
+        title: say(`Loading course progress: ${courseLabel}`, `Kursfortschritt wird geladen: ${courseLabel}`),
+        duplicateMessage: say('Course progress is already loading…', 'Der Kursfortschritt wird bereits geladen …')
       },
       async () => {
         try {
           const course = await this.apiService.getCourse(item.course.id);
           if (!course) {
-            notify.error('Failed to load course details');
+            notify.error(say('Failed to load course details', 'Die Kursdetails konnten nicht geladen werden.'));
             return;
           }
           await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
         } catch (error) {
-          notify.error(`Failed to show course progress: ${error}`);
+          notify.error(say(`Failed to show course progress: ${error}`, `Der Kursfortschritt konnte nicht angezeigt werden: ${error}`));
         }
       }
     );
@@ -3302,19 +3320,19 @@ export class LecturerCommands {
     await runLockedWithProgress(
       {
         key: `course-progress:${courseId}`,
-        title: 'Loading course progress…',
-        duplicateMessage: 'Course progress is already loading…'
+        title: say('Loading course progress…', 'Kursfortschritt wird geladen …'),
+        duplicateMessage: say('Course progress is already loading…', 'Der Kursfortschritt wird bereits geladen …')
       },
       async () => {
         try {
           const course = await this.apiService.getCourse(courseId);
           if (!course) {
-            notify.error('Failed to load course details');
+            notify.error(say('Failed to load course details', 'Die Kursdetails konnten nicht geladen werden.'));
             return;
           }
           await this.courseProgressOverviewWebviewProvider.showCourseProgress(course);
         } catch (error) {
-          notify.error(`Failed to show course progress: ${error}`);
+          notify.error(say(`Failed to show course progress: ${error}`, `Der Kursfortschritt konnte nicht angezeigt werden: ${error}`));
         }
       }
     );
@@ -3331,14 +3349,14 @@ export class LecturerCommands {
     await runLockedWithProgress(
       {
         key: `member-progress:${memberId}`,
-        title: `Loading progress: ${memberName || 'student'}`,
-        duplicateMessage: 'Student progress is already loading…'
+        title: say(`Loading progress: ${memberName || 'student'}`, `Fortschritt wird geladen: ${memberName || 'Studierende:r'}`),
+        duplicateMessage: say('Student progress is already loading…', 'Der Fortschritt wird bereits geladen …')
       },
       async () => {
         try {
           await this.courseMemberProgressWebviewProvider.showMemberProgress(memberId, memberName);
         } catch (error) {
-          notify.error(`Failed to show member progress: ${error}`);
+          notify.error(say(`Failed to show member progress: ${error}`, `Der Fortschritt des Mitglieds konnte nicht angezeigt werden: ${error}`));
         }
       }
     );

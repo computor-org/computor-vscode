@@ -1,4 +1,5 @@
 import { CourseContentList } from '../types/generated/courses';
+import { say } from './uiLanguage';
 
 /**
  * How many blocking contents to name before collapsing the rest into
@@ -42,18 +43,21 @@ export function formatContentTypeInUseDetail(
 
   const lines = sample.map(name => `  • ${name}`);
   if (remaining > 0) {
-    lines.push(`  • …and ${remaining} more`);
+    lines.push(say(`  • …and ${remaining} more`, `  • … und ${remaining} weitere`));
   }
 
   const countPhrase = blocking.length === 1
-    ? '1 course content still uses it'
-    : `${blocking.length} course contents still use it`;
+    ? say('1 course content still uses it', 'ihn noch 1 Kursinhalt verwendet')
+    : say(`${blocking.length} course contents still use it`, `ihn noch ${blocking.length} Kursinhalte verwenden`);
 
   return [
-    `"${typeLabel}" cannot be deleted because ${countPhrase}:`,
+    say(`"${typeLabel}" cannot be deleted because ${countPhrase}:`, `„${typeLabel}“ kann nicht gelöscht werden, weil ${countPhrase}:`),
     '',
     lines.join('\n'),
     '',
-    'Change those contents to another content type of the same kind, or delete them first.'
+    say(
+      'Change those contents to another content type of the same kind, or delete them first.',
+      'Stelle diese Inhalte auf einen anderen Inhaltstyp derselben Art um oder lösche sie zuerst.'
+    )
   ].join('\n');
 }

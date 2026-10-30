@@ -27,7 +27,8 @@ import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { hasDescription, PREVIEW_STUDENT_DESCRIPTION_COMMAND, withDescription } from '../../contentDescription';
 import { notify } from '../../../utils/notify';
-import { say } from '../../../utils/uiLanguage';
+import { say, sayFailed, uiLanguage } from '../../../utils/uiLanguage';
+import { localizedTitle } from '../../../utils/contentLanguage';
 import { EMPTY_WORK_STATE, RepoWorkState, pathsTouchDirectory, readRepoWorkState } from '../../../git/repoWorkState';
 import { PushHealthRegistry } from '../../../services/PushHealthRegistry';
 import { AssignmentGitBadges, assignmentGitIndicator, assignmentGitTooltipLines, courseGitIndicator, courseGitTooltipLines } from '../gitIndicators';
@@ -78,11 +79,12 @@ function setupProblemText(): string {
 }
 
 /** A grading status in the learner's language ("correction_necessary" -> "Correction Necessary"). */
-function statusLabel(status: string): string {
+export function statusLabel(status: string): string {
     const german: Record<string, string> = {
         not_reviewed: 'Nicht bewertet',
         corrected: 'Bewertet',
         correction_necessary: 'Korrektur nötig',
+        correction_possible: 'Verbesserung möglich',
         improvement_possible: 'Verbesserung möglich'
     };
     const english = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -360,6 +362,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             },
             // Reading the thread elsewhere must drop the badge too.
             onReadUpdate: () => this.scheduleUnreadRefresh(undefined, undefined),
+            // Test result, submission or grading (issue #554), on the user:<id>
+            // inbox; the course channel never carries it.
+            onSubmissionGroupUpdated: (event) => {
+                this.scheduleStatusRefresh(event.course_id, event.course_content_id);
+            },
         });
     }
 
@@ -384,13 +391,23 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         }, 300);
     }
 
+    private statusRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    /** Debounced per content: one test run or a doubled channel delivery is one refetch. */
+    private scheduleStatusRefresh(courseId: string, courseContentId: string): void {
+        const pending = this.statusRefreshTimers.get(courseContentId);
+        if (pending) {
+            clearTimeout(pending);
+        }
+        this.statusRefreshTimers.set(courseContentId, setTimeout(() => {
+            this.statusRefreshTimers.delete(courseContentId);
+            this.refreshContentById(courseId, courseContentId);
+        }, 300));
+    }
+
     private refreshContentById(courseId: string, courseContentId: string): void {
-        // Invalidate cache for this course so fresh data is fetched
-        this.courseContentsCache.delete(courseId);
-        // Try to find and refresh the specific item, fall back to course refresh
-        const item = this.itemIndex.get(courseContentId);
-        if (item) {
-            this.onDidChangeTreeDataEmitter.fire(item);
+        if (this.itemIndex.has(courseContentId)) {
+            void this.refreshContentItem(courseContentId, courseId);
         } else {
             this.refreshCourseById(courseId);
         }
@@ -457,79 +474,58 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     }
     
     /**
-     * Refresh only the specific course content item without affecting the entire tree
+     * Refetch one content's state and update its row, its units and the
+     * course root in place. Firing the existing item alone is not enough:
+     * VS Code re-reads the same object, whose icon was computed from the old
+     * data (issue #554).
      */
-    async refreshContentItem(contentId: string): Promise<void> {
+    async refreshContentItem(contentId: string, courseId?: string): Promise<void> {
         try {
-            console.log(`[TreeProvider] Refreshing content item: ${contentId}`);
-            const selectedCourseId = this.courseSelection.getCurrentCourseId();
-
-            let updatedFromList: CourseContentStudentList | undefined;
-
-            if (selectedCourseId) {
-                // Always refresh the cached course contents so we preserve
-                // enriched fields (type metadata, colors, etc.) that the
-                // single-content endpoint omits.
-                console.log(`[TreeProvider] Fetching all course contents for course: ${selectedCourseId}`);
-                const refreshedList = await this.apiService.getStudentCourseContents(selectedCourseId, { force: true }) || [];
-                console.log(`[TreeProvider] Fetched ${refreshedList.length} course contents`);
-                this.courseContentsCache.set(selectedCourseId, refreshedList);
-                await this.annotateCourseGit(selectedCourseId, refreshedList);
-
-                // Prefer the freshly cached entry so we retain content type data.
-                updatedFromList = refreshedList.find(c => c.id === contentId);
-                console.log(`[TreeProvider] Found content in list:`, updatedFromList ? 'yes' : 'no');
-                if (updatedFromList) {
-                    console.log(`[TreeProvider] Using refreshed content from list, result:`, updatedFromList.result);
-                }
-            }
-
-            if (!updatedFromList) {
-                console.log(`[TreeProvider] No updated content found in list, firing full tree refresh`);
+            const existing = this.itemIndex.get(contentId);
+            const course = courseId
+                ?? (existing instanceof CourseContentItem ? await this.findCourseIdForContent(existing.courseContent) : undefined)
+                ?? this.courseSelection.getCurrentCourseId();
+            if (!course) {
                 this.onDidChangeTreeDataEmitter.fire(undefined);
                 return;
             }
 
-            console.log(`[TreeProvider] Looking for tree item in index for contentId: ${contentId}`);
-            const ti = this.itemIndex.get(contentId);
-            console.log(`[TreeProvider] Found tree item:`, ti ? 'yes' : 'no');
-            if (ti && ti instanceof CourseContentItem) {
-                console.log(`[TreeProvider] Applying update to CourseContentItem`);
-                ti.applyUpdate(updatedFromList);
-                this.onDidChangeTreeDataEmitter.fire(ti);
-                console.log(`[TreeProvider] Tree change event fired for item`);
-                // Also refresh parent unit if possible
-                const parentPath = (updatedFromList.path || '').split('.').slice(0, -1).join('.');
-                if (parentPath && selectedCourseId) {
-                    const list = this.courseContentsCache.get(selectedCourseId) || [];
-                    const parent = list.find(c => c.path === parentPath);
-                    if (parent && parent.id) {
-                        const parentItem = this.itemIndex.get(parent.id);
-                        if (parentItem && parentItem instanceof CourseContentPathItem) {
-                            // Rebuild fresh node and update parent item
-                            const tree = this.buildContentTree(list, [], [], this.contentKinds, selectedCourseId);
-                            const freshNode = this.findNodeByPath(tree, parentPath);
-                            if (freshNode) {
-                                parentItem.updateFromNode(freshNode);
-                                this.onDidChangeTreeDataEmitter.fire(parentItem);
-                            }
-                        }
-                    }
-                }
-                // Also update course root counts
-                const courseId = selectedCourseId;
-                if (courseId) {
-                    const rootItem = this.itemIndex.get(`course-${courseId}`);
-                    if (rootItem && rootItem instanceof CourseRootItem) {
-                        const list = this.courseContentsCache.get(courseId) || [];
-                        rootItem.updateCounts(list.length);
-                        this.onDidChangeTreeDataEmitter.fire(rootItem);
-                    }
-                }
+            // The full list keeps the enriched fields (type, colour) that the
+            // single-content endpoint omits.
+            this.apiService.clearStudentCourseContentsCache(course);
+            this.apiService.clearStudentCourseContentCache(contentId);
+            const list = await this.apiService.getStudentCourseContents(course, { force: true }) || [];
+            this.courseContentsCache.set(course, list);
+            await this.annotateCourseGit(course, list);
+
+            const updated = list.find(c => c.id === contentId);
+            const item = this.itemIndex.get(contentId);
+            if (!updated || !(item instanceof CourseContentItem)) {
+                this.refreshCourseById(course);
                 return;
             }
-            console.log(`[TreeProvider] Item not found or wrong type, firing full tree refresh`);
-            this.onDidChangeTreeDataEmitter.fire(undefined);
+            item.applyUpdate(updated);
+            this.onDidChangeTreeDataEmitter.fire(item);
+
+            const gitContext = await this.resolveGitContext(course);
+            const tree = this.buildContentTree(list, [], [], this.contentKinds, course);
+            const segments = (updated.path || '').split('.');
+            for (let depth = segments.length - 1; depth > 0; depth--) {
+                const unitPath = segments.slice(0, depth).join('.');
+                const unit = list.find(c => c.path === unitPath);
+                const unitItem = unit?.id ? this.itemIndex.get(unit.id) : undefined;
+                const freshNode = this.findNodeByPath(tree, unitPath);
+                if (unitItem instanceof CourseContentPathItem && freshNode) {
+                    unitItem.updateFromNode(freshNode, this.subtreeBadges(freshNode, gitContext));
+                    this.onDidChangeTreeDataEmitter.fire(unitItem);
+                }
+            }
+
+            const rootItem = this.itemIndex.get(`course-${course}`);
+            if (rootItem instanceof CourseRootItem) {
+                rootItem.updateCounts(list.length);
+                this.onDidChangeTreeDataEmitter.fire(rootItem);
+            }
         } catch (e) {
             console.error('refreshContentItem failed:', e);
             this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -570,11 +566,11 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
             const courseId = await this.findCourseIdForContent(element.courseContent);
             if (!courseId) {
-                return [new MessageItem('Could not determine the course for this assignment.', 'warning')];
+                return [new MessageItem(say('Could not determine the course for this assignment.', 'Der Kurs dieser Aufgabe konnte nicht ermittelt werden.'), 'warning')];
             }
             const model = await this.resolveCourseGit(wsRoot, courseId);
             if (!model.configured) {
-                return [new MessageItem('This course has no git repository configured.', 'info')];
+                return [new MessageItem(say('This course has no git repository configured.', 'Für diesen Kurs ist kein Git-Repository eingerichtet.'), 'info')];
             }
             return this.getAssignmentChildrenNewModel(element, wsRoot, courseId, directory, model);
         }
@@ -625,12 +621,12 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 const courses = await this.apiService.getStudentCourses({ force: shouldForce });
                 if (!courses || courses.length === 0) {
                     console.log('[StudentTree] No courses available');
-                    return [new MessageItem('No courses available.', 'warning')];
+                    return [new MessageItem(say('No courses available.', 'Keine Kurse verfügbar.'), 'warning')];
                 }
 
                 if (this.workspaceCourseId) {
                     const course = courses.find(candidate => candidate.id === this.workspaceCourseId);
-                    if (!course) return [new MessageItem('This course is no longer available.', 'warning')];
+                    if (!course) return [new MessageItem(say('This course is no longer available.', 'Dieser Kurs ist nicht mehr verfügbar.'), 'warning')];
                     this.subscribeToCourseChannels([course.id]);
                     const item = await this.buildCourseRootItem(course, shouldForce);
                     this.forceRefresh = false;
@@ -687,7 +683,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             } catch (error: any) {
                 console.error('Failed to load course root:', error);
                 const message = error?.response?.data?.message || error?.message || 'Unknown error';
-                return [new MessageItem(`Error loading course: ${message}`, 'error')];
+                return [new MessageItem(sayFailed('Error loading course', 'Der Kurs konnte nicht geladen werden', message), 'error')];
             }
         }
 
@@ -1114,10 +1110,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         model: CourseGitModel,
     ): Promise<TreeItem[]> {
         if (!wsRoot) {
-            return [new MessageItem('Open a workspace folder to set up your repository.', 'warning')];
+            return [new MessageItem(say('Open a workspace folder to set up your repository.', 'Öffne einen Arbeitsbereichsordner, um dein Repository einzurichten.'), 'warning')];
         }
         if (!model.mode) {
-            return [new MessageItem(`This course offers no usable git mode (${model.modes.join(', ') || 'none'}).`, 'warning')];
+            return [new MessageItem(say(`This course offers no usable git mode (${model.modes.join(', ') || 'none'}).`, `Dieser Kurs bietet keine nutzbare Git-Variante an (${model.modes.join(', ') || 'keine'}).`), 'warning')];
         }
 
         let repoRoot = model.repoRoot;
@@ -1348,7 +1344,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                 ));
             }
             if (items.length === 0) {
-                return [new MessageItem('Empty assignment - no files available', 'info')];
+                return [new MessageItem(say('Empty assignment - no files available', 'Leere Aufgabe – keine Dateien vorhanden'), 'info')];
             }
             items.sort((a, b) => {
                 const aIsDir = (a as FileSystemItem).type === vscode.FileType.Directory;
@@ -1360,7 +1356,7 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             return items;
         } catch (error) {
             console.error('Error reading assignment directory:', error);
-            return [new MessageItem('Error reading repository files', 'error')];
+            return [new MessageItem(say('Error reading repository files', 'Die Dateien des Repositorys konnten nicht gelesen werden'), 'error')];
         }
     }
 
@@ -1580,8 +1576,8 @@ class OrganizationItem extends TreeItem {
         super(organizationInfo.title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('organization');
         this.contextValue = 'studentOrganization';
-        this.tooltip = `Organization: ${organizationInfo.title}`;
-        this.description = courseCount > 1 ? `${courseCount} courses` : undefined;
+        this.tooltip = `${say('Organization', 'Organisation')}: ${organizationInfo.title}`;
+        this.description = courseCount > 1 ? say(`${courseCount} courses`, `${courseCount} Kurse`) : undefined;
     }
 }
 
@@ -1596,8 +1592,8 @@ class CourseFamilyItem extends TreeItem {
         super(courseFamilyInfo.title, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         this.iconPath = new vscode.ThemeIcon('folder-library');
         this.contextValue = 'studentCourseFamily';
-        this.tooltip = `Course Family: ${courseFamilyInfo.title}\nOrganization: ${organizationInfo.title}`;
-        this.description = courseCount > 1 ? `${courseCount} courses` : undefined;
+        this.tooltip = `${say('Course Family', 'Kursfamilie')}: ${courseFamilyInfo.title}\n${say('Organization', 'Organisation')}: ${organizationInfo.title}`;
+        this.description = courseCount > 1 ? say(`${courseCount} courses`, `${courseCount} Kurse`) : undefined;
     }
 }
 
@@ -1630,27 +1626,7 @@ class CourseContentPathItem extends TreeItem {
     ) {
         super(name, expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
         
-        try {
-            // Units (folders) always use circle shape; include grading-status corner dot when available.
-            const derivedContentType = node.contentType
-                || (node.courseContent as any)?.course_content_type
-                || (node.courseContent as any)?.course_content_types;
-            const color = derivedContentType?.color || (node.courseContent as any)?.color || 'grey';
-
-            const status = ((node.courseContent as any)?.status || node.submissionGroup?.status)?.toLowerCase?.();
-            const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
-                status === 'corrected' ? 'corrected'
-                    : status === 'correction_necessary' ? 'correction_necessary'
-                        : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
-                            : 'none';
-
-            this.iconPath = corner === 'none'
-                ? IconGenerator.getColoredIcon(color, 'circle')
-                : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
-        } catch {
-            // Fallback to default folder icon
-            this.iconPath = new vscode.ThemeIcon('folder-opened');
-        }
+        this.applyIcon(node);
         
         this.contextValue = 'studentCourseUnit';
         this.id = node.courseContent ? node.courseContent.id : `unit-${name}`;
@@ -1673,7 +1649,32 @@ class CourseContentPathItem extends TreeItem {
     public updateFromNode(node: ContentNode, gitBadges?: AssignmentGitBadges): void {
         this.node = node;
         this.gitBadges = gitBadges;
+        this.applyIcon(node);
         this.applyCounts(node);
+    }
+
+    private applyIcon(node: ContentNode): void {
+        try {
+            // Units (folders) always use circle shape; include grading-status corner dot when available.
+            const derivedContentType = node.contentType
+                || (node.courseContent as any)?.course_content_type
+                || (node.courseContent as any)?.course_content_types;
+            const color = derivedContentType?.color || (node.courseContent as any)?.color || 'grey';
+
+            const status = ((node.courseContent as any)?.status || node.submissionGroup?.status)?.toLowerCase?.();
+            const corner: 'corrected' | 'correction_necessary' | 'correction_possible' | 'none' =
+                status === 'corrected' ? 'corrected'
+                    : status === 'correction_necessary' ? 'correction_necessary'
+                        : (status === 'correction_possible' || status === 'improvement_possible') ? 'correction_possible'
+                            : 'none';
+
+            this.iconPath = corner === 'none'
+                ? IconGenerator.getColoredIcon(color, 'circle')
+                : IconGenerator.getColoredIconWithBadge(color, 'circle', 'none', corner);
+        } catch {
+            // Fallback to default folder icon
+            this.iconPath = new vscode.ThemeIcon('folder-opened');
+        }
     }
 
     private countItems(node: ContentNode): number {
@@ -1713,8 +1714,10 @@ class CourseContentPathItem extends TreeItem {
             `${say('Unit', 'Einheit')}: ${this.name}`,
             say(`${count} item${count !== 1 ? 's' : ''}`, `${count} ${count !== 1 ? 'Einträge' : 'Eintrag'}`)
         ];
-        if (node.contentType?.title) {
-            tooltipLines.push(`${say('Type', 'Typ')}: ${node.contentType.title}`);
+        // ?localize= resolves only the content's own title, not its embedded type's.
+        const typeTitle = localizedTitle(node.contentType, uiLanguage());
+        if (typeTitle) {
+            tooltipLines.push(`${say('Type', 'Typ')}: ${typeTitle}`);
         }
         const status = (node.courseContent as any)?.status || node.submissionGroup?.status;
         if (status) {
@@ -1725,7 +1728,7 @@ class CourseContentPathItem extends TreeItem {
         }
         // Read by a screen reader instead of the tooltip: name first.
         this.accessibilityInformation = {
-            label: [node.courseContent?.title || this.name, node.contentType?.title || say('unit', 'Einheit'), ...(unread > 0 ? [unreadText] : [])].join(', ')
+            label: [node.courseContent?.title || this.name, typeTitle || say('unit', 'Einheit'), ...(unread > 0 ? [unreadText] : [])].join(', ')
         };
         if (this.gitBadges) {
             tooltipLines.push(...assignmentGitTooltipLines(this.gitBadges));
@@ -2004,7 +2007,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
             || (this.courseContent as any)?.course_content_type
             || (this.courseContent as any)?.course_content_types;
         if (tooltipContentType) {
-            lines.push(`${say('Type', 'Typ')}: ${tooltipContentType.title || tooltipContentType.slug}`);
+            lines.push(`${say('Type', 'Typ')}: ${localizedTitle(tooltipContentType, uiLanguage()) || tooltipContentType.slug}`);
         }
 
         if (unreadCount > 0) {
@@ -2059,7 +2062,7 @@ class CourseContentItem extends TreeItem implements Partial<CloneRepositoryItem>
         }
 
         this.tooltip = lines.join('\n');
-        this.setupAccessibility(tooltipContentType?.title || tooltipContentType?.slug, unreadCount);
+        this.setupAccessibility(localizedTitle(tooltipContentType, uiLanguage()) || tooltipContentType?.slug, unreadCount);
     }
 
     /**

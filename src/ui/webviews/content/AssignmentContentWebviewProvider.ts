@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import { BaseCourseContentWebviewProvider, CourseContentWebviewData } from './BaseCourseContentWebviewProvider';
 import { ComputorApiService } from '../../../services/ComputorApiService';
 import { LecturerTreeDataProvider } from '../../tree/lecturer/LecturerTreeDataProvider';
-import { escapeHtml, infoRowText, infoRowCode, infoRow, section, detailGrid, badge, deploymentBadge, formGroup, textInput } from '../shared/webviewHelpers';
+import { escapeHtml, infoRowText, infoRowCode, infoRow, section, detailGrid, badge, deploymentBadge, deploymentStatusLabel, formGroup, textInput } from '../shared/webviewHelpers';
+import { say, uiLocale } from '../../../utils/uiLanguage';
 import { notify } from '../../../utils/notify';
 
 export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewProvider {
@@ -16,7 +17,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
 
   protected async getWebviewContent(data?: CourseContentWebviewData): Promise<string> {
     if (!data?.courseContent) {
-      return this.getBaseHtml('Assignment', '<p>No assignment data available</p>');
+      return this.getBaseHtml(say('Assignment', 'Aufgabe'), say('<p>No assignment data available</p>', '<p>Keine Daten zur Aufgabe verfügbar</p>'));
     }
 
     const { courseContent, course, contentType, exampleInfo, exampleVersionInfo } = data;
@@ -33,61 +34,66 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
 
     const headerHtml = `
       <h1>${escapeHtml(courseContent.title || courseContent.path)}</h1>
-      <p>Assignment in ${escapeHtml(course?.title || course?.path)}</p>`;
+      <p>${say('Assignment in', 'Aufgabe in')} ${escapeHtml(course?.title || course?.path)}</p>`;
 
     // Group size and the run/submission limits are editable in the form below,
     // so they appear once, as inputs, rather than also as read-only facts.
-    const detailsHtml = section('Assignment', `
+    const detailsHtml = section(say('Assignment', 'Aufgabe'), `
       ${detailGrid(`
         ${infoRowCode('ID', courseContent.id)}
-        ${infoRowCode('Path', courseContent.path)}
-        ${infoRowText('Type', contentType?.title || courseContent.course_content_type_id)}
+        ${infoRowCode(say('Path', 'Pfad'), courseContent.path)}
+        ${infoRowText(say('Type', 'Typ'), contentType?.title || courseContent.course_content_type_id)}
         ${infoRowText('Position', String(courseContent.position ?? ''))}
-        ${infoRow('Submittable', badge('Yes', 'success'))}
+        ${infoRow(say('Submittable', 'Mit Abgabe'), badge(say('Yes', 'Ja'), 'success'))}
       `)}
       <form id="editForm">
-        ${formGroup('Title', textInput('title', courseContent.title, { placeholder: 'Assignment title' }))}
-        ${formGroup('Max Group Size', textInput('maxGroupSize', String(courseContent.max_group_size ?? 1), { type: 'number', min: 1 }))}
-        ${formGroup('Max Test Runs', textInput('maxTestRuns', String(courseContent.max_test_runs ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }))}
-        ${formGroup('Max Submissions', textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0, placeholder: 'empty = unlimited' }))}
+        ${formGroup(say('Title', 'Titel'), textInput('title', courseContent.title, { placeholder: say('Assignment title', 'Titel der Aufgabe') }))}
+        ${formGroup(say('Max Group Size', 'Höchste Gruppengröße'), textInput('maxGroupSize', String(courseContent.max_group_size ?? 1), { type: 'number', min: 1 }))}
+        ${formGroup(say('Max Test Runs', 'Höchstzahl der Testläufe'), textInput('maxTestRuns', String(courseContent.max_test_runs ?? ''), { type: 'number', min: 0, placeholder: say('empty = unlimited', 'leer = unbegrenzt') }))}
+        ${formGroup(say('Max Submissions', 'Höchstzahl der Abgaben'), textInput('maxSubmissions', String(courseContent.max_submissions ?? ''), { type: 'number', min: 0, placeholder: say('empty = unlimited', 'leer = unbegrenzt') }))}
         <div class="actions">
-          <button type="submit">Save Changes</button>
-          <button type="button" class="btn-secondary" data-action="refreshData">Refresh</button>
-          <button type="button" class="btn-secondary" data-action="editDescription">Edit Description...</button>
+          <button type="submit">${say('Save Changes', 'Änderungen speichern')}</button>
+          <button type="button" class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
+          <button type="button" class="btn-secondary" data-action="editDescription">${say('Edit Description...', 'Beschreibung bearbeiten …')}</button>
         </div>
       </form>
     `);
 
     const formatTimestamp = (value?: string | null): string =>
-      value ? new Date(value).toLocaleString() : '';
+      value ? new Date(value).toLocaleString(uiLocale()) : '';
 
     // Unassigning is rejected server-side once a deployment is live, so say so
     // rather than letting the user find out from an error.
     const unassignNote = deploymentStatus === 'deployed' || deploymentStatus === 'deploying'
-      ? `<div class="notice warning">Cannot unassign while the status is
-         <strong>${escapeHtml(deploymentStatus)}</strong>. Unassignment is only
-         allowed for pending or failed deployments.</div>`
+      ? say(
+        `<div class="notice warning">Cannot unassign while the status is
+         <strong>${escapeHtml(deploymentStatusLabel(deploymentStatus))}</strong>. Unassignment is only
+         allowed for pending or failed deployments.</div>`,
+        `<div class="notice warning">Solange der Status
+         <strong>${escapeHtml(deploymentStatusLabel(deploymentStatus))}</strong> ist, lässt sich die Zuweisung nicht aufheben.
+         Das geht nur bei ausstehenden oder fehlgeschlagenen Bereitstellungen.</div>`
+      )
       : '';
 
-    const deploymentHtml = section('Deployment', `
+    const deploymentHtml = section(say('Deployment', 'Bereitstellung'), `
       ${detailGrid(`
         ${infoRow('Status', deploymentBadge(deploymentStatus))}
-        ${exampleInfo?.title ? infoRowText('Example', exampleInfo.title) : infoRowText('Example', 'Not assigned')}
-        ${deployment?.assigned_at ? infoRowText('Assigned', formatTimestamp(deployment.assigned_at)) : ''}
-        ${deployment?.deployed_at ? infoRowText('Deployed', formatTimestamp(deployment.deployed_at)) : ''}
-        ${exampleInfo?.identifier ? infoRowCode('Identifier', exampleInfo.identifier) : ''}
+        ${exampleInfo?.title ? infoRowText(say('Example', 'Beispiel'), exampleInfo.title) : infoRowText(say('Example', 'Beispiel'), say('Not assigned', 'Nicht zugewiesen'))}
+        ${deployment?.assigned_at ? infoRowText(say('Assigned', 'Zugewiesen'), formatTimestamp(deployment.assigned_at)) : ''}
+        ${deployment?.deployed_at ? infoRowText(say('Deployed', 'Bereitgestellt'), formatTimestamp(deployment.deployed_at)) : ''}
+        ${exampleInfo?.identifier ? infoRowCode(say('Identifier', 'Kennung'), exampleInfo.identifier) : ''}
         ${exampleVersionInfo?.version_tag ? infoRowCode('Version', exampleVersionInfo.version_tag) : ''}
-        ${deployment?.deployment_path ? infoRowCode('Deployment Path', deployment.deployment_path) : ''}
-        ${deployment?.example_id ? infoRowCode('Example ID', deployment.example_id) : ''}
-        ${deployment?.deployment_message ? infoRowText('Message', deployment.deployment_message, { wide: true }) : ''}
+        ${deployment?.deployment_path ? infoRowCode(say('Deployment Path', 'Bereitstellungspfad'), deployment.deployment_path) : ''}
+        ${deployment?.example_id ? infoRowCode(say('Example ID', 'Beispiel-ID'), deployment.example_id) : ''}
+        ${deployment?.deployment_message ? infoRowText(say('Message', 'Meldung'), deployment.deployment_message, { wide: true }) : ''}
       `)}
       ${unassignNote}
       <div class="actions">
         ${exampleInfo ? `
-          <button class="btn-secondary" data-action="updateExampleVersion">Update Version</button>
-          <button data-action="deployAssignment">Deploy</button>
+          <button class="btn-secondary" data-action="updateExampleVersion">${say('Update Version', 'Version aktualisieren')}</button>
+          <button data-action="deployAssignment">${say('Deploy', 'Bereitstellen')}</button>
         ` : ''}
-        <button class="btn-secondary" data-action="refreshData">Refresh</button>
+        <button class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
       </div>
     `);
 
@@ -144,7 +150,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       ComputorWebview.onCommand('updateState', function() { location.reload(); });
     `;
 
-    return this.renderPage({ title: 'Assignment', headerHtml, bodyHtml: detailsHtml + deploymentHtml, inlineScript: scriptHtml });
+    return this.renderPage({ title: say('Assignment', 'Aufgabe'), headerHtml, bodyHtml: detailsHtml + deploymentHtml, inlineScript: scriptHtml });
   }
 
   protected async handleCustomMessage(message: { command: string; data?: Record<string, unknown> }): Promise<void> {
@@ -162,7 +168,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
             title: message.data?.title
           });
         } catch (error) {
-          notify.error(`Failed to deploy assignment: ${error}`);
+          notify.error(say(`Failed to deploy assignment: ${error}`, `Die Aufgabe konnte nicht bereitgestellt werden: ${error}`));
         }
         break;
 

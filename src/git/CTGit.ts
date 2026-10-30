@@ -5,6 +5,7 @@ import * as path from 'path';
 import { SimpleGit } from 'simple-git';
 import { createSimpleGit } from './simpleGitFactory';
 import { notify } from '../utils/notify';
+import { say } from '../utils/uiLanguage';
 import { stripCredentialsFromGitUrl } from '../utils/gitUrlHelpers';
 
 function openFileInMergeEditor(filePath: string): void {
@@ -125,15 +126,15 @@ export class CTGit {
 
   private async promptForConflictResolution(conflicts: string[]): Promise<'ours' | 'theirs' | 'editor' | 'abort'> {
     const mergeOptions = [
-      { label: 'Use ours (apply your local changes)', value: 'ours' as const },
-      { label: 'Use theirs (accept upstream changes)', value: 'theirs' as const },
-      { label: 'Resolve in merge editor', value: 'editor' as const },
-      { label: 'Abort', value: 'abort' as const }
+      { label: say('Use ours (apply your local changes)', 'Meine Fassung (deine lokalen Änderungen übernehmen)'), value: 'ours' as const },
+      { label: say('Use theirs (accept upstream changes)', 'Ihre Fassung (Änderungen der Vorlage übernehmen)'), value: 'theirs' as const },
+      { label: say('Resolve in merge editor', 'Im Merge-Editor auflösen'), value: 'editor' as const },
+      { label: say('Abort', 'Abbrechen'), value: 'abort' as const }
     ];
 
     const selection = await vscode.window.showQuickPick(mergeOptions, {
       canPickMany: false,
-      title: 'Merge conflicts detected. How would you like to proceed?'
+      title: say('Merge conflicts detected. How would you like to proceed?', 'Es gibt Merge-Konflikte. Wie möchtest du weitermachen?')
     });
 
     if (!selection) {
@@ -144,7 +145,7 @@ export class CTGit {
       for (const file of conflicts) {
         openFileInMergeEditor(path.join(this.repoPath, file));
       }
-      void notify.error(`Your repository has unresolved conflicts in:\n${conflicts.join('\n')}`);
+      void notify.error(`${say('Your repository has unresolved conflicts in:', 'Dein Repository hat ungelöste Konflikte in:')}\n${conflicts.join('\n')}`);
     }
 
     return selection.value;
@@ -245,7 +246,7 @@ export class CTGit {
       await this.resolveConflictsUsingOurs(remaining);
       remaining = await this.hasUnmergedPaths();
       if (remaining.length === 0) {
-        void notify.info('Merge conflicts were resolved by keeping your local changes.');
+        void notify.info(say('Merge conflicts were resolved by keeping your local changes.', 'Die Merge-Konflikte wurden gelöst, indem deine lokalen Änderungen behalten wurden.'));
         return true;
       }
     } catch (error) {
@@ -483,7 +484,7 @@ export class CTGit {
 
     if (!defaultBranch) {
       await this.releaseRemote(remoteName, previousRemoteUrl, shouldRemoveRemote);
-      notify.warning('Unable to determine upstream default branch. Skipping fork update.');
+      notify.warning(say('Unable to determine upstream default branch. Skipping fork update.', 'Der Standard-Branch der Vorlage ließ sich nicht ermitteln. Die Aktualisierung aus der Vorlage wird übersprungen.'));
       return { updated: false };
     }
 
@@ -652,7 +653,7 @@ export class CTGit {
         try {
           await this.simpleGit.push('origin', defaultBranch);
         } catch (pushError) {
-          notify.warning('Failed to push merged changes to origin. Please push manually.');
+          notify.warning(say('Failed to push merged changes to origin. Please push manually.', 'Die zusammengeführten Änderungen konnten nicht hochgeladen werden. Bitte lade sie selbst hoch (push).'));
           console.warn('[CTGit] Failed to push merge result:', pushError);
         }
       }
@@ -739,14 +740,14 @@ export class CTGit {
       const current = (await this.simpleGit.status()).current;
       let pushed = false;
       if (!current || current === 'DETACHED') {
-        notify.warning('Restored files were committed but not pushed: the repository has no branch checked out.');
+        notify.warning(say('Restored files were committed but not pushed: the repository has no branch checked out.', 'Die wiederhergestellten Dateien wurden committet, aber nicht hochgeladen, weil im Repository kein Branch ausgecheckt ist.'));
       } else {
         try {
           await this.simpleGit.push('origin', current);
           pushed = true;
         } catch (pushError) {
           console.warn('[CTGit] Failed to push the restored files to origin:', pushError);
-          notify.warning('Restored files could not be pushed to your repository. Please push manually.');
+          notify.warning(say('Restored files could not be pushed to your repository. Please push manually.', 'Die wiederhergestellten Dateien konnten nicht in dein Repository hochgeladen werden. Bitte lade sie selbst hoch (push).'));
         }
       }
 

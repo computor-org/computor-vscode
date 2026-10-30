@@ -1,13 +1,19 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { showMarkdownPreview } from '../ui/webviews/markdownPreview';
 import { notify } from '../utils/notify';
+import { HELP_PAGES, helpPagePath } from '../utils/studentHelpPages';
+import { say, sayFailed } from '../utils/uiLanguage';
 
+/**
+ * The course help page, which explains the view as a whole. The README is
+ * written for developers and exists only in English.
+ */
 export async function showGettingStarted(context: vscode.ExtensionContext): Promise<void> {
   try {
-    const gettingStartedPath = path.join(context.extensionPath, 'README.md');
-    await showMarkdownPreview(context, gettingStartedPath, { title: 'Getting Started' });
+    const helpPath = helpPagePath(context.extensionPath, HELP_PAGES.course);
+    await showMarkdownPreview(context, helpPath, { title: say('Getting Started', 'Erste Schritte') });
   } catch (error) {
-    void notify.error(`Failed to open Getting Started guide: ${error instanceof Error ? error.message : String(error)}`);
+    const detail = error instanceof Error ? error.message : String(error);
+    void notify.error(sayFailed(`Failed to open Getting Started guide`, `„Erste Schritte“ konnte nicht geöffnet werden`, detail));
   }
 }

@@ -2,7 +2,7 @@
   "name": "computor",
   "displayName": "Computor VS Code Extension",
   "description": "VS Code extension for computor teaching software",
-  "version": "2027.3.8",
+  "version": "2027.3.11",
   "publisher": "computor-org",
   "repository": {
     "type": "git",
@@ -25,975 +25,975 @@
     "commands": [
       {
         "command": "computor.student.selectCourse",
-        "title": "Switch Course",
-        "category": "Computor Student"
+        "title": "%command.student.selectCourse%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.openFile",
-        "title": "Open File",
-        "category": "Computor"
+        "title": "%command.openFile%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.tutor.assignment.grading",
-        "title": "Grading…",
-        "category": "Computor Tutor",
+        "title": "%command.tutor.assignment.grading%",
+        "category": "%category.tutor%",
         "icon": "$(checklist)"
       },
       {
         "command": "computor.tutor.help",
-        "title": "Help",
+        "title": "%command.tutor.help%",
         "icon": "$(question)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.cloneStudentRepository",
-        "title": "Clone Student Repository",
+        "title": "%command.tutor.cloneStudentRepository%",
         "icon": "$(cloud-download)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.updateStudentRepository",
-        "title": "Update Student Repository",
+        "title": "%command.tutor.updateStudentRepository%",
         "icon": "$(sync)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.resetFilters",
-        "title": "Tutor: Reset Filters",
+        "title": "%command.tutor.resetFilters%",
         "icon": "$(discard)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.showCourseProgress",
-        "title": "Show Course Progress",
+        "title": "%command.tutor.showCourseProgress%",
         "icon": "$(graph)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.showMemberProgress",
-        "title": "Show Member Progress",
+        "title": "%command.tutor.showMemberProgress%",
         "icon": "$(graph-line)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.checkout",
-        "title": "Checkout",
+        "title": "%command.tutor.checkout%",
         "icon": "$(cloud-download)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.showReadme",
-        "title": "Show README Preview",
+        "title": "%command.tutor.showReadme%",
         "icon": "$(open-preview)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.downloadSubmissionArtifact",
-        "title": "Download Submission Artifact",
+        "title": "%command.tutor.downloadSubmissionArtifact%",
         "icon": "$(cloud-download)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.compareWithReference",
-        "title": "Compare with Reference",
+        "title": "%command.tutor.compareWithReference%",
         "icon": "$(diff)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.showSubmissionTestResults",
-        "title": "Show Test Results",
+        "title": "%command.tutor.showSubmissionTestResults%",
         "icon": "$(beaker)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.runTest",
-        "title": "Run Test",
+        "title": "%command.tutor.runTest%",
         "icon": "$(play)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.setMaxTestRuns",
-        "title": "Set Max Test Runs for Student...",
-        "category": "Computor Tutor"
+        "title": "%command.tutor.setMaxTestRuns%",
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.setMaxSubmissions",
-        "title": "Set Max Submissions for Student...",
-        "category": "Computor Tutor"
+        "title": "%command.tutor.setMaxSubmissions%",
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.changeRealmUrl",
         "title": "%command.changeRealmUrl%",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.checkBackendConnection",
-        "title": "Check Backend Connection",
-        "category": "Computor"
+        "title": "%command.checkBackendConnection%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.reportProblem",
-        "title": "Report a Problem",
+        "title": "%command.reportProblem%",
         "icon": "$(bug)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.myProblemReports",
-        "title": "My Problem Reports",
-        "category": "Computor"
+        "title": "%command.myProblemReports%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.settings",
-        "title": "Settings",
-        "category": "Computor"
+        "title": "%command.settings%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.settingsView",
-        "title": "Settings",
-        "category": "Computor"
+        "title": "%command.settingsView%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.user.profile",
-        "title": "Edit Profile",
-        "category": "Computor",
+        "title": "%command.user.profile%",
+        "category": "%category.computor%",
         "icon": "$(account)"
       },
       {
         "command": "computor.login",
         "title": "%command.login%",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.loginWithApiToken",
-        "title": "Sign in with API Token",
-        "category": "Computor"
+        "title": "%command.loginWithApiToken%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.acceptPrivacyPolicy",
-        "title": "Accept Privacy Policy",
-        "category": "Computor"
+        "title": "%command.acceptPrivacyPolicy%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.loginOffline",
-        "title": "Login (Offline Mode)",
-        "category": "Computor"
+        "title": "%command.loginOffline%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.toggleAutoLogin",
-        "title": "Toggle Auto-Login",
-        "category": "Computor"
+        "title": "%command.toggleAutoLogin%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.student.cloneRepository",
-        "title": "Clone Repository",
+        "title": "%command.student.cloneRepository%",
         "icon": "$(cloud-download)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.setupCourseRepository",
-        "title": "Set up Repository",
+        "title": "%command.student.setupCourseRepository%",
         "icon": "$(repo)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.downloadTemplate",
-        "title": "Download Template",
+        "title": "%command.student.downloadTemplate%",
         "icon": "$(cloud-download)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.updateFromTemplate",
         "title": "%command.student.updateFromTemplate%",
         "icon": "$(sync)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fixRepositoryAuth",
-        "title": "Fix Repository Authentication",
+        "title": "%command.student.fixRepositoryAuth%",
         "icon": "$(key)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.commitAssignment",
         "title": "%command.student.commitAssignment%",
         "icon": "$(git-commit)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.commitCourse",
         "title": "%command.student.commitCourse%",
         "icon": "$(git-commit)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.testAssignment",
         "title": "%command.student.testAssignment%",
         "icon": "$(beaker)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.submitAssignment",
         "title": "%command.student.submit%",
         "icon": "$(cloud-upload)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.submitDownload",
         "title": "%command.student.submitDownload%",
         "icon": "$(cloud-upload)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.viewSubmissionGroup",
         "title": "%command.student.viewSubmissionGroup%",
         "icon": "$(info)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.askCourseQuestion",
         "title": "%command.student.askCourseQuestion%",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.help",
         "title": "%command.student.help%",
         "icon": "$(question)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.exportCourseExamples",
         "title": "%command.student.exportCourseExamples%",
         "icon": "$(file-zip)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.offline.addCourse",
         "enablement": "computor.student.offline.show",
-        "title": "Add Course",
+        "title": "%command.student.offline.addCourse%",
         "icon": "$(add)",
-        "category": "Computor Student (Offline Mode)"
+        "category": "%category.studentOffline%"
       },
       {
         "command": "computor.student.offline.saveAssignment",
         "enablement": "computor.student.offline.show",
-        "title": "Save Assignment",
+        "title": "%command.student.offline.saveAssignment%",
         "icon": "$(save)",
-        "category": "Computor Student (Offline Mode)"
+        "category": "%category.studentOffline%"
       },
       {
         "command": "computor.student.offline.refresh",
         "enablement": "computor.student.offline.show",
-        "title": "Refresh",
+        "title": "%command.student.offline.refresh%",
         "icon": "$(refresh)",
-        "category": "Computor Student (Offline Mode)"
+        "category": "%category.studentOffline%"
       },
       {
         "command": "computor.student.offline.openInTerminal",
         "enablement": "computor.student.offline.show",
-        "title": "Open in Terminal",
+        "title": "%command.student.offline.openInTerminal%",
         "icon": "$(terminal)",
-        "category": "Computor Student (Offline Mode)"
+        "category": "%category.studentOffline%"
       },
       {
         "command": "computor.student.offline.openRepoInTerminal",
         "enablement": "computor.student.offline.show",
-        "title": "Open Repository in Terminal",
+        "title": "%command.student.offline.openRepoInTerminal%",
         "icon": "$(terminal)",
-        "category": "Computor Student (Offline Mode)"
+        "category": "%category.studentOffline%"
       },
       {
         "command": "computor.student.offline.pullChanges",
         "enablement": "computor.student.offline.show",
-        "title": "Pull Changes",
+        "title": "%command.student.offline.pullChanges%",
         "icon": "$(cloud-download)",
-        "category": "Computor Student (Offline Mode)"
+        "category": "%category.studentOffline%"
       },
       {
         "command": "computor.student.offline.showPreview",
         "enablement": "computor.student.offline.show",
-        "title": "Show Preview",
+        "title": "%command.student.offline.showPreview%",
         "icon": "$(open-preview)",
-        "category": "Computor Student (Offline Mode)"
+        "category": "%category.studentOffline%"
       },
       {
         "command": "computor.lecturer.documents.refresh",
-        "title": "Refresh",
+        "title": "%command.lecturer.documents.refresh%",
         "icon": "$(refresh)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.openFile",
-        "title": "Open Document",
-        "category": "Computor Documents"
+        "title": "%command.lecturer.documents.openFile%",
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.uploadFile",
-        "title": "Upload",
+        "title": "%command.lecturer.documents.uploadFile%",
         "icon": "$(cloud-upload)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.downloadFile",
-        "title": "Download",
+        "title": "%command.lecturer.documents.downloadFile%",
         "icon": "$(cloud-download)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.revealInOS",
-        "title": "Reveal in File Explorer",
+        "title": "%command.lecturer.documents.revealInOS%",
         "icon": "$(folder)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.copyPath",
-        "title": "Copy Path",
-        "category": "Computor Documents"
+        "title": "%command.lecturer.documents.copyPath%",
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.copyRelativePath",
-        "title": "Copy Relative Path",
-        "category": "Computor Documents"
+        "title": "%command.lecturer.documents.copyRelativePath%",
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.newFile",
-        "title": "New File…",
+        "title": "%command.lecturer.documents.newFile%",
         "icon": "$(new-file)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.newFolder",
-        "title": "New Folder…",
+        "title": "%command.lecturer.documents.newFolder%",
         "icon": "$(new-folder)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.rename",
-        "title": "Rename",
-        "category": "Computor Documents"
+        "title": "%command.lecturer.documents.rename%",
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.delete",
-        "title": "Delete",
+        "title": "%command.lecturer.documents.delete%",
         "icon": "$(trash)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.discardLocal",
-        "title": "Discard Local Changes",
-        "category": "Computor Documents"
+        "title": "%command.lecturer.documents.discardLocal%",
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.uploadAllPending",
-        "title": "Upload All Pending",
+        "title": "%command.lecturer.documents.uploadAllPending%",
         "icon": "$(cloud-upload)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.revealMirrorRoot",
-        "title": "Reveal Documents Mirror in File Explorer",
+        "title": "%command.lecturer.documents.revealMirrorRoot%",
         "icon": "$(folder-opened)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.downloadToComputer",
-        "title": "Download to My Computer...",
+        "title": "%command.lecturer.documents.downloadToComputer%",
         "icon": "$(desktop-download)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.uploadFromComputer",
-        "title": "Upload Files from My Computer...",
+        "title": "%command.lecturer.documents.uploadFromComputer%",
         "icon": "$(device-desktop)",
-        "category": "Computor Documents"
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.uploadFolderFromComputer",
-        "title": "Upload Folder from My Computer...",
-        "category": "Computor Documents"
+        "title": "%command.lecturer.documents.uploadFolderFromComputer%",
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.documents.copyPublicUrl",
-        "title": "Copy Public URL",
-        "category": "Computor Documents"
+        "title": "%command.lecturer.documents.copyPublicUrl%",
+        "category": "%category.documents%"
       },
       {
         "command": "computor.lecturer.checkoutExample",
-        "title": "Checkout Latest",
+        "title": "%command.lecturer.checkoutExample%",
         "icon": "$(cloud-download)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.checkoutExampleVersion",
-        "title": "Checkout Version...",
+        "title": "%command.lecturer.checkoutExampleVersion%",
         "icon": "$(versions)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.bumpExampleVersion",
-        "title": "Bump Version",
+        "title": "%command.lecturer.bumpExampleVersion%",
         "icon": "$(arrow-up)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.revealCheckedOutInExplorer",
-        "title": "Reveal in Explorer",
+        "title": "%command.lecturer.revealCheckedOutInExplorer%",
         "icon": "$(folder)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.deleteCheckedOutExample",
-        "title": "Delete All Versions",
+        "title": "%command.lecturer.deleteCheckedOutExample%",
         "icon": "$(trash)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.deleteCheckedOutVersion",
-        "title": "Delete Version",
+        "title": "%command.lecturer.deleteCheckedOutVersion%",
         "icon": "$(trash)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.restoreVersionToWorking",
-        "title": "Restore to Working",
+        "title": "%command.lecturer.restoreVersionToWorking%",
         "icon": "$(discard)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.compareWithWorking",
-        "title": "Compare with Working: Pick File…",
+        "title": "%command.lecturer.compareWithWorking%",
         "icon": "$(diff)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.openDiffWithWorking",
-        "title": "Open Diff with Working Copy",
+        "title": "%command.lecturer.openDiffWithWorking%",
         "icon": "$(diff-multiple)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.compareFileWithWorking",
-        "title": "Compare with Working",
+        "title": "%command.lecturer.compareFileWithWorking%",
         "icon": "$(diff)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.newFile",
-        "title": "New File",
+        "title": "%command.lecturer.newFile%",
         "icon": "$(new-file)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.newFolder",
-        "title": "New Folder",
+        "title": "%command.lecturer.newFolder%",
         "icon": "$(new-folder)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.renameItem",
-        "title": "Rename",
+        "title": "%command.lecturer.renameItem%",
         "icon": "$(edit)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.deleteItem",
-        "title": "Delete",
+        "title": "%command.lecturer.deleteItem%",
         "icon": "$(trash)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.checkoutAllFilteredExamples",
-        "title": "Checkout Latest (Filtered)",
+        "title": "%command.lecturer.checkoutAllFilteredExamples%",
         "icon": "$(cloud-download)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.cleanupFilteredExamples",
-        "title": "Clean Up Local Examples (Filtered)",
+        "title": "%command.lecturer.cleanupFilteredExamples%",
         "icon": "$(trash)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.cleanupAllFilteredExamples",
-        "title": "Clean Up All Examples (Filtered)",
+        "title": "%command.lecturer.cleanupAllFilteredExamples%",
         "icon": "$(clear-all)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.replaceInFilteredExamples",
-        "title": "Replace in All Filtered Examples",
+        "title": "%command.lecturer.replaceInFilteredExamples%",
         "icon": "$(replace-all)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.searchExamples",
-        "title": "Search Examples",
+        "title": "%command.lecturer.searchExamples%",
         "icon": "$(search)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.clearExampleSearch",
-        "title": "Clear Search",
+        "title": "%command.lecturer.clearExampleSearch%",
         "icon": "$(clear-all)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.filterExamplesByCategory",
-        "title": "Filter by Category",
+        "title": "%command.lecturer.filterExamplesByCategory%",
         "icon": "$(filter)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.filterExamplesByTags",
-        "title": "Filter by Tags",
+        "title": "%command.lecturer.filterExamplesByTags%",
         "icon": "$(tag)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.toggleRepositoryFilter",
-        "title": "Toggle Repository Filter",
-        "category": "Computor Examples"
+        "title": "%command.lecturer.toggleRepositoryFilter%",
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.clearRepositoriesFilter",
-        "title": "Clear Repositories Filter",
+        "title": "%command.lecturer.clearRepositoriesFilter%",
         "icon": "$(close)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.clearSearch",
-        "title": "Clear Search",
+        "title": "%command.lecturer.clearSearch%",
         "icon": "$(close)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.clearCategoryFilter",
-        "title": "Clear Category Filter",
+        "title": "%command.lecturer.clearCategoryFilter%",
         "icon": "$(close)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.clearTagsFilter",
-        "title": "Clear Tags Filter",
+        "title": "%command.lecturer.clearTagsFilter%",
         "icon": "$(close)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.refreshExamples",
-        "title": "Refresh Examples",
+        "title": "%command.lecturer.refreshExamples%",
         "icon": "$(refresh)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.chat.refresh",
-        "title": "Refresh Chat",
+        "title": "%command.chat.refresh%",
         "icon": "$(refresh)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.showUnreadOnly",
-        "title": "Show Only Unread",
+        "title": "%command.chat.showUnreadOnly%",
         "icon": "$(eye-closed)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.showAll",
-        "title": "Show All",
+        "title": "%command.chat.showAll%",
         "icon": "$(eye)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.markScopeRead",
-        "title": "Mark All as Read",
+        "title": "%command.chat.markScopeRead%",
         "icon": "$(check-all)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.notifications.mute",
-        "title": "Mute Chat Notifications",
+        "title": "%command.chat.notifications.mute%",
         "icon": "$(bell)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.notifications.unmute",
-        "title": "Unmute Chat Notifications",
+        "title": "%command.chat.notifications.unmute%",
         "icon": "$(bell-slash)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.scope.mute",
-        "title": "Mute Notifications",
+        "title": "%command.chat.scope.mute%",
         "icon": "$(bell)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.scope.unmute",
-        "title": "Unmute Notifications",
+        "title": "%command.chat.scope.unmute%",
         "icon": "$(bell-slash)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.markThreadRead",
-        "title": "Mark Thread as Read",
+        "title": "%command.chat.markThreadRead%",
         "icon": "$(check)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.markThreadUnread",
-        "title": "Mark as Unread",
+        "title": "%command.chat.markThreadUnread%",
         "icon": "$(mail)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.openMessages",
-        "title": "Open Messages",
+        "title": "%command.chat.openMessages%",
         "icon": "$(comment-discussion)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.openThread",
-        "title": "Open Conversation",
-        "category": "Computor Chat"
+        "title": "%command.chat.openThread%",
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.jumpToAssignment",
-        "title": "Open Assignment",
+        "title": "%command.chat.jumpToAssignment%",
         "icon": "$(link-external)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.chat.loadMore",
-        "title": "Load More Messages",
+        "title": "%command.chat.loadMore%",
         "icon": "$(ellipsis)",
-        "category": "Computor Chat"
+        "category": "%category.chat%"
       },
       {
         "command": "computor.lecturer.checkoutMultipleExamples",
-        "title": "Checkout Multiple Examples",
+        "title": "%command.lecturer.checkoutMultipleExamples%",
         "icon": "$(cloud-download)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.uploadExample",
-        "title": "Upload Example",
+        "title": "%command.lecturer.uploadExample%",
         "icon": "$(cloud-upload)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.uploadExamplesFromZip",
-        "title": "Upload Examples from ZIP",
+        "title": "%command.lecturer.uploadExamplesFromZip%",
         "icon": "$(file-zip)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.createCourseContentFromExample",
-        "title": "Create Assignment in Course",
+        "title": "%command.lecturer.createCourseContentFromExample%",
         "icon": "$(add)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.revealExampleInExplorer",
-        "title": "Reveal in Explorer",
+        "title": "%command.lecturer.revealExampleInExplorer%",
         "icon": "$(folder)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.revealInExamples",
-        "title": "Reveal in Examples",
+        "title": "%command.lecturer.revealInExamples%",
         "icon": "$(link-external)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.checkoutAssignmentExample",
-        "title": "Checkout Example",
+        "title": "%command.lecturer.checkoutAssignmentExample%",
         "icon": "$(cloud-download)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.showExampleDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showExampleDetails%",
         "icon": "$(info)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.editTestYaml",
-        "title": "Edit Test Configuration",
+        "title": "%command.lecturer.editTestYaml%",
         "icon": "$(beaker)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.editMetaYaml",
-        "title": "Edit Meta Configuration",
+        "title": "%command.lecturer.editMetaYaml%",
         "icon": "$(note)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.addTests",
-        "title": "Add Tests",
+        "title": "%command.lecturer.addTests%",
         "icon": "$(beaker)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.newReadme",
-        "title": "New Readme",
+        "title": "%command.lecturer.newReadme%",
         "icon": "$(markdown)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.installTestingTools",
-        "title": "Install Testing Tools",
+        "title": "%command.lecturer.installTestingTools%",
         "icon": "$(desktop-download)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.updateTestingTools",
-        "title": "Update Testing Tools",
+        "title": "%command.lecturer.updateTestingTools%",
         "icon": "$(sync)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.uninstallTestingTools",
-        "title": "Uninstall Testing Tools",
+        "title": "%command.lecturer.uninstallTestingTools%",
         "icon": "$(trash)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.runExampleTests",
-        "title": "Run Tests",
+        "title": "%command.lecturer.runExampleTests%",
         "icon": "$(play)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.importExamples",
-        "title": "Import Examples",
+        "title": "%command.lecturer.importExamples%",
         "icon": "$(folder-opened)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.uploadAllExamples",
-        "title": "Upload All Examples",
+        "title": "%command.lecturer.uploadAllExamples%",
         "icon": "$(cloud-upload)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.createExampleRepository",
-        "title": "Create Example Repository",
+        "title": "%command.lecturer.createExampleRepository%",
         "icon": "$(repo-create)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.createNewExample",
-        "title": "Create New Example",
+        "title": "%command.lecturer.createNewExample%",
         "icon": "$(add)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.lecturer.uploadNewExample",
-        "title": "Upload as New Example",
+        "title": "%command.lecturer.uploadNewExample%",
         "icon": "$(cloud-upload)",
-        "category": "Computor Examples"
+        "category": "%category.examples%"
       },
       {
         "command": "computor.userManager.refresh",
-        "title": "Refresh Users",
+        "title": "%command.userManager.refresh%",
         "icon": "$(refresh)",
-        "category": "Computor User Manager"
+        "category": "%category.userManager%"
       },
       {
         "command": "computor.userManager.createUser",
-        "title": "New User",
+        "title": "%command.userManager.createUser%",
         "icon": "$(add)",
-        "category": "Computor User Manager"
+        "category": "%category.userManager%"
       },
       {
         "command": "computor.userManager.openUserDetails",
-        "title": "Open User Details",
+        "title": "%command.userManager.openUserDetails%",
         "icon": "$(account)",
-        "category": "Computor User Manager"
+        "category": "%category.userManager%"
       },
       {
         "command": "computor.userManager.searchUsers",
-        "title": "Search Users",
+        "title": "%command.userManager.searchUsers%",
         "icon": "$(search)",
-        "category": "Computor User Manager"
+        "category": "%category.userManager%"
       },
       {
         "command": "computor.userManager.clearSearch",
-        "title": "Clear Search",
-        "category": "Computor User Manager"
+        "title": "%command.userManager.clearSearch%",
+        "category": "%category.userManager%"
       },
       {
         "command": "computor.userManager.toggleArchived",
-        "title": "Toggle Archived Users",
+        "title": "%command.userManager.toggleArchived%",
         "icon": "$(archive)",
-        "category": "Computor User Manager"
+        "category": "%category.userManager%"
       },
       {
         "command": "computor.userManager.toggleService",
-        "title": "Toggle Service Accounts",
+        "title": "%command.userManager.toggleService%",
         "icon": "$(robot)",
-        "category": "Computor User Manager"
+        "category": "%category.userManager%"
       },
       {
         "command": "computor.logout",
-        "title": "Logout",
+        "title": "%command.logout%",
         "icon": "$(sign-out)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.clearAllData",
-        "title": "Clear All Data",
+        "title": "%command.clearAllData%",
         "icon": "$(trash)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.refresh",
-        "title": "Refresh",
+        "title": "%command.lecturer.refresh%",
         "icon": "$(refresh)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.createOrganization",
-        "title": "Create New Organization",
+        "title": "%command.lecturer.createOrganization%",
         "icon": "$(add)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.createCourseFamily",
-        "title": "Create New Course Family",
+        "title": "%command.lecturer.createCourseFamily%",
         "icon": "$(add)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.createCourse",
-        "title": "Create New Course",
+        "title": "%command.lecturer.createCourse%",
         "icon": "$(add)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.deployCourseFromFile",
-        "title": "Deploy Course from File",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.deployCourseFromFile%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.manageCourse",
-        "title": "Manage Course",
+        "title": "%command.lecturer.manageCourse%",
         "icon": "$(gear)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.toggleVisibility",
-        "title": "Toggle Student Visibility",
+        "title": "%command.lecturer.toggleVisibility%",
         "icon": "$(eye-closed)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.toggleCourseVisibility",
-        "title": "Toggle Student Visibility (whole course)",
+        "title": "%command.lecturer.toggleCourseVisibility%",
         "icon": "$(eye-closed)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.configureCourseGit",
-        "title": "Configure Course Git",
+        "title": "%command.lecturer.configureCourseGit%",
         "icon": "$(git-branch)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.student.refresh",
         "title": "%command.student.refresh%",
         "icon": "$(refresh)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.showPreview",
         "title": "%command.student.showPreview%",
         "icon": "$(open-preview)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.previewDescriptionLanguage",
         "title": "%command.student.previewDescriptionLanguage%",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.newFile",
         "title": "%command.student.fs.newFile%",
         "icon": "$(new-file)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.newFolder",
         "title": "%command.student.fs.newFolder%",
         "icon": "$(new-folder)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.copyTo",
-        "title": "Copy File…",
-        "category": "Computor Student"
+        "title": "%command.student.fs.copyTo%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.moveTo",
-        "title": "Move File…",
-        "category": "Computor Student"
+        "title": "%command.student.fs.moveTo%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.rename",
-        "title": "Rename…",
-        "category": "Computor Student"
+        "title": "%command.student.fs.rename%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.duplicate",
-        "title": "Duplicate",
-        "category": "Computor Student"
+        "title": "%command.student.fs.duplicate%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.cut",
-        "title": "Cut",
-        "category": "Computor Student"
+        "title": "%command.student.fs.cut%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.copy",
-        "title": "Copy",
-        "category": "Computor Student"
+        "title": "%command.student.fs.copy%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.paste",
-        "title": "Paste",
-        "category": "Computor Student"
+        "title": "%command.student.fs.paste%",
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.revealInOS",
         "title": "%command.student.fs.revealInOS%",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.copyPath",
         "title": "%command.student.fs.copyPath%",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.copyRelativePath",
         "title": "%command.student.fs.copyRelativePath%",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.deleteFile",
-        "title": "Delete File",
+        "title": "%command.student.fs.deleteFile%",
         "icon": "$(trash)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.fs.deleteFolder",
-        "title": "Delete Folder",
+        "title": "%command.student.fs.deleteFolder%",
         "icon": "$(trash)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.student.showMessages",
         "title": "%command.student.showMessages%",
         "icon": "$(comment-discussion)",
-        "category": "Computor Student"
+        "category": "%category.student%"
       },
       {
         "command": "computor.showTestResults",
@@ -1003,408 +1003,408 @@
       },
       {
         "command": "computor.tutor.refresh",
-        "title": "Refresh",
+        "title": "%command.tutor.refresh%",
         "icon": "$(refresh)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.selectCourse",
-        "title": "Select Course",
-        "category": "Computor Tutor"
+        "title": "%command.tutor.selectCourse%",
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.selectGroup",
-        "title": "Select Group Filter",
-        "category": "Computor Tutor"
+        "title": "%command.tutor.selectGroup%",
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.selectMember",
-        "title": "Select Member",
-        "category": "Computor Tutor"
+        "title": "%command.tutor.selectMember%",
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.showCourseMemberComments",
-        "title": "Show Comments",
+        "title": "%command.tutor.showCourseMemberComments%",
         "icon": "$(note)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.tutor.showMessages",
-        "title": "Show Messages",
+        "title": "%command.tutor.showMessages%",
         "icon": "$(comment-discussion)",
-        "category": "Computor Tutor"
+        "category": "%category.tutor%"
       },
       {
         "command": "computor.lecturer.createUnit",
-        "title": "Create Unit",
+        "title": "%command.lecturer.createUnit%",
         "icon": "$(add)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.createAssignment",
-        "title": "Create Assignment",
+        "title": "%command.lecturer.createAssignment%",
         "icon": "$(add)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showMessages",
-        "title": "Show Messages",
+        "title": "%command.lecturer.showMessages%",
         "icon": "$(comment-discussion)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.manageOrganizationMembers",
-        "title": "Manage Members",
+        "title": "%command.lecturer.manageOrganizationMembers%",
         "icon": "$(organization)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.manageCourseFamilyMembers",
-        "title": "Manage Members",
+        "title": "%command.lecturer.manageCourseFamilyMembers%",
         "icon": "$(organization)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.openAssignmentFolder",
-        "title": "Reveal Deployed Files",
+        "title": "%command.lecturer.openAssignmentFolder%",
         "icon": "$(folder-opened)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.syncAssignments",
-        "title": "Sync Assignments Repositories",
+        "title": "%command.lecturer.syncAssignments%",
         "icon": "$(sync)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseMemberComments",
-        "title": "Show Comments",
+        "title": "%command.lecturer.showCourseMemberComments%",
         "icon": "$(note)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.createCourseContentType",
-        "title": "Create Content Type",
+        "title": "%command.lecturer.createCourseContentType%",
         "icon": "$(add)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.changeCourseContentType",
-        "title": "Change Content Type",
+        "title": "%command.lecturer.changeCourseContentType%",
         "icon": "$(symbol-class)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.createCourseGroup",
-        "title": "Create Course Group",
+        "title": "%command.lecturer.createCourseGroup%",
         "icon": "$(add)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.importCourseMembersPreview",
-        "title": "Show Members",
+        "title": "%command.lecturer.importCourseMembersPreview%",
         "icon": "$(account)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.manageCourseMembers",
-        "title": "Manage Members",
+        "title": "%command.lecturer.manageCourseMembers%",
         "icon": "$(organization)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseGroupDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showCourseGroupDetails%",
         "icon": "$(info)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseMemberDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showCourseMemberDetails%",
         "icon": "$(info)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseProgressOverview",
-        "title": "Show Progress Overview",
+        "title": "%command.lecturer.showCourseProgressOverview%",
         "icon": "$(graph)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseMemberProgress",
-        "title": "Show Progress",
+        "title": "%command.lecturer.showCourseMemberProgress%",
         "icon": "$(graph-line)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.renameCourseGroup",
-        "title": "Rename",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.renameCourseGroup%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.deleteCourseGroup",
-        "title": "Delete Group",
+        "title": "%command.lecturer.deleteCourseGroup%",
         "icon": "$(trash)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showCourseDetails%",
         "icon": "$(info)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseContentDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showCourseContentDetails%",
         "icon": "$(info)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showOrganizationDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showOrganizationDetails%",
         "icon": "$(info)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseFamilyDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showCourseFamilyDetails%",
         "icon": "$(info)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.showCourseContentTypeDetails",
-        "title": "Show Details",
+        "title": "%command.lecturer.showCourseContentTypeDetails%",
         "icon": "$(info)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.editCourseContentType",
-        "title": "Edit Content Type",
+        "title": "%command.lecturer.editCourseContentType%",
         "icon": "$(edit)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.deleteCourseContentType",
-        "title": "Delete Content Type",
+        "title": "%command.lecturer.deleteCourseContentType%",
         "icon": "$(trash)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.deleteOrganization",
-        "title": "Delete Organization",
+        "title": "%command.lecturer.deleteOrganization%",
         "icon": "$(trash)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.deleteCourseFamily",
-        "title": "Delete Course Family",
+        "title": "%command.lecturer.deleteCourseFamily%",
         "icon": "$(trash)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.deleteCourse",
-        "title": "Delete Course",
+        "title": "%command.lecturer.deleteCourse%",
         "icon": "$(trash)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.archiveCourse",
-        "title": "Archive Course",
+        "title": "%command.lecturer.archiveCourse%",
         "icon": "$(archive)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.unarchiveCourse",
-        "title": "Unarchive Course",
+        "title": "%command.lecturer.unarchiveCourse%",
         "icon": "$(archive)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.renameCourseContent",
-        "title": "Rename Title...",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.renameCourseContent%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.renameCourseContentType",
-        "title": "Rename",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.renameCourseContentType%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.moveContentToTop",
-        "title": "Move to Top",
+        "title": "%command.lecturer.moveContentToTop%",
         "icon": "$(fold-up)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.moveContentUp",
-        "title": "Move Up",
+        "title": "%command.lecturer.moveContentUp%",
         "icon": "$(arrow-up)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.moveContentDown",
-        "title": "Move Down",
+        "title": "%command.lecturer.moveContentDown%",
         "icon": "$(arrow-down)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.moveContentToBottom",
-        "title": "Move to Bottom",
+        "title": "%command.lecturer.moveContentToBottom%",
         "icon": "$(fold-down)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.prependContentToUnit",
-        "title": "Move to Start of Unit...",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.prependContentToUnit%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.appendContentToUnit",
-        "title": "Move to End of Unit...",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.appendContentToUnit%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.deleteCourseContent",
-        "title": "Delete",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.deleteCourseContent%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.setMaxTestRuns",
-        "title": "Set Max Test Runs...",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.setMaxTestRuns%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.setMaxSubmissions",
-        "title": "Set Max Submissions...",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.setMaxSubmissions%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.setCourseMaxTestRuns",
-        "title": "Set Default Max Test Runs...",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.setCourseMaxTestRuns%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.setCourseMaxSubmissions",
-        "title": "Set Default Max Submissions...",
-        "category": "Computor Lecturer"
+        "title": "%command.lecturer.setCourseMaxSubmissions%",
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.archiveCourseContent",
-        "title": "Archive",
+        "title": "%command.lecturer.archiveCourseContent%",
         "icon": "$(archive)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.unarchiveCourseContent",
-        "title": "Unarchive",
+        "title": "%command.lecturer.unarchiveCourseContent%",
         "icon": "$(history)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.updateExampleVersion",
-        "title": "Update Example Version",
+        "title": "%command.lecturer.updateExampleVersion%",
         "icon": "$(versions)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.updateExampleVersions",
-        "title": "Update All Example Versions",
+        "title": "%command.lecturer.updateExampleVersions%",
         "icon": "$(versions)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.lecturer.openRemoteRepository",
-        "title": "Open Remote Repository",
+        "title": "%command.lecturer.openRemoteRepository%",
         "icon": "$(github)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.manageRepositoryTokens",
-        "title": "Manage Repository Tokens",
+        "title": "%command.manageRepositoryTokens%",
         "icon": "$(key)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.configureGit",
-        "title": "Configure Git",
+        "title": "%command.configureGit%",
         "icon": "$(person)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.gettingStarted",
-        "title": "Getting Started",
+        "title": "%command.gettingStarted%",
         "icon": "$(book)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.welcome",
         "title": "%command.welcome%",
         "icon": "$(question)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.releaseCourseContent",
-        "title": "Release Content",
+        "title": "%command.lecturer.releaseCourseContent%",
         "icon": "$(rocket)",
-        "category": "Computor Lecturer"
+        "category": "%category.lecturer%"
       },
       {
         "command": "computor.matlab.moveWorkspaceView",
-        "title": "Move MATLAB Workspace to the Secondary Side Bar",
-        "category": "Computor"
+        "title": "%command.matlab.moveWorkspaceView%",
+        "category": "%category.computor%"
       },
       {
         "command": "computor.showContentDescription",
         "title": "%command.showContentDescription%",
         "icon": "$(book)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.editContentDescription",
-        "title": "Edit Description...",
+        "title": "%command.lecturer.editContentDescription%",
         "icon": "$(edit)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.draftDescriptionWithLena",
         "title": "%command.lecturer.draftDescriptionWithLena%",
         "icon": "$(sparkle)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.draftUnitDescriptionsWithLena",
         "title": "%command.lecturer.draftUnitDescriptionsWithLena%",
         "icon": "$(sparkle)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.checkLinks",
-        "title": "Check Links",
+        "title": "%command.lecturer.checkLinks%",
         "icon": "$(link)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.lecturer.checkExampleLinks",
-        "title": "Check Links",
+        "title": "%command.lecturer.checkExampleLinks%",
         "icon": "$(link)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.figures.show",
-        "title": "Show Figures",
+        "title": "%command.figures.show%",
         "icon": "$(graph)",
-        "category": "Computor"
+        "category": "%category.computor%"
       },
       {
         "command": "computor.publicCourses",
-        "title": "Public Courses",
-        "category": "Computor"
+        "title": "%command.publicCourses%",
+        "category": "%category.computor%"
       }
     ],
     "customEditors": [
       {
         "viewType": "computor.imagePreview",
-        "displayName": "Computor Image Preview",
+        "displayName": "%customEditor.imagePreview%",
         "priority": "option",
         "selector": [
           {
@@ -1414,7 +1414,7 @@
       },
       {
         "viewType": "computor.pdfPreview",
-        "displayName": "Computor PDF Preview",
+        "displayName": "%customEditor.pdfPreview%",
         "priority": "default",
         "selector": [
           {
@@ -1424,7 +1424,7 @@
       },
       {
         "viewType": "computor.htmlPreview",
-        "displayName": "Computor HTML Preview",
+        "displayName": "%customEditor.htmlPreview%",
         "priority": "default",
         "selector": [
           {
@@ -1437,37 +1437,37 @@
       "activitybar": [
         {
           "id": "computor-student",
-          "title": "Computor Student",
+          "title": "%viewContainer.computor-student%",
           "icon": "$(book)",
           "when": "computor.student.show"
         },
         {
           "id": "computor-student-offline",
-          "title": "Computor Student (Offline Mode)",
+          "title": "%viewContainer.computor-student-offline%",
           "icon": "$(repo)",
           "when": "computor.student.offline.show"
         },
         {
           "id": "computor-tutor",
-          "title": "Computor Tutor",
+          "title": "%viewContainer.computor-tutor%",
           "icon": "$(person)",
           "when": "computor.tutor.show"
         },
         {
           "id": "computor-lecturer",
-          "title": "Computor Lecturer",
+          "title": "%viewContainer.computor-lecturer%",
           "icon": "$(mortar-board)",
           "when": "computor.lecturer.show"
         },
         {
           "id": "computor-user-manager",
-          "title": "Computor User Manager",
+          "title": "%viewContainer.computor-user-manager%",
           "icon": "$(account)",
           "when": "computor.user_manager.show"
         },
         {
           "id": "computor-chat",
-          "title": "Computor Chat",
+          "title": "%viewContainer.computor-chat%",
           "icon": "$(comment-discussion)",
           "when": "computor.chat.show"
         }
@@ -1496,73 +1496,73 @@
           "id": "computor.student.courses",
           "name": "%view.student.courses%",
           "icon": "$(book)",
-          "contextualTitle": "Student Course Content",
+          "contextualTitle": "%view.student.courses.contextualTitle%",
           "when": "computor.student.show"
         }
       ],
       "computor-student-offline": [
         {
           "id": "computor.student.offline.view",
-          "name": "Assignments",
+          "name": "%view.student.offline.view%",
           "icon": "$(repo)",
-          "contextualTitle": "Student Offline Assignments",
+          "contextualTitle": "%view.student.offline.view.contextualTitle%",
           "when": "computor.student.offline.show"
         }
       ],
       "computor-tutor": [
         {
           "id": "computor.tutor.filters",
-          "name": "Courses & Members",
+          "name": "%view.tutor.filters%",
           "icon": "$(filter)",
-          "contextualTitle": "Tutor Course Selection",
+          "contextualTitle": "%view.tutor.filters.contextualTitle%",
           "when": "computor.tutor.show"
         },
         {
           "id": "computor.tutor.courses",
-          "name": "Courses",
+          "name": "%view.tutor.courses%",
           "icon": "$(person)",
-          "contextualTitle": "Tutor Courses",
+          "contextualTitle": "%view.tutor.courses.contextualTitle%",
           "when": "computor.tutor.show"
         }
       ],
       "computor-lecturer": [
         {
           "id": "computor.lecturer.courses",
-          "name": "Courses",
+          "name": "%view.lecturer.courses%",
           "icon": "$(mortar-board)",
-          "contextualTitle": "Lecturer Courses",
+          "contextualTitle": "%view.lecturer.courses.contextualTitle%",
           "when": "computor.lecturer.show"
         },
         {
           "id": "computor.lecturer.examples",
-          "name": "Examples",
+          "name": "%view.lecturer.examples%",
           "icon": "$(repo)",
-          "contextualTitle": "Example Repository",
+          "contextualTitle": "%view.lecturer.examples.contextualTitle%",
           "when": "computor.lecturer.show"
         },
         {
           "id": "computor.lecturer.documents",
-          "name": "Documents",
+          "name": "%view.lecturer.documents%",
           "icon": "$(file-directory)",
-          "contextualTitle": "Course Documents",
+          "contextualTitle": "%view.lecturer.documents.contextualTitle%",
           "when": "computor.lecturer.show"
         }
       ],
       "computor-user-manager": [
         {
           "id": "computor.usermanager.users",
-          "name": "Users",
+          "name": "%view.usermanager.users%",
           "icon": "$(organization)",
-          "contextualTitle": "User Management",
+          "contextualTitle": "%view.usermanager.users.contextualTitle%",
           "when": "computor.user_manager.show"
         }
       ],
       "computor-chat": [
         {
           "id": "computor.chat.inbox",
-          "name": "Inbox",
+          "name": "%view.chat.inbox%",
           "icon": "$(comment-discussion)",
-          "contextualTitle": "Computor Chat",
+          "contextualTitle": "%view.chat.inbox.contextualTitle%",
           "when": "computor.chat.show"
         }
       ],
@@ -3164,24 +3164,25 @@
     "check:backend-compat": "node scripts/check-backend-compat.mjs"
   },
   "devDependencies": {
+    "@stylistic/eslint-plugin-ts": "^2.13.0",
     "@types/chai": "^4.3.4",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.1",
     "@types/node": "^16.18.126",
     "@types/node-fetch": "^2.6.0",
-    "@types/semver": "^7.3.12",
+    "@types/semver": "^7.8.0",
     "@types/vscode": "^1.74.0",
-    "@typescript-eslint/eslint-plugin": "^5.45.0",
-    "@typescript-eslint/parser": "^5.45.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
     "@vscode/test-electron": "2.5.2",
-    "@vscode/vsce": "^3.6.2",
-    "c8": "^10.1.3",
+    "@vscode/vsce": "^3.9.2",
+    "c8": "^12.0.0",
     "chai": "^4.3.7",
     "copy-webpack-plugin": "^14.0.0",
     "eslint": "^8.28.0",
     "mocha": "^12.0.3",
     "terser-webpack-plugin": "^5.6.1",
-    "ts-loader": "^9.5.4",
+    "ts-loader": "^9.6.2",
     "ts-node": "^10.9.2",
     "typescript": "^4.9.4",
     "webpack": "^5.101.3",
@@ -3193,9 +3194,9 @@
     "form-data": "^4.0.0",
     "js-yaml": "^4.1.0",
     "jsonc-parser": "^3.2.0",
-    "jszip": "^3.10.1",
-    "node-fetch": "^2.6.0",
-    "semver": "^7.7.2",
+    "jszip": "^3.10.2",
+    "node-fetch": "^3.3.2",
+    "semver": "^7.8.5",
     "simple-git": "^4.0.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },

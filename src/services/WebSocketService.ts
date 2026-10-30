@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import { ComputorSettingsManager } from '../settings/ComputorSettingsManager';
 import type { BearerTokenHttpClient } from '../http/BearerTokenHttpClient';
-import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated } from '../types/generated/websocket';
+import type { WSDeploymentStatusChanged, WSDeploymentAssigned, WSDeploymentUnassigned, WSCourseContentUpdated, WSCourseUpdated, WSSubmissionGroupUpdated } from '../types/generated/websocket';
 import { CredentialRecoveryService } from './CredentialRecoveryService';
 import { UiStateService } from './UiStateService';
 import { notify } from '../utils/notify';
-import { say } from '../utils/uiLanguage';
+import { formatUiDateTime, say, uiLanguage } from '../utils/uiLanguage';
+import { localizedText } from '../utils/contentLanguage';
 
 // WebSocket message types from server
 export interface WsMessageNew {
@@ -69,6 +70,18 @@ export interface WsChannelUnsubscribed {
 export interface WsError {
   type: 'error';
   message: string;
+}
+
+/**
+ * Maintenance events carry `message_i18n` ({de, en}) beside `message`; the
+ * reader's language replaces `message` in place, so every handler shows it.
+ */
+export function localizeMaintenanceMessage(message: { message?: string; data?: unknown; message_i18n?: Record<string, string> | null }): void {
+  for (const payload of [message, message.data]) {
+    if (!payload || typeof payload !== 'object') continue;
+    const event = payload as { message?: string; message_i18n?: Record<string, string> | null };
+    if (event.message_i18n) event.message = localizedText(event.message_i18n, uiLanguage(), event.message) ?? event.message;
+  }
 }
 
 export interface WsMaintenanceActivated {
@@ -142,14 +155,25 @@ export interface WsPermissionsUpdated {
   data: { user_id: string };
 }
 
+/**
+ * The current user's profile changed, on the web or in another client. Sent on
+ * the personal `user:<id>` channel; `language_code` is null for Automatic.
+ */
+export interface WsUserProfileUpdated {
+  type: 'user:profile_updated';
+  channel: string;
+  data: { user_id: string; language_code?: string | null };
+}
+
 // Re-export deployment/course event types from generated types
 export type WsDeploymentStatusChanged = WSDeploymentStatusChanged & { type: 'deployment:status_changed' };
 export type WsDeploymentAssigned = WSDeploymentAssigned & { type: 'deployment:assigned' };
 export type WsDeploymentUnassigned = WSDeploymentUnassigned & { type: 'deployment:unassigned' };
 export type WsCourseContentUpdated = WSCourseContentUpdated & { type: 'course:content_updated' };
 export type WsCourseUpdated = WSCourseUpdated & { type: 'course:updated' };
+export type WsSubmissionGroupUpdated = WSSubmissionGroupUpdated & { type: 'submission_group:updated' };
 
-export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsPermissionsUpdated | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated;
+export type WsServerMessage = WsMessageNew | WsMessageUpdate | WsMessageDelete | WsTypingUpdate | WsReadUpdate | WsPong | WsSystemPong | WsSystemConnected | WsAuthExpiring | WsReauthed | WsChannelSubscribed | WsChannelUnsubscribed | WsError | WsMaintenanceActivated | WsMaintenanceDeactivated | WsMaintenanceScheduled | WsMaintenanceCancelled | WsMaintenanceReminder | WsPermissionsUpdated | WsUserProfileUpdated | WsDeploymentStatusChanged | WsDeploymentAssigned | WsDeploymentUnassigned | WsCourseContentUpdated | WsCourseUpdated | WsSubmissionGroupUpdated;
 
 // WebSocket message types to server
 export interface WsSubscribe {
@@ -218,11 +242,13 @@ export interface WebSocketEventHandlers {
   onMaintenanceCancelled?: (message: string) => void;
   onMaintenanceReminder?: (minutesRemaining: number, scheduledAt: string, message: string) => void;
   onPermissionsUpdated?: (event: WsPermissionsUpdated) => void;
+  onUserProfileUpdated?: (event: WsUserProfileUpdated) => void;
   onDeploymentStatusChanged?: (event: WsDeploymentStatusChanged) => void;
   onDeploymentAssigned?: (event: WsDeploymentAssigned) => void;
   onDeploymentUnassigned?: (event: WsDeploymentUnassigned) => void;
   onCourseContentUpdated?: (event: WsCourseContentUpdated) => void;
   onCourseUpdated?: (event: WsCourseUpdated) => void;
+  onSubmissionGroupUpdated?: (event: WsSubmissionGroupUpdated) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: string) => void;
@@ -588,6 +614,7 @@ export class WebSocketService {
   private handleMessage(data: string): void {
     try {
       const message = JSON.parse(data) as WsServerMessage;
+      if (message.type.startsWith('maintenance:')) localizeMaintenanceMessage(message as never);
 
       switch (message.type) {
         case 'message:new':
@@ -677,7 +704,7 @@ export class WebSocketService {
           console.log('[WebSocket] Maintenance activated:', activatedData.message);
           this.httpClient?.setMaintenanceMode(true, activatedData.message);
           this.updateMaintenanceStatusBar('active', activatedData.message);
-          notify.warning(`Maintenance Mode Active: ${activatedData.message}`);
+          notify.warning(`${say('Maintenance Mode Active', 'Wartungsmodus aktiv')}: ${activatedData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceActivated?.(activatedData.message, activatedData.activated_at);
           });
@@ -689,7 +716,7 @@ export class WebSocketService {
           console.log('[WebSocket] Maintenance deactivated');
           this.httpClient?.setMaintenanceMode(false);
           this.updateMaintenanceStatusBar('inactive');
-          notify.info(`Maintenance Complete: ${deactivatedData.message}`);
+          notify.info(`${say('Maintenance Complete', 'Wartung abgeschlossen')}: ${deactivatedData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceDeactivated?.(deactivatedData.message);
           });
@@ -700,7 +727,8 @@ export class WebSocketService {
           const scheduledData = (message as any).data || message;
           console.log('[WebSocket] Maintenance scheduled:', scheduledData.scheduled_at);
           this.updateMaintenanceStatusBar('scheduled', scheduledData.message, scheduledData.scheduled_at);
-          notify.info(`Maintenance Scheduled for ${new Date(scheduledData.scheduled_at).toLocaleString()}: ${scheduledData.message}`);
+          const when = formatUiDateTime(new Date(scheduledData.scheduled_at));
+          notify.info(`${say(`Maintenance Scheduled for ${when}`, `Wartung geplant für ${when}`)}: ${scheduledData.message}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceScheduled?.(scheduledData.scheduled_at, scheduledData.message);
           });
@@ -711,7 +739,7 @@ export class WebSocketService {
           const cancelledData = (message as any).data || message;
           console.log('[WebSocket] Maintenance cancelled');
           this.updateMaintenanceStatusBar('inactive');
-          notify.info('Scheduled maintenance has been cancelled.');
+          notify.info(say('Scheduled maintenance has been cancelled.', 'Die geplante Wartung wurde abgesagt.'));
           this.eventHandlers.forEach((handlers) => {
             handlers.onMaintenanceCancelled?.(cancelledData.message);
           });
@@ -721,7 +749,7 @@ export class WebSocketService {
         case 'maintenance:reminder': {
           const reminderData = (message as any).data || message;
           const minutesRemaining: number = reminderData.minutes_remaining;
-          const reminderMessage: string = reminderData.message || 'Maintenance is approaching';
+          const reminderMessage: string = reminderData.message || say('Maintenance is approaching', 'Die Wartung steht bevor');
 
           console.log(`[WebSocket] Maintenance reminder: ${minutesRemaining}min remaining`);
 
@@ -732,13 +760,13 @@ export class WebSocketService {
           // Escalate notification urgency based on time remaining
           if (minutesRemaining <= 5) {
             this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-            notify.error(`Maintenance in ${minutesRemaining} minute(s): ${reminderMessage}`);
+            notify.error(`${say(`Maintenance in ${minutesRemaining} minute(s)`, `Wartung in ${minutesRemaining} Minute(n)`)}: ${reminderMessage}`);
           } else if (minutesRemaining <= 10) {
             this.maintenanceStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-            notify.warning(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+            notify.warning(`${say(`Maintenance in ${minutesRemaining} minutes`, `Wartung in ${minutesRemaining} Minuten`)}: ${reminderMessage}`);
           } else {
             this.maintenanceStatusBarItem.backgroundColor = undefined;
-            notify.info(`Maintenance in ${minutesRemaining} minutes: ${reminderMessage}`);
+            notify.info(`${say(`Maintenance in ${minutesRemaining} minutes`, `Wartung in ${minutesRemaining} Minuten`)}: ${reminderMessage}`);
           }
 
           this.maintenanceStatusBarItem.show();
@@ -753,6 +781,13 @@ export class WebSocketService {
           console.log('[WebSocket] Permissions updated for the current user');
           this.eventHandlers.forEach((handlers) => {
             handlers.onPermissionsUpdated?.(message as WsPermissionsUpdated);
+          });
+          break;
+        }
+
+        case 'user:profile_updated': {
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onUserProfileUpdated?.(message as WsUserProfileUpdated);
           });
           break;
         }
@@ -801,6 +836,17 @@ export class WebSocketService {
           console.log(`[WebSocket] Course updated: ${courseData.course_id} change=${courseData.change_type}`);
           this.eventHandlers.forEach((handlers) => {
             handlers.onCourseUpdated?.({ ...courseData, type: 'course:updated' } as WsCourseUpdated);
+          });
+          break;
+        }
+
+        case 'submission_group:updated': {
+          // Test result, submission or grading changed (issue #554). Arrives on
+          // the member's user:<id> inbox and on submission_group:<id>.
+          const groupData = (message as any).data || message;
+          console.log(`[WebSocket] Submission group updated: ${groupData.submission_group_id} content=${groupData.course_content_id}`);
+          this.eventHandlers.forEach((handlers) => {
+            handlers.onSubmissionGroupUpdated?.({ ...groupData, type: 'submission_group:updated' } as WsSubmissionGroupUpdated);
           });
           break;
         }
@@ -1031,7 +1077,7 @@ export class WebSocketService {
         this.maintenanceStatusBarItem.text = `$(clock) ${say('Maintenance scheduled', 'Wartung geplant')}`;
         this.maintenanceStatusBarItem.backgroundColor = undefined;
         this.maintenanceStatusBarItem.tooltip = scheduledAt
-          ? `${say('Maintenance scheduled', 'Wartung geplant')}: ${new Date(scheduledAt).toLocaleString()}${message ? ' — ' + message : ''}`
+          ? `${say('Maintenance scheduled', 'Wartung geplant')}: ${formatUiDateTime(new Date(scheduledAt))}${message ? ' — ' + message : ''}`
           : message || say('Maintenance scheduled', 'Wartung geplant');
         this.maintenanceStatusBarItem.show();
         break;

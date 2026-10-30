@@ -1,6 +1,6 @@
 (function () {
   // Shared runtime (base.js).
-  const { vscode, escapeHtml, el, createStore } = window.ComputorWebview;
+  const { vscode, escapeHtml, el, createStore, say } = window.ComputorWebview;
   // Pure, Unicode-aware @-mention helpers (mention.js, loaded before this).
   const mentionUtil = window.ComputorWebview.mention;
 
@@ -239,7 +239,7 @@
     if (mention.items.length === 0) {
       const status = createElement('div', {
         className: 'mention-empty',
-        textContent: mention.loading ? 'Searching…' : 'No matching people'
+        textContent: mention.loading ? say('Searching…', 'Suche läuft …') : say('No matching people', 'Keine passende Person')
       });
       dd.appendChild(status);
       dd.style.display = 'block';
@@ -423,11 +423,12 @@
       });
       const text = createElement('span', {
         className: 'placeholder-text',
-        textContent: 'No message view selected'
+        textContent: say('No message view selected', 'Keine Nachrichtenansicht ausgewählt')
       });
       const hint = createElement('span', {
         className: 'placeholder-hint',
-        textContent: 'Open a messages view from the sidebar to compose a message.'
+        textContent: say('Open a messages view from the sidebar to compose a message.',
+          'Öffne in der Seitenleiste eine Nachrichtenansicht, um eine Nachricht zu schreiben.')
       });
       placeholder.appendChild(icon);
       placeholder.appendChild(text);
@@ -446,7 +447,8 @@
         const contextRow = createElement('div', { className: 'input-context-row' });
         const contextLabel = createElement('span', {
           className: 'input-context reply-context',
-          innerHTML: `Replying to <strong>${escapeHtml(state.replyTo.title || 'message')}</strong>`
+          innerHTML: say(`Replying to <strong>${escapeHtml(state.replyTo.title || 'message')}</strong>`,
+            `Antwort auf <strong>${escapeHtml(state.replyTo.title || 'die Nachricht')}</strong>`)
         });
         contextRow.appendChild(contextLabel);
 
@@ -456,7 +458,7 @@
           innerHTML: '&#10005;',
           attributes: {
             type: 'button',
-            title: 'Cancel reply'
+            title: say('Cancel reply', 'Antwort verwerfen')
           }
         });
         closeBtn.addEventListener('click', () => {
@@ -476,7 +478,8 @@
         const contextRow = createElement('div', { className: 'input-context-row' });
         const contextLabel = createElement('span', {
           className: 'input-context edit-context',
-          innerHTML: `Editing <strong>${escapeHtml(state.editingMessage.title || 'message')}</strong>`
+          innerHTML: say(`Editing <strong>${escapeHtml(state.editingMessage.title || 'message')}</strong>`,
+            `Du bearbeitest <strong>${escapeHtml(state.editingMessage.title || 'die Nachricht')}</strong>`)
         });
         contextRow.appendChild(contextLabel);
 
@@ -486,7 +489,7 @@
           innerHTML: '&#10005;',
           attributes: {
             type: 'button',
-            title: 'Cancel edit'
+            title: say('Cancel edit', 'Bearbeiten abbrechen')
           }
         });
         closeBtn.addEventListener('click', () => {
@@ -521,7 +524,7 @@
       });
       const text = createElement('span', {
         className: 'read-only-text',
-        textContent: state.target.readOnlyReason || 'You can read but not post messages here.'
+        textContent: state.target.readOnlyReason || say('You can read but not post messages here.', 'Hier kannst du Nachrichten lesen, aber nicht schreiben.')
       });
       notice.appendChild(icon);
       notice.appendChild(text);
@@ -555,7 +558,7 @@
         attributes: {
           type: 'text',
           id: 'message-title',
-          placeholder: 'Subject',
+          placeholder: say('Subject', 'Betreff'),
           required: 'required'
         }
       });
@@ -574,7 +577,7 @@
     if (state.replyTo || state.editingMessage) {
       const cancelEl = createElement('button', {
         className: 'btn ghost sm cancel-btn',
-        textContent: 'Cancel',
+        textContent: say('Cancel', 'Abbrechen'),
         attributes: { type: 'button' }
       });
       cancelEl.addEventListener('click', () => {
@@ -596,13 +599,13 @@
         attributes: {
           type: 'button',
           disabled: state.loading ? 'disabled' : null,
-          title: state.editingMessage ? 'Save changes' : 'Send message'
+          title: state.editingMessage ? say('Save changes', 'Änderungen speichern') : say('Send message', 'Nachricht senden')
         }
       });
 
       const buttonText = createElement('span', {
         className: 'send-button-text',
-        textContent: state.editingMessage ? 'Save' : 'Send'
+        textContent: state.editingMessage ? say('Save', 'Speichern') : say('Send', 'Senden')
       });
       sendButton.appendChild(buttonText);
 
@@ -618,7 +621,7 @@
         const contentValue = getEditorContent().trim();
 
         if (!contentValue) {
-          vscode.postMessage({ command: 'showWarning', data: 'Message body is required.' });
+          vscode.postMessage({ command: 'showWarning', data: say('Message body is required.', 'Bitte schreib eine Nachricht.') });
           return;
         }
 
@@ -634,7 +637,8 @@
         if (hasSubjectField && !titleValue) {
           vscode.postMessage({
             command: 'showWarning',
-            data: 'A subject is required — it is what identifies this announcement in the list.'
+            data: say('A subject is required — it is what identifies this announcement in the list.',
+              'Bitte gib einen Betreff ein, denn an ihm erkennt man die Ankündigung in der Liste.')
           });
           return;
         }
@@ -678,7 +682,7 @@
 
     const writeTab = createElement('button', {
       className: `tab editor-tab ${state.activeTab === 'write' ? 'active' : ''}`,
-      textContent: 'Write'
+      textContent: say('Write', 'Schreiben')
     });
     writeTab.addEventListener('click', () => {
       if (state.activeTab !== 'write') {
@@ -688,7 +692,7 @@
 
     const previewTab = createElement('button', {
       className: `tab editor-tab ${state.activeTab === 'preview' ? 'active' : ''}`,
-      textContent: 'Preview'
+      textContent: say('Preview', 'Vorschau')
     });
     previewTab.addEventListener('click', () => {
       if (state.activeTab !== 'preview') {
@@ -766,7 +770,7 @@
       if (contentToPreview.trim()) {
         preview.innerHTML = `<div class="markdown-body">${renderContentWithMentions(contentToPreview)}</div>`;
       } else {
-        preview.innerHTML = '<p class="preview-empty">Nothing to preview</p>';
+        preview.innerHTML = '<p class="preview-empty">' + escapeHtml(say('Nothing to preview', 'Noch nichts für die Vorschau')) + '</p>';
       }
       contentArea.appendChild(preview);
     }
@@ -805,6 +809,25 @@
         state.typingUsers = [];
         setState(message.data || {});
         break;
+      case 'setLanguage': {
+        // Relabel without the reset of updateState: the draft and the subject
+        // live in the DOM until they are sent.
+        syncEditorContent();
+        const subjectInput = document.getElementById('message-title');
+        const subject = subjectInput ? subjectInput.value : undefined;
+        const editor = document.getElementById('message-body');
+        const focused = Boolean(editor) && document.activeElement === editor;
+        window.ComputorWebview.setLanguage(message.data?.language);
+        setState({
+          editorPlaceholders: message.data?.editorPlaceholders || state.editorPlaceholders,
+          tutorRoutingNotice: message.data?.tutorRoutingNotice ?? null
+        });
+        const newSubjectInput = document.getElementById('message-title');
+        if (newSubjectInput && subject !== undefined) { newSubjectInput.value = subject; }
+        const newEditor = document.getElementById('message-body');
+        if (focused && newEditor) { newEditor.focus(); }
+        break;
+      }
       case 'setLoading':
         setState({ loading: Boolean(message.data?.loading) });
         break;
