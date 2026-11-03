@@ -3164,7 +3164,7 @@
     "check:backend-compat": "node scripts/check-backend-compat.mjs"
   },
   "devDependencies": {
-    "@stylistic/eslint-plugin-ts": "^2.13.0",
+    "@stylistic/eslint-plugin-ts": "^4.4.1",
     "@types/chai": "^4.3.4",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.1",
