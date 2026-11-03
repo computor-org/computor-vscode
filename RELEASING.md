@@ -52,7 +52,7 @@ Always bumping the patch gives that for free. A worked line:
 2027.3.1    pre-release   <- next semester
 ```
 
-Stable users never see an odd-numbered build in that list — they only ever
+Stable users never see the pre-releases in that list — they only ever
 receive versions published without the flag. Pre-release users always sit on
 the highest number of either kind.
 
@@ -206,7 +206,7 @@ the intended graduation path.
 ```sh
 npm run test:release      # version, channel, and preview-ordering rules
 npm run test:coverage     # full unit suite
-node scripts/release-channel.mjs version   # 2026.10.1
-node scripts/release-channel.mjs tag       # v2026.10.1
-node scripts/release-channel.mjs branch    # release/2026.10
+node scripts/release-channel.mjs version   # the package.json version, e.g. 2026.10.1
+node scripts/release-channel.mjs tag       # v<version>
+node scripts/release-channel.mjs branch    # release/<year>.<month>
 ```

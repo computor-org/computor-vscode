@@ -35,9 +35,13 @@ Student: Switch Course**, to choose a different enrolled course.
 
 2. **Login to Computor**
    - Open the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P`)
+   - Run `Computor: Change Backend URL` and enter your institution's backend URL
+     (the default is `http://localhost:8000`, a local development backend)
    - Run: `Computor: Login`
-   - Enter the backend URL when prompted
-   - Enter your username and password
+   - Your browser opens your institution's single sign-on page; sign in there and
+     return to VS Code when the page shows **Signed in to Computor**
+   - For automation or headless workspaces, run `Computor: Sign in with API Token`
+     instead, or set the `COMPUTOR_AUTH_TOKEN` environment variable
 
 3. **Access your view**
    - After login, the appropriate view(s) appear in the activity bar
@@ -51,11 +55,6 @@ Student: Switch Course**, to choose a different enrolled course.
 #### Backend URL
 Change the backend URL at any time:
 - Command: `Computor: Change Backend URL`
-
-#### Workspace Directory
-Select where repositories are cloned:
-- Click the folder icon in the view title bar
-- Command: `Select Workspace Directory`
 
 #### User Profile
 Edit your profile information:
@@ -81,21 +80,20 @@ As a student, you can browse courses, work on assignments, run tests, and submit
 
 ### Working on Assignments
 
-#### Clone an Assignment
+#### Your Course Repository
 
-1. Find the assignment in the course tree
-2. Click the **cloud download** icon next to it
-   - Or right-click → `Clone Repository`
-3. The repository is cloned to your workspace directory
-4. VS Code opens the cloned repository
+All assignments of a course live in one repository that belongs to you. It is
+created and downloaded automatically the first time you open the course; if
+that failed, right-click the course → `Set up Repository`. Click an assignment
+to read its task, and expand it to see its files.
 
-#### Run Tests Locally
+#### Run Tests
 
-1. Open the assignment repository
-2. Click the **beaker** icon next to the assignment
+1. Click the **beaker** icon next to the assignment
    - Or right-click → `Test Assignment`
+2. Computor commits and uploads your work and runs the tests on the server
 3. View results in the **Test Results** panel (bottom panel)
-4. Click on failed tests to jump to the test file
+4. Click on failed tests to jump to the code they are about
 
 #### Commit Changes
 
@@ -136,9 +134,9 @@ downloaded to your computer, so your work outlives your enrolment.
 
 #### Submit Assignment
 
-1. Ensure all changes are committed
+1. Test your latest work: Computor submits the tested commit
 2. Click the **cloud upload** icon next to the assignment
-   - Or right-click → `Submit Assignment`
+   - Or right-click → `Submit`
 3. The submission is created on the backend
 4. You can view submission details by right-clicking → `View Details`
 
@@ -151,7 +149,7 @@ downloaded to your computer, so your work outlives your enrolment.
 ### Tips for Students
 
 - **Commit often**: Use `Commit Course` or `Commit Assignment` regularly to save your progress
-- **Test before submitting**: Always run tests locally before final submission
+- **Test before submitting**: Always run the tests before final submission
 - **Check messages**: Lecturers and tutors may post important updates
 - **Multiple courses**: You can work on multiple courses; each assignment is isolated
 
@@ -163,39 +161,38 @@ As a tutor, you can monitor students, clone their repositories, review their wor
 
 ### Filtering Students
 
-Use the **Filters** panel to narrow down students:
+Use the **Courses & Members** view to pick the student to review:
 
 1. Open the **Computor Tutor** view
-2. The **Filters** panel appears at the top
-3. Available filters:
-   - Course
-   - Assignment
-   - Submission status
-   - Date ranges
-4. Click **Reset Filters** to clear all filters
+2. Click a course in **Courses & Members**
+3. Use **Course Groups** to narrow the member list to one group
+4. Click a member to load their content into the **Courses** view
+5. Click the tutor item in the status bar (`Tutor: Reset Filters`) to clear the selection
 
 ### Viewing Student Work
 
-The tutor tree shows:
+The **Courses** view starts with three rows repeating your selection, followed by
+the student's units and assignments:
 ```
 Course
-├── Course Group
-│   ├── Student Name
-│   │   ├── Assignment 1
-│   │   └── Assignment 2
+Course Group
+Student Name
+├── Unit 1
+│   ├── Assignment 1
+│   └── Assignment 2
 ```
 
-Students are organized by course groups, making it easy to navigate.
+Clicking an assignment downloads the student's latest submission and the
+reference solution.
 
 ### Cloning Student Repositories
 
-1. Find the student's assignment
-2. Click the **cloud download** icon
+1. Expand the student's assignment
+2. Click the **cloud download** icon on its repository folder
    - Or right-click → `Clone Student Repository`
 3. The repository is cloned with the student's latest work
-4. VS Code opens the repository for review
 
-**Note**: You need GitLab access tokens configured. See [Managing GitLab Tokens](#managing-gitlab-tokens).
+**Note**: You need repository access tokens configured. See [Managing Repository Tokens](#managing-repository-tokens).
 
 ### Updating Student Repositories
 
@@ -207,21 +204,19 @@ If a student has made new commits since you cloned:
 ### Grading Students
 
 1. Find the student's assignment
-2. Right-click → `Grading…`
-3. A webview opens with:
-   - Student information
-   - Submission details
-   - Test results
-   - Grading form
-4. Enter grade and feedback
-5. Click **Submit Grade**
+2. Click the grading icon, or right-click → `Grading…`
+3. Enter the grade, a number between 0.00 and 1.00
+4. Pick the grading status (`corrected`, `correction_necessary`,
+   `improvement_possible` or `not_reviewed`)
+5. For a correction status, the message conversation opens so you can tell the
+   student what to change
 
-### Downloading Example Solutions
+### Comparing with the Reference Solution
 
-To compare student work with the example solution:
-1. Right-click on assignment → `Download Example for Comparison`
-2. The example solution is downloaded
-3. Use VS Code's diff tools to compare
+To compare student work with the reference solution:
+1. Expand the assignment; **References** holds the reference solution
+2. Right-click a file under **Submissions** → `Compare with Reference`
+3. A diff opens against the same file in the reference
 
 ### Providing Feedback
 
@@ -229,15 +224,14 @@ To compare student work with the example solution:
 - **Comments**: Right-click on student → `Show Comments` for private notes
 - **Grades**: Use the grading interface for official feedback
 
-### Managing GitLab Tokens
+### Managing Repository Tokens
 
 Tutors need GitLab Personal Access Tokens (PAT) to clone student repositories.
 
-1. Command: `Computor: Manage GitLab Tokens`
-2. Choose action:
-   - **Set token for an origin**: Add/update a token for a GitLab instance
-   - **Remove token**: Delete a stored token
-3. Enter the GitLab origin (e.g., `http://localhost:8084`)
+1. Command: `Computor: Manage Repository Tokens`
+2. Pick a GitLab instance, or **Add New GitLab Instance** and enter its URL
+   (e.g., `https://gitlab.example.com`)
+3. For a known instance, choose **Update Token**, **Remove Token** or **Test Token**
 4. Enter your GitLab Personal Access Token
 5. Tokens are stored securely and used automatically
 
@@ -261,18 +255,17 @@ The lecturer tree shows your organizational structure:
 Organization
 ├── Course Family
 │   ├── Course
-│   │   ├── 📂 Course Contents
+│   │   ├── 📂 Contents
 │   │   ├── 📊 Content Types
-│   │   └── 👥 Course Groups
+│   │   └── 👥 Groups
 ```
 
 #### Creating Course Content
 
-1. Right-click on `Course Contents` → `create content`
+1. Right-click on `Contents` (or on a unit) → `Create Unit` or `Create Assignment`
 2. Enter content details:
    - Title
    - Content type
-   - Release date (optional)
 3. The content item is created
 
 Content can be nested (hierarchical structure).
@@ -291,13 +284,13 @@ Content types define the nature of assignments:
 
 Groups organize students:
 
-1. Right-click on `Course Groups` → `Create Course Group`
+1. Right-click on `Groups` → `Create Course Group`
 2. Enter group name
 3. Students can be assigned to groups
 
 #### Managing Course Content
 
-- **Rename**: Right-click → `Rename`
+- **Rename**: Right-click → `Rename Title...`
 - **Delete**: Right-click → `Delete`
 - **Change Type**: Right-click → `Change Content Type`
 - **View Details**: Right-click → `Show Details`
@@ -327,13 +320,12 @@ Use the toolbar icons:
 #### Checking Out Examples
 
 1. Find the example in the tree
-2. Click the **cloud download** icon
-   - Or right-click → `Checkout Example`
+2. Right-click → `Checkout Latest` (or `Checkout Version...` for an older version)
 3. The example is downloaded to your workspace
 
 You can also:
-- **Checkout All Filtered Examples**: Download all currently visible examples
-- **Checkout Multiple Examples**: Select specific examples
+- **Checkout Latest (Filtered)**: Download all currently visible examples
+- **Checkout Multiple Examples** (command palette): Select specific examples
 
 #### Uploading Examples
 
@@ -343,9 +335,9 @@ You can also:
 3. The updated version is uploaded
 
 **Upload as new example**:
-1. Right-click on example repository root → `Upload as New Example`
-2. Select a folder containing the example
-3. Enter metadata (title, category, tags, etc.)
+1. Run `Computor Examples: Upload as New Example` from the command palette
+2. Select the example's `meta.yaml` in your workspace
+3. Choose the example repository to upload to
 
 **Upload from ZIP**:
 1. Right-click on example repository root → `Upload Examples from ZIP`
@@ -362,9 +354,8 @@ Link an example to course content:
 4. Enter assignment details
 5. Assignment is created and linked to the example
 
-Or assign to existing content:
-1. Right-click on course content → `Assign Example`
-2. Select the example from the list
+Or assign to existing content: drag the example from the Examples view onto
+the assignment in the course tree.
 
 #### Example File Management
 
@@ -377,18 +368,15 @@ When viewing an example's files:
 
 Students can't see content until it's released:
 
-1. Right-click on course, course contents, or specific content → `Release Course Content`
-2. Choose release scope:
-   - Single content item
-   - All content in a course
-   - All content recursively
+1. Right-click on the course, its `Contents` folder, or a specific content item → `Release Content`
+2. The release covers the row you clicked: the whole course, or that item
 3. Content becomes visible to students
 
 ### Viewing Student Progress
 
 - **Messages**: Right-click → `Show Messages` to see discussions
 - **Member Comments**: Right-click → `Show Comments` for student notes
-- **Open GitLab Repo**: Right-click on course → `Open GitLab Repository`
+- **Open Remote Repository**: Right-click on course → `Open Remote Repository`
 
 ### Assignment Files
 
@@ -445,13 +433,6 @@ link to what you remove — so deleting a folder asks you to type its name.
 
 ## Common Tasks
 
-### Changing Password
-
-1. Command: `Computor: Change Password`
-2. Enter current password
-3. Enter new password
-4. Confirm new password
-
 ### Checking Backend Connection
 
 Test connectivity to the backend:
@@ -471,22 +452,15 @@ Messages are used for announcements and discussions:
 3. A webview opens with the message thread
 4. You can post new messages and reply
 
-### Working with Git Status
-
-View git status of the current repository:
-
-1. Command: `Computor: Show Git Status`
-2. Status is displayed in the output panel
-
 ### Settings
 
 Access extension settings:
 
 1. Command: `Computor: Settings`
 2. Configure:
-   - Default workspace directory
-   - Test runner preferences
-   - UI preferences
+   - Backend URL
+   - Git name and email
+   - Repository provider tokens
 
 ---
 
@@ -494,13 +468,14 @@ Access extension settings:
 
 ### Login Issues
 
-**Problem**: "Login failed" or "Invalid credentials"
+**Problem**: "Sign-in not completed" or "Login failed"
 
 **Solutions**:
-- Verify backend URL is correct
-- Check username and password
+- Verify backend URL is correct (`Computor: Change Backend URL`)
+- Complete the sign-in in the browser window that `Computor: Login` opens
 - Ensure backend is accessible (try in browser)
-- Try a different authentication method
+- In a hosted or remote workspace, browser sign-in is not available: restart the
+  workspace from the Computor web app or use `Computor: Sign in with API Token`
 
 ### Repository Clone Fails
 
@@ -508,7 +483,7 @@ Access extension settings:
 
 **Solutions**:
 - **Students**: Ensure you have access to the course
-- **Tutors**: Check GitLab tokens are configured (`Manage GitLab Tokens`)
+- **Tutors**: Check GitLab tokens are configured (`Manage Repository Tokens`)
 - Verify git is installed (`git --version` in terminal)
 - Check network connectivity to GitLab
 
@@ -517,7 +492,7 @@ Access extension settings:
 **Problem**: "Authentication failed" when cloning student repositories
 
 **Solutions**:
-- Run `Computor: Manage GitLab Tokens`
+- Run `Computor: Manage Repository Tokens`
 - Ensure token is for the correct GitLab origin
 - Verify token has `read_repository` or `write_repository` scope
 - Check token hasn't expired in GitLab
@@ -527,9 +502,9 @@ Access extension settings:
 **Problem**: Tests don't run or show errors
 
 **Solutions**:
-- Ensure repository is cloned and opened
-- Check that dependencies are installed (`npm install` or similar)
-- Verify test command in assignment configuration
+- Ensure the course repository is set up and uploading works (no `⚠` on the row;
+  otherwise run `Fix Repository Authentication` on the course)
+- Check the remaining test runs shown on the assignment row
 - Check test output in Test Results panel for specific errors
 
 ### Views Not Showing
@@ -605,13 +580,13 @@ You can assign custom keyboard shortcuts to frequently used commands:
 
 ### For Students
 - **Save frequently**: Commit your work often, not just before submission
-- **Test locally**: Always run tests before submitting
+- **Test first**: Always run tests before submitting
 - **Read messages**: Check for announcements from lecturers and tutors
 - **Ask questions**: Use the message system to communicate with instructors
 
 ### For Tutors
 - **Use filters**: Filter students to focus on specific groups or assignments
-- **Download examples**: Compare student work with example solutions
+- **Compare with the reference**: Compare student work with the reference solution
 - **Provide detailed feedback**: Use both grades and comments
 - **Batch grading**: Use filters to grade multiple students efficiently
 
@@ -642,12 +617,12 @@ When using Computor, your workspace might look like:
 ```
 my-workspace/
 ├── .computor                    # Extension marker file
-├── course-a/
-│   ├── assignment-1/            # Student repositories
-│   └── assignment-2/
-├── course-b/
-│   └── lab-1/
-└── examples/                    # Downloaded examples
+├── student/                     # Course repositories, one per course
+│   └── <course repository>/
+│       ├── assignment-1/
+│       └── assignment-2/
+├── review/                      # Tutors: downloaded submissions and references
+└── examples/                    # Checked-out examples
     ├── example-sorting/
     └── example-graphs/
 ```

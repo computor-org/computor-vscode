@@ -50,10 +50,11 @@ In der Zeile selbst kannst du Folgendes sehen:
 Öffnet den Text, den deine Lehrenden zu dieser Einheit geschrieben haben, als
 gestaltete Seite. Der Eintrag erscheint nur, wenn es eine Beschreibung gibt.
 
-Haben deine Lehrenden sie in mehr als einer Sprache verfasst, kannst du mit
-**Beschreibung in anderer Sprache anzeigen** die übrigen Fassungen lesen. Welche
-Fassung du standardmäßig bekommst, richtet sich nach der Kurssprache; fehlt sie,
-wird Englisch verwendet.
+Haben deine Lehrenden sie in mehr als einer Sprache verfasst, richtet sich die
+angezeigte Fassung nach deiner Lesesprache, also nach der Sprache deines Profils
+oder sonst nach der Anzeigesprache von VS Code; fehlt sie, wird Englisch
+verwendet. Bei einer Aufgabe kannst du mit **Beschreibung in anderer Sprache
+anzeigen** die übrigen Fassungen lesen.
 
 ### Nachrichten anzeigen
 

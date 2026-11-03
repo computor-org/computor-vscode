@@ -70,8 +70,8 @@ stop needing marks.
 ## Granting extra attempts
 
 When a student is out of test runs or submissions and asks for another
-attempt, right-click the assignment → *Set Max Test Runs for Student…* or
-*Set Max Submissions for Student…*. The number you enter applies to this
+attempt, right-click the assignment → *Set Max Test Runs for Student...* or
+*Set Max Submissions for Student...*. The number you enter applies to this
 student on this assignment only; leaving the field empty puts them back on the
 assignment's normal limit.
 

@@ -69,7 +69,7 @@ Abgaben brauchen trotzdem noch eine Bewertung.
 
 **Nachrichten anzeigen** öffnet bei einer Aufgabe dein Gespräch mit der Person
 über diese Aufgabe; hier sagst du ihr, was sie verbessern soll. Setzt du den
-Bewertungsstatus *Correction Necessary* oder *Improvement Possible*, öffnet
+Bewertungsstatus *Korrektur nötig* oder *Verbesserung möglich*, öffnet
 sich dieses Gespräch von selbst, weil die Person mit dem Urteil nichts anfangen
 kann, solange du ihr nicht sagst, was sie ändern soll.
 

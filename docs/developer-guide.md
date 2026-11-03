@@ -19,7 +19,7 @@ This guide is for developers who want to contribute to or extend the Computor VS
 
 ### Prerequisites
 
-- Node.js (v16 or higher)
+- Node.js 24 (the version CI uses)
 - npm (v7 or higher)
 - Git
 - VS Code (latest version)
@@ -28,13 +28,13 @@ This guide is for developers who want to contribute to or extend the Computor VS
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd computor-vsc-extension
+   git clone https://github.com/computor-org/computor-vscode.git
+   cd computor-vscode
    ```
 
 2. **Install dependencies**
    ```bash
-   npm install
+   npm ci
    ```
 
 3. **Compile TypeScript**
@@ -44,7 +44,8 @@ This guide is for developers who want to contribute to or extend the Computor VS
 
 4. **Run in development mode**
    - Press `F5` in VS Code to launch Extension Development Host
-   - Or use the "Run Extension" configuration from the debug panel
+   - `.vscode/` is not part of the repository; VS Code offers to create an
+     extension launch configuration on first use
 
 ### NPM Scripts
 
@@ -60,6 +61,10 @@ This guide is for developers who want to contribute to or extend the Computor VS
 | `npm run test:unit` | Run unit tests only |
 | `npm run test:integration` | Run Jest integration tests |
 | `npm run test:all` | Run both unit and integration tests |
+| `npm run test:coverage` | Run unit tests with coverage (as in CI) |
+| `npm run test:extension-host` | Build and run the extension host tests in VS Code |
+| `npm run check:assets` | Check webview asset paths |
+| `npm run check:backend-compat` | Check API use against the live backend lines |
 
 ---
 
@@ -78,9 +83,10 @@ See [Architecture Overview](architecture.md#project-structure) for detailed stru
   - **`types/`** - TypeScript type definitions
 
 - **`test/`** - Test files
-  - **`unit/`** - Unit tests
+  - **`commands/`, `git/`, `http/`, `services/`, `ui/`, `utils/`, ...** - Mocha unit tests, by source area
+  - **`extension-host/`** - Tests in a real VS Code instance
   - **`integration/`** - Integration tests
-  - **`fixtures/`** - Test data
+  - **`helpers/`** - Test helpers, including the `vscode` stub
 
 - **`dist/`** - Compiled output (generated)
 
@@ -126,25 +132,7 @@ Then press `F5` to launch the Extension Development Host.
 
 ### 3. Git Workflow
 
-Following the project's coding guidelines from [CLAUDE.md](../CLAUDE.md):
-
-- **Small commits**: Keep commits focused and atomic
-- **Descriptive messages**: Write clear, concise commit messages
-- **Create issues**: Use `gh` CLI to create issues for new features
-- **Ask before committing**: Confirm before making commits
-
-Example:
-```bash
-# Create an issue for tracking
-gh issue create --title "Add feature X" --body "Description..."
-
-# Make changes and commit
-git add .
-git commit -m "feat: add feature X"
-
-# Create PR
-gh pr create --title "Add feature X" --body "Closes #123"
-```
+Branches, commits and pull requests follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ---
 
@@ -239,38 +227,19 @@ export class MyWebviewProvider extends BaseWebviewProvider {
     context: vscode.ExtensionContext,
     private api: ComputorApiService
   ) {
-    super(context);
+    super(context, 'computor.myView');
   }
 
   async open(): Promise<void> {
-    const panel = this.createPanel('My View', 'myView');
-    panel.webview.html = this.getHtmlContent();
-
-    panel.webview.onDidReceiveMessage(async (message) => {
-      await this.handleMessage(message);
-    });
+    // Creates or reveals the panel and wires messages to handleMessage
+    await this.show('My View');
   }
 
-  private getHtmlContent(): string {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>My View</title>
-        </head>
-        <body>
-          <h1>Hello from Webview</h1>
-          <script>
-            const vscode = acquireVsCodeApi();
-            // Handle messages
-          </script>
-        </body>
-      </html>
-    `;
+  protected async getWebviewContent(): Promise<string> {
+    return this.getBaseHtml('My View', '<h1>Hello from Webview</h1>');
   }
 
-  private async handleMessage(message: any): Promise<void> {
+  protected async handleMessage(message: any): Promise<void> {
     switch (message.command) {
       case 'action':
         await this.api.performAction();
@@ -283,8 +252,6 @@ export class MyWebviewProvider extends BaseWebviewProvider {
 ---
 
 ## Coding Guidelines
-
-Following [CLAUDE.md](../CLAUDE.md):
 
 ### Naming Conventions
 
@@ -311,10 +278,10 @@ Following [CLAUDE.md](../CLAUDE.md):
   }
   ```
 
-- **kebab-case**: File names
+- **File names**: PascalCase for a file named after its class, camelCase otherwise
   ```typescript
-  // my-service.ts
-  // user-profile-view.ts
+  // ComputorApiService.ts
+  // workspaceStructure.ts
   ```
 
 ### Unused Parameters
@@ -358,8 +325,6 @@ function process(data: Data): string {
 
 ### Comments
 
-From [CLAUDE.md](../CLAUDE.md):
-
 - **Use speaking names**: Let code explain itself
 - **Avoid redundant comments**: Don't comment what code already says
 - **Comment only when needed**: Complex algorithms, workarounds, non-obvious decisions
@@ -394,7 +359,7 @@ async function performAction(): Promise<void> {
   } catch (error) {
     if (error instanceof HttpError) {
       vscode.window.showErrorMessage(`HTTP Error: ${error.message}`);
-    } else if (error instanceof GitError) {
+    } else if (error instanceof GitExecError) {
       vscode.window.showErrorMessage(`Git Error: ${error.message}`);
     } else {
       vscode.window.showErrorMessage(`Unexpected error: ${error}`);
@@ -411,7 +376,7 @@ async function performAction(): Promise<void> {
 
 ### Unit Tests
 
-Location: `test/unit/`
+Location: `test/<area>/` (see `.mocharc.unit.json`)
 
 Framework: Mocha + Chai
 
@@ -465,7 +430,7 @@ describe('ComputorApiService Integration', () => {
   });
 
   test('should fetch courses', async () => {
-    const courses = await api.getCourses();
+    const courses = await api.getCourses(courseFamilyId);
     expect(courses).toBeInstanceOf(Array);
   });
 });
@@ -525,10 +490,9 @@ Add debug configuration to `.vscode/launch.json`:
   "name": "Mocha Tests",
   "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
   "args": [
-    "--require", "ts-node/register",
+    "--config", "${workspaceFolder}/.mocharc.unit.json",
     "--timeout", "999999",
-    "--colors",
-    "${workspaceFolder}/test/unit/**/*.test.ts"
+    "--colors"
   ],
   "console": "integratedTerminal",
   "internalConsoleOptions": "neverOpen"
@@ -561,10 +525,12 @@ console.error('Error:', error);
    ```json
    {
      "command": "computor.myNewCommand",
-     "title": "My New Command",
-     "category": "Computor"
+     "title": "%command.myNewCommand%",
+     "category": "%category.computor%"
    }
    ```
+   Add the English title to `package.nls.json` and the German one to
+   `package.nls.de.json`.
 
 2. **Implement command handler**
    ```typescript
@@ -621,21 +587,18 @@ console.error('Error:', error);
 
 ### Adding a New API Endpoint
 
-1. **Define types in types/generated/**
-   ```typescript
-   // src/types/generated/my-feature.ts
-   export interface MyFeatureGet {
-     id: string;
-     name: string;
-   }
-   ```
+1. **Regenerate the types** from the backend (see [Working with Generated Types](#working-with-generated-types))
 
 2. **Add method to ComputorApiService**
    ```typescript
    async getMyFeature(id: string): Promise<MyFeatureGet> {
-     return this.get<MyFeatureGet>(`/api/my-feature/${id}`);
+     const client = await this.getHttpClient();
+     const response = await client.get<MyFeatureGet>(`/my-feature/${id}`);
+     return response.data;
    }
    ```
+   If a live backend line lacks the endpoint, feature-detect it and mark the
+   method `@backendCompat` (see [RELEASING.md](../RELEASING.md#backend-compatibility)).
 
 3. **Use in commands/services**
    ```typescript
@@ -648,9 +611,9 @@ console.error('Error:', error);
    ```typescript
    export class MyWebviewProvider extends BaseWebviewProvider {
      async open(): Promise<void> {
-       const panel = this.createPanel('My View', 'myView');
-       panel.webview.html = this.getHtmlContent();
+       await this.show('My View');
      }
+     // getWebviewContent() and handleMessage() as above
    }
    ```
 
@@ -670,10 +633,9 @@ Types in `src/types/generated/` are generated from the backend API.
 
 ### Updating Generated Types
 
-1. Get OpenAPI/Swagger spec from backend
-2. Use code generator (e.g., openapi-typescript)
-3. Place generated types in `src/types/generated/`
-4. Export from `src/types/generated/index.ts`
+1. In a computor-backend checkout, run `bash generate.sh types`
+2. The generator writes to `computor-web/src/generated/types/` in that checkout
+3. Copy the files into `src/types/generated/` here; `index.ts` is generated too
 
 ### Using Generated Types
 
@@ -702,7 +664,7 @@ async function getData(): Promise<Data> {
   if (cached) return cached;
 
   const data = await api.getData();
-  multiTierCache.set(cacheKey, data, 300000); // 5 min TTL
+  multiTierCache.set(cacheKey, data, 'warm'); // tier: 'hot', 'warm' or 'cold'
   return data;
 }
 ```
@@ -716,7 +678,7 @@ import { requestBatchingService } from '../services/RequestBatchingService';
 
 async function getMultipleCourses(ids: string[]): Promise<Course[]> {
   const requests = ids.map(id =>
-    requestBatchingService.addRequest('courses', { id })
+    requestBatchingService.batch('courses', id, () => api.getCourse(id))
   );
   return Promise.all(requests);
 }
@@ -727,13 +689,13 @@ async function getMultipleCourses(ids: string[]): Promise<Course[]> {
 For large lists, use virtual scrolling:
 
 ```typescript
-import { virtualScrollingService } from '../services/VirtualScrollingService';
+import { VirtualScrollingService } from '../services/VirtualScrollingService';
 
-const items = virtualScrollingService.getVisibleItems(
-  allItems,
-  scrollPosition,
-  viewportHeight
+const scroller = new VirtualScrollingService(
+  async (page, pageSize) => loadPage(page, pageSize), // returns { items, total }
+  { pageSize: 50 }
 );
+const items = await scroller.getItems(startIndex, count);
 ```
 
 ---
@@ -809,8 +771,8 @@ vscode.window.showErrorMessage('An error occurred', 'Retry', 'Cancel')
 
 1. **Type-check**: `npm run type-check`
 2. **Lint**: `npm run lint`
-3. **Test**: `npm run test`
-4. **Build**: `npm run compile`
+3. **Test**: `npm run test:coverage`
+4. **Build**: `npm run compile:fast`
 
 ### Pull Request Process
 
