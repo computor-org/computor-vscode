@@ -45,10 +45,10 @@ to `computor-web/src/generated/errors/`, **not** here, so refreshing this copy i
 manual step:
 
 ```bash
-# from the computor-fullstack root
+# from the computor-backend repository root
 python computor-backend/src/computor_backend/scripts/generate_error_codes.py
 cp computor-web/src/generated/errors/error-catalog.vscode.json \
-   ../computor-vsc-extension/src/exceptions/generated/
+   <computor-vscode>/src/exceptions/generated/
 ```
 
 The generator also emits a full catalog (`error-catalog.json`) and a Markdown

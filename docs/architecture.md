@@ -37,40 +37,35 @@ This document describes the architecture of the Computor VS Code Extension.
 
 ```
 src/
-├── authentication/          # Authentication and credential management
-│   ├── ComputorCredentialManager.ts
-│   ├── TokenManager.ts
-│   └── VscodeCredentialStorage.ts
+├── authentication/          # Keycloak SSO browser sign-in
+│   └── SsoLoginService.ts
 │
 ├── commands/                # VS Code command implementations
-│   ├── lecturer/            # Lecturer-specific commands
+│   ├── DocumentsCommands.ts
 │   ├── LecturerCommands.ts
+│   ├── LecturerCourseGroupCommands.ts
 │   ├── LecturerExampleCommands.ts
-│   ├── LecturerFsCommands.ts
 │   ├── StudentCommands.ts
+│   ├── StudentFileCommands.ts
+│   ├── StudentOfflineCommands.ts
 │   ├── TutorCommands.ts
-│   ├── UserPasswordCommands.ts
-│   └── manageGitLabTokens.ts
+│   ├── UserManagerCommands.ts
+│   └── manageRepositoryTokens.ts
+│
+├── exceptions/              # Backend error catalog and error classes (see USAGE.md)
 │
 ├── git/                     # Git integration layer
 │   ├── CTGit.ts             # Custom git operations
-│   ├── GitManager.ts        # High-level git management
 │   ├── GitWrapper.ts        # simple-git wrapper
 │   ├── GitErrorHandler.ts
+│   ├── gitCloneHelpers.ts
 │   └── simpleGitFactory.ts
 │
 ├── http/                    # HTTP client implementations
 │   ├── cache/               # HTTP caching strategies
-│   ├── errors/              # HTTP error handling
-│   ├── BasicAuthHttpClient.ts
 │   ├── ApiKeyHttpClient.ts
-│   ├── JwtHttpClient.ts
-│   └── HttpClient.ts        # Base client interface
-│
-├── providers/               # VS Code providers
-│   ├── ExampleCodeLensProvider.ts
-│   ├── MetaYamlCompletionProvider.ts
-│   └── MetaYamlStatusBarProvider.ts
+│   ├── BearerTokenHttpClient.ts
+│   └── HttpClient.ts        # Base client
 │
 ├── services/                # Business logic services
 │   ├── BackendConnectionService.ts
@@ -79,21 +74,19 @@ src/
 │   ├── CourseSelectionService.ts
 │   ├── ErrorRecoveryService.ts
 │   ├── ExtensionUpdateService.ts
-│   ├── GitBranchManager.ts
 │   ├── GitEnvironmentService.ts
-│   ├── GitLabTokenManager.ts
+│   ├── GitService.ts
 │   ├── LecturerRepositoryManager.ts
 │   ├── PerformanceMonitoringService.ts
+│   ├── RepositoryTokenManager.ts
 │   ├── RequestBatchingService.ts
 │   ├── StudentRepositoryManager.ts
-│   ├── StudentWorkspaceManager.ts
 │   ├── TestResultService.ts
 │   ├── TutorSelectionService.ts
 │   ├── VirtualScrollingService.ts
-│   └── WorkspaceManager.ts
+│   └── WebSocketService.ts
 │
 ├── settings/                # Settings and storage
-│   ├── errors/
 │   ├── ComputorSettingsManager.ts
 │   ├── JsonSettingsStorage.ts
 │   ├── SecureStorage.ts
@@ -111,16 +104,18 @@ src/
 │       ├── roles.ts
 │       ├── sso.ts
 │       ├── tasks.ts
-│       └── users.ts
+│       ├── users.ts
+│       └── websocket.ts
 │
 ├── ui/                      # User interface components
-│   ├── base/                # Base UI classes
 │   ├── panels/              # Webview panels
 │   ├── tree/                # Tree view providers
+│   │   ├── chat/
 │   │   ├── lecturer/
+│   │   ├── lecturer-documents/
 │   │   ├── student/
-│   │   └── tutor/
-│   ├── views/               # Custom views
+│   │   ├── tutor/
+│   │   └── user-manager/
 │   ├── webviews/            # Webview providers
 │   └── StatusBarService.ts
 │
@@ -133,6 +128,7 @@ src/
 │   ├── repositoryNaming.ts
 │   └── workspaceStructure.ts
 │
+├── activation.ts            # Workspace marker detection
 └── extension.ts             # Extension entry point
 ```
 
@@ -143,7 +139,8 @@ src/
 **File**: [extension.ts](../src/extension.ts)
 
 The main extension activation flow:
-1. Activates on VS Code startup (`onStartupFinished`)
+1. Activates when the workspace contains a `.computor` or `.computor-public.json` marker,
+   or when one of its commands or views is used
 2. Checks for existing authentication
 3. Prompts for login if needed
 4. Initializes role-based views
@@ -169,7 +166,10 @@ Two ways to authenticate, both ending in a token sent on every request:
 
 The session token (opaque, sliding ~1h server TTL) is refreshed proactively via
 `POST /auth/refresh` while VS Code is active; an expired session is recovered by
-re-running the browser SSO flow. Tokens are stored in VS Code's secret storage.
+re-running the browser SSO flow. A refresh starts when less than 10% of the
+token's lifetime remains, concurrent requests share one refresh, and after an
+unrecoverable 401 further refreshes are suppressed until the user signs in
+again. Tokens are stored in VS Code's secret storage.
 The extension only ever talks to the backend, never directly to Keycloak.
 
 ### HTTP Layer
@@ -209,16 +209,14 @@ Uses generated types from [types/generated/](../src/types/generated/) for type s
 **Directory**: [git/](../src/git/)
 
 **Key Components**:
-- `GitManager`: High-level git operations
+- `GitService`: Commit, push and status operations used by the commands
 - `GitWrapper`: Wrapper around simple-git library
 - `CTGit`: Custom git operations specific to Computor
-- `GitBranchManager`: Branch creation and management
 - `GitEnvironmentService`: Git environment validation
 
 **Features**:
 - Repository cloning with authentication
-- GitLab token management
-- Branch operations
+- Repository token management
 - Commit and push operations
 - Conflict detection and resolution
 - Repository backup and recovery
@@ -231,7 +229,7 @@ Uses generated types from [types/generated/](../src/types/generated/) for type s
 - `LecturerTreeDataProvider`: Course management tree
 - `LecturerExampleTreeProvider`: Example repository tree
 - `StudentCourseContentTreeProvider`: Student course content tree
-- `TutorTreeDataProvider`: Tutor grading tree
+- `TutorStudentTreeProvider`: Tutor grading tree
 - `TestResultsTreeDataProvider`: Test results tree
 
 **Webview Providers**:
@@ -239,12 +237,12 @@ Uses generated types from [types/generated/](../src/types/generated/) for type s
 - User profile editor
 - Messages and comments
 - Submission details
-- Tutor filters
+- Course member import (CSV/TSV, XLSX/XLS, XML and JSON files, previewed
+  against the course and imported one member at a time)
 - Test results panel
 
 **Base Classes**:
 - `BaseTreeDataProvider`: Common tree view functionality
-- `BaseTreeItem`: Common tree item functionality
 - `BaseWebviewProvider`: Common webview functionality
 
 ### Settings Management
@@ -253,12 +251,12 @@ Uses generated types from [types/generated/](../src/types/generated/) for type s
 
 **ComputorSettingsManager** manages:
 - Backend URL configuration
-- Authentication provider selection
-- Token settings (header name, prefix)
+- Auto-login
+- GitLab instance URLs
 - Workspace-specific settings via `.computor` file
 
 Settings are stored in:
-- VS Code workspace settings (non-sensitive)
+- `~/.computor/config.json` (non-sensitive)
 - VS Code secret storage (credentials)
 - Workspace `.computor` file (backend URL, course ID)
 
@@ -273,12 +271,12 @@ Settings are stored in:
 - **CourseSelectionService**: Course selection state management
 - **ErrorRecoveryService**: Automatic error recovery and retry
 - **ExtensionUpdateService**: Extension version checking
-- **GitLabTokenManager**: GitLab PAT management per origin
+- **RepositoryTokenManager**: GitLab PAT management per origin
 - **LecturerRepositoryManager**: Lecturer repository operations
 - **RequestBatchingService**: Request batching and deduplication
 - **StudentRepositoryManager**: Student repository lifecycle
 - **TestResultService**: Test execution and result parsing
-- **WorkspaceManager**: Workspace structure management
+- **WorkspaceStructureManager** (`utils/workspaceStructure.ts`): Workspace structure management
 
 ## Data Flow
 
@@ -287,58 +285,58 @@ Settings are stored in:
 ```
 1. Student browses courses
    └─> StudentCourseContentTreeProvider
-       └─> ComputorApiService.getCourseContentsForStudent()
+       └─> ComputorApiService.getStudentCourseContents()
            └─> HTTP Client → Backend
 
-2. Student clones assignment
-   └─> StudentCommands.cloneRepository()
-       └─> StudentRepositoryManager.cloneRepository()
-           └─> GitManager.clone()
+2. Course repository is set up
+   └─> StudentRepositoryManager.autoSetupRepositories()
+       └─> git clone with the repository token
 
 3. Student tests assignment
-   └─> StudentCommands.testAssignment()
-       └─> TestResultService.runTests()
-           └─> Bash execution → Parse results
+   └─> computor.student.testAssignment
+       └─> GitService.stageAll() + commitChanges(), push
+       └─> TestResultService.submitTestByArtifactAndAwaitResults()
+           └─> Tests run on the server → Test Results panel
 
 4. Student submits assignment
-   └─> StudentCommands.submitAssignment()
-       └─> GitManager.commit() + push()
-       └─> ComputorApiService.createSubmission()
+   └─> computor.student.submitAssignment
+       └─> ComputorApiService.createStudentSubmission()
 ```
 
 ### Tutor Grading Workflow
 
 ```
-1. Tutor filters students
-   └─> TutorFilterPanel (webview)
-       └─> TutorSelectionService.setFilters()
+1. Tutor selects course, group and member
+   └─> Courses & Members tree (tutor-filter-tree-provider)
+       └─> TutorSelectionService
 
-2. Tutor clones student repo
-   └─> TutorCommands.cloneStudentRepository()
-       └─> StudentRepositoryManager.cloneStudentRepository()
-           └─> GitManager.clone() with GitLab token
+2. Tutor opens a student's assignment
+   └─> TutorStudentTreeProvider
+       └─> ComputorApiService.listSubmissionArtifacts()
+           └─> Download of submission and reference
 
 3. Tutor grades submission
-   └─> TutorCommands.gradeAssignment()
-       └─> Webview for grade input
-           └─> ComputorApiService.createGrade()
+   └─> computor.tutor.assignment.grading
+       └─> Input boxes for grade and status
+           └─> ComputorApiService.submitTutorGrade()
 ```
 
 ### Lecturer Course Management
 
 ```
 1. Lecturer creates course content
-   └─> LecturerCommands.createCourseContent()
+   └─> LecturerCommands (Create Unit / Create Assignment)
        └─> ComputorApiService.createCourseContent()
 
 2. Lecturer uploads example
    └─> LecturerExampleCommands.uploadExample()
-       └─> Creates ZIP archive
+       └─> Collects the example's files
            └─> ComputorApiService.uploadExample()
 
 3. Lecturer releases content
    └─> LecturerCommands.releaseCourseContent()
-       └─> ComputorApiService.deployCourseContent()
+       └─> ComputorApiService.validateCourseForRelease()
+       └─> ComputorApiService.generateStudentTemplate()
 ```
 
 ## Authentication Flow
@@ -383,7 +381,7 @@ Settings are stored in:
 
 ### Error Recovery
 - Automatic retry with exponential backoff
-- Circuit breaker pattern
+- Circuit breaker for dead sessions
 - Graceful degradation
 
 ## Security Considerations
@@ -391,7 +389,7 @@ Settings are stored in:
 ### Credential Storage
 - Credentials stored in VS Code secret storage (OS keychain)
 - Never stored in plain text
-- GitLab tokens managed separately per origin
+- Repository tokens managed separately per origin
 
 ### Git Operations
 - Token injection for HTTPS URLs
@@ -399,23 +397,20 @@ Settings are stored in:
 - Repository backups before destructive operations
 
 ### API Communication
-- HTTPS enforced for production
-- JWT token expiration handling
-- Request signing where applicable
+- Session token expiration handling
 
 ## Extension Points
 
 ### VS Code Contributions
 
-**Commands**: 80+ commands for all user actions
+**Commands**: Commands for all user actions, with titles localized in
+`package.nls.json` (English) and `package.nls.de.json` (German)
 **Views**:
-- 3 activity bar containers (Student, Tutor, Lecturer)
+- Activity bar containers for Student, Tutor, Lecturer, User Manager and Chat
 - Multiple tree views per role
 - Test results panel
 
 **Providers**:
-- CodeLens for examples
-- Completion for meta.yaml files
 - Status bar items
 
 **Menus**: Context menus for all tree items and views
@@ -424,6 +419,7 @@ Settings are stored in:
 
 **Test Structure**:
 - Unit tests with Mocha
+- Extension host tests in a real VS Code (`test/extension-host/`)
 - Integration tests with Jest
 - Manual integration tests for Git and GitLab
 
@@ -443,7 +439,8 @@ Settings are stored in:
 - `npm run compile`: Type-check + webpack
 - `npm run watch`: Development mode
 - `npm run package`: Production build
-- `npm run test`: Run all tests
+- `npm run test:unit`: Run the unit tests
+- `npm run test`: Compile, lint and run all Mocha tests
 
 ## Dependencies
 
@@ -452,8 +449,8 @@ Settings are stored in:
 - **node-fetch**: HTTP requests
 - **jszip**: ZIP file handling
 - **js-yaml**: YAML parsing
-- **date-fns**: Date formatting
-- **uuid**: Unique ID generation
+- **xlsx**, **fast-xml-parser**: Course member import files
+- **semver**: Version comparison
 
 ### Dev Dependencies
 - **typescript**: TypeScript compiler

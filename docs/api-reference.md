@@ -21,36 +21,29 @@ The extension communicates with the Computor backend through the `ComputorApiSer
 
 **Key Components**:
 - **ComputorApiService**: Main API service ([source](../src/services/ComputorApiService.ts))
-- **HTTP Clients**: BasicAuth, ApiKey, and JWT implementations
+- **HTTP Clients**: `BearerTokenHttpClient` (SSO session token) and `ApiKeyHttpClient` (API token)
 - **Type Definitions**: Generated from backend schema ([types/generated/](../src/types/generated/))
 
 ---
 
 ## Backend API Specification
 
-For the complete backend API specification with all endpoints, request/response models, and HTTP methods, see:
-
-📋 **[client-endpoints.md](client-endpoints.md)**
-
-This document is the authoritative source for:
-- All available endpoints organized by client (CourseClient, ExampleClient, etc.)
-- Request and response model types
-- HTTP methods and paths
-- Query parameters
+For the complete backend API specification with all endpoints, request/response models, and HTTP methods, open the backend's interactive OpenAPI reference at `<backend URL>/docs`.
 
 ---
 
 ## Authentication
 
-The extension uses bearer token authentication with username/password login:
+The extension signs in through the backend's Keycloak single sign-on, or with an API token for automation:
 
 ### Bearer Token Authentication
 ```typescript
+const sso = await ssoBrowserLogin(baseUrl);
 const client = new BearerTokenHttpClient(baseUrl, timeout);
-await client.authenticateWithCredentials(username, password);
+client.setTokenData({ accessToken: sso.token, refreshToken: sso.refreshToken, /* ... */ });
 ```
 
-**Headers**: `Authorization: Bearer <access-token>`
+**Headers**: `Authorization: Bearer <session-token>`
 
 **Features**:
 - Automatic token refresh using refresh tokens
@@ -58,11 +51,13 @@ await client.authenticateWithCredentials(username, password);
 - Token expiration handling with automatic re-authentication
 
 **Authentication Flow**:
-1. User provides username and password
-2. Extension calls `/auth/login` endpoint
-3. Backend returns access token and refresh token
-4. Access token is used for API requests
-5. When token expires, refresh token is used to get new access token
+1. `Computor: Login` opens `{backend}/auth/keycloak/login` in the browser
+2. The user signs in with the institution's identity provider
+3. The backend redirects the session token and refresh token to a temporary loopback server of the extension
+4. The session token is used for API requests
+5. When the token is about to expire, `POST /auth/refresh` gets a new one
+
+An API token (`ctp_…`) is sent as `X-API-Token` by `ApiKeyHttpClient`. See [Architecture Overview](architecture.md#authentication-system).
 
 ---
 
@@ -73,9 +68,7 @@ await client.authenticateWithCredentials(username, password);
 The `ComputorApiService` is initialized during extension activation:
 
 ```typescript
-const api = new ComputorApiService(context);
-// HTTP client is injected
-(api as any).httpClient = client;
+const api = new ComputorApiService(context, client);
 ```
 
 ### Making API Calls
@@ -83,79 +76,68 @@ const api = new ComputorApiService(context);
 The service provides typed methods for common operations:
 
 ```typescript
-// Get courses
-const courses = await api.getCourses({
-  organization_id: 'org-123'
-});
+// Get the courses of a course family
+const courses = await api.getCourses('family-123');
 
 // Get course content
 const content = await api.getCourseContent('content-456');
 
-// create content
-const newContent = await api.createCourseContent({
+// Create content
+const newContent = await api.createCourseContent('course-789', {
   course_id: 'course-789',
+  path: 'week1',
   title: 'Week 1',
-  content_type_id: 'type-001'
+  course_content_type_id: 'type-001'
 });
 
 // Update course content
-await api.updateCourseContent('content-456', {
+await api.updateCourseContent('course-789', 'content-456', {
   title: 'Week 1: Updated'
 });
 
 // Delete course content
-await api.deleteCourseContent('content-456');
+await api.deleteCourseContent('course-789', 'content-456');
 ```
 
 ### Generic HTTP Methods
 
-For endpoints not yet wrapped in typed methods:
+`ComputorApiService` has no public generic request methods. A new endpoint gets
+its own typed method, which uses the HTTP client inside the service:
 
 ```typescript
+const client = await this.getHttpClient();
+
 // GET request
-const data = await api.get<ResponseType>('/api/endpoint');
+const response = await client.get<ResponseType>('/endpoint', queryParams);
+return response.data;
 
-// POST request
-const result = await api.post<ResponseType>(
-  '/api/endpoint',
-  requestBody
-);
-
-// PATCH request
-await api.patch('/api/endpoint/123', updates);
-
-// DELETE request
-await api.delete('/api/endpoint/123');
+// POST, PATCH, PUT and DELETE work the same way
+await client.post<ResponseType>('/endpoint', requestBody);
+await client.patch<ResponseType>('/endpoint/123', updates);
+await client.delete('/endpoint/123');
 ```
 
 ### Query Parameters
 
-Pass query parameters in the options:
+Pass query parameters as the second argument of `client.get`. Typed methods
+take their filters as arguments:
 
 ```typescript
-const examples = await api.getExamples({
-  repository_id: 'repo-123',
-  category: 'Algorithms',
-  tags: ['sorting', 'searching']
-});
+const examples = await api.getExamples('repo-123');
 ```
 
 ### File Uploads
 
-For multipart/form-data uploads:
+Examples are uploaded as a map of file paths to contents:
 
 ```typescript
-import FormData = require('form-data');
-
-const formData = new FormData();
-formData.append('file', fileBuffer, 'example.zip');
-formData.append('title', 'Example Title');
-
 const example = await api.uploadExample({
   repository_id: 'repo-123',
-  identifier: 'my-example',
-  title: 'Example Title',
-  file: fileBuffer
+  directory: 'my-example',
+  files: {
+    'meta.yaml': metaYamlText,
+    'main.py': sourceText
+  }
 });
 ```
 
@@ -165,7 +147,7 @@ For downloading files (e.g., examples):
 
 ```typescript
 const download = await api.downloadExample('example-123');
-// Returns: { buffer: Buffer, filename: string }
+// Returns: { example_id, version_tag, directory, files, meta, ... }
 ```
 
 ---
@@ -179,6 +161,7 @@ import {
   CourseGet,
   CourseCreate,
   CourseUpdate,
+  CourseContentCreate,
   CourseContentGet,
   ExampleUploadRequest
 } from '../types/generated';
@@ -186,11 +169,13 @@ import {
 // Fully typed request
 const createRequest: CourseContentCreate = {
   course_id: 'course-123',
+  path: 'assignment1',
   title: 'Assignment 1',
-  content_type_id: 'type-001'
+  course_content_type_id: 'type-001'
 };
 
 const content: CourseContentGet = await api.createCourseContent(
+  'course-123',
   createRequest
 );
 
@@ -210,6 +195,7 @@ Types are organized by domain:
 - **organizations.ts**: Organization types
 - **auth.ts**: Authentication types
 - **tasks.ts**: Task and submission types
+- **roles.ts**, **sso.ts**, **websocket.ts**: Roles, SSO providers and WebSocket events
 
 ---
 
@@ -223,12 +209,12 @@ API calls throw `HttpError` on failure:
 import { HttpError } from '../exceptions/errors/HttpError';
 
 try {
-  const courses = await api.getCourses();
+  const courses = await api.getCourses(courseFamilyId);
 } catch (error) {
   if (error instanceof HttpError) {
-    console.error('HTTP Error:', error.statusCode, error.message);
+    console.error('HTTP Error:', error.status, error.message);
 
-    switch (error.statusCode) {
+    switch (error.status) {
       case 401:
         // Unauthorized - re-authenticate
         break;
@@ -253,15 +239,18 @@ Use `ErrorRecoveryService` for automatic retries:
 ```typescript
 import { errorRecoveryService } from '../services/ErrorRecoveryService';
 
-const data = await errorRecoveryService.executeWithRetry(
-  async () => await api.getCourses(),
+const data = await errorRecoveryService.executeWithRecovery(
+  async () => await api.getCourses(courseFamilyId),
   {
     maxRetries: 3,
-    backoffMultiplier: 2,
-    initialDelay: 1000
+    retryDelay: 1000,
+    exponentialBackoff: true
   }
 );
 ```
+
+Errors that carry a backend error code are described in the
+[error handling guide](../src/exceptions/USAGE.md).
 
 ### User-Friendly Errors
 
@@ -269,7 +258,7 @@ Always show user-friendly error messages:
 
 ```typescript
 try {
-  await api.createCourseContent(data);
+  await api.createCourseContent(courseId, data);
   vscode.window.showInformationMessage('Content created successfully');
 } catch (error) {
   vscode.window.showErrorMessage(
@@ -288,10 +277,10 @@ The API service uses multi-tier caching to reduce redundant requests:
 
 ```typescript
 // First call - fetches from API
-const courses1 = await api.getCourses();
+const courses1 = await api.getCourses(courseFamilyId);
 
 // Second call - returns from cache (within TTL)
-const courses2 = await api.getCourses();
+const courses2 = await api.getCourses(courseFamilyId);
 ```
 
 ### Manual Cache Control
@@ -302,9 +291,9 @@ import { multiTierCache } from '../services/CacheService';
 // Clear entire cache
 multiTierCache.clear();
 
-// Set custom cache entry
+// Set custom cache entry in the 'hot', 'warm' or 'cold' tier
 const cacheKey = 'custom-data';
-multiTierCache.set(cacheKey, data, 300000); // 5 min TTL
+multiTierCache.set(cacheKey, data, 'warm');
 
 // Get from cache
 const cached = multiTierCache.get<DataType>(cacheKey);
@@ -316,7 +305,7 @@ Cache is automatically cleared on mutations:
 
 ```typescript
 // This clears relevant cache entries
-await api.updateCourseContent('content-123', updates);
+await api.updateCourseContent('course-789', 'content-123', updates);
 
 // Fresh data on next fetch
 const updated = await api.getCourseContent('content-123');
@@ -331,10 +320,10 @@ const updated = await api.getCourseContent('content-123');
 ```typescript
 async function displayCourses(): Promise<void> {
   try {
-    const courses = await api.getCourses();
+    const courses = await api.getCourses(courseFamilyId);
 
-    for (const course of courses.results) {
-      console.log(`${course.name} (${course.id})`);
+    for (const course of courses) {
+      console.log(`${course.title ?? course.path} (${course.id})`);
     }
   } catch (error) {
     vscode.window.showErrorMessage(
@@ -349,6 +338,8 @@ async function displayCourses(): Promise<void> {
 ```typescript
 async function createContent(
   courseId: string,
+  contentTypeId: string,
+  path: string,
   title: string
 ): Promise<void> {
   await vscode.window.withProgress(
@@ -361,9 +352,11 @@ async function createContent(
       try {
         progress.report({ increment: 0 });
 
-        const content = await api.createCourseContent({
+        const content = await api.createCourseContent(courseId, {
           course_id: courseId,
-          title: title
+          course_content_type_id: contentTypeId,
+          path,
+          title
         });
 
         progress.report({ increment: 100 });
@@ -383,28 +376,22 @@ async function createContent(
 
 ```typescript
 async function uploadExample(
-  zipPath: string,
-  metadata: {
-    repository_id: string;
-    identifier: string;
-    title: string;
-  }
+  repositoryId: string,
+  directory: string,
+  files: Record<string, string>
 ): Promise<void> {
   try {
-    // Read file
-    const fileBuffer = await fs.promises.readFile(zipPath);
-
-    // Upload
     const example = await api.uploadExample({
-      ...metadata,
-      file: fileBuffer
+      repository_id: repositoryId,
+      directory,
+      files
     });
 
     vscode.window.showInformationMessage(
-      `Example uploaded: ${example.title}`
+      `Example uploaded: ${example?.title}`
     );
   } catch (error) {
-    if (error instanceof HttpError && error.statusCode === 400) {
+    if (error instanceof HttpError && error.status === 400) {
       vscode.window.showErrorMessage(
         'Invalid example format. Check meta.yaml file.'
       );
@@ -420,28 +407,29 @@ async function uploadExample(
 ### Example 4: Fetching Student Submissions with Filtering
 
 ```typescript
-async function getStudentSubmissions(
-  courseContentId: string,
-  courseMemberId: string
+async function getUngradedSubmissions(
+  courseId: string,
+  courseContentId: string
 ): Promise<void> {
   try {
-    const submissions = await api.querySubmissions({
+    const groups = await api.getTutorSubmissionGroups({
+      course_id: courseId,
       course_content_id: courseContentId,
-      course_member_id: courseMemberId
+      has_ungraded_submissions: true
     });
 
-    if (submissions.length === 0) {
+    if (groups.length === 0) {
       vscode.window.showInformationMessage(
         'No submissions found'
       );
       return;
     }
 
-    for (const submission of submissions) {
+    for (const group of groups) {
       console.log(
-        `Submission ${submission.id}: ` +
-        `Status=${submission.status}, ` +
-        `Grade=${submission.grade ?? 'Not graded'}`
+        `${group.display_name}: ` +
+        `${group.submission_count ?? 0} submissions, ` +
+        `latest ${group.latest_submission_at ?? 'never'}`
       );
     }
   } catch (error) {
@@ -457,6 +445,7 @@ async function getStudentSubmissions(
 ```typescript
 async function batchCreateContent(
   courseId: string,
+  contentTypeId: string,
   titles: string[]
 ): Promise<void> {
   const results = {
@@ -480,10 +469,12 @@ async function batchCreateContent(
         });
 
         try {
-          await errorRecoveryService.executeWithRetry(
-            async () => await api.createCourseContent({
+          await errorRecoveryService.executeWithRecovery(
+            async () => await api.createCourseContent(courseId, {
               course_id: courseId,
-              title: title
+              course_content_type_id: contentTypeId,
+              path: `item${i + 1}`,
+              title
             }),
             { maxRetries: 2 }
           );
@@ -519,9 +510,9 @@ The extension uses request batching to optimize multiple similar requests:
 ```typescript
 import { requestBatchingService } from '../services/RequestBatchingService';
 
-// Multiple requests batched automatically
-const requests = studentIds.map(id =>
-  requestBatchingService.addRequest('course-members', { id })
+// Requests with the same batch key are collected and run together
+const requests = memberIds.map(id =>
+  requestBatchingService.batch('course-members', id, () => api.getCourseMember(id))
 );
 
 const members = await Promise.all(requests);
@@ -536,13 +527,14 @@ Track API performance with the monitoring service:
 ```typescript
 import { performanceMonitor } from '../services/PerformanceMonitoringService';
 
-performanceMonitor.startOperation('fetch-courses');
-const courses = await api.getCourses();
-performanceMonitor.endOperation('fetch-courses');
+const courses = await performanceMonitor.measureAsync(
+  'fetch-courses',
+  () => api.getCourses(courseFamilyId)
+);
 
 // Get metrics
-const metrics = performanceMonitor.getMetrics('fetch-courses');
-console.log('Average duration:', metrics.averageDuration);
+const stats = performanceMonitor.getStats('fetch-courses');
+console.log(performanceMonitor.generateReport());
 ```
 
 ---
@@ -555,14 +547,11 @@ For testing, create a mock service:
 
 ```typescript
 class MockComputorApiService extends ComputorApiService {
-  async getCourses(): Promise<CourseList> {
-    return {
-      count: 2,
-      results: [
-        { id: '1', name: 'Course 1', ... },
-        { id: '2', name: 'Course 2', ... }
-      ]
-    };
+  async getCourses(courseFamilyId: string): Promise<CourseList[]> {
+    return [
+      { id: '1', path: 'course1', title: 'Course 1', ... },
+      { id: '2', path: 'course2', title: 'Course 2', ... }
+    ];
   }
 }
 
@@ -572,13 +561,13 @@ const mockApi = new MockComputorApiService(mockContext);
 
 ### Integration Tests
 
-See [test/integration/](../test/integration/) for examples of API integration tests.
+See [test/services/](../test/services/) and [test/http/](../test/http/) for tests of the API layer.
 
 ---
 
 ## Additional Resources
 
-- **[Complete Backend API Spec](client-endpoints.md)** - All endpoints with request/response models
+- **Complete Backend API Spec** - the backend's OpenAPI reference at `<backend URL>/docs`
 - **[ComputorApiService Source](../src/services/ComputorApiService.ts)** - Implementation details
 - **[Type Definitions](../src/types/generated/)** - Generated TypeScript types
 - **[HTTP Clients](../src/http/)** - HTTP client implementations

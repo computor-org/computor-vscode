@@ -44,9 +44,10 @@ On the row itself you may see:
 Opens the text your lecturer wrote for this unit, rendered as a page. The entry
 appears only when there is a description.
 
-If your lecturer wrote it in more than one language, **Preview Description in
-Another Language** lets you read the other versions. The one you get by default
-follows the course language, with English as the fallback.
+If your lecturer wrote it in more than one language, the one you get follows
+your reading language (your profile language, otherwise the VS Code display
+language), with English as the fallback. On an assignment, **Preview
+Description in Another Language** lets you read the other versions.
 
 ### Show Messages
 

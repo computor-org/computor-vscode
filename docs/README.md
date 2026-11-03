@@ -5,14 +5,13 @@ Welcome to the Computor VS Code Extension documentation. This extension provides
 ## Documentation Index
 
 ### User Documentation
-- **[Quick Start Guide](quick-start.md)** - Get started in 5 minutes
 - **[User Guide](user-guide.md)** - Complete guide for students, tutors, and lecturers
 
 ### Technical Documentation
 - **[Architecture Overview](architecture.md)** - System architecture and design patterns
 - **[Developer Guide](developer-guide.md)** - Contributing and development setup
 - **[API Integration Guide](api-reference.md)** - How to use ComputorApiService with practical examples
-- **[Backend API Specification](client-endpoints.md)** - Complete endpoint reference with request/response models
+- **Backend API Specification** - the backend's interactive OpenAPI reference at `<backend URL>/docs`
 
 ## What is Computor?
 
@@ -45,8 +44,8 @@ Computor is a comprehensive teaching platform that connects students, tutors, an
 
 1. **Install the extension** from the VS Code marketplace
 2. **Open a folder** in VS Code (required for authentication)
-3. **Run the command** `Computor: Login` from the command palette
-4. **Enter your credentials** (username and password) when prompted
+3. **Run the command** `Computor: Change Backend URL` and enter your institution's backend URL
+4. **Run the command** `Computor: Login` and sign in through your institution's single sign-on page in the browser
 5. **Start using Computor** - the appropriate views will appear in the activity bar
 
 ## Key Features
@@ -59,18 +58,17 @@ The extension automatically shows the appropriate interface based on your role:
 
 ### Git Integration
 - Automatic repository cloning and management
-- GitLab token management for secure access
-- Branch management and conflict resolution
+- Repository token management for secure access
+- Conflict detection and resolution
 - Repository backup and recovery
 
 ### Test Execution
-- Run tests locally before submission
+- Run the course's tests on the server before submission
 - View detailed test results in dedicated panel
 - Navigate to failing tests with one click
-- Support for various testing frameworks
 
 ### Secure Authentication
-- Bearer token authentication (username/password login)
+- Browser-based single sign-on, or an API token for automation
 - Automatic token refresh
 - Secure credential storage
 
@@ -78,7 +76,6 @@ The extension automatically shows the appropriate interface based on your role:
 
 - VS Code version 1.74.0 or higher
 - Git installed and available in PATH
-- Node.js (for test execution)
 - Network access to Computor backend
 
 ## Support

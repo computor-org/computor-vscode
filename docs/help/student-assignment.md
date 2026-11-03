@@ -66,7 +66,7 @@ silently or left out silently.
 **6. Read the feedback.** *Show Test Results* for the automated run,
 *View Details* for the submission history and grading, *Show Messages* for what
 your lecturer or tutor wrote. A status of *Correction Necessary* means changes
-are expected; *Correction Possible* means you may revise if submissions remain.
+are expected; *Improvement Possible* means you may revise if submissions remain.
 
 ## Test runs and submissions are limited
 

@@ -25,7 +25,8 @@ Computor is a VS Code extension designed for educational institutions to manage 
 Public learners can use **Computor: Public Courses** before signing in, read the
 examples, clone them into desktop VS Code or use their own GitHub Codespace.
 Enrolled learners can ask Lena through course messages. See [Public learning](docs/PUBLIC_LEARNING.md).
-The same 2027.3.0 extension supports both 26.10 and main/27.3 backends.
+Each release works with the current backend and with every backend release line
+still in use (see [RELEASING.md](RELEASING.md#backend-compatibility)).
 
 ### Prerequisites
 
@@ -146,7 +147,7 @@ You're now ready to use Computor!
 
 ### Token Management
 
-- Use `Computor: Manage GitLab Tokens` to manage GitLab Personal Access Tokens per origin
+- Use `Computor: Manage Repository Tokens` to manage GitLab Personal Access Tokens per origin
 - Tokens are stored securely in VS Code's secret storage
 - Supports multiple GitLab instances
 
@@ -190,7 +191,7 @@ For issues and questions:
 
 ## Development
 
-For developers who want to contribute or extend the extension, see the [Developer Guide](docs/developer-guide.md) and [Architecture Overview](docs/architecture.md).
+For developers who want to contribute or extend the extension, see [CONTRIBUTING.md](CONTRIBUTING.md), the [Developer Guide](docs/developer-guide.md) and the [Architecture Overview](docs/architecture.md).
 
 ## License
 

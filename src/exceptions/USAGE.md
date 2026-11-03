@@ -1,11 +1,11 @@
 # Backend Error Handling - Usage Guide
 
-This guide shows how to use the new backend error catalog system integrated into the extension.
+This guide shows how to use the backend error catalog system integrated into the extension.
 
 ## Overview
 
 The backend error catalog system provides:
-- **50 standardized error codes** from the backend (e.g., `AUTH_001`, `VAL_003`, `NF_001`)
+- **Standardized error codes** from the backend (e.g., `AUTH_001`, `VAL_003`, `NF_001`)
 - **User-friendly error messages** in multiple formats (plain text, markdown, HTML)
 - **Error categories and severity levels** for better error handling
 - **Retry information** from the backend (`retry_after`)
@@ -48,7 +48,7 @@ import { errorRecoveryService } from '../services/ErrorRecoveryService';
 import { HttpError } from './errors/HttpError';
 
 try {
-  await apiService.submitAssignment(data);
+  await apiService.submitTest(testData);
 } catch (error) {
   if (error instanceof HttpError && error.hasBackendError()) {
     // Show with interactive buttons (Retry, Show Details)
@@ -57,7 +57,7 @@ try {
       'interactive',
       {
         retry: async () => {
-          await apiService.submitAssignment(data);
+          await apiService.submitTest(testData);
         }
       }
     );
@@ -97,7 +97,7 @@ errorRecoveryService.displayBackendError(error, 'detailed');
 
 ### 4. Using Error Recovery Service
 
-The `ErrorRecoveryService` now automatically detects backend errors:
+The `ErrorRecoveryService` automatically detects backend errors:
 
 ```typescript
 import { errorRecoveryService } from '../services/ErrorRecoveryService';
@@ -169,7 +169,8 @@ The backend defines these error categories:
 You can create your own display strategy:
 
 ```typescript
-import { ErrorDisplayStrategy, BackendErrorDefinition } from '../exceptions';
+import { ErrorDisplayStrategy } from '../exceptions/ErrorDisplayStrategy';
+import { BackendErrorDefinition } from '../exceptions/types';
 
 class CustomDisplayStrategy implements ErrorDisplayStrategy {
   display(error: BackendErrorDefinition, additionalContext?: string): void {
@@ -197,7 +198,7 @@ class CustomDisplayStrategy implements ErrorDisplayStrategy {
 
 ```typescript
 try {
-  await apiService.createCourseContent(data);
+  await apiService.createCourseContent(courseId, data);
 } catch (error) {
   if (error instanceof HttpError) {
     switch (error.errorCode) {
@@ -230,9 +231,9 @@ try {
 4. **Log error codes**: Always log the error code for debugging: `console.error('[Operation] Error:', error.errorCode, error.message)`
 5. **Fallback gracefully**: Always have fallback error handling for non-backend errors
 
-## Migration from Old Error Handling
+## Plain and Catalog-Aware Handling
 
-### Before
+### Plain
 ```typescript
 try {
   await apiService.getCourse(id);
@@ -242,7 +243,7 @@ try {
 }
 ```
 
-### After
+### Catalog-aware
 ```typescript
 import { HttpError } from './errors/HttpError';
 
