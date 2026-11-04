@@ -16,6 +16,7 @@ import { isWelcomeShownOnStartup, WelcomeWebviewProvider } from '../../src/ui/we
 import { showMarkdownTextPreview } from '../../src/ui/webviews/markdownPreview';
 import { codicon, codiconPaths, CodiconName } from '../../src/ui/webviews/welcome/codicons';
 import { contentIconSvg } from '../../src/utils/contentIconSvg';
+import { pickUiLanguage } from '../../src/utils/uiLanguage';
 
 /**
  * The welcome page (computor-org/issues#374).
@@ -629,6 +630,29 @@ describe('collectWelcomeFacts', () => {
 
 describe('resolveWelcomeMessage', () => {
   const signedIn = model({ roles: ['student', 'tutor'], webUrl: 'https://computor.example' });
+
+  for (const [selected, display, suffix, anchor] of [
+    ['de', 'en', '_de', 'leitfaden-für-lehrende'],
+    ['en', 'de', '', 'lecturer-guide'],
+    ['fr', 'fr', '', 'lecturer-guide']
+  ]) {
+    it(`opens documentation in the resolved reading language for ${selected}`, () => {
+      const reader = model({ language: pickUiLanguage(selected, undefined, display) });
+      const guide = `user-guide${suffix}.md`;
+      const intent = resolveWelcomeMessage({ command: 'link', data: { key: 'lecturerGuide' } }, reader);
+      expect(intent).to.deep.equal({
+        kind: 'link', url: `https://github.com/computor-org/computor-vscode/blob/main/docs/${guide}#${anchor}`
+      });
+      const headings = fs.readFileSync(path.join(__dirname, '../../docs', guide), 'utf8')
+        .split('\n').filter(line => /^#{1,6} /.test(line))
+        .map(line => line.replace(/^#{1,6} /, '').toLowerCase()
+          .replace(/[^\p{L}\p{M}\p{N}_ -]/gu, '').replace(/ /g, '-'));
+      expect(headings).to.include(decodeURIComponent(new URL((intent as { url: string }).url).hash.slice(1)));
+      expect(resolveWelcomeMessage({ command: 'link', data: { key: 'teacherGuide' } }, reader)).to.deep.equal({
+        kind: 'link', url: `https://github.com/computor-org/computor-backend/blob/main/docs/teacher-guide${suffix}.md`
+      });
+    });
+  }
 
   it('opens bundled help pages and nothing else', () => {
     expect(resolveWelcomeMessage({ command: 'help', data: { page: 'student-unit.md' } }, signedIn))
