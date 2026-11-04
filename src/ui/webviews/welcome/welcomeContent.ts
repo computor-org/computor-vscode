@@ -307,6 +307,15 @@ export type WelcomeIntent =
   | { kind: 'showOnStartup'; value: boolean };
 
 export function welcomeLinkUrl(key: unknown, model: WelcomeModel): string | undefined {
+  const say = sayer(model);
+  if (key === 'lecturerGuide') {
+    return say(welcomeLinks.lecturerGuide,
+      'https://github.com/computor-org/computor-vscode/blob/main/docs/user-guide_de.md#leitfaden-für-lehrende');
+  }
+  if (key === 'teacherGuide') {
+    return say(welcomeLinks.teacherGuide,
+      'https://github.com/computor-org/computor-backend/blob/main/docs/teacher-guide_de.md');
+  }
   if (key === 'workspaces') {
     return model.webUrl ? `${model.webUrl}/workspaces` : undefined;
   }
@@ -810,10 +819,10 @@ function renderStaff(model: WelcomeModel, say: Say): string {
     rows.push(
       [linkButton('lecturerGuide', say('Lecturer guide', 'Leitfaden für Lehrende')),
         say('Courses, content, examples and releases in the Lecturer view (online).',
-          'Kurse, Inhalte, Beispiele und Freigaben in der Lecturer-Ansicht (online, auf Englisch).')],
+          'Kurse, Inhalte, Beispiele und Freigaben in der Lecturer-Ansicht (online).')],
       [linkButton('teacherGuide', say('Course dashboard guide', 'Leitfaden zum Kurs-Dashboard')),
         say('Course statistics, flags and grading pages in the Computor web app (online).',
-          'Kursstatistiken, Markierungen und Bewertungsseiten in der Computor-Web-App (online, auf Englisch).')]
+          'Kursstatistiken, Markierungen und Bewertungsseiten in der Computor-Web-App (online).')]
     );
   }
 

@@ -10,7 +10,8 @@ through course messages. Lena gives hints and feedback; it cannot execute code.
 The extension works with every Computor server release line still in use. Hosted
 workspace capacity does not affect local VS Code or Codespaces.
 
-Follow the [course guide](https://github.com/computor-org/data-science-python/blob/main/docs/GETTING_STARTED.md)
+Follow the course guide in [English](https://github.com/computor-org/data-science-python/blob/main/docs/GETTING_STARTED.md)
+or [German](https://github.com/computor-org/data-science-python/blob/main/docs/GETTING_STARTED_de.md)
 for the Python environment and course setup.
 
 To ping Lena in course messages, type `@lena`, `@luna` or `@ai`, or choose
