@@ -5,7 +5,7 @@ Welcome to the Computor VS Code Extension documentation. This extension provides
 ## Documentation Index
 
 ### User Documentation
-- **[User Guide](user-guide.md)** - Complete guide for students, tutors, and lecturers
+- **[User Guide](user-guide.md)** - Complete guide for students, tutors, and lecturers ([Deutsch](user-guide_de.md))
 
 ### Technical Documentation
 - **[Architecture Overview](architecture.md)** - System architecture and design patterns

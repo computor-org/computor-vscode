@@ -276,8 +276,9 @@ Content types define the nature of assignments:
 
 1. Right-click on `Content Types` → `Create Content Type`
 2. Configure:
+   - Content kind (submittable or not)
    - Name (e.g., "Homework", "Lab", "Exam")
-   - Properties (submittable, team-based, etc.)
+   - Color (optional)
 3. Use this type when creating course content
 
 #### Creating Course Groups
@@ -312,10 +313,10 @@ Example Repository
 #### Searching and Filtering Examples
 
 Use the toolbar icons:
-- **🔍 Search**: Search by title, identifier, or description
+- **🔍 Search**: Search by title, identifier, or tags
 - **🏷️ Filter by Tags**: Select multiple tags
 - **📂 Filter by Category**: Select a category
-- **❌ Clear**: Reset all filters
+- **❌ Clear Search**, **Clear Category Filter** or **Clear Tags Filter** (on the row of an active filter under **Filters**): Reset that filter
 
 #### Checking Out Examples
 
@@ -323,9 +324,9 @@ Use the toolbar icons:
 2. Right-click → `Checkout Latest` (or `Checkout Version...` for an older version)
 3. The example is downloaded to your workspace
 
-You can also:
+Related commands:
 - **Checkout Latest (Filtered)**: Download all currently visible examples
-- **Checkout Multiple Examples** (command palette): Select specific examples
+- **Checkout Multiple Examples** (command palette): Not implemented yet; the command only says so
 
 #### Uploading Examples
 
@@ -519,7 +520,7 @@ Access extension settings:
 
 ### Backend Connection Issues
 
-**Problem**: "Cannot connect to backend"
+**Problem**: "Cannot connect to Computor."
 
 **Solutions**:
 - Check backend URL in settings
@@ -550,7 +551,7 @@ Access extension settings:
 
 ### Example Upload Fails
 
-**Problem**: "Failed to upload example"
+**Problem**: "Failed to upload"
 
 **Solutions**:
 - Ensure folder structure is valid
@@ -646,7 +647,7 @@ Examples may contain a `meta.yaml` file with metadata:
 ```yaml
 title: Sorting Algorithms
 category: Algorithms
-tags:
+keywords:
   - sorting
   - quicksort
   - mergesort
