@@ -3,6 +3,16 @@
 Versions are semester CalVer (`YYYY.M.patch`, minor = semester start month).
 See [RELEASING.md](RELEASING.md) for the scheme and the channel rules.
 
+## 2027.3.12
+
+- Lecturers can ask Lena for a draft description of a unit: **Draft Description with Lena…** on
+  a unit in the lecturer course tree, with an optional instruction. The draft opens unsaved in the
+  description editor; saving publishes it, closing discards it. If the unit already has a
+  description, choose to replace it in the editor or to compare both. The entry only appears when
+  the backend supports drafts.
+- The welcome page's teaching-guide buttons open the guide in your reading language.
+- Help pages use the current labels in English and German.
+
 ## 2027.3.11
 
 - A workspace started from the web app without choosing a course opens in your reading
