@@ -167,7 +167,7 @@ Use the **Courses & Members** view to pick the student to review:
 2. Click a course in **Courses & Members**
 3. Use **Course Groups** to narrow the member list to one group
 4. Click a member to load their content into the **Courses** view
-5. Click the tutor item in the status bar (`Tutor: Reset Filters`) to clear the selection
+5. Click the tutor item in the status bar (command **Reset Filters**) to clear the selection
 
 ### Viewing Student Work
 
