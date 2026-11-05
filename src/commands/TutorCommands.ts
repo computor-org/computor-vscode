@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { TutorStudentTreeProvider } from '../ui/tree/tutor/TutorStudentTreeProvider';
+import { statusLabel } from '../ui/tree/student/StudentCourseContentTreeProvider';
 import { ComputorApiService } from '../services/ComputorApiService';
 import { TutorSelectionService } from '../services/TutorSelectionService';
 import { createSimpleGit } from '../git/simpleGitFactory';
@@ -394,14 +395,14 @@ export class TutorCommands {
       const grade = Math.max(0, Math.min(1, Number(gradingInput.trim())));
 
       const statusOptions: Array<vscode.QuickPickItem & { value: GradingStatus }> = [
-        { label: say('corrected', 'Bewertet'), description: say('Mark as corrected', 'corrected'), value: 1 as GradingStatus },
-        { label: say('correction_necessary', 'Korrektur nötig'), description: say('Correction necessary', 'correction_necessary'), value: 2 as GradingStatus },
-        { label: say('improvement_possible', 'Verbesserung möglich'), description: say('Improvement possible', 'improvement_possible'), value: 3 as GradingStatus },
-        { label: say('not_reviewed', 'Nicht bewertet'), description: say('Not reviewed', 'not_reviewed'), value: 0 as GradingStatus },
+        { label: statusLabel('corrected'), value: 1 as GradingStatus },
+        { label: statusLabel('correction_necessary'), value: 2 as GradingStatus },
+        { label: statusLabel('improvement_possible'), value: 3 as GradingStatus },
+        { label: statusLabel('not_reviewed'), value: 0 as GradingStatus },
       ];
       const statusPick = await vscode.window.showQuickPick(statusOptions, {
         title: 'Status',
-        placeHolder: prevStatus ? say(`Current: ${prevStatus}`, `Aktuell: ${prevStatus}`) : say('Choose status', 'Status wählen'),
+        placeHolder: prevStatus ? say(`Current: ${statusLabel(prevStatus)}`, `Aktuell: ${statusLabel(prevStatus)}`) : say('Choose status', 'Status wählen'),
         canPickMany: false,
         ignoreFocusOut: true
       });
