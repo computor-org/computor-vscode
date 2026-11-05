@@ -25,7 +25,7 @@
   "command.student.commitAssignment": "Commit Assignment",
   "command.student.commitCourse": "Commit Course",
   "command.student.testAssignment": "Test Assignment",
-  "command.student.submitDownload": "Submit",
+  "command.student.submitDownload": "Submit without Git",
   "command.student.submit": "Submit",
   "command.student.exportCourseExamples": "Export Course Examples…",
   "command.student.showMessages": "Show Messages",
