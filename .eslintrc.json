@@ -15,6 +15,11 @@
       {
         "selector": "variableLike",
         "format": ["camelCase", "PascalCase"]
+      },
+      {
+        "selector": "variable",
+        "modifiers": ["const"],
+        "format": ["camelCase", "PascalCase", "UPPER_CASE"]
       }
     ],
     "@stylistic/ts/semi": "warn",

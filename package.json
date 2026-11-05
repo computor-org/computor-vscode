@@ -2809,11 +2809,6 @@
           "group": "inline@0"
         },
         {
-          "command": "computor.showContentDescription",
-          "when": "view == computor.tutor.students && viewItem =~ /^tutorUnit\\.hasDescription$/",
-          "group": "inline@0"
-        },
-        {
           "command": "computor.lecturer.editContentDescription",
           "when": "view == computor.lecturer.courses && viewItem =~ /^course(\\.archived)?(\\.hasDescription)?$/",
           "group": "inline@0"

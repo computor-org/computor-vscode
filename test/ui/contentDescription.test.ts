@@ -98,6 +98,19 @@ describe('content descriptions', () => {
       });
     }
 
+    it('targets only views the extension contributes', () => {
+      const viewIds = new Set(
+        Object.values(manifest.contributes.views as Record<string, Array<{ id: string }>>)
+          .flat()
+          .map((v) => v.id)
+      );
+      const unknown = menus
+        .filter((m) => m.command === 'computor.showContentDescription' && m.when)
+        .map((m) => (m.when as string).match(/view == ([\w.-]+)/)?.[1])
+        .filter((id): id is string => !!id && !viewIds.has(id));
+      expect(unknown).to.deep.equal([]);
+    });
+
     it('is never equality-compared in code, only prefix-matched', () => {
       // The suffix reaches more than menus: any `contextValue === 'X'` in the
       // extension source silently stops matching the moment a lecturer writes

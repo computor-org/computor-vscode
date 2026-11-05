@@ -174,7 +174,7 @@ In der Ansicht **Kurse und Teilnehmende** wählst du aus, wessen Arbeit du durch
 2. Klicke unter **Kurse und Teilnehmende** auf einen Kurs
 3. Schränke die Liste der Teilnehmenden mit **Kursgruppen** auf eine Gruppe ein
 4. Klicke auf eine Person, um ihre Inhalte in die Ansicht **Kurse** zu laden
-5. Klicke in der Statusleiste auf den Tutor-Eintrag (`Tutor: Filter zurücksetzen`), um die Auswahl aufzuheben
+5. Klicke in der Statusleiste auf den Tutor-Eintrag (Befehl **Filter zurücksetzen**), um die Auswahl aufzuheben
 
 ### Arbeiten von Studierenden ansehen
 

@@ -53,7 +53,7 @@
   "command.tutor.help": "Hilfe",
   "command.tutor.cloneStudentRepository": "Repository der Person klonen",
   "command.tutor.updateStudentRepository": "Repository der Person aktualisieren",
-  "command.tutor.resetFilters": "Tutor: Filter zurücksetzen",
+  "command.tutor.resetFilters": "Filter zurücksetzen",
   "command.tutor.showCourseProgress": "Kursfortschritt anzeigen",
   "command.tutor.showMemberProgress": "Fortschritt der Person anzeigen",
   "command.tutor.checkout": "Auschecken",

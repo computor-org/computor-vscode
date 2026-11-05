@@ -2466,7 +2466,7 @@ export class StudentCommands {
     const submissionGroup = item?.submissionGroup as SubmissionGroupStudentList | undefined;
     const submissionGroupId = submissionGroup?.id;
     if (!submissionGroupId) {
-      notify.warning(say('Open "Submit (without git)" from an assignment in the student tree.', 'Wähle bei einer Aufgabe in der Kursübersicht „Ohne Git abgeben“.'));
+      notify.warning(say('Open "Submit without Git" from an assignment in the student tree.', 'Wähle bei einer Aufgabe in der Kursübersicht „Ohne Git abgeben“.'));
       return;
     }
 
