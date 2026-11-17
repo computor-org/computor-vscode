@@ -113,6 +113,83 @@ describe('student repository setup feedback', () => {
 
     expect((await courseChildren(tree)).map(item => item.id)).to.not.include('setup-problem-launch');
   });
+
+  // computor-org/issues#433: a failed course setup was followed by another
+  // full clone (up to 180 s) for every assignment the learner opened, and the
+  // refresh after each failure re-rendered the open assignment, which started
+  // the next one by itself.
+  describe('after a failed setup (issues#433)', () => {
+    const managed = { configured: true, mode: 'managed', modes: ['managed'] };
+    const assignment = (id: string) => ({ courseContent: { id, title: 'Mathematische Konstanten' } }) as any;
+    const unreachable = Object.assign(new Error(
+      'Command failed: git clone "http://***@computor-git/s/repo.git" "/ws/repo"\n'
+        + "fatal: unable to access 'http://computor-git/s/repo.git/': Could not resolve host: computor-git"
+    ), { stderr: 'fatal: Could not resolve host: computor-git' });
+
+    function failing() {
+      const { tree } = fixture(undefined);
+      let setups = 0;
+      (tree as any).provisioning = { setUpRepository: async () => { setups++; throw unreachable; } };
+      const expand = (id: string) => (tree as any).getAssignmentChildrenNewModel(assignment(id), '/ws', 'launch', 'week_1/constants', managed);
+      return { tree, expand, setups: () => setups };
+    }
+
+    it('shows the retry row on an assignment instead of cloning again, also after the refresh', async () => {
+      setUiProfileLanguage('de');
+      const { expand, setups } = failing();
+
+      await expand('a1');
+      const [row] = await expand('a1');
+      await expand('a2');
+
+      expect(setups()).to.equal(1);
+      expect(row.label).to.equal('Repository fehlt');
+      expect(row.id).to.equal('setup-problem-launch-a1');
+      expect(row.command?.command).to.equal(RETRY_COURSE_SETUP_COMMAND);
+      expect(row.command?.arguments).to.deep.equal(['launch']);
+    });
+
+    it('names the kind of failure, without the internal host or the command', async () => {
+      setUiProfileLanguage('de');
+      const { tree, expand } = failing();
+
+      await expand('a1');
+      const [course] = await courseChildren(tree);
+
+      expect(warnings).to.have.length(1);
+      expect(warnings[0]).to.contain('Grund: der Git-Server war nicht erreichbar');
+      expect(warnings[0]).to.not.contain('computor-git');
+      expect(warnings[0]).to.not.contain('git clone');
+      expect(String(course!.tooltip)).to.contain('Grund: der Git-Server war nicht erreichbar');
+    });
+
+    it('starts again only from the retry, and then shows the files', async () => {
+      const { tree, expand, setups } = failing();
+      await expand('a1');
+
+      (tree as any).provisioning = { setUpRepository: async () => ({ status: 'cloned', path: '/tmp/repo' }) };
+      await tree.retryCourseRepository('launch');
+
+      expect(setups()).to.equal(1);
+      expect((await courseChildren(tree)).map(item => item.id)).to.not.include('setup-problem-launch');
+    });
+  });
+
+  it('runs one setup per course when the launch, the course and an assignment ask at once', async () => {
+    const { tree } = fixture(undefined);
+    let finish!: (outcome: any) => void;
+    let setups = 0;
+    (tree as any).provisioning = { setUpRepository: () => { setups++; return new Promise(resolve => { finish = resolve; }); } };
+    const model = { configured: true, mode: 'managed', modes: ['managed'] };
+
+    const first = (tree as any).setupCourseGitWithProgress('launch', model);
+    const second = (tree as any).setupCourseGitWithProgress('launch', model, 'Mathematische Konstanten');
+    await new Promise<void>(resolve => setImmediate(resolve));
+    finish({ status: 'cloned', path: '/tmp/repo' });
+
+    expect(await Promise.all([first, second])).to.deep.equal(['/tmp/repo', '/tmp/repo']);
+    expect(setups).to.equal(1);
+  });
 });
 
 describe('student assignment row accessibility', () => {

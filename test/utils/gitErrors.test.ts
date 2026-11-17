@@ -1,6 +1,8 @@
 import { expect } from 'chai';
 
-import { extractAuthFailureOrigin, isGitAuthenticationError } from '../../src/utils/gitErrors';
+import { GitTimeoutError } from '../../src/exceptions/errors/GitExecError';
+import { HttpError, MaintenanceError, NetworkError } from '../../src/exceptions/errors/HttpError';
+import { classifyRepositorySetupFailure, extractAuthFailureOrigin, isGitAuthenticationError } from '../../src/utils/gitErrors';
 
 /**
  * Misreading an error as a rejected credential is not a harmless false
@@ -86,5 +88,34 @@ describe('extractAuthFailureOrigin', () => {
     expect(extractAuthFailureOrigin({ stderr: 'remote: HTTP Basic: Access denied' })).to.equal(undefined);
     expect(extractAuthFailureOrigin({ message: "fatal: unable to access 'not a url'" })).to.equal(undefined);
     expect(extractAuthFailureOrigin(undefined)).to.equal(undefined);
+  });
+});
+
+describe('classifyRepositorySetupFailure', () => {
+  it('reads the provisioning call by error type and status', () => {
+    expect(classifyRepositorySetupFailure(new HttpError('Forbidden', 403, 'Forbidden'))).to.equal('authentication');
+    expect(classifyRepositorySetupFailure(new HttpError('Bad Gateway', 502, 'Bad Gateway'))).to.equal('server');
+    expect(classifyRepositorySetupFailure(new MaintenanceError())).to.equal('server');
+    expect(classifyRepositorySetupFailure(new NetworkError('offline'))).to.equal('unreachable');
+    expect(classifyRepositorySetupFailure(new GitTimeoutError('git clone "***" "/ws"', 180_000))).to.equal('timeout');
+  });
+
+  it('reads the clone by its stderr', () => {
+    const cases: Array<[string, string]> = [
+      ['fatal: Authentication failed for https://git.example.org/a/b.git', 'authentication'],
+      ["fatal: unable to access 'http://computor-git/a/b.git/': The requested URL returned error: 403", 'authentication'],
+      ["fatal: unable to access 'http://computor-git/a/b.git/': Could not resolve host: computor-git", 'unreachable'],
+      ['fatal: unable to access: Failed to connect to computor-git port 80 after 75000 ms: Connection refused', 'unreachable'],
+      ["fatal: unable to access 'http://computor-git/a/b.git/': The requested URL returned error: 502", 'server'],
+      ["fatal: repository 'https://git.example.org/cs401/student.git' not found", 'other']
+    ];
+    for (const [stderr, expected] of cases) {
+      expect(classifyRepositorySetupFailure({ message: 'Command failed: git clone', stderr }), stderr).to.equal(expected);
+    }
+  });
+
+  it('tolerates junk input', () => {
+    expect(classifyRepositorySetupFailure(undefined)).to.equal('other');
+    expect(classifyRepositorySetupFailure('boom')).to.equal('other');
   });
 });

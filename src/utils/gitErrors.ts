@@ -43,6 +43,62 @@ export function isGitAuthenticationError(error: unknown): boolean {
   return AUTH_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/** Why a repository setup failed, in the classes a learner can act on (issues#433). */
+export type RepositorySetupFailure = 'authentication' | 'unreachable' | 'timeout' | 'server' | 'other';
+
+// A 403 is a missing grant rather than a rejected credential, so it is not in
+// AUTH_PATTERNS (that would rotate the token); for the learner it is the same.
+const ACCESS_PATTERNS: RegExp[] = [
+  /requested URL returned error:\s*403\b/i,
+  /\bHTTP(?:\/[\d.]+)?\s+403\b/i,
+  /\b403\s+Forbidden\b/i
+];
+
+const UNREACHABLE_PATTERNS: RegExp[] = [
+  /Could not resolve host/i,
+  /Failed to connect to/i,
+  /Connection refused/i,
+  /Connection timed out/i,
+  /Network is unreachable/i,
+  /\b(?:ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH)\b/
+];
+
+const SERVER_PATTERNS: RegExp[] = [
+  /requested URL returned error:\s*5\d\d\b/i,
+  /\bHTTP(?:\/[\d.]+)?\s+5\d\d\b/i
+];
+
+/**
+ * Classify a failed repository setup: the provisioning API call (HttpError and
+ * friends, by name and status) or the git clone (stderr text).
+ */
+export function classifyRepositorySetupFailure(error: unknown): RepositorySetupFailure {
+  const { name, status } = (error ?? {}) as { name?: unknown; status?: unknown };
+  if (name === 'GitTimeoutError' || name === 'TimeoutError') {
+    return 'timeout';
+  }
+  if (name === 'AuthenticationError' || status === 401 || status === 403) {
+    return 'authentication';
+  }
+  if (name === 'NetworkError') {
+    return 'unreachable';
+  }
+  if (name === 'MaintenanceError' || (typeof status === 'number' && status >= 500)) {
+    return 'server';
+  }
+  const text = errorText(error);
+  if (isGitAuthenticationError(error) || ACCESS_PATTERNS.some((pattern) => pattern.test(text))) {
+    return 'authentication';
+  }
+  if (UNREACHABLE_PATTERNS.some((pattern) => pattern.test(text))) {
+    return 'unreachable';
+  }
+  if (SERVER_PATTERNS.some((pattern) => pattern.test(text))) {
+    return 'server';
+  }
+  return 'other';
+}
+
 /**
  * The remote git quoted back when it rejected the credential, reduced to its
  * origin — the identity of the token that has to be replaced. Undefined when
