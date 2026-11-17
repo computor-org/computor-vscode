@@ -23,6 +23,7 @@ import { extractGraderName } from '../../../utils/gradingHelpers';
 import { buildStudentRepoRoot, studentRepoFolderFromRef } from '../../../utils/repositoryNaming';
 import { extractZipBuffer } from '../../../utils/zipHelpers';
 import { GitCancelledError } from '../../../exceptions/errors/GitExecError';
+import { classifyRepositorySetupFailure } from '../../../utils/gitErrors';
 import type { CourseMemberRepositoryGet } from '../../../types/courseGit';
 import { BaseTreeDataProvider } from '../BaseTreeDataProvider';
 import { hasDescription, PREVIEW_STUDENT_DESCRIPTION_COMMAND, withDescription } from '../../contentDescription';
@@ -78,6 +79,26 @@ function setupProblemText(): string {
     );
 }
 
+function setupProblemMessage(reason?: string): string {
+    return reason ? `${setupProblemText()} (${say('Reason', 'Grund')}: ${reason})` : setupProblemText();
+}
+
+/** The reason for a failed setup in a few words, without hosts or commands. */
+function setupFailureReason(error: unknown): string {
+    switch (classifyRepositorySetupFailure(error)) {
+        case 'authentication':
+            return say('the git server refused access', 'der Git-Server hat den Zugriff abgelehnt');
+        case 'unreachable':
+            return say('the git server could not be reached', 'der Git-Server war nicht erreichbar');
+        case 'timeout':
+            return say('the download took too long', 'das Herunterladen hat zu lange gedauert');
+        case 'server':
+            return say('the server reported an error', 'der Server hat einen Fehler gemeldet');
+        default:
+            return say('an unexpected error', 'ein unerwarteter Fehler');
+    }
+}
+
 /** A grading status in the learner's language ("correction_necessary" -> "Correction Necessary"). */
 export function statusLabel(status: string): string {
     const german: Record<string, string> = {
@@ -123,12 +144,16 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     // Track courses that have been set up in this session (to avoid redundant bulk setup on course expand)
     private coursesSetupThisSession: Set<string> = new Set();
     private readonly courseRepositoryPreparations = new Map<string, Promise<void>>();
+    // The setup running for a course. A course has one repository, so the
+    // course, its assignments, a launch and a retry all share one attempt.
+    private readonly courseSetupsInFlight = new Map<string, Promise<string | undefined>>();
     // Track individual assignments where setup has already been attempted (to avoid repeated popups)
     private assignmentsSetupAttempted: Set<string> = new Set();
-    // Courses whose repository setup failed this session. The course shows a
-    // row saying so, because a notification alone is easily missed and Test
-    // and Submit stay hidden until the repository exists.
-    private readonly setupProblems = new Set<string>();
+    // Courses whose repository setup failed this session, with the reason when
+    // one is known. The course shows a row saying so, because a notification
+    // alone is easily missed and Test and Submit stay hidden until the
+    // repository exists. Only that row's retry starts the setup again.
+    private readonly setupProblems = new Map<string, string | undefined>();
     private wsSubscription = new CourseChannelSubscription('student-tree');
     // Git work state per course repo root (● / ↑ badges); promise-cached so
     // concurrent renders share one git invocation, cleared by the watcher.
@@ -1127,6 +1152,13 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
             ? (path.isAbsolute(directory) ? directory : (repoRoot ? path.join(repoRoot, directory) : undefined))
             : undefined;
         const dirMissing = !repoRoot || !absAssignmentDir || !fs.existsSync(absAssignmentDir);
+        if (dirMissing && this.setupProblems.has(courseId)) {
+            // The course's one repository already failed to set up. Expanding
+            // an assignment must not start another full clone (issues#433), and
+            // the refresh after a failure re-renders an expanded assignment, so
+            // it would repeat on its own. Retrying is this row's action.
+            return [this.setupProblemItem(courseId, element.courseContent.id)];
+        }
         if (dirMissing && !this.assignmentsSetupAttempted.has(setupKey)) {
             this.assignmentsSetupAttempted.add(setupKey);
             const setupRoot = await this.setupCourseGitWithProgress(courseId, model, element.courseContent.title || 'assignment');
@@ -1197,12 +1229,27 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
     /** Provision/clone (managed, external) or download+extract (download) for a
      * course on the new model, with a cancellable progress notification (or, for
      * the background setup of a launch, a status bar progress). Returns the local
-     * repo root on success, else undefined; a failure leaves a row in the tree. */
-    private async setupCourseGitWithProgress(
+     * repo root on success, else undefined; a failure leaves a row in the tree.
+     * A call while the course's setup is running waits for that one. */
+    private setupCourseGitWithProgress(
         courseId: string,
         model: CourseGitModel,
         title?: string,
         location: vscode.ProgressLocation = vscode.ProgressLocation.Notification,
+    ): Promise<string | undefined> {
+        const running = this.courseSetupsInFlight.get(courseId);
+        if (running) return running;
+        const setup = this.runCourseGitSetup(courseId, model, title, location)
+            .finally(() => this.courseSetupsInFlight.delete(courseId));
+        this.courseSetupsInFlight.set(courseId, setup);
+        return setup;
+    }
+
+    private async runCourseGitSetup(
+        courseId: string,
+        model: CourseGitModel,
+        title: string | undefined,
+        location: vscode.ProgressLocation,
     ): Promise<string | undefined> {
         return vscode.window.withProgress({
             location,
@@ -1255,8 +1302,10 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
                         'Einrichtung abgebrochen. Klappe die Aufgabe noch einmal auf, um es erneut zu versuchen.'));
                     return undefined;
                 }
+                // The full (credential-redacted) error is for the log; the
+                // learner gets its class, without internal hosts or commands.
                 console.error('[StudentTree] new-model setup failed:', e);
-                this.reportSetupProblem(courseId, e instanceof Error ? e.message : String(e));
+                this.reportSetupProblem(courseId, setupFailureReason(e));
             }
             return undefined;
         });
@@ -1271,13 +1320,13 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
      * do about it: a row at the top of the course, and one notification with
      * the same actions.
      */
-    private reportSetupProblem(courseId: string, detail?: string, gitServerUrl?: string): void {
-        this.setupProblems.add(courseId);
+    private reportSetupProblem(courseId: string, reason?: string, gitServerUrl?: string): void {
+        this.setupProblems.set(courseId, reason);
         this.refresh();
         const retry = say('Try again', 'Erneut versuchen');
         const report = say('Report problem', 'Problem melden');
         const open = say('Open git server', 'Git-Server öffnen');
-        const message = `${setupProblemText()}${detail ? ` (${detail})` : ''}`;
+        const message = setupProblemMessage(reason);
         void notify.warning(message, retry, report, ...(gitServerUrl ? [open] : [])).then(choice => {
             if (choice === retry) void this.retryCourseRepository(courseId);
             else if (choice === report) void vscode.commands.executeCommand('computor.reportProblem');
@@ -1285,7 +1334,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         });
     }
 
-    private setupProblemItem(courseId: string): MessageItem {
+    /** The course's retry row; under an assignment it needs its own tree id. */
+    private setupProblemItem(courseId: string, assignmentId?: string): MessageItem {
         const item = new MessageItem(
             say('Repository missing', 'Repository fehlt'),
             'warning',
@@ -1294,8 +1344,8 @@ export class StudentCourseContentTreeProvider extends BaseTreeDataProvider<TreeI
         // Short label for a narrow sidebar; the action follows dimmed, the
         // reason is in the tooltip and in what a screen reader announces.
         item.description = say('click to try again', 'zum erneuten Versuch klicken');
-        item.id = `setup-problem-${courseId}`;
-        item.tooltip = setupProblemText();
+        item.id = assignmentId ? `setup-problem-${courseId}-${assignmentId}` : `setup-problem-${courseId}`;
+        item.tooltip = setupProblemMessage(this.setupProblems.get(courseId));
         item.accessibilityInformation = { label: `${item.label}, ${item.description}. ${item.tooltip}` };
         return item;
     }
