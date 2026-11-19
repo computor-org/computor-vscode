@@ -11,7 +11,7 @@ what you need. Expanding the row then shows:
 
 - **Submissions** — the files of the student's latest submission. This is what
   you grade.
-- **References** — the reference solution for the deployed version of the
+- **References** — the reference solution for the released version of the
   assignment, so you can see what was expected.
 - **History** — earlier submissions, when there is more than one. Each entry
   can be expanded, tested and downloaded like the latest one.

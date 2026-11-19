@@ -691,12 +691,6 @@
         "category": "%category.examples%"
       },
       {
-        "command": "computor.lecturer.revealExampleInExplorer",
-        "title": "%command.lecturer.revealExampleInExplorer%",
-        "icon": "$(folder)",
-        "category": "%category.examples%"
-      },
-      {
         "command": "computor.lecturer.revealInExamples",
         "title": "%command.lecturer.revealInExamples%",
         "icon": "$(link-external)",
@@ -2727,11 +2721,6 @@
           "command": "computor.lecturer.createCourseContentFromExample",
           "when": "view == computor.lecturer.examples && (viewItem == example || viewItem == exampleCheckedOut)",
           "group": "2_course@1"
-        },
-        {
-          "command": "computor.lecturer.revealExampleInExplorer",
-          "when": "view == computor.lecturer.examples && viewItem == exampleCheckedOut",
-          "group": "1_actions@4"
         },
         {
           "command": "computor.lecturer.showExampleDetails",

@@ -78,7 +78,7 @@ export function deploymentStatusVariant(status: string): BadgeVariant {
   return DEPLOYMENT_STATUS_VARIANTS[status] || 'muted';
 }
 
-/** Deployment status as a themed badge, e.g. badge('DEPLOYED', 'success'). */
+/** Deployment status as a themed badge, e.g. badge('RELEASED', 'success'). */
 export function deploymentBadge(status: string): string {
   return badge(deploymentStatusLabel(status).toUpperCase(), deploymentStatusVariant(status));
 }
@@ -87,9 +87,9 @@ export function deploymentBadge(status: string): string {
 export function deploymentStatusLabel(status: string): string {
   switch (status) {
     case 'pending': return say('pending', 'ausstehend');
-    case 'deployed': return say('deployed', 'bereitgestellt');
+    case 'deployed': return say('released', 'freigegeben');
     case 'failed': return say('failed', 'fehlgeschlagen');
-    case 'deploying': return say('deploying', 'wird bereitgestellt');
+    case 'deploying': return say('releasing', 'wird freigegeben');
     case 'unassigned': return say('unassigned', 'nicht zugewiesen');
     default: return status;
   }

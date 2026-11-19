@@ -38,11 +38,11 @@ const RELEASE_STATE_ICONS: Record<ReleaseState, string> = {
 };
 
 const RELEASE_STATE_LABELS: Record<ReleaseState, [string, string]> = {
-  'deployed': ['deployed', 'freigegeben'],
-  'deploying': ['deploying', 'wird freigegeben'],
+  'deployed': ['released', 'freigegeben'],
+  'deploying': ['releasing', 'wird freigegeben'],
   'failed': ['failed', 'fehlgeschlagen'],
-  'update-not-deployed': ['update not deployed', 'Änderung nicht freigegeben'],
-  'never-deployed': ['not deployed yet', 'noch nicht freigegeben']
+  'update-not-deployed': ['update not released', 'Änderung nicht freigegeben'],
+  'never-deployed': ['not released yet', 'noch nicht freigegeben']
 };
 
 function releaseStateLabel(state: ReleaseState): string {
@@ -355,7 +355,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
     }
 
     if (this.assignmentInfo?.versionIdentifier) {
-      parts.push(`${say('Deployment commit', 'Freigegebener Commit')}: ${this.assignmentInfo.versionIdentifier}`);
+      parts.push(`${say('Released commit', 'Freigegebener Commit')}: ${this.assignmentInfo.versionIdentifier}`);
     }
 
     if (this.assignmentInfo?.versionTag) {
@@ -368,7 +368,7 @@ export class CourseContentTreeItem extends vscode.TreeItem {
       // Naming the command matters: the state is cleared by a button the
       // lecturer has to find, not by waiting for something to finish.
       if (releaseState === 'update-not-deployed' || releaseState === 'never-deployed') {
-        parts.push(say('Run "Release Content" to deploy it to students', 'Wähle „Inhalt freigeben“, damit die Studierenden ihn bekommen'));
+        parts.push(say('Run "Release Content" to give it to students', 'Wähle „Inhalt freigeben“, damit die Studierenden ihn bekommen'));
       }
     } else if (hasExampleAssigned(this.courseContent)) {
       parts.push(`Status: ${releaseStateLabel('never-deployed')}`);

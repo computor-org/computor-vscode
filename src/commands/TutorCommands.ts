@@ -537,8 +537,8 @@ export class TutorCommands {
     if (!submissionGroup?.id) {
       notify.warning(
         say('This student has no submission group for the assignment yet, so there is nothing to grant. '
-        + 'A group appears once the assignment is deployed to them.', 'Diese Person hat für die Aufgabe noch keine Abgabegruppe, daher gibt es nichts freizugeben. '
-        + 'Die Gruppe entsteht, sobald die Aufgabe für sie bereitgestellt ist.')
+        + 'A group appears once the assignment is released to them.', 'Diese Person hat für die Aufgabe noch keine Abgabegruppe, daher gibt es nichts zu gewähren. '
+        + 'Die Gruppe entsteht, sobald die Aufgabe für sie freigegeben ist.')
       );
       return;
     }

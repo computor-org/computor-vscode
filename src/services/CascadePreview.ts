@@ -29,7 +29,7 @@ const COUNT_LABELS: ReadonlyArray<[keyof EntityDeleteCount, string, string]> = [
   ['submission_grades', 'Grades', 'Bewertungen'],
   ['submission_reviews', 'Reviews', 'Reviews'],
   ['results', 'Test results', 'Testergebnisse'],
-  ['course_content_deployments', 'Deployments', 'Bereitstellungen'],
+  ['course_content_deployments', 'Releases', 'Freigaben'],
   ['messages', 'Messages', 'Nachrichten'],
   ['course_member_comments', 'Comments', 'Kommentare'],
   ['example_repositories', 'Example repositories', 'Beispiel-Repositorys'],

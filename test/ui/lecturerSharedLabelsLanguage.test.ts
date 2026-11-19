@@ -47,7 +47,7 @@ describe('shared lecturer labels follow the reading language', () => {
   it('marks hidden rows, deployment states, kinds and roles in German', () => {
     setUiProfileLanguage('de');
     expect(hiddenBadge({ visible: false, visible_effective: false })).to.equal('👁 unsichtbar');
-    expect(deploymentBadge('deployed')).to.contain('BEREITGESTELLT');
+    expect(deploymentBadge('deployed')).to.contain('FREIGEGEBEN');
     expect(localizedKindTitle('unit', 'Unit', 'de')).to.equal('Einheit');
     expect(localizedRoleTitle('_lecturer', 'Lecturer')).to.equal('Lehrende');
   });

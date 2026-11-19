@@ -452,7 +452,7 @@ export class LecturerCommands {
         const content = await this.apiService.getCourseContent(item.courseContent.id, true);
         const deploymentPath = (content as any)?.deployment?.deployment_path || (content as any)?.deployment?.example_identifier || '';
         if (!course || !deploymentPath) {
-          notify.warning(say('Nothing is deployed for this assignment yet, so there are no files to reveal.', 'Für diese Aufgabe ist noch nichts bereitgestellt, daher gibt es keine Dateien zum Anzeigen.'));
+          notify.warning(say('Nothing is released for this assignment yet, so there are no files to reveal.', 'Für diese Aufgabe ist noch nichts freigegeben, daher gibt es keine Dateien zum Anzeigen.'));
           return;
         }
         const { LecturerRepositoryManager } = await import('../services/LecturerRepositoryManager');
@@ -468,7 +468,7 @@ export class LecturerCommands {
         }
         await revealUri(vscode.Uri.file(folder));
       } catch (e) {
-        notify.error(say(`Failed to reveal the deployed files: ${e}`, `Die bereitgestellten Dateien konnten nicht angezeigt werden: ${e}`));
+        notify.error(say(`Failed to reveal the released files: ${e}`, `Die freigegebenen Dateien konnten nicht angezeigt werden: ${e}`));
       }
     });
 
@@ -1594,7 +1594,7 @@ export class LecturerCommands {
 
       await this.treeDataProvider.forceRefreshCourse(target.course.id);
       notify.info(
-        say(`Created assignment "${title}" with example "${selectedExample.label}" ${selectedVersion.versionTag}`, `Die Aufgabe „${title}“ wurde mit dem Beispiel „${selectedExample.label}“ ${selectedVersion.versionTag} angelegt.`)
+        say(`Created assignment "${title}" with example "${selectedExample.label}" ${selectedVersion.versionTag}. Students get it once you run "Release Content".`, `Die Aufgabe „${title}“ wurde mit dem Beispiel „${selectedExample.label}“ ${selectedVersion.versionTag} angelegt. Die Studierenden bekommen sie, sobald du „Inhalt freigeben“ wählst.`)
       );
     } catch (error: any) {
       const errorMessage = error?.response?.data?.detail || error.message || say('Unknown error', 'unbekannter Fehler');
@@ -1974,7 +1974,7 @@ export class LecturerCommands {
     const currentTitle = item.courseContent.title || '';
     const newTitle = await vscode.window.showInputBox({
       title: say('Rename Title', 'Titel ändern'),
-      prompt: say('New title shown in the tree. The path, the deployment folder and meta.yaml stay as they are.', 'Neuer Titel im Baum. Pfad, Bereitstellungsordner und meta.yaml bleiben unverändert.'),
+      prompt: say('New title shown in the tree. The path, the release folder and meta.yaml stay as they are.', 'Neuer Titel im Baum. Pfad, Freigabeordner und meta.yaml bleiben unverändert.'),
       value: currentTitle
     });
 
@@ -2304,7 +2304,7 @@ export class LecturerCommands {
       });
 
       notify.info(
-        say(`Example version updated to v${selectedVersion.versionTag}`, `Beispielversion auf v${selectedVersion.versionTag} aktualisiert.`)
+        say(`Example version updated to v${selectedVersion.versionTag}. Students get it once you run "Release Content".`, `Beispielversion auf v${selectedVersion.versionTag} aktualisiert. Die Studierenden bekommen sie, sobald du „Inhalt freigeben“ wählst.`)
       );
 
       this.apiService.clearCourseCache(courseId);
@@ -2398,7 +2398,7 @@ export class LecturerCommands {
         const result = await this.apiService.lecturerBatchUpgradeVersions(courseId, contentIds);
 
         if (result.total_failed === 0) {
-          notify.info(say(`Updated ${result.total_upgraded} assignment(s) to latest example versions.`, `${result.total_upgraded} Aufgabe(n) auf die neueste Beispielversion aktualisiert.`));
+          notify.info(say(`Updated ${result.total_upgraded} assignment(s) to latest example versions. Students get the new versions once you run "Release Content".`, `${result.total_upgraded} Aufgabe(n) auf die neueste Beispielversion aktualisiert. Die Studierenden bekommen die neuen Versionen, sobald du „Inhalt freigeben“ wählst.`));
         } else {
           notify.warning(say(`Updated ${result.total_upgraded} assignment(s), ${result.total_failed} failed.`, `${result.total_upgraded} Aufgabe(n) aktualisiert, ${result.total_failed} fehlgeschlagen.`));
         }

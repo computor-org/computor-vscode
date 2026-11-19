@@ -222,7 +222,8 @@ export class LecturerExampleCommands {
       } else if (item instanceof ExampleTreeItem) {
         target = item.merged.local?.fullPath;
       }
-      if (!target) {
+      // A group can hold only version snapshots, with no working copy on disk.
+      if (!target || !fs.existsSync(target)) {
         notify.warning(say('No local copy to reveal.', 'Es gibt keine lokale Kopie zum Anzeigen.'));
         return;
       }
@@ -315,11 +316,6 @@ export class LecturerExampleCommands {
         this.apiService.clearExamplesCache();
       } catch {}
       this.treeProvider.refresh();
-    });
-
-    // Reveal downloaded example in explorer
-    register('computor.lecturer.revealExampleInExplorer', async (item: ExampleTreeItem) => {
-      await this.revealExampleInExplorer(item);
     });
 
     // Show example details in webview side panel
@@ -2085,7 +2081,7 @@ export class LecturerExampleCommands {
               console.warn('Failed to trigger assignments generation after creating content:', e);
             }
             notify.info(
-              say(`Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}"`, `Die Aufgabe „${item.example.title}“ wurde mit Version ${latestVersion.version_tag} im Kurs „${courseSelection.label}“ angelegt.`)
+              say(`Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}". Students get it once you run "Release Content".`, `Die Aufgabe „${item.example.title}“ wurde mit Version ${latestVersion.version_tag} im Kurs „${courseSelection.label}“ angelegt. Die Studierenden bekommen sie, sobald du „Inhalt freigeben“ wählst.`)
             );
           } catch (assignError) {
             // Content was created but example assignment failed
@@ -2112,18 +2108,6 @@ export class LecturerExampleCommands {
       console.error('Failed to create content from example:', error);
       notify.error(say(`Failed to create assignment: ${error}`, `Die Aufgabe konnte nicht angelegt werden: ${error}`));
     }
-  }
-
-  private async revealExampleInExplorer(item: ExampleTreeItem): Promise<void> {
-    if (!item?.example) { return; }
-    const examplesPath = this.getExamplesDir();
-    if (!examplesPath) { return; }
-    const workingPath = getWorkingPath(examplesPath, item.example.directory);
-    if (!fs.existsSync(workingPath)) {
-      notify.error(say('Example is not checked out', 'Das Beispiel ist nicht ausgecheckt.'));
-      return;
-    }
-    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(workingPath));
   }
 
   private async bumpCheckedOutVersion(item: CheckedOutVersionTreeItem): Promise<void> {

@@ -396,8 +396,8 @@ Aufgaben-Repositorys zeigen. Sie wird nur vom Server aktualisiert und nie zurüc
 sodass nichts, was du hineinschreibst, die Studierenden erreicht.
 
 Aufgaben sind die untersten Einträge im Kursbaum und lassen sich nicht aufklappen. Was für eine
-Aufgabe gerade bereitgestellt ist, siehst du über Rechtsklick auf die Aufgabe →
-`Bereitgestellte Dateien anzeigen`.
+Aufgabe gerade freigegeben ist, siehst du über Rechtsklick auf die Aufgabe →
+`Freigegebene Dateien anzeigen`.
 
 ### Grenzen für Testläufe und Abgaben
 

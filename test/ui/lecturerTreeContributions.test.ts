@@ -58,10 +58,10 @@ describe('lecturer tree contributions', () => {
     }
   });
 
-  describe('Reveal Deployed Files', () => {
-    it('says it reveals what is deployed, not that it opens an editable folder', () => {
+  describe('Reveal Released Files', () => {
+    it('says it reveals what is released, not that it opens an editable folder', () => {
       const reveal = command('computor.lecturer.openAssignmentFolder');
-      expect(reveal?.title).to.equal('Reveal Deployed Files');
+      expect(reveal?.title).to.equal('Reveal Released Files');
     });
 
     it('stays on assignment rows', () => {
