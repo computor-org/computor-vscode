@@ -388,7 +388,7 @@ show you is a local copy of the assignments repository, and that copy is only ev
 pulled — anything written into it would never reach students.
 
 Assignments are leaves in the course tree — they do not expand. To see what is
-currently deployed for one, right-click the assignment → `Reveal Deployed Files`.
+currently released for one, right-click the assignment → `Reveal Released Files`.
 
 ### Test and Submission Limits
 

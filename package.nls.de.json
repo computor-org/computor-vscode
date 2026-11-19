@@ -209,7 +209,7 @@
   "command.lecturer.showMessages": "Nachrichten anzeigen",
   "command.lecturer.manageOrganizationMembers": "Mitglieder verwalten",
   "command.lecturer.manageCourseFamilyMembers": "Mitglieder verwalten",
-  "command.lecturer.openAssignmentFolder": "Bereitgestellte Dateien anzeigen",
+  "command.lecturer.openAssignmentFolder": "Freigegebene Dateien anzeigen",
   "command.lecturer.syncAssignments": "Aufgaben-Repositorys synchronisieren",
   "command.lecturer.showCourseMemberComments": "Kommentare anzeigen",
   "command.lecturer.createCourseContentType": "Inhaltstyp anlegen",

@@ -2081,7 +2081,7 @@ export class LecturerExampleCommands {
               console.warn('Failed to trigger assignments generation after creating content:', e);
             }
             notify.info(
-              say(`Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}"`, `Die Aufgabe „${item.example.title}“ wurde mit Version ${latestVersion.version_tag} im Kurs „${courseSelection.label}“ angelegt.`)
+              say(`Successfully created assignment "${item.example.title}" with version ${latestVersion.version_tag} in course "${courseSelection.label}". Students get it once you run "Release Content".`, `Die Aufgabe „${item.example.title}“ wurde mit Version ${latestVersion.version_tag} im Kurs „${courseSelection.label}“ angelegt. Die Studierenden bekommen sie, sobald du „Inhalt freigeben“ wählst.`)
             );
           } catch (assignError) {
             // Content was created but example assignment failed

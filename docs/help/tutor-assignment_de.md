@@ -13,7 +13,7 @@ siehst du:
 
 - **Abgaben**: die Dateien der neuesten Abgabe der Person. Das ist es, was
   du bewertest.
-- **Musterlösung**: die Lösung zur bereitgestellten Version der Aufgabe,
+- **Musterlösung**: die Lösung zur freigegebenen Version der Aufgabe,
   damit du sehen kannst, was erwartet war.
 - **Verlauf**: frühere Abgaben, sofern es mehr als eine gibt. Jeder Eintrag
   lässt sich wie die neueste Abgabe aufklappen, testen und herunterladen.

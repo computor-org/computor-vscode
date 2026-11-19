@@ -209,7 +209,7 @@
   "command.lecturer.showMessages": "Show Messages",
   "command.lecturer.manageOrganizationMembers": "Manage Members",
   "command.lecturer.manageCourseFamilyMembers": "Manage Members",
-  "command.lecturer.openAssignmentFolder": "Reveal Deployed Files",
+  "command.lecturer.openAssignmentFolder": "Reveal Released Files",
   "command.lecturer.syncAssignments": "Sync Assignments Repositories",
   "command.lecturer.showCourseMemberComments": "Show Comments",
   "command.lecturer.createCourseContentType": "Create Content Type",

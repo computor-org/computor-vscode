@@ -68,22 +68,22 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       ? say(
         `<div class="notice warning">Cannot unassign while the status is
          <strong>${escapeHtml(deploymentStatusLabel(deploymentStatus))}</strong>. Unassignment is only
-         allowed for pending or failed deployments.</div>`,
+         allowed for pending or failed releases.</div>`,
         `<div class="notice warning">Solange der Status
          <strong>${escapeHtml(deploymentStatusLabel(deploymentStatus))}</strong> ist, lässt sich die Zuweisung nicht aufheben.
-         Das geht nur bei ausstehenden oder fehlgeschlagenen Bereitstellungen.</div>`
+         Das geht nur bei ausstehenden oder fehlgeschlagenen Freigaben.</div>`
       )
       : '';
 
-    const deploymentHtml = section(say('Deployment', 'Bereitstellung'), `
+    const deploymentHtml = section(say('Release', 'Freigabe'), `
       ${detailGrid(`
         ${infoRow('Status', deploymentBadge(deploymentStatus))}
         ${exampleInfo?.title ? infoRowText(say('Example', 'Beispiel'), exampleInfo.title) : infoRowText(say('Example', 'Beispiel'), say('Not assigned', 'Nicht zugewiesen'))}
         ${deployment?.assigned_at ? infoRowText(say('Assigned', 'Zugewiesen'), formatTimestamp(deployment.assigned_at)) : ''}
-        ${deployment?.deployed_at ? infoRowText(say('Deployed', 'Bereitgestellt'), formatTimestamp(deployment.deployed_at)) : ''}
+        ${deployment?.deployed_at ? infoRowText(say('Released', 'Freigegeben'), formatTimestamp(deployment.deployed_at)) : ''}
         ${exampleInfo?.identifier ? infoRowCode(say('Identifier', 'Kennung'), exampleInfo.identifier) : ''}
         ${exampleVersionInfo?.version_tag ? infoRowCode('Version', exampleVersionInfo.version_tag) : ''}
-        ${deployment?.deployment_path ? infoRowCode(say('Deployment Path', 'Bereitstellungspfad'), deployment.deployment_path) : ''}
+        ${deployment?.deployment_path ? infoRowCode(say('Release Path', 'Freigabepfad'), deployment.deployment_path) : ''}
         ${deployment?.example_id ? infoRowCode(say('Example ID', 'Beispiel-ID'), deployment.example_id) : ''}
         ${deployment?.deployment_message ? infoRowText(say('Message', 'Meldung'), deployment.deployment_message, { wide: true }) : ''}
       `)}
@@ -91,7 +91,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
       <div class="actions">
         ${exampleInfo ? `
           <button class="btn-secondary" data-action="updateExampleVersion">${say('Update Version', 'Version aktualisieren')}</button>
-          <button data-action="deployAssignment">${say('Deploy', 'Bereitstellen')}</button>
+          <button data-action="deployAssignment">${say('Release', 'Freigeben')}</button>
         ` : ''}
         <button class="btn-secondary" data-action="refreshData">${say('Refresh', 'Aktualisieren')}</button>
       </div>
@@ -168,7 +168,7 @@ export class AssignmentContentWebviewProvider extends BaseCourseContentWebviewPr
             title: message.data?.title
           });
         } catch (error) {
-          notify.error(say(`Failed to deploy assignment: ${error}`, `Die Aufgabe konnte nicht bereitgestellt werden: ${error}`));
+          notify.error(say(`Failed to release assignment: ${error}`, `Die Aufgabe konnte nicht freigegeben werden: ${error}`));
         }
         break;
 
